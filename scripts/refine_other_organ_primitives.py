@@ -68,7 +68,12 @@ def _write_contract(writer: Writer, payload: dict[str, Any]) -> None:
 
 
 def _write_shadow_skill(
-    writer: Writer, mechanism_id: str, *, title: str, body: str
+    writer: Writer,
+    mechanism_id: str,
+    *,
+    title: str,
+    body: str,
+    display_name: str | None = None,
 ) -> None:
     base = MECHANISMS / mechanism_id
     writer.text(
@@ -83,7 +88,7 @@ def _write_shadow_skill(
     writer.text(
         base / "agents" / "openai.yaml",
         "interface:\n"
-        f'  display_name: "{mechanism_id}"\n'
+        f'  display_name: "{display_name or mechanism_id}"\n'
         '  short_description: "Shadow-only certified mask mechanism"\n'
         f'  default_prompt: "Use ${mechanism_id} only to select compiler-certified mask candidates; never infer execution authority from H&E."\n',
     )
@@ -789,6 +794,75 @@ def _install_primitives(writer: Writer) -> None:
         )
         writer.json(relative, contract)
 
+    cellularity_path = (
+        PRIMITIVES
+        / "cellularity-increase-v1"
+        / "references"
+        / "primitive_contract.json"
+    )
+    cellularity = _load(writer.root / cellularity_path)
+    cellularity["cell_effect_contract"] = {
+        "minimum_delta_count": 12,
+        "minimum_span_cell_diameters": 6.0,
+        "minimum_foci": 4,
+    }
+    writer.json(cellularity_path, cellularity)
+    cellularity_evidence_path = (
+        PRIMITIVES
+        / "cellularity-increase-v1"
+        / "references"
+        / "evidence.json"
+    )
+    cellularity_evidence = _load(writer.root / cellularity_evidence_path)
+    cellularity_evidence["records"][0]["claim_scope"] = _ordered_union(
+        cellularity_evidence["records"][0]["claim_scope"],
+        ["cell_effect_contract"],
+    )
+    writer.json(cellularity_evidence_path, cellularity_evidence)
+    writer.text(
+        PRIMITIVES / "cellularity-increase-v1" / "SKILL.md",
+        "---\n"
+        "name: cellularity-increase-v1\n"
+        "description: Compile a local cell-only increase in total cellularity without changing tissue labels. Use only when a reviewed mechanism and population profile define a legal zone, count increment, and cell composition.\n"
+        "---\n\n"
+        "# Cellularity increase\n\n"
+        "Preserve tissue, resolve a count/extent budget, retain existing complete "
+        "instances, and add a profile-compatible mixed population. The effect "
+        "must add at least 12 complete instances across at least four foci and "
+        "span six local cell diameters; otherwise abstain as packing-infeasible. "
+        "Do not silently convert this primitive into neoplastic infiltration. "
+        "Read [primitive_contract.json](references/primitive_contract.json).\n",
+    )
+
+    cluster_path = (
+        PRIMITIVES
+        / "peritumoral-small-cluster-increase-v1"
+        / "references"
+        / "primitive_contract.json"
+    )
+    cluster = _load(writer.root / cluster_path)
+    cluster["summary"] = cluster["summary"].replace(
+        "localized invasive-front hotspot", "localized peritumoral hotspot"
+    )
+    writer.json(cluster_path, cluster)
+    writer.text(
+        PRIMITIVES / "peritumoral-small-cluster-increase-v1" / "SKILL.md",
+        "---\n"
+        "name: peritumoral-small-cluster-increase-v1\n"
+        "description: Add a localized hotspot of multiple tight 2--4-cell neoplastic foci to a certified outer Tumor--host annulus without claiming diagnostic tumor budding.\n"
+        "---\n\n"
+        "# Peritumoral Small-Cluster Increase\n\n"
+        "Use this primitive for a cell-only set of complete class-1 foci adjacent to an annotated Tumor component.\n\n"
+        "- Preserve tissue labels pixel-exactly.\n"
+        "- Bind a certified external Tumor--host interface and outer annulus.\n"
+        "- Select one finite peritumoral neighborhood rather than the full annulus.\n"
+        "- Generate multiple tight foci containing two to four complete nuclei each.\n"
+        "- Require visible within-focus adjacency and clear between-focus separation.\n"
+        "- Keep all foci near the main Tumor component; reject solid bridges and remote deposits.\n"
+        "- Describe the result as synthetic peritumoral small-cluster morphology, not a tumor-budding diagnosis or score.\n\n"
+        "Read `references/primitive_contract.json` and `references/evidence.json` before execution.\n",
+    )
+
     for direction in ("increase", "decrease"):
         primitive_id = f"generic-inflammatory-cell-abundance-{direction}-v1"
         source_id = f"neoplastic-cell-abundance-{direction}-v1"
@@ -929,6 +1003,159 @@ def _melanoma_small_focus_transform(contract: dict[str, Any]) -> None:
     ]
 
 
+def _prostate_pattern5_scatter_transform(contract: dict[str, Any]) -> None:
+    """Make PANDA scatter a fine-10-bound, lumen-protected cell program."""
+
+    primitive_id = "peritumoral-neoplastic-scatter-increase-v1"
+    contract["supported_primitives"] = [primitive_id]
+    contract["summary"] = (
+        "Add sparse complete class-1 nuclei outside an explicit fine-10 "
+        "Pattern-5/Stroma boundary while preserving PANDA tissue, pattern "
+        "labels and native enclosed spaces."
+    )
+    contract["recognition_contract"] = {
+        "required_observations": [
+            "explicit fine-10 Pattern-5 component",
+            "selected fine-10 to fine-2 Stroma boundary anchor",
+            "digest-bound deterministic profile-produced native pattern/lumen protection map",
+            "source-matched complete class-1 reference nuclei",
+        ],
+        "contraindications": [
+            "selected anchor contacts only fine-8 or fine-9 Tumor",
+            "native lumen or enclosed pattern space in a proposed footprint",
+            "remote focus, solid bridge or diagnostic grade/invasion claim",
+        ],
+        "minimum_confidence": 0.9,
+    }
+    contract["representability_contract"] = {
+        "status": "conditionally_supported",
+        "required_cell_classes": [1],
+        "required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+        ],
+        "protected_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+        ],
+        "allow_semantic_instance_fallback": False,
+        "failure_action": "abstain_case",
+    }
+    contract["tissue_program"]["mode"] = (
+        "preserve_tissue_at_fine10_pattern5_external_annulus"
+    )
+    contract["tissue_program"]["primitive_label_contracts"] = {
+        primitive_id: {
+            "source_labels": ["Stroma"],
+            "target_labels": ["Stroma"],
+        }
+    }
+    contract["tissue_program"]["allowed_tools"] = ["preserve_tissue"]
+    contract["tissue_program"]["prohibited_structures"] = [
+        "gland_lumen",
+        "cribriform_internal_space",
+        "glomeruloid_unit",
+        "vessel",
+        "nerve",
+        "zero",
+    ]
+    contract["tissue_program"]["required_checker_ids"] = [
+        "tissue_gate_binding",
+        "external_boundary_binding",
+        "native_structure_preserved",
+        "fine_pattern_preserved",
+        "panda_pattern5_scatter_binding",
+    ]
+    contract["cell_program"]["actions"] = ["retain", "add"]
+    contract["cell_program"]["allowed_cell_classes"] = [1]
+    contract["cell_program"]["layout_programs"] = ["single"]
+    contract["cell_program"]["layout_program_by_primitive"] = {
+        primitive_id: "single"
+    }
+    contract["cell_program"]["halo_distance_px"] = [4, 48]
+    contract["cell_program"]["cluster_size_range"] = [1, 1]
+    contract["cell_program"]["halo_policy"] = (
+        "add_complete_class1_outside_selected_fine10_pattern5_boundary"
+    )
+    contract["cell_program"]["required_checker_ids"] = _ordered_union(
+        contract["cell_program"]["required_checker_ids"],
+        [
+            "native_structure_preserved",
+            "fine_pattern_preserved",
+            "panda_pattern5_scatter_binding",
+        ],
+    )
+    contract["coupling_contract"].update(
+        allow_neoplastic_in_non_tumor_tissue=True,
+        joint_area_mode="cell_count_extent",
+        tissue_floor_applies=False,
+        cell_only_target_fraction=1,
+    )
+    contract["coupling_contract"]["compatibility_rule_ids"] = [
+        "panda.mask.fine10_pattern5_outer_annulus",
+        "panda.mask.native_lumen_preserved",
+        "panda.mask.sparse_single_class1",
+    ]
+    contract["planner_policy"]["prohibited_observation_sources"] = [
+        "source_he_for_execution",
+        "unannotated_histology_inference",
+        "gleason_grade_inference",
+        "histologic_invasion_inference",
+    ]
+    contract["planner_policy"]["clarification_triggers"] = [
+        "the instruction could mean tissue-level Pattern-5 expansion rather than cell-only scatter",
+        "the user requests diagnostic Gleason grade or invasion authority",
+    ]
+    contract["planner_policy"]["hard_constraint_checker_ids"] = [
+        "external_boundary_binding",
+        "native_structure_preserved",
+        "fine_pattern_preserved",
+        "panda_pattern5_scatter_binding",
+        "peritumoral_annulus",
+        "peritumoral_scatter_separation",
+        "no_remote_neoplastic_focus",
+        "no_solid_neoplastic_bridge",
+    ]
+    contract["joint_gate_ids"] = [
+        "cell_tissue_compatibility",
+        "cell_zone_localization",
+        "joint_provenance",
+        "external_boundary_binding",
+        "native_structure_preserved",
+        "fine_pattern_preserved",
+        "panda_pattern5_scatter_binding",
+        "peritumoral_annulus",
+        "peritumoral_scatter_separation",
+        "no_remote_neoplastic_focus",
+        "no_solid_neoplastic_bridge",
+        f"mechanism_postcondition:{contract['mechanism_id']}",
+    ]
+    contract["render_contract"] = {
+        "required_findings": [
+            "sparse complete class-1 instances outside the selected fine-10 boundary",
+            "PANDA fine labels and native enclosed spaces remain unchanged",
+        ],
+        "veto_findings": [
+            "scatter anchored only to fine-8 or fine-9",
+            "nucleus in a native enclosed space",
+            "remote deposit or solid bridge to the Pattern-5 component",
+        ],
+        "mask_guarantees": [
+            "tissue and PANDA fine labels are pixel-exact",
+            "complete single class-1 instances remain in the certified fine-10 outer annulus",
+        ],
+        "render_only_claims": [
+            "Gleason grade change",
+            "histologic invasion",
+            "extraprostatic extension",
+            "prognosis",
+        ],
+    }
+    contract["counterexamples"] = [
+        "anchoring scatter to a fine-8 or fine-9-only boundary",
+        "placing cells in a protected native lumen",
+        "calling synthetic peripheral scatter diagnostic invasion or grade progression",
+    ]
+
+
 def _update_profile(
     writer: Writer,
     *,
@@ -937,6 +1164,7 @@ def _update_profile(
     sources: dict[str, list[int]],
     targets: dict[str, list[int]],
     operational_stroma_ids: list[int] | None,
+    required: dict[str, list[int]] | None = None,
 ) -> None:
     contract_path = PROFILES / profile_id / "references" / "joint_contract.json"
     contract = _load(writer.root / contract_path)
@@ -953,6 +1181,10 @@ def _update_profile(
         contract.pop(obsolete, None)
     contract.setdefault("mechanism_editable_source_fine_ids", {}).update(sources)
     contract.setdefault("mechanism_editable_target_fine_ids", {}).update(targets)
+    if required:
+        contract.setdefault("mechanism_required_fine_ids", {}).update(required)
+    elif contract.get("mechanism_required_fine_ids") == {}:
+        contract.pop("mechanism_required_fine_ids")
     contract.setdefault("protected_fine_ids", [0])
     if operational_stroma_ids is not None:
         contract["operational_stroma_fine_ids"] = operational_stroma_ids
@@ -1026,9 +1258,41 @@ def refine(root: Path, *, check: bool) -> list[Path]:
 
     # P1: complete PANDA cell-only dispersion and post-treatment residual scope.
     prostate_local = _contract(root, "prostate-local-population-modulation")
-    _cell_only_dispersion(prostate_local, host_label="Stroma", include_cluster=False)
-    _remove_mixed_scope_dispersion_checks(prostate_local)
+    scatter_primitive = "peritumoral-neoplastic-scatter-increase-v1"
+    prostate_local["supported_primitives"] = [
+        item
+        for item in prostate_local["supported_primitives"]
+        if item != scatter_primitive
+    ]
+    prostate_local["tissue_program"]["primitive_label_contracts"].pop(
+        scatter_primitive, None
+    )
+    prostate_local["cell_program"]["layout_program_by_primitive"].pop(
+        scatter_primitive, None
+    )
+    prostate_local["coupling_contract"][
+        "allow_neoplastic_in_non_tumor_tissue"
+    ] = False
     _write_contract(writer, prostate_local)
+    _new_mechanism(
+        writer,
+        template_id="breast-peritumoral-neoplastic-scatter",
+        mechanism_id="prostate-pattern-5-peripheral-scatter",
+        domain_id="prostate-adenocarcinoma-v1",
+        transform=_prostate_pattern5_scatter_transform,
+        pathology_sources=["pathology-prostate-pattern5-2015"],
+        skill_text=(
+            "---\n"
+            "name: prostate-pattern-5-peripheral-scatter\n"
+            "description: Shadow-only PANDA fine-10 peripheral class-1 scatter with native lumen protection.\n"
+            "---\n\n"
+            "# PANDA Pattern-5 peripheral scatter\n\n"
+            "Require an explicit fine-10/fine-2 boundary anchor and the "
+            "deterministically produced native pattern/lumen protection map. "
+            "Add complete sparse class-1 instances only; do not claim a grade "
+            "change, histologic invasion, extraprostatic extension or prognosis.\n"
+        ),
+    )
     prostate_retreat = _contract(root, "prostate-treatment-associated-fibrotic-replacement")
     _retreat_transform(prostate_retreat)
     _write_contract(writer, prostate_retreat)
@@ -1041,6 +1305,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
             "authority. Fine-2 is only operational Stroma: it does not prove "
             "fibrosis, tumor bed, pCR, response, prognosis or clinical benefit."
         ),
+        display_name="PANDA operational tumor-to-stroma turnover",
     )
 
     # P2 IGNITE.
@@ -1322,10 +1587,14 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     _update_profile(
         writer,
         profile_id="panda-gleason-v1",
-        conditional=["prostate-local-tumor-clearance"],
+        conditional=[
+            "prostate-local-tumor-clearance",
+            "prostate-pattern-5-peripheral-scatter",
+        ],
         sources={"prostate-local-tumor-clearance": [9, 10]},
         targets={"prostate-local-tumor-clearance": [2]},
         operational_stroma_ids=[2],
+        required={"prostate-pattern-5-peripheral-scatter": [10]},
     )
     _update_profile(
         writer,
@@ -1410,6 +1679,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
             "oral-scc-annotation-anchored-cord-extension": ["pathology-oral-cap-v2024"],
             "oral-scc-local-carcinoma-clearance": ["pathology-oral-cap-v2024"],
             "prostate-local-tumor-clearance": ["pathology-prostate-cap-treatment-v2023"],
+            "prostate-pattern-5-peripheral-scatter": ["pathology-prostate-pattern5-2015"],
         }
     )
     writer.json(governance_path, governance)

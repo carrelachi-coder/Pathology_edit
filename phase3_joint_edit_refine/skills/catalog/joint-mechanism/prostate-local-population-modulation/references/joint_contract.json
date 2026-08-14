@@ -7,8 +7,7 @@
     "cellularity-increase-v1",
     "cellularity-decrease-v1",
     "neoplastic-cell-abundance-increase-v1",
-    "neoplastic-cell-abundance-decrease-v1",
-    "peritumoral-neoplastic-scatter-increase-v1"
+    "neoplastic-cell-abundance-decrease-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
@@ -100,14 +99,6 @@
         "target_labels": [
           "Tumor"
         ]
-      },
-      "peritumoral-neoplastic-scatter-increase-v1": {
-        "source_labels": [
-          "Stroma"
-        ],
-        "target_labels": [
-          "Stroma"
-        ]
       }
     },
     "allowed_tools": [
@@ -198,8 +189,7 @@
       "cellularity-increase-v1": "single",
       "cellularity-decrease-v1": "localized_density_gradient",
       "neoplastic-cell-abundance-increase-v1": "small_cluster",
-      "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient",
-      "peritumoral-neoplastic-scatter-increase-v1": "single"
+      "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient"
     }
   },
   "coupling_contract": {
@@ -207,7 +197,7 @@
       "prostate.joint.local_population_host_compatibility",
       "prostate.joint.gland_lumen_pattern_preservation"
     ],
-    "allow_neoplastic_in_non_tumor_tissue": true,
+    "allow_neoplastic_in_non_tumor_tissue": false,
     "joint_area_mode": "cell_count_extent",
     "tissue_floor_applies": false,
     "cell_only_target_fraction": 1,

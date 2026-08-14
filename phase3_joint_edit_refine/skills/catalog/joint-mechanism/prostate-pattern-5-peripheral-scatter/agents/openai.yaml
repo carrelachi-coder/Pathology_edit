@@ -1,0 +1,4 @@
+interface:
+  display_name: "prostate-pattern-5-peripheral-scatter"
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $prostate-pattern-5-peripheral-scatter only with certified mask candidates and required authority."

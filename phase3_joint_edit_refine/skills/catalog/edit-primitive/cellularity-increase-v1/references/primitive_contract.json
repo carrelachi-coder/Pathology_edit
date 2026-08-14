@@ -6,9 +6,29 @@
   "summary": "Increase total local cellularity without changing tissue labels.",
   "tissue_action": "forbidden",
   "budget_mode": "count_extent",
-  "allowed_baseline_modes": ["structured_add"],
-  "allowed_quota_roles": ["explicit_increment"],
-  "host_tissue_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"],
+  "allowed_baseline_modes": [
+    "structured_add"
+  ],
+  "allowed_quota_roles": [
+    "explicit_increment"
+  ],
+  "host_tissue_labels": [
+    "Tumor",
+    "Stroma",
+    "Other tissue",
+    "Normal epithelium",
+    "Immune infiltrate"
+  ],
   "target_cell_classes": [],
-  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_shape_distribution", "local_population_density"]
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "local_shape_distribution",
+    "local_population_density"
+  ],
+  "cell_effect_contract": {
+    "minimum_delta_count": 12,
+    "minimum_span_cell_diameters": 6.0,
+    "minimum_foci": 4
+  }
 }

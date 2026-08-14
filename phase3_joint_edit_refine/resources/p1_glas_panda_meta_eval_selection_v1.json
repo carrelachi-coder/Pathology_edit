@@ -1,7 +1,7 @@
 {
   "api_used": false,
   "capability_matrix": "phase3_joint_edit_refine/resources/non_breast_organ_annotation_capability_matrix_v1.json",
-  "capability_matrix_sha256": "e66fec6f1ba68f68b623c093e7ed0daaab701d834b2091e8ab7199899f595a2c",
+  "capability_matrix_sha256": "5b6933cd5c1a235b79e34ed69a5892c9e9da5ac856aa25872639c6ed1aa08edb",
   "evaluation_count": 24,
   "evaluations": [
     {
@@ -23,6 +23,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
           "source_nuclei_instances": null,
@@ -37,6 +38,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
           "source_nuclei_instances": null,
@@ -51,6 +53,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
           "source_nuclei_instances": null,
@@ -65,6 +68,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
           "source_nuclei_instances": null,
@@ -79,6 +83,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
           "source_nuclei_instances": null,
@@ -106,6 +111,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
           "source_nuclei_instances": null,
@@ -120,6 +126,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
           "source_nuclei_instances": null,
@@ -134,6 +141,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
           "source_nuclei_instances": null,
@@ -148,6 +156,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
           "source_nuclei_instances": null,
@@ -162,6 +171,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
           "source_nuclei_instances": null,
@@ -189,6 +199,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
           "source_nuclei_instances": null,
@@ -203,6 +214,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
           "source_nuclei_instances": null,
@@ -217,6 +229,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
           "source_nuclei_instances": null,
@@ -231,6 +244,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
           "source_nuclei_instances": null,
@@ -245,6 +259,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
           "source_nuclei_instances": null,
@@ -272,6 +287,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
           "source_nuclei_instances": null,
@@ -286,6 +302,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
           "source_nuclei_instances": null,
@@ -300,6 +317,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
           "source_nuclei_instances": null,
@@ -314,6 +332,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
           "source_nuclei_instances": null,
@@ -328,6 +347,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
           "source_nuclei_instances": null,
@@ -355,6 +375,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
           "source_nuclei_instances": null,
@@ -369,6 +390,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
           "source_nuclei_instances": null,
@@ -383,6 +405,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
           "source_nuclei_instances": null,
@@ -397,6 +420,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
           "source_nuclei_instances": null,
@@ -411,6 +435,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
           "source_nuclei_instances": null,
@@ -438,6 +463,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
           "source_nuclei_instances": null,
@@ -452,6 +478,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
           "source_nuclei_instances": null,
@@ -466,6 +493,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
           "source_nuclei_instances": null,
@@ -480,6 +508,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
           "source_nuclei_instances": null,
@@ -494,6 +523,7 @@
           "joint_mechanism_id": "colorectal-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
           "source_nuclei_instances": null,
@@ -524,8 +554,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
@@ -541,8 +573,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
@@ -558,8 +592,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
@@ -575,8 +611,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
@@ -592,8 +630,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
@@ -625,8 +665,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_38_py512_px768.png",
@@ -642,8 +684,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_7_py256_px256.png",
@@ -659,8 +703,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px0.png",
@@ -676,8 +722,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/testB_15_py256_px256.png",
@@ -693,8 +741,10 @@
           "joint_mechanism_id": "colorectal-tumor-budding-front",
           "joint_primitive_id": "peritumoral-small-cluster-increase-v1",
           "missing_required_auxiliary_structures": [
-            "gland_or_lumen_support",
             "native_gland_instance_map"
+          ],
+          "profile_producible_auxiliary_structures": [
+            "gland_or_lumen_support"
           ],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/GlaS_PATCHES/images/train_18_py0_px1024.png",
@@ -723,6 +773,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -737,6 +788,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -751,6 +803,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -765,6 +818,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -779,6 +833,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -806,6 +861,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -820,6 +876,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -834,6 +891,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -848,6 +906,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -862,6 +921,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cell-type-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -889,6 +949,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -903,6 +964,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -917,6 +979,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -931,6 +994,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -945,6 +1009,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -972,6 +1037,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -986,6 +1052,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -1000,6 +1067,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -1014,6 +1082,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -1028,6 +1097,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "cellularity-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -1055,6 +1125,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -1069,6 +1140,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -1083,6 +1155,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -1097,6 +1170,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -1111,6 +1185,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -1138,6 +1213,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -1152,6 +1228,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -1166,6 +1243,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -1180,6 +1258,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -1194,89 +1273,7 @@
           "joint_mechanism_id": "prostate-local-population-modulation",
           "joint_primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "missing_required_auxiliary_structures": [],
-          "seed": 42,
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
-        }
-      ]
-    },
-    {
-      "annotation_profile_id": "panda-gleason-v1",
-      "case_count": 5,
-      "evaluation_id": "panda-gleason-v1::prostate-local-population-modulation::peritumoral-neoplastic-scatter-increase-v1",
-      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
-      "instruction": "Add scattered tumor cells near the tumor boundary.",
-      "mechanism_id": "prostate-local-population-modulation",
-      "pathology_domain_id": "prostate-adenocarcinoma-v1",
-      "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
-      "required_auxiliary_structures": [],
-      "selected_cases": [
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-local-population-modulation",
-          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "seed": 42,
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
-        },
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-local-population-modulation",
-          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "seed": 42,
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
-        },
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-local-population-modulation",
-          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "seed": 42,
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
-        },
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-local-population-modulation",
-          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "seed": 42,
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
-        },
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-local-population-modulation",
-          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
-          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -1308,6 +1305,7 @@
           "missing_required_auxiliary_structures": [
             "local_clearance_roi"
           ],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -1324,6 +1322,7 @@
           "missing_required_auxiliary_structures": [
             "local_clearance_roi"
           ],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -1340,6 +1339,7 @@
           "missing_required_auxiliary_structures": [
             "local_clearance_roi"
           ],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -1356,6 +1356,7 @@
           "missing_required_auxiliary_structures": [
             "local_clearance_roi"
           ],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -1372,6 +1373,7 @@
           "missing_required_auxiliary_structures": [
             "local_clearance_roi"
           ],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -1400,7 +1402,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1416,7 +1419,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1432,7 +1436,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1448,7 +1453,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1464,7 +1470,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1495,7 +1502,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1511,7 +1519,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1527,7 +1536,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1543,7 +1553,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1559,7 +1570,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-4-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1590,7 +1602,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1606,7 +1619,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1622,7 +1636,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1638,7 +1653,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1654,7 +1670,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "tumor-burden-increase-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1685,7 +1702,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1701,7 +1719,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1717,7 +1736,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1733,7 +1753,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1749,7 +1770,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-growth",
           "joint_primitive_id": "cohesive-boundary-expansion-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1780,7 +1802,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
           "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1796,7 +1819,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
           "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1812,7 +1836,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
           "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1828,7 +1853,8 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
           "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1844,7 +1870,108 @@
           "fixed_case_no_replacement": true,
           "joint_mechanism_id": "prostate-pattern-5-infiltrative-front",
           "joint_primitive_id": "infiltrative-nest-cord-extension-v1",
-          "missing_required_auxiliary_structures": [
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png"
+        }
+      ]
+    },
+    {
+      "annotation_profile_id": "panda-gleason-v1",
+      "case_count": 5,
+      "evaluation_id": "panda-gleason-v1::prostate-pattern-5-peripheral-scatter::peritumoral-neoplastic-scatter-increase-v1",
+      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
+      "instruction": "Add scattered tumor cells near the tumor boundary.",
+      "mechanism_id": "prostate-pattern-5-peripheral-scatter",
+      "pathology_domain_id": "prostate-adenocarcinoma-v1",
+      "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+      "required_auxiliary_structures": [
+        "native_pattern_and_lumen_map"
+      ],
+      "selected_cases": [
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-peripheral-scatter",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-peripheral-scatter",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-peripheral-scatter",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-peripheral-scatter",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "seed": 42,
+          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_nuclei_instances": null,
+          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
+          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png"
+        },
+        {
+          "available_auxiliary_structures": [],
+          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+          "execution_allowed": false,
+          "fixed_case_no_replacement": true,
+          "joint_mechanism_id": "prostate-pattern-5-peripheral-scatter",
+          "joint_primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "seed": 42,
@@ -1860,7 +1987,7 @@
       "case_count": 5,
       "evaluation_id": "panda-gleason-v1::prostate-treatment-associated-fibrotic-replacement::stroma-increase-v1",
       "execution_status": "blocked_pending_independent_review_and_authority_preflight",
-      "instruction": "Increase operational stroma after treatment.",
+      "instruction": "Simulate a post-treatment response by increasing operational stroma.",
       "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
       "pathology_domain_id": "prostate-adenocarcinoma-v1",
       "primitive_id": "stroma-increase-v1",
@@ -1874,6 +2001,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "stroma-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -1888,6 +2016,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "stroma-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -1902,6 +2031,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "stroma-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -1916,6 +2046,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "stroma-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -1930,6 +2061,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "stroma-increase-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -1943,7 +2075,7 @@
       "case_count": 5,
       "evaluation_id": "panda-gleason-v1::prostate-treatment-associated-fibrotic-replacement::invasive-tumor-footprint-decrease-v1",
       "execution_status": "blocked_pending_independent_review_and_authority_preflight",
-      "instruction": "Decrease the tumor area.",
+      "instruction": "Simulate a post-treatment response by decreasing tumor area.",
       "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
       "pathology_domain_id": "prostate-adenocarcinoma-v1",
       "primitive_id": "invasive-tumor-footprint-decrease-v1",
@@ -1957,6 +2089,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -1971,6 +2104,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -1985,6 +2119,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -1999,6 +2134,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -2013,6 +2149,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "invasive-tumor-footprint-decrease-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,
@@ -2026,7 +2163,7 @@
       "case_count": 5,
       "evaluation_id": "panda-gleason-v1::prostate-treatment-associated-fibrotic-replacement::residual-tumor-fragmentation-v1",
       "execution_status": "blocked_pending_independent_review_and_authority_preflight",
-      "instruction": "Fragment the residual tumor into controlled foci.",
+      "instruction": "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci.",
       "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
       "pathology_domain_id": "prostate-adenocarcinoma-v1",
       "primitive_id": "residual-tumor-fragmentation-v1",
@@ -2040,6 +2177,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "residual-tumor-fragmentation-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
           "source_nuclei_instances": null,
@@ -2054,6 +2192,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "residual-tumor-fragmentation-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
           "source_nuclei_instances": null,
@@ -2068,6 +2207,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "residual-tumor-fragmentation-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
           "source_nuclei_instances": null,
@@ -2082,6 +2222,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "residual-tumor-fragmentation-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
           "source_nuclei_instances": null,
@@ -2096,6 +2237,7 @@
           "joint_mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "joint_primitive_id": "residual-tumor-fragmentation-v1",
           "missing_required_auxiliary_structures": [],
+          "profile_producible_auxiliary_structures": [],
           "seed": 42,
           "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
           "source_nuclei_instances": null,

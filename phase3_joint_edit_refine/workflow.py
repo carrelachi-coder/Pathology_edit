@@ -331,15 +331,6 @@ class JointPathologyEditWorkflow:
                     raise JointContractError(
                         "evaluation input mechanism binding does not support the requested primitive"
                     )
-                missing_auxiliary = sorted(
-                    set(mechanism.representability.required_auxiliary_structures)
-                    - set(case.auxiliary_structure_uris)
-                )
-                if missing_auxiliary:
-                    raise JointContractError(
-                        "evaluation input lacks required auxiliary authority: "
-                        + ", ".join(missing_auxiliary)
-                    )
             case.validate_local_inputs()
             _validate_digests(case)
             source_tissue = load_id_mask(case.source_tissue_mask_uri)
@@ -360,6 +351,18 @@ class JointPathologyEditWorkflow:
                 )
             case.validate_local_inputs()
             _validate_digests(case)
+            if self.config.require_evaluation_input_bindings:
+                mechanism_id = case.provenance["joint_mechanism_id"]
+                mechanism = self.joint_skills.mechanisms[mechanism_id]
+                missing_auxiliary = sorted(
+                    set(mechanism.representability.required_auxiliary_structures)
+                    - set(case.auxiliary_structure_uris)
+                )
+                if missing_auxiliary:
+                    raise JointContractError(
+                        "evaluation input lacks required auxiliary authority: "
+                        + ", ".join(missing_auxiliary)
+                    )
             schema = self.mask_skills.annotation_schema(case.annotation_profile_id)
             reference_shape_authority = None
             if (
@@ -3123,14 +3126,6 @@ class JointPathologyEditWorkflow:
                     requested_anchor = case.provenance.get(
                         "cellularity_depletion_anchor"
                     )
-                    if (
-                        case.pathology_domain_id
-                        != "breast-invasive-carcinoma-v1"
-                        and not isinstance(requested_anchor, Mapping)
-                    ):
-                        raise JointContractError(
-                            "cellularity decrease requires an explicit mask-graph depletion anchor"
-                        )
                     if isinstance(requested_anchor, Mapping):
                         variants.append(
                             {
@@ -3247,6 +3242,35 @@ class JointPathologyEditWorkflow:
             compatible.sort(key=lambda item: (-item.contact_pixels, item.interface_id))
             for interface in compatible[:4]:
                 anchors = interface.anchor_segment_ids or ()
+                if (
+                    bundle.mechanism.mechanism_id
+                    == "prostate-pattern-5-peripheral-scatter"
+                ):
+                    anchors = tuple(
+                        anchor_id
+                        for anchor_id in anchors
+                        if anchor_id in scene.tissue.anchor_masks
+                        and np.any(
+                            ndimage.binary_dilation(
+                                np.asarray(
+                                    scene.tissue.anchor_masks[anchor_id],
+                                    dtype=bool,
+                                ),
+                                structure=np.ones((3, 3), dtype=bool),
+                            )
+                            & (np.asarray(source_tissue) == 10)
+                        )
+                        and np.any(
+                            ndimage.binary_dilation(
+                                np.asarray(
+                                    scene.tissue.anchor_masks[anchor_id],
+                                    dtype=bool,
+                                ),
+                                structure=np.ones((3, 3), dtype=bool),
+                            )
+                            & (np.asarray(source_tissue) == 2)
+                        )
+                    )
                 for anchor_id in anchors[:2]:
                     variants.append(
                         {

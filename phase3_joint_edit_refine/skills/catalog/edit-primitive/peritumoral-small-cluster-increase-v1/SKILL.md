@@ -8,8 +8,8 @@ description: Add a localized hotspot of multiple tight 2--4-cell neoplastic foci
 Use this primitive for a cell-only set of complete class-1 foci adjacent to an annotated Tumor component.
 
 - Preserve tissue labels pixel-exactly.
-- Bind a certified external Tumor--Stroma interface and outer annulus.
-- Select one finite invasive-front neighborhood rather than the full annulus.
+- Bind a certified external Tumor--host interface and outer annulus.
+- Select one finite peritumoral neighborhood rather than the full annulus.
 - Generate multiple tight foci containing two to four complete nuclei each.
 - Require visible within-focus adjacency and clear between-focus separation.
 - Keep all foci near the main Tumor component; reject solid bridges and remote deposits.

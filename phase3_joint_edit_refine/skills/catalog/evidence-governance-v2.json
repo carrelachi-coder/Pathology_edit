@@ -388,6 +388,9 @@
     ],
     "melanoma-peritumoral-small-focus": [
       "pathology-melanoma-cap-v2025"
+    ],
+    "prostate-pattern-5-peripheral-scatter": [
+      "pathology-prostate-pattern5-2015"
     ]
   },
   "profile_dataset_sources": {

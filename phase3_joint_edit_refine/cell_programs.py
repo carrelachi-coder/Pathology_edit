@@ -17,7 +17,7 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v14"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v15"
 DEPLETION_FIELD_AREA_RASTER_TOLERANCE = 0.05
 
 
@@ -490,6 +490,30 @@ class CellToolProgramCompiler:
                 int(bundle.mechanism.cell_program.halo_distance_px[1]),
             )
             valid &= ~tumor & (outer_distance <= outer_maximum)
+        if (
+            bundle.annotation_profile.annotation_profile_id == "glas-gland-v1"
+            and primitive.primitive_id
+            in {
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "peritumoral-small-cluster-increase-v1",
+            }
+        ):
+            native = scene.auxiliary_structure_masks.get(
+                "native_gland_instance_map"
+            )
+            if native is None:
+                raise JointContractError(
+                    "GLaS periglandular placement requires native_gland_instance_map"
+                )
+            native_region = np.asarray(native) != 0
+            native_outer_distance = ndimage.distance_transform_edt(
+                ~native_region
+            )
+            valid &= (
+                ~native_region
+                & (native_outer_distance > 0)
+                & (native_outer_distance <= outer_maximum)
+            )
         if (
             bundle.annotation_profile.annotation_profile_id == "puma-semantic-v1"
             and primitive.primitive_id

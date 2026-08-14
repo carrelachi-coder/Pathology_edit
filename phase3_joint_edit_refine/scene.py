@@ -103,7 +103,15 @@ def build_joint_scene_analysis(
             raise JointContractError(
                 f"auxiliary structure {structure_id!r} is not aligned to the case"
             )
-        region = np.asarray(current) != 0
+        values = np.asarray(current)
+        if structure_id == "native_gland_instance_map":
+            # Native GLaS gland IDs are execution authority.  Keeping only a
+            # boolean foreground would merge distinct glands that share a
+            # raster edge and would erase the deterministic instance boundary
+            # supplied by the dataset/preprocessor.
+            region = values.copy()
+        else:
+            region = values != 0
         # An empty, provenance-bound protection map is a valid negative
         # observation: the producer ran but found no enclosed native space.
         auxiliary_masks[structure_id] = region

@@ -117,6 +117,7 @@ MECHANISM_POSTCONDITION_IDS = (
     "oral-scc-local-population-modulation",
     "oral-scc-operational-tumor-retreat",
     "prostate-local-population-modulation",
+    "prostate-pattern-5-peripheral-scatter",
     "prostate-local-tumor-clearance",
     "prostate-pattern-3-growth",
     "prostate-pattern-4-growth",
@@ -196,6 +197,9 @@ class JointGateRegistry:
             "external_boundary_binding": _external_boundary_binding,
             "native_gland_instance_annulus_binding": (
                 _native_gland_instance_annulus_binding
+            ),
+            "panda_pattern5_scatter_binding": (
+                _panda_pattern5_scatter_binding
             ),
             "puma_epidermal_junction_binding": (
                 _puma_epidermal_junction_binding
@@ -477,14 +481,33 @@ def _external_boundary_binding(c):
     )
 
 
+def _normalized_instance_labels(native: np.ndarray) -> np.ndarray:
+    """Preserve distinct raster IDs while splitting disconnected ID reuse."""
+
+    values = np.asarray(native)
+    labels = np.zeros(values.shape, dtype=np.int32)
+    next_id = 1
+    for raw_id in sorted(int(value) for value in np.unique(values) if int(value)):
+        components, count = ndimage.label(
+            values == raw_id,
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        for component_id in range(1, int(count) + 1):
+            labels[components == component_id] = next_id
+            next_id += 1
+    return labels
+
+
 def _native_gland_instance_annulus_binding(c):
-    """Bind GLaS periglandular additions to one native gland exterior.
+    """Bind GLaS periglandular additions to native gland exteriors.
 
     The semantic Tumor mask may join touching glands and its holes may be
     lumina.  This gate therefore requires a digest-bound native instance map,
-    proves that every selected Tumor component overlaps exactly one native
-    instance component, and reconstructs the final added footprint against
-    that instance's exterior distance field.  Raw H&E is never consulted.
+    proves that every selected Tumor component is covered by one or more
+    native instance IDs, and reconstructs the final added footprint against
+    their compound exterior distance field.  Different IDs remain distinct
+    even when their rasters touch; their mutual contact is not an exterior.
+    Raw H&E is never consulted.
     """
 
     applicable = bool(
@@ -510,10 +533,9 @@ def _native_gland_instance_annulus_binding(c):
             "native GLaS gland-instance map is unavailable",
             metrics={"applicable": True, "authority_present": False},
         )
-    native = np.asarray(native, dtype=bool)
-    labels, _count = ndimage.label(
-        native, structure=np.ones((3, 3), dtype=bool)
-    )
+    native_values = np.asarray(native)
+    labels = _normalized_instance_labels(native_values)
+    native_region = labels > 0
     interfaces = {
         item.interface_id: item for item in c.scene.tissue.graph.interfaces
     }
@@ -542,18 +564,24 @@ def _native_gland_instance_annulus_binding(c):
         component = np.asarray(component, dtype=bool)
         overlap_ids = {
             int(value)
-            for value in np.unique(labels[component & native])
+            for value in np.unique(labels[component & native_region])
+            if int(value) > 0
+        }
+        raw_overlap_ids = {
+            int(value)
+            for value in np.unique(native_values[component & native_region])
             if int(value) > 0
         }
         overlap_fraction = float(
-            np.count_nonzero(component & native)
+            np.count_nonzero(component & native_region)
         ) / max(1, int(np.count_nonzero(component)))
-        binding_ok = len(overlap_ids) == 1 and overlap_fraction >= 0.95
+        binding_ok = bool(overlap_ids) and overlap_fraction >= 0.95
         valid_bindings &= binding_ok
         selected_native_ids.update(overlap_ids)
         component_bindings[interface_id] = {
             "tumor_component_id": tumor_component_id,
             "native_instance_component_ids": sorted(overlap_ids),
+            "native_raster_ids": sorted(raw_overlap_ids),
             "semantic_component_overlap_fraction": overlap_fraction,
             "binding_ok": binding_ok,
         }
@@ -565,7 +593,7 @@ def _native_gland_instance_annulus_binding(c):
         np.count_nonzero(
             added
             & (
-                selected_native
+                native_region
                 | (distance <= 0)
                 | (distance > maximum)
             )
@@ -582,13 +610,18 @@ def _native_gland_instance_annulus_binding(c):
         "native_gland_instance_annulus_binding",
         passed,
         (
-            "final added nuclei are bound to one native malignant-gland exterior annulus"
+            "final added nuclei are bound to the selected native gland compound exterior annulus"
             if passed
             else "native gland instance, exterior annulus, or final added footprint is unbound"
         ),
         metrics={
             "applicable": True,
             "authority_present": True,
+            "available_native_raster_ids": sorted(
+                int(value)
+                for value in np.unique(native_values)
+                if int(value) > 0
+            ),
             "selected_native_instance_component_ids": sorted(
                 selected_native_ids
             ),
@@ -596,6 +629,93 @@ def _native_gland_instance_annulus_binding(c):
             "maximum_outer_distance_px": maximum,
             "added_nucleus_pixels": int(np.count_nonzero(added)),
             "violation_pixels": violations,
+        },
+    )
+
+
+def _panda_pattern5_scatter_binding(c):
+    """Bind PANDA cell-only scatter to an explicit fine-10/Stroma edge."""
+
+    applicable = bool(
+        c.bundle.annotation_profile.annotation_profile_id == "panda-gleason-v1"
+        and c.plan.selected_mechanism_id
+        == "prostate-pattern-5-peripheral-scatter"
+        and c.case.primitive_id
+        == "peritumoral-neoplastic-scatter-increase-v1"
+    )
+    if not applicable:
+        return _result(
+            "panda_pattern5_scatter_binding",
+            True,
+            "PANDA Pattern-5 scatter binding is not applicable",
+            metrics={"applicable": False},
+        )
+    native = c.scene.auxiliary_structure_masks.get(
+        "native_pattern_and_lumen_map"
+    )
+    source = np.asarray(c.source_tissue)
+    fine10 = source == 10
+    stroma = source == 2
+    selected_anchor_ids = tuple(c.plan.cell_plan.anchor_ids)
+    anchor_reports = {}
+    anchors_ok = bool(selected_anchor_ids)
+    for anchor_id in selected_anchor_ids:
+        anchor = c.scene.tissue.anchor_masks.get(anchor_id)
+        if anchor is None:
+            anchor_reports[anchor_id] = {"known": False, "binding_ok": False}
+            anchors_ok = False
+            continue
+        neighborhood = ndimage.binary_dilation(
+            np.asarray(anchor, dtype=bool),
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        fine10_contact = bool(np.any(neighborhood & fine10))
+        stroma_contact = bool(np.any(neighborhood & stroma))
+        binding_ok = fine10_contact and stroma_contact
+        anchors_ok &= binding_ok
+        anchor_reports[anchor_id] = {
+            "known": True,
+            "fine10_contact": fine10_contact,
+            "fine2_stroma_contact": stroma_contact,
+            "binding_ok": binding_ok,
+        }
+    added = (c.candidate.target_nuclei_mask > 0) & (c.source_nuclei == 0)
+    maximum = max(1, int(c.bundle.mechanism.cell_program.halo_distance_px[1]))
+    fine10_distance = ndimage.distance_transform_edt(~fine10)
+    protected = (
+        np.asarray(native, dtype=bool)
+        if native is not None
+        else np.zeros_like(fine10)
+    )
+    violation = added & (
+        ~stroma
+        | protected
+        | (fine10_distance <= 0)
+        | (fine10_distance > maximum)
+    )
+    violation_pixels = int(np.count_nonzero(violation))
+    added_pixels = int(np.count_nonzero(added))
+    passed = bool(
+        native is not None
+        and anchors_ok
+        and added_pixels > 0
+        and violation_pixels == 0
+    )
+    return _result(
+        "panda_pattern5_scatter_binding",
+        passed,
+        (
+            "final scatter is bound to explicit fine-10 Pattern-5/Stroma anchors"
+            if passed
+            else "fine-10 anchor, lumen protection, or final scatter footprint is unbound"
+        ),
+        metrics={
+            "applicable": True,
+            "authority_present": native is not None,
+            "selected_anchor_bindings": anchor_reports,
+            "maximum_fine10_outer_distance_px": maximum,
+            "added_nucleus_pixels": added_pixels,
+            "violation_pixels": violation_pixels,
         },
     )
 
@@ -3370,6 +3490,10 @@ def _mechanism_specific_postcondition(
         subchecks["puma_epidermal_junction_binding"] = (
             _puma_epidermal_junction_binding(c).passed
         )
+    if expected_mechanism_id == "prostate-pattern-5-peripheral-scatter":
+        subchecks["panda_pattern5_scatter_binding"] = (
+            _panda_pattern5_scatter_binding(c).passed
+        )
 
     if c.case.primitive_id == "infiltrative-nest-cord-extension-v1":
         subchecks["annotation_anchored_extension_geometry"] = (
@@ -4576,6 +4700,27 @@ def _fine_pattern_preserved(c):
             )
         )
     }
+    selected_anchor_pattern_ids: set[int] = set()
+    primitive_contract = getattr(c.bundle, "primitive", None)
+    if (
+        required
+        and primitive_contract is not None
+        and primitive_contract.scope == "cell_only"
+    ):
+        for anchor_id in c.plan.cell_plan.anchor_ids:
+            anchor = c.scene.tissue.anchor_masks.get(anchor_id)
+            if anchor is None:
+                continue
+            neighborhood = ndimage.binary_dilation(
+                np.asarray(anchor, dtype=bool),
+                structure=np.ones((3, 3), dtype=bool),
+            )
+            selected_anchor_pattern_ids.update(
+                int(value)
+                for value in np.unique(source[neighborhood])
+                if int(value) in set(c.schema.tumor_fine_ids)
+            )
+        edited_pattern_ids = selected_anchor_pattern_ids
     pattern_mismatch = bool(required) and (
         not edited_pattern_ids
         or not edited_pattern_ids.issubset(set(required))
@@ -4591,6 +4736,9 @@ def _fine_pattern_preserved(c):
             "violation_pixels": violations,
             "required_pattern_fine_ids": list(required),
             "observed_changed_pattern_fine_ids": sorted(edited_pattern_ids),
+            "observed_selected_anchor_pattern_fine_ids": sorted(
+                selected_anchor_pattern_ids
+            ),
             "pattern_mismatch": pattern_mismatch,
         },
     )

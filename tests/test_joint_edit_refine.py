@@ -482,11 +482,23 @@ class JointSkillTests(unittest.TestCase):
                     self.assertTrue(capability["simple_instructions"])
                     for instruction in capability["simple_instructions"]:
                         parsed = RuleBasedSemanticParser().parse(instruction)
-                        self.assertEqual(
-                            parsed.primitive_id,
+                        self.assertIn(
                             capability["primitive_id"],
+                            {
+                                item.primitive_id
+                                for item in parsed.primitive_hypotheses
+                            },
                             (domain_id, instruction),
                         )
+                        if capability["mechanism_id"] in {
+                            "prostate-treatment-associated-fibrotic-replacement",
+                            "lung-treatment-associated-fibrotic-replacement",
+                            "melanoma-operational-tumor-retreat",
+                            "oral-scc-operational-tumor-retreat",
+                        }:
+                            self.assertEqual(
+                                parsed.treatment_context, "post_treatment"
+                            )
                 selection = profile["planner_selection_contract"]
                 self.assertEqual(
                     selection["tissue"]["decision_id"],
@@ -529,6 +541,33 @@ class JointSkillTests(unittest.TestCase):
         evaluation["selected_cases"][0]["execution_allowed"] = True
         with self.assertRaisesRegex(ValueError, "required auxiliary"):
             validate_selection(missing_authority)
+
+        invalid_treatment = json.loads(json.dumps(payload))
+        treatment = next(
+            item
+            for item in invalid_treatment["evaluations"]
+            if item["mechanism_id"]
+            == "prostate-treatment-associated-fibrotic-replacement"
+        )
+        treatment["instruction"] = "Increase operational stroma after treatment."
+        with self.assertRaisesRegex(ValueError, "post-treatment binding"):
+            validate_selection(invalid_treatment)
+
+        panda_produced = next(
+            item
+            for item in payload["evaluations"]
+            if item["mechanism_id"]
+            == "prostate-pattern-5-peripheral-scatter"
+        )
+        self.assertTrue(
+            all(
+                "native_pattern_and_lumen_map"
+                in row["profile_producible_auxiliary_structures"]
+                and "native_pattern_and_lumen_map"
+                not in row["missing_required_auxiliary_structures"]
+                for row in panda_produced["selected_cases"]
+            )
+        )
 
     def test_planner_decision_vocabulary_matches_schema_and_breast_skills(self):
         tissue_decision = next(
@@ -1715,11 +1754,12 @@ class JointSkillTests(unittest.TestCase):
             )
             self.assertTrue(output.with_suffix(".json.sha256").is_file())
 
-    def test_cell_decrease_skills_require_a_macroscopic_density_effect(self):
+    def test_cellularity_and_decrease_skills_require_a_macroscopic_density_effect(self):
         repository = JointSkillRepository()
         for primitive_id in (
             "cell-type-abundance-decrease-v1",
             "cellularity-decrease-v1",
+            "cellularity-increase-v1",
         ):
             with self.subTest(primitive_id=primitive_id):
                 primitive = repository.primitives[primitive_id]
@@ -1727,6 +1767,8 @@ class JointSkillTests(unittest.TestCase):
                 self.assertGreaterEqual(
                     primitive.minimum_effect_span_cell_diameters, 6.0
                 )
+                if primitive_id == "cellularity-increase-v1":
+                    self.assertGreaterEqual(primitive.minimum_effect_foci, 4)
 
     def test_density_gradient_quota_can_fill_transition_shortfall(self):
         repaired = _enforce_density_field_gradient_quotas(
@@ -3042,7 +3084,7 @@ class JointSkillTests(unittest.TestCase):
 
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
-        self.assertEqual(len(repository.mechanisms), 48)
+        self.assertEqual(len(repository.mechanisms), 49)
         self.assertEqual(len(repository.primitives), 27)
         self.assertEqual(len(repository.annotation_profiles), 6)
         self.assertEqual(len(repository.cell_observation_profiles), 1)
@@ -3260,7 +3302,7 @@ class JointSkillTests(unittest.TestCase):
         )
         local = _case_stub(
             primitive="cellularity-increase-v1",
-            cell_budget=CellCountExtentBudget(3, 2, 4, 48, 0, 32),
+            cell_budget=CellCountExtentBudget(12, 12, 15, 48, 0, 32),
         )
         eligible, rejected = repository.eligible_mechanisms_for_case(
             case=local,
@@ -3526,7 +3568,9 @@ class JointSkillTests(unittest.TestCase):
         case = replace(
             _case_stub(),
             primitive_id="cellularity-increase-v1",
-            cell_count_extent_budget=CellCountExtentBudget(3, 2, 4, 48, 0, 32),
+            cell_count_extent_budget=CellCountExtentBudget(
+                12, 12, 15, 48, 0, 32
+            ),
         )
         bundle = repository.compose(
             case=case,
@@ -6052,7 +6096,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v14"
+                program["compiler_version"], "joint-cell-tool-compiler-v15"
             )
             self.assertEqual(
                 program["policies"]["P"],
@@ -6271,6 +6315,18 @@ class JointWorkflowTests(unittest.TestCase):
                     if check["check_id"] == "native_gland_instance_annulus_binding"
                 )
                 self.assertTrue(native_binding["passed"])
+                self.assertEqual(
+                    native_binding["metrics"]["available_native_raster_ids"],
+                    [1, 2],
+                )
+                self.assertGreaterEqual(
+                    len(
+                        native_binding["metrics"][
+                            "selected_native_instance_component_ids"
+                        ]
+                    ),
+                    2,
+                )
 
     def test_panda_pattern4_pattern5_and_cord_execute_real_workflows(self):
         fixtures = (
@@ -6372,7 +6428,7 @@ class JointWorkflowTests(unittest.TestCase):
             case = _as_panda_case(
                 _write_synthetic_case(root),
                 fine_id=10,
-                mechanism_id="prostate-local-population-modulation",
+                mechanism_id="prostate-pattern-5-peripheral-scatter",
                 primitive_id=primitive,
             )
             case = replace(
@@ -6394,12 +6450,67 @@ class JointWorkflowTests(unittest.TestCase):
                 tissue_planner=HeuristicInterfacePlanner(),
                 joint_planner=HeuristicJointPlanner(),
                 critic=_ApprovingJointCritic(),
+                config=JointWorkflowConfig(
+                    require_evaluation_input_bindings=True
+                ),
             ).run(case, output_root=root / "panda-scatter")
             self.assertEqual(
                 result.status, "selected_research", result.abstain_reasons
             )
             self.assertEqual(result.condition.ledger.tissue_pixels, 0)
             self.assertGreaterEqual(result.condition.ledger.added_nucleus_pixels, 54)
+            reports = json.loads(
+                Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            selected = next(
+                item
+                for item in reports
+                if item["candidate_id"] == result.selected_candidate_id
+            )
+            binding = next(
+                check
+                for check in selected["checks"]
+                if check["check_id"] == "panda_pattern5_scatter_binding"
+            )
+            self.assertTrue(binding["passed"])
+
+    def test_panda_pattern5_scatter_rejects_fine9_only_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            primitive = "peritumoral-neoplastic-scatter-increase-v1"
+            case = _as_panda_case(
+                _write_synthetic_case(root),
+                fine_id=9,
+                mechanism_id="prostate-pattern-5-peripheral-scatter",
+                primitive_id=primitive,
+            )
+            case = replace(
+                case,
+                case_id="panda-pattern5-scatter-fine9-veto",
+                joint_area_budget=None,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    8,
+                    6,
+                    10,
+                    48,
+                    4,
+                    48,
+                    minimum_effect_span_px=20,
+                    minimum_effect_foci=3,
+                ),
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "panda-scatter-fine9")
+            self.assertEqual(result.status, "abstained")
+            self.assertNotIn(
+                "prostate-local-population-modulation",
+                " ".join(result.abstain_reasons),
+            )
 
     def test_p2_boundary_cord_scatter_and_small_focus_primitives_execute(self):
         fixtures = (
@@ -7595,6 +7706,7 @@ class JointWorkflowTests(unittest.TestCase):
                         )
                         if primitive in {
                             "cellularity-decrease-v1",
+                            "cellularity-increase-v1",
                             "cell-type-abundance-decrease-v1",
                             "cell-type-abundance-increase-v1",
                         }
@@ -7632,7 +7744,10 @@ class JointWorkflowTests(unittest.TestCase):
                 target_count = len(
                     tuple(iter_instances(result.condition.target_nuclei_mask))
                 )
-                if primitive == "cell-type-abundance-increase-v1":
+                if primitive in {
+                    "cell-type-abundance-increase-v1",
+                    "cellularity-increase-v1",
+                }:
                     self.assertGreaterEqual(target_count - source_count, 12)
                     self.assertLessEqual(target_count - source_count, 15)
                 else:
@@ -7654,7 +7769,7 @@ class JointWorkflowTests(unittest.TestCase):
                         for key, value in trace["class_requested_counts"].items()
                     }
                     self.assertEqual(set(requested), {2, 3})
-                    self.assertEqual(sum(requested.values()), 3)
+                    self.assertEqual(sum(requested.values()), 12)
                 if primitive in {
                     "cellularity-decrease-v1",
                     "cell-type-abundance-decrease-v1",
@@ -7695,7 +7810,7 @@ class JointWorkflowTests(unittest.TestCase):
                         "selected_tissue_component",
                     )
 
-    def test_cellularity_decrease_without_visible_anchor_abstains(self):
+    def test_non_breast_cellularity_decrease_uses_compiler_owned_anchors(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = _write_synthetic_case(root)
@@ -7730,11 +7845,11 @@ class JointWorkflowTests(unittest.TestCase):
                 critic=_ApprovingJointCritic(),
             ).run(case, output_root=root / "unanchored")
             self.assertEqual(result.status, "abstained")
-            self.assertTrue(
-                any(
-                    "explicit mask-graph depletion anchor" in reason
-                    for reason in result.abstain_reasons
-                )
+            reason = " ".join(result.abstain_reasons)
+            self.assertNotIn("explicit mask-graph depletion anchor", reason)
+            self.assertIn(
+                "cell-only pre-LLM portfolio has no exact-capacity survivor",
+                reason,
             )
 
     def test_cell_only_budget_cannot_undercut_skill_minimum_effect(self):
@@ -7779,6 +7894,40 @@ class JointWorkflowTests(unittest.TestCase):
                     "skill-owned minimum effect count" in reason
                     for reason in result.abstain_reasons
                 )
+            )
+
+    def test_cellularity_increase_budget_cannot_undercut_effect_floor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _make_stroma_multiclass(_write_synthetic_case(root))
+            case = replace(
+                source,
+                case_id="synthetic-cellularity-increase-below-floor",
+                instruction="increase local cellularity",
+                primitive_id="cellularity-increase-v1",
+                joint_area_budget=None,
+                cell_count_extent_budget=CellCountExtentBudget(
+                    3, 3, 3, 48, 0, 48
+                ),
+                provenance={
+                    **source.provenance,
+                    "joint_mechanism_id": (
+                        "colorectal-local-population-modulation"
+                    ),
+                    "joint_population_zone_id": (
+                        "pop:component:cmp:stroma:0001"
+                    ),
+                },
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=HeuristicInterfacePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "cellularity-increase-below-floor")
+            self.assertEqual(result.status, "abstained")
+            self.assertIn(
+                "skill-owned minimum effect count",
+                " ".join(result.abstain_reasons),
             )
 
     def test_necrosis_appearance_and_resolution_bind_dead_viable_turnover(self):
@@ -8124,7 +8273,12 @@ def _with_native_gland_instance_authority(
     """Bind a synthetic native gland-instance raster for GLaS annulus tests."""
 
     tissue = np.load(source.source_tissue_mask_uri, allow_pickle=False)
-    native = np.isin(tissue, (11, 12, 13)).astype(np.uint16)
+    tumor = np.isin(tissue, (11, 12, 13))
+    columns = np.indices(tissue.shape)[1]
+    midpoint = int(np.median(columns[tumor]))
+    native = np.zeros(tissue.shape, dtype=np.uint16)
+    native[tumor & (columns <= midpoint)] = 1
+    native[tumor & (columns > midpoint)] = 2
     path = Path(source.source_tissue_mask_uri).with_name(
         "native_gland_instance_map.png"
     )

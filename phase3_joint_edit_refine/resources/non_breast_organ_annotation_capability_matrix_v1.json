@@ -234,17 +234,6 @@
         },
         {
           "closed_reason": null,
-          "mechanism_id": "prostate-local-population-modulation",
-          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Add scattered tumor cells near the tumor boundary."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
           "mechanism_id": "prostate-local-tumor-clearance",
           "primitive_id": "local-invasive-clearance-v1",
           "production_status": "shadow_only",
@@ -336,12 +325,25 @@
         },
         {
           "closed_reason": null,
+          "mechanism_id": "prostate-pattern-5-peripheral-scatter",
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [
+            "native_pattern_and_lumen_map"
+          ],
+          "simple_instructions": [
+            "Add scattered tumor cells near the tumor boundary."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
           "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
           "primitive_id": "stroma-increase-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Increase operational stroma after treatment."
+            "Simulate a post-treatment response by increasing operational stroma."
           ],
           "status": "conditionally_supported"
         },
@@ -352,7 +354,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Decrease the tumor area."
+            "Simulate a post-treatment response by decreasing tumor area."
           ],
           "status": "conditionally_supported"
         },
@@ -363,7 +365,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Fragment the residual tumor into controlled foci."
+            "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
           ],
           "status": "conditionally_supported"
         }
@@ -655,7 +657,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Increase operational stroma after treatment."
+            "Simulate a post-treatment response by increasing operational stroma."
           ],
           "status": "conditionally_supported"
         },
@@ -666,7 +668,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Decrease the tumor area."
+            "Simulate a post-treatment response by decreasing tumor area."
           ],
           "status": "conditionally_supported"
         },
@@ -677,7 +679,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Fragment the residual tumor into controlled foci."
+            "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
           ],
           "status": "conditionally_supported"
         }
@@ -887,7 +889,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Decrease the tumor area."
+            "Simulate a post-treatment response by decreasing tumor area."
           ],
           "status": "conditionally_supported"
         },
@@ -898,7 +900,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Increase operational stroma after treatment."
+            "Simulate a post-treatment response by increasing operational stroma."
           ],
           "status": "conditionally_supported"
         },
@@ -909,7 +911,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Fragment the residual tumor into controlled foci."
+            "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
           ],
           "status": "conditionally_supported"
         },
@@ -1128,7 +1130,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Decrease the tumor area."
+            "Simulate a post-treatment response by decreasing tumor area."
           ],
           "status": "conditionally_supported"
         },
@@ -1139,7 +1141,7 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Fragment the residual tumor into controlled foci."
+            "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
           ],
           "status": "conditionally_supported"
         }

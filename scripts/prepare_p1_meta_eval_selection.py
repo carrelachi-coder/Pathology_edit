@@ -21,6 +21,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
+from phase3_joint_edit_refine.semantic_parser import RuleBasedSemanticParser
 
 
 SCHEMA_VERSION = "p1-glas-panda-meta-eval-selection-v1"
@@ -31,6 +32,14 @@ PROFILES = {
 PROBNET_CHECKPOINT_SHA256 = (
     "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8"
 )
+PROFILE_PRODUCIBLE_AUXILIARY_STRUCTURES = {
+    "glas-gland-v1": {"gland_or_lumen_support"},
+    "panda-gleason-v1": {
+        "native_pattern_and_lumen_map",
+        "native_pattern_map",
+        "gland_lumen_map",
+    },
+}
 
 
 def _sha256(path: Path) -> str:
@@ -73,9 +82,15 @@ def build_selection(
                 | set(mechanism.representability.required_auxiliary_structures)
             )
             selected_cases = []
+            producible = sorted(
+                set(required_auxiliary)
+                & PROFILE_PRODUCIBLE_AUXILIARY_STRUCTURES.get(profile_id, set())
+            )
             for row in rows_by_organ[organ]:
                 available = sorted((row.get("auxiliary_structure_uris") or {}).keys())
-                missing = sorted(set(required_auxiliary) - set(available))
+                missing = sorted(
+                    set(required_auxiliary) - set(available) - set(producible)
+                )
                 selected_cases.append(
                     {
                         "case_id": row["case_id"],
@@ -90,6 +105,7 @@ def build_selection(
                         "joint_mechanism_id": mechanism_id,
                         "joint_primitive_id": primitive_id,
                         "available_auxiliary_structures": available,
+                        "profile_producible_auxiliary_structures": producible,
                         "missing_required_auxiliary_structures": missing,
                         "execution_allowed": False,
                         "fixed_case_no_replacement": True,
@@ -173,6 +189,7 @@ def validate_selection(
         raise ValueError("pre-review selection must not report visualization or API use")
     runtime = payload.get("runtime_authority") or {}
     runtime_complete = bool(runtime.get("all_required_digests_bound"))
+    parser = RuleBasedSemanticParser()
     evaluations = payload.get("evaluations")
     if not isinstance(evaluations, list) or len(evaluations) != int(
         payload.get("evaluation_count", -1)
@@ -186,6 +203,25 @@ def validate_selection(
         mechanism = repository.mechanisms.get(mechanism_id)
         if mechanism is None or primitive_id not in mechanism.supported_primitives:
             raise ValueError("meta-eval mechanism/primitive binding is invalid")
+        intent = parser.parse(str(evaluation.get("instruction") or ""))
+        declared_primitives = {
+            item.primitive_id for item in intent.primitive_hypotheses
+        }
+        if primitive_id not in declared_primitives:
+            raise ValueError("meta-eval instruction lacks primitive binding")
+        if mechanism_id == "prostate-treatment-associated-fibrotic-replacement":
+            if (
+                intent.treatment_context != "post_treatment"
+                or intent.scenario
+                not in {
+                    "treatment_response",
+                    "disease_regression",
+                    "residual_disease",
+                }
+            ):
+                raise ValueError(
+                    "meta-eval treatment mechanism lacks compatible post-treatment binding"
+                )
         cases = evaluation.get("selected_cases")
         if not isinstance(cases, list) or len(cases) != 5:
             raise ValueError("every P1 mechanism/primitive requires exactly five cases")
@@ -202,7 +238,18 @@ def validate_selection(
                 raise ValueError("meta-eval case lacks exact primitive binding")
             missing = set(row.get("missing_required_auxiliary_structures") or ())
             available = set(row.get("available_auxiliary_structures") or ())
-            if missing != required_auxiliary - available:
+            producible = set(
+                row.get("profile_producible_auxiliary_structures") or ()
+            )
+            allowed_producible = (
+                PROFILE_PRODUCIBLE_AUXILIARY_STRUCTURES.get(
+                    evaluation.get("annotation_profile_id"), set()
+                )
+                & required_auxiliary
+            )
+            if producible != allowed_producible:
+                raise ValueError("meta-eval profile-produced auxiliary accounting is stale")
+            if missing != required_auxiliary - available - producible:
                 raise ValueError("meta-eval required auxiliary accounting is stale")
             if row.get("execution_allowed") and (missing or not runtime_complete):
                 raise ValueError(

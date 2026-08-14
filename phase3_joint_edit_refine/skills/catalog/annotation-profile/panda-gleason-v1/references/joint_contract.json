@@ -28,7 +28,8 @@
     "prostate-pattern-5-infiltrative-front",
     "prostate-treatment-associated-fibrotic-replacement",
     "prostate-gleason-architecture-progression",
-    "prostate-local-tumor-clearance"
+    "prostate-local-tumor-clearance",
+    "prostate-pattern-5-peripheral-scatter"
   ],
   "mechanism_required_fine_ids": {
     "prostate-pattern-3-growth": [
@@ -50,6 +51,9 @@
     "prostate-gleason-architecture-progression": [
       8,
       9,
+      10
+    ],
+    "prostate-pattern-5-peripheral-scatter": [
       10
     ]
   },

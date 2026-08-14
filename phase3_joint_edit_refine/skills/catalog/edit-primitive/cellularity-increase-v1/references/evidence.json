@@ -17,7 +17,8 @@
         "allowed_quota_roles",
         "host_tissue_labels",
         "target_cell_classes",
-        "required_checker_ids"
+        "required_checker_ids",
+        "cell_effect_contract"
       ],
       "source_ids": [
         "engineering-joint-contract-v2"
