@@ -1200,7 +1200,7 @@ class JointSkillTests(unittest.TestCase):
                         primitive.maximum_dominant_residual_component_fraction,
                         0.75,
                     )
-                    self.assertEqual(primitive.minimum_residual_spacing_px, 28)
+                    self.assertEqual(primitive.minimum_residual_spacing_px, 26)
                     self.assertEqual(
                         bundle.mechanism.cell_program.seam.density_ratio_range,
                         (0.2, 2.5),
