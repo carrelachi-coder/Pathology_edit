@@ -28,8 +28,16 @@ from .seam import (
     compile_executable_continuity_count,
 )
 from .skills.repository import JointSkillBundle
+from .spatial_contracts import (
+    SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
+    SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE,
+    SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS,
+    SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS,
+    SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
+    SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+)
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v12"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v13"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -56,7 +64,10 @@ def independent_focus_minimum_center_separation_px(
 
     if primitive_id not in _INDEPENDENT_FOCUS_PRIMITIVES:
         return 0.0
-    return 2.25 * max(0.0, float(nominal_nucleus_diameter_px))
+    return (
+        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+        * max(0.0, float(nominal_nucleus_diameter_px))
+    )
 
 
 def certificate_aligned_cluster_size_range(
@@ -88,11 +99,14 @@ def certificate_aligned_cluster_size_range(
         and certificate_proves_independent_foci
         and int(packing_certificate.get("requested_count", 0)) >= 4
     ):
-        # The preflight witness certifies individual complete footprints, not
-        # an arbitrary 3/4-member template around every anchor.  Execute fixed
-        # two-cell foci so a valid even certificate cannot be consumed as
-        # 2+3+2 with one impossible singleton remainder.
-        return (2, 2)
+        # The certificate proves count and complete-shape capacity, while the
+        # executor must still prove the stricter localized budding-like
+        # topology. Exclude singleton groups and let the executor balance an
+        # eight-cell request as 3+3+2 instead of visually scattering 4 pairs.
+        return (
+            SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
+            min(SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE, maximum),
+        )
     return (minimum, maximum)
 
 
@@ -1734,6 +1748,24 @@ def _place_layout(
                     certified_witness_centers=certified_witness_centers,
                 )
                 anchor_sampling_policy = "certified_packing_witness_fallback"
+        elif (
+            layout_program == "small_cluster"
+            and enforce_small_cluster_group_separation
+        ):
+            anchors = _localized_small_cluster_anchor_order(
+                coords,
+                values=values,
+                default_order=anchors,
+                nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
+                minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
+                required_focus_count=max(
+                    SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+                    int(minimum_effect_foci),
+                ),
+            )
+            anchor_sampling_policy = (
+                "probnet_ranked_localized_front_segment"
+            )
         else:
             anchors = _effect_first_anchors(
                 anchors,
@@ -1749,7 +1781,10 @@ def _place_layout(
         # Reserve enough independent anchors to satisfy the skill-owned focus
         # count. A legal abundance edit must not collapse into a few maximum-
         # sized clumps simply because the template family permits them.
-        maximum_per_focus = max(1, requested_count // minimum_effect_foci)
+        maximum_per_focus = max(
+            1,
+            int(np.ceil(requested_count / minimum_effect_foci)),
+        )
         effective_cluster_range = (
             min(int(cluster_size_range[0]), maximum_per_focus),
             min(int(cluster_size_range[1]), maximum_per_focus),
@@ -1758,6 +1793,7 @@ def _place_layout(
     placement_trace: list[dict[str, Any]] = []
     seam_region = np.asarray(continuity_region, dtype=bool)
     anchor_index = 0
+    committed_group_count = 0
     allow_reference_reuse = False
     while placed < requested_count:
         if anchor_index >= len(anchors):
@@ -1772,9 +1808,36 @@ def _place_layout(
         ay, ax = (int(v) for v in anchors[anchor_index])
         anchor_index += 1
         remaining_count = requested_count - placed
+        group_cluster_range = effective_cluster_range
+        if (
+            layout_program == "small_cluster"
+            and enforce_small_cluster_group_separation
+        ):
+            remaining_groups = max(
+                1,
+                max(
+                    SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+                    int(minimum_effect_foci),
+                )
+                - committed_group_count,
+            )
+            planned_group_size = int(
+                np.ceil(remaining_count / remaining_groups)
+            )
+            planned_group_size = int(
+                np.clip(
+                    planned_group_size,
+                    effective_cluster_range[0],
+                    effective_cluster_range[1],
+                )
+            )
+            group_cluster_range = (
+                planned_group_size,
+                planned_group_size,
+            )
         offsets = _layout_offsets(
             layout_program,
-            effective_cluster_range,
+            group_cluster_range,
             anchor_y=ay,
             anchor_x=ax,
             legal_zone=legal_zone,
@@ -1833,6 +1896,24 @@ def _place_layout(
                 # separately committed groups disconnected under that exact
                 # graph rule so two legal clusters cannot merge into an
                 # over-cardinality focus after rasterization.
+                continue
+            if (
+                layout_program == "small_cluster"
+                and enforce_small_cluster_group_separation
+                and any(
+                    (cy - int(item["center_xy"][1])) ** 2
+                    + (cx - int(item["center_xy"][0])) ** 2
+                    > (
+                        SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS
+                        * float(nominal_nucleus_diameter_px)
+                    )
+                    ** 2
+                    for item in placement_trace
+                )
+            ):
+                # All foci must remain inside one finite invasive-front
+                # neighborhood. A globally dispersed annulus layout belongs
+                # to the scatter primitive, even when cluster IDs are valid.
                 continue
             # Every member of a pair/cluster/cord owns its own accepted center.
             # The anchor being legal is not sufficient: template offsets can
@@ -1911,7 +1992,7 @@ def _place_layout(
         actual_cluster_size = len(placement_trace) - group_start
         if (
             layout_program in {"pair", "small_cluster", "short_cord"}
-            and actual_cluster_size < int(effective_cluster_range[0])
+            and actual_cluster_size < int(group_cluster_range[0])
         ):
             # Pair/cluster/cord semantics are atomic.  A partially fitting
             # template must not silently become one or more isolated cells.
@@ -1926,7 +2007,113 @@ def _place_layout(
         used_reference_digests.update(group_reference_digests)
         for item in placement_trace[group_start:]:
             item["cluster_size"] = actual_cluster_size
+        if actual_cluster_size:
+            committed_group_count += 1
     return target, placed, placement_trace
+
+
+def _localized_small_cluster_anchor_order(
+    anchors: np.ndarray,
+    *,
+    values: np.ndarray,
+    default_order: np.ndarray,
+    nominal_nucleus_diameter_px: float,
+    minimum_effect_span_px: int,
+    required_focus_count: int,
+) -> np.ndarray:
+    """Front-load a compact multi-focus hotspot on one interface segment.
+
+    ProbNet chooses the hotspot seed. Other focus anchors must be far enough
+    apart to remain distinct, jointly satisfy the primitive span floor, and
+    all fit under the localized hotspot span ceiling. Returning no anchors is
+    intentional: a patch without this capacity must be reselected instead of
+    degrading into annular scatter.
+    """
+
+    points = np.asarray(anchors, dtype=int)
+    scores = np.asarray(values, dtype=float)
+    ranked = np.asarray(default_order, dtype=int)
+    required = max(2, int(required_focus_count))
+    if len(points) < required or len(ranked) != len(points):
+        return np.empty((0, 2), dtype=int)
+
+    diameter = max(1.0, float(nominal_nucleus_diameter_px))
+    minimum_between = (
+        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * diameter
+    )
+    maximum_span = SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS * diameter
+    minimum_span = max(0.0, float(minimum_effect_span_px))
+    index_by_center = {
+        tuple(int(value) for value in point): index
+        for index, point in enumerate(points)
+    }
+    ranked_indices = [
+        index_by_center[tuple(int(value) for value in point)]
+        for point in ranked
+    ]
+
+    best: tuple[float, list[int]] | None = None
+    for seed_index in ranked_indices[: min(256, len(ranked_indices))]:
+        seed = points[seed_index].astype(float)
+        seed_distances = np.linalg.norm(points - seed, axis=1)
+        endpoint_candidates = [
+            index
+            for index in ranked_indices
+            if index != seed_index
+            and minimum_span <= seed_distances[index] <= maximum_span
+        ]
+        for endpoint_index in endpoint_candidates[:128]:
+            selected = [seed_index, endpoint_index]
+            while len(selected) < required:
+                chosen = points[np.asarray(selected, dtype=int)]
+                distances = np.linalg.norm(
+                    points[:, None, :] - chosen[None, :, :],
+                    axis=2,
+                )
+                candidates = [
+                    index
+                    for index in ranked_indices
+                    if index not in selected
+                    and float(np.min(distances[index])) > minimum_between
+                    and float(np.max(distances[index])) <= maximum_span
+                ]
+                if not candidates:
+                    break
+                selected.append(candidates[0])
+            if len(selected) < required:
+                continue
+            chosen = points[np.asarray(selected, dtype=int)].astype(float)
+            pairwise = np.linalg.norm(
+                chosen[:, None, :] - chosen[None, :, :],
+                axis=2,
+            )
+            span = float(np.max(pairwise))
+            if span + 1e-6 < minimum_span or span > maximum_span + 1e-6:
+                continue
+            quality = float(np.sum(scores[np.asarray(selected, dtype=int)]))
+            proposal = (quality, selected)
+            if best is None or proposal[0] > best[0]:
+                best = proposal
+        if best is not None and seed_index == best[1][0]:
+            # The first feasible highest-ranked hotspot remains the ProbNet
+            # authority; lower-ranked seeds cannot drift remotely.
+            break
+    if best is None:
+        return np.empty((0, 2), dtype=int)
+
+    selected = best[1]
+    chosen = points[np.asarray(selected, dtype=int)]
+    distances = np.linalg.norm(
+        points[:, None, :] - chosen[None, :, :],
+        axis=2,
+    )
+    local_remainder = [
+        index
+        for index in ranked_indices
+        if index not in selected
+        and float(np.max(distances[index])) <= maximum_span
+    ]
+    return points[np.asarray([*selected, *local_remainder], dtype=int)]
 
 
 def _effect_first_anchors(
@@ -2487,13 +2674,37 @@ def _layout_offsets(
         # deterministic ring and retain legal partner centers.  A four-pixel
         # floor preserves the executor's one-pixel collision clearance for
         # the smallest 3x3 semantic nuclei used by contract fixtures.
-        cluster_spacing = max(4, spacing)
+        cluster_spacing = max(
+            4,
+            round(
+                float(nominal_nucleus_diameter_px)
+                * SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS
+            ),
+        )
         phase = (
             (int(anchor_y) * 1009 + int(anchor_x) * 9176 + int(seed)) % 16
         )
         ring = []
-        for index in range(16):
-            angle = 2.0 * np.pi * ((phase + index) % 16) / 16.0
+        preferred_steps = (
+            0,
+            4,
+            12,
+            8,
+            2,
+            14,
+            6,
+            10,
+            1,
+            15,
+            3,
+            13,
+            5,
+            11,
+            7,
+            9,
+        )
+        for step in preferred_steps:
+            angle = 2.0 * np.pi * ((phase + step) % 16) / 16.0
             offset = (
                 round(cluster_spacing * np.sin(angle)),
                 round(cluster_spacing * np.cos(angle)),

@@ -161,6 +161,7 @@ from phase3_joint_edit_refine.workflow import (
     _CertifiedCellExecutionChoice,
     _CertifiedCellExecutionPortfolio,
     _joint_area_feedback_candidate_ids,
+    _localized_focus_capacity_metrics,
     _maximum_safe_below_target_joint_pixels,
     _minimum_safe_above_target_joint_pixels,
     _provisional_union_requires_rebalance,
@@ -861,6 +862,41 @@ class JointSkillTests(unittest.TestCase):
         self.assertTrue(audit["ledger_matches_instances"])
         self.assertFalse(audit["one_center_per_raster_instance"])
         self.assertEqual(audit["focus_sizes"], [2])
+
+    def test_final_focus_audit_measures_localized_tight_clusters(self):
+        shape = (64, 64)
+        source = np.zeros(shape, dtype=bool)
+        centers = (
+            (20, 20),
+            (20, 24),
+            (24, 20),
+            (20, 36),
+            (20, 40),
+            (24, 36),
+            (40, 28),
+            (40, 32),
+        )
+        target = source.copy()
+        ledger = []
+        for row, col in centers:
+            target[row, col] = True
+            ledger.append({"row": row, "col": col, "class_id": 1})
+
+        audit = audit_added_class1_foci(
+            source_class1=source,
+            target_class1=target,
+            accepted_center_ledger=ledger,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            nominal_nucleus_diameter_px=4,
+            focus_link_distance_diameters=1.35,
+        )
+
+        self.assertEqual(sorted(audit["focus_sizes"]), [2, 3, 3])
+        self.assertLessEqual(audit["maximum_focus_diameter_px"], 9.0)
+        self.assertGreater(
+            audit["minimum_inter_focus_center_distance_px"], 9.0
+        )
+        self.assertLessEqual(audit["effect_center_span_px"], 30.0)
 
     def test_new_breast_primitives_bind_parser_mechanism_and_executor_contract(self):
         repository = JointSkillRepository()
@@ -2229,7 +2265,7 @@ class JointSkillTests(unittest.TestCase):
                 },
                 nominal_nucleus_diameter_px=diameter,
             ),
-            (2, 2),
+            (2, 4),
         )
         self.assertEqual(
             certificate_aligned_cluster_size_range(
@@ -2244,6 +2280,76 @@ class JointSkillTests(unittest.TestCase):
             ),
             (1, 4),
         )
+
+    def test_small_cluster_forms_one_localized_three_focus_hotspot(self):
+        shape = (100, 100)
+        legal = np.zeros(shape, dtype=bool)
+        legal[5:-5, 5:-5] = True
+        rows, cols = np.indices(shape)
+        score = -((rows - 50) ** 2 + (cols - 50) ** 2).astype(float)
+        _target, placed, trace = _place_layout(
+            base=np.zeros(shape, dtype=np.uint8),
+            references=(
+                ReferenceNucleusShape(
+                    "ref",
+                    1,
+                    np.ones((3, 3), dtype=bool),
+                    "test",
+                    9,
+                ),
+            ),
+            class_id=1,
+            legal_zone=legal,
+            valid_footprint_region=legal,
+            halo=legal,
+            score=score,
+            requested_count=8,
+            layout_program="small_cluster",
+            cluster_size_range=(2, 4),
+            nominal_nucleus_diameter_px=8.0,
+            orientation_mask=np.zeros(shape, dtype=bool),
+            continuity_region=np.zeros(shape, dtype=bool),
+            continuity_anchor_mask=np.zeros(shape, dtype=bool),
+            continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
+            minimum_effect_span_px=40,
+            minimum_effect_foci=3,
+            seed=1,
+        )
+
+        self.assertEqual(placed, 8)
+        group_ids = tuple(dict.fromkeys(item["cluster_id"] for item in trace))
+        self.assertEqual(
+            sorted(
+                sum(item["cluster_id"] == group_id for item in trace)
+                for group_id in group_ids
+            ),
+            [2, 3, 3],
+        )
+        centers = np.asarray(
+            [item["center_xy"][::-1] for item in trace], dtype=float
+        )
+        distances = np.linalg.norm(
+            centers[:, None, :] - centers[None, :, :], axis=2
+        )
+        self.assertGreaterEqual(float(np.max(distances)), 40.0)
+        self.assertLessEqual(float(np.max(distances)), 60.0)
+        self.assertEqual(
+            {item["anchor_sampling_policy"] for item in trace},
+            {"probnet_ranked_localized_front_segment"},
+        )
+
+    def test_small_cluster_planner_scores_localized_witness_capacity(self):
+        capacity, span_margin = _localized_focus_capacity_metrics(
+            center_rows=(20, 20, 20, 20),
+            center_cols=(10, 35, 60, 110),
+            nominal_nucleus_diameter_px=8.0,
+            minimum_effect_span_px=40,
+        )
+
+        self.assertEqual(capacity, 3)
+        self.assertEqual(span_margin, 10.0)
 
     def test_capacity_optimized_certificate_preserves_diverse_execution_family(self):
         references = tuple(

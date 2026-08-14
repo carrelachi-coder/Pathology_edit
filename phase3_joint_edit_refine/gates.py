@@ -39,6 +39,15 @@ from .seam import (
     target_cell_class_for_tissue,
 )
 from .skills.repository import JointSkillBundle
+from .spatial_contracts import (
+    SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
+    SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS,
+    SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE,
+    SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS,
+    SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
+    SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+    SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS,
+)
 from .tissue_tools import (
     JOINT_TOOL_FAMILY_TO_EXECUTOR,
     compile_tissue_tool_program,
@@ -181,6 +190,9 @@ class JointGateRegistry:
             ),
             "peritumoral_annulus": _peritumoral_annulus,
             "small_cluster_cardinality": _small_cluster_cardinality,
+            "small_cluster_focus_compactness": (
+                _small_cluster_focus_compactness
+            ),
             "peritumoral_scatter_separation": (
                 _peritumoral_scatter_separation
             ),
@@ -653,10 +665,16 @@ def _small_cluster_cardinality(c):
             "small-cluster cardinality is not applicable",
             metrics={"applicable": False},
         )
-    audit = _reconstruct_added_class1_foci(c)
+    audit = _reconstruct_added_class1_foci(
+        c,
+        focus_link_distance_diameters=(
+            SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+        ),
+    )
     minimum, maximum = c.bundle.mechanism.cell_program.cluster_size_range
     required_foci = max(
-        2, int(c.case.cell_count_extent_budget.minimum_effect_foci)
+        SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+        int(c.case.cell_count_extent_budget.minimum_effect_foci),
     )
     sizes = audit["focus_sizes"]
     passed = bool(
@@ -664,7 +682,12 @@ def _small_cluster_cardinality(c):
         and audit["all_footprints_in_extent"]
         and audit["source_bridge_pixels"] == 0
         and len(sizes) >= required_foci
-        and all(minimum <= value <= maximum for value in sizes)
+        and all(
+            max(minimum, SMALL_CLUSTER_MINIMUM_FOCUS_SIZE)
+            <= value
+            <= min(maximum, SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE)
+            for value in sizes
+        )
     )
     return _result(
         "small_cluster_cardinality",
@@ -679,6 +702,81 @@ def _small_cluster_cardinality(c):
             "allowed_range": [minimum, maximum],
             "required_focus_count": required_foci,
             "trace_used_as_cardinality_evidence": False,
+        },
+    )
+
+
+def _small_cluster_focus_compactness(c):
+    if c.plan.cell_plan.mechanism_program_id != "small_cluster":
+        return _result(
+            "small_cluster_focus_compactness",
+            True,
+            "small-cluster focus compactness is not applicable",
+            metrics={"applicable": False},
+        )
+    nominal = max(
+        1.0,
+        float(
+            c.executable_contract.cell_program.nominal_nucleus_diameter_px
+        ),
+    )
+    audit = _reconstruct_added_class1_foci(
+        c,
+        focus_link_distance_diameters=(
+            SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+        ),
+    )
+    required_foci = max(
+        SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+        int(c.case.cell_count_extent_budget.minimum_effect_foci),
+    )
+    maximum_focus_diameter_px = (
+        SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS * nominal
+    )
+    minimum_inter_focus_distance_px = (
+        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * nominal
+    )
+    maximum_hotspot_span_px = (
+        SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS * nominal
+    )
+    passed = bool(
+        audit["ledger_matches_instances"]
+        and audit["focus_count"] >= required_foci
+        and all(
+            SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
+            <= size
+            <= SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE
+            for size in audit["focus_sizes"]
+        )
+        and float(audit["maximum_focus_diameter_px"])
+        <= maximum_focus_diameter_px + 1e-6
+        and float(audit["minimum_inter_focus_center_distance_px"])
+        > minimum_inter_focus_distance_px
+        and float(audit["effect_center_span_px"])
+        <= maximum_hotspot_span_px + 1e-6
+    )
+    return _result(
+        "small_cluster_focus_compactness",
+        passed,
+        (
+            "tight multi-cell foci form one localized invasive-front hotspot"
+            if passed
+            else "small-cluster cells are internally loose or globally dispersed"
+        ),
+        metrics={
+            **audit,
+            "required_focus_count": required_foci,
+            "within_focus_link_distance_diameters": (
+                SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+            ),
+            "maximum_allowed_focus_diameter_px": (
+                maximum_focus_diameter_px
+            ),
+            "minimum_required_inter_focus_distance_px": (
+                minimum_inter_focus_distance_px
+            ),
+            "maximum_allowed_hotspot_span_px": maximum_hotspot_span_px,
+            "trace_cluster_ids_used_as_evidence": False,
         },
     )
 
@@ -716,7 +814,11 @@ def _peritumoral_scatter_separation(c):
             "trace_used_as_separation_evidence": False,
         },
     )
-def _reconstruct_added_class1_foci(c):
+def _reconstruct_added_class1_foci(
+    c,
+    *,
+    focus_link_distance_diameters: float = 2.25,
+):
     ledger = [
         item
         for item in c.candidate.tool_trace.get("accepted_center_ledger", ())
@@ -734,6 +836,7 @@ def _reconstruct_added_class1_foci(c):
             1.0,
             c.executable_contract.cell_program.nominal_nucleus_diameter_px,
         ),
+        focus_link_distance_diameters=focus_link_distance_diameters,
     )
 
 
@@ -744,6 +847,7 @@ def audit_added_class1_foci(
     accepted_center_ledger,
     valid_footprint_region,
     nominal_nucleus_diameter_px,
+    focus_link_distance_diameters=2.25,
 ):
     """Rebuild added instances/foci from the final raster and center authority.
 
@@ -836,7 +940,10 @@ def audit_added_class1_foci(
         distances = np.linalg.norm(
             center_array[:, None, :] - center_array[None, :, :], axis=2
         )
-        adjacency = (distances <= 2.25 * nominal) & (distances > 0)
+        adjacency = (
+            distances
+            <= max(0.0, float(focus_link_distance_diameters)) * nominal
+        ) & (distances > 0)
     groups = []
     unseen = set(range(len(centers)))
     while unseen:
@@ -861,12 +968,65 @@ def audit_added_class1_foci(
         int(np.count_nonzero(footprint & source_dilated))
         for footprint in recovered_footprints
     )
+    focus_diameters = []
+    minimum_inter_focus_distance = 0.0
+    effect_center_span = 0.0
+    if len(center_array) > 1:
+        all_distances = np.linalg.norm(
+            center_array[:, None, :] - center_array[None, :, :],
+            axis=2,
+        )
+        effect_center_span = float(np.max(all_distances))
+        focus_diameters = [
+            float(
+                np.max(
+                    all_distances[
+                        np.ix_(
+                            np.asarray(sorted(group), dtype=int),
+                            np.asarray(sorted(group), dtype=int),
+                        )
+                    ]
+                )
+            )
+            for group in groups
+        ]
+        cross_distances = []
+        for first_index, first_group in enumerate(groups):
+            for second_group in groups[first_index + 1 :]:
+                cross_distances.append(
+                    float(
+                        np.min(
+                            all_distances[
+                                np.ix_(
+                                    np.asarray(
+                                        sorted(first_group), dtype=int
+                                    ),
+                                    np.asarray(
+                                        sorted(second_group), dtype=int
+                                    ),
+                                )
+                            ]
+                        )
+                    )
+                )
+        if cross_distances:
+            minimum_inter_focus_distance = min(cross_distances)
+    elif len(center_array) == 1:
+        focus_diameters = [0.0]
     return {
         "reconstructed_instance_count": len(recovered_footprints),
         "accepted_center_count": len(centers),
         "ledger_matches_instances": bool(ledger_matches),
         "focus_sizes": [len(group) for group in groups],
         "focus_count": len(groups),
+        "focus_diameters_px": focus_diameters,
+        "maximum_focus_diameter_px": (
+            max(focus_diameters) if focus_diameters else 0.0
+        ),
+        "minimum_inter_focus_center_distance_px": (
+            minimum_inter_focus_distance
+        ),
+        "effect_center_span_px": effect_center_span,
         "all_footprints_in_extent": bool(all_in_extent),
         "source_bridge_pixels": int(source_bridge),
         "unseeded_added_component_count": int(
@@ -2970,6 +3130,9 @@ def _mechanism_specific_postcondition(
     if expected_mechanism_id == "breast-peritumoral-small-cluster":
         subchecks["small_cluster_cardinality"] = (
             _small_cluster_cardinality(c).passed
+        )
+        subchecks["small_cluster_focus_compactness"] = (
+            _small_cluster_focus_compactness(c).passed
         )
     if expected_mechanism_id == "breast-peritumoral-neoplastic-scatter":
         subchecks["peritumoral_scatter_separation"] = (

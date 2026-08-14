@@ -4,15 +4,15 @@
   "supported_primitives": [
     "peritumoral-small-cluster-increase-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
-  "summary": "Add multiple synthetic neoplastic foci containing one to four complete class-1 nuclei within a certified outer annulus adjacent to annotated invasive Tumor.",
+  "summary": "Add one localized invasive-front hotspot containing multiple tight synthetic neoplastic foci of two to four complete class-1 nuclei within a certified outer annulus adjacent to annotated invasive Tumor.",
   "recognition_contract": {
     "required_observations": [
       "annotated invasive Tumor fine ID 1",
       "adjacent operational Stroma fine ID 2",
       "certified external boundary and receiving-side annulus",
-      "capacity for multiple spatially separated 1--4-cell foci"
+      "capacity for at least three nearby but distinct tight 2--4-cell foci"
     ],
     "contraindications": [
       "internal hole or cleft",
@@ -44,12 +44,13 @@
       "external_boundary_binding",
       "peritumoral_annulus",
       "small_cluster_cardinality",
+      "small_cluster_focus_compactness",
       "no_remote_neoplastic_focus",
       "no_solid_neoplastic_bridge"
     ],
     "selection_preferences": [
-      "pref:annulus:maximize-separated-focus-capacity",
-      "pref:annulus:minimize-distance-with-span-floor",
+      "pref:annulus:maximize-localized-multifocus-capacity",
+      "pref:annulus:bind-one-front-segment-with-span-window",
       "pref:complete-shape:maximize-packing-margin",
       "pref:bridge:minimize-connectivity-risk"
     ],
@@ -123,7 +124,7 @@
       "peritumoral-small-cluster-increase-v1": "small_cluster"
     },
     "core_policy": "retain_source_population",
-    "halo_policy": "add_multiple_complete_class1_foci_in_certified_outer_annulus",
+    "halo_policy": "add_localized_tight_complete_class1_foci_in_one_certified_outer_annulus_segment",
     "halo_distance_px": [
       4,
       48
@@ -160,6 +161,7 @@
       "local_shape_distribution",
       "peritumoral_annulus",
       "small_cluster_cardinality",
+      "small_cluster_focus_compactness",
       "no_remote_neoplastic_focus",
       "no_solid_neoplastic_bridge"
     ]
@@ -183,6 +185,7 @@
     "external_boundary_binding",
     "peritumoral_annulus",
     "small_cluster_cardinality",
+    "small_cluster_focus_compactness",
     "no_remote_neoplastic_focus",
     "no_solid_neoplastic_bridge",
     "mechanism_postcondition:breast-peritumoral-small-cluster"
@@ -198,8 +201,8 @@
     ],
     "mask_guarantees": [
       "tissue mask preserved",
-      "one to four complete class-1 nuclei per focus",
-      "multiple outer-annulus foci"
+      "two to four complete class-1 nuclei per tight focus",
+      "multiple distinct foci inside one localized outer-annulus front segment"
     ],
     "render_only_claims": [
       "tumor-budding diagnosis or score",

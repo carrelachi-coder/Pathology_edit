@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from itertools import combinations
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +88,10 @@ from .reference_shapes import load_reference_shape_authority
 from .scene import build_joint_scene_analysis
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
+from .spatial_contracts import (
+    SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS,
+    SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+)
 from .tissue_execution import execute_gate_aware_tissue_candidates
 from .tissue_tools import (
     bind_tissue_plan_tool_program,
@@ -135,6 +140,50 @@ class _CertifiedCellExecutionChoice:
 class _CertifiedCellExecutionPortfolio:
     choices: tuple[_CertifiedCellExecutionChoice, ...]
     certificates: CertifiedCellPlanPortfolio
+
+
+def _localized_focus_capacity_metrics(
+    *,
+    center_rows,
+    center_cols,
+    nominal_nucleus_diameter_px: float,
+    minimum_effect_span_px: int,
+) -> tuple[int, float]:
+    """Score whether packing witnesses contain a localized focus window."""
+
+    centers = np.column_stack([center_rows, center_cols]).astype(float)
+    if not len(centers):
+        return 0, 0.0
+    maximum_span = (
+        SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS
+        * max(1.0, float(nominal_nucleus_diameter_px))
+    )
+    pairwise = np.linalg.norm(
+        centers[:, None, :] - centers[None, :, :], axis=2
+    )
+    capacity = 1
+    for size in range(2, len(centers) + 1):
+        if any(
+            float(np.max(pairwise[np.ix_(subset, subset)]))
+            <= maximum_span + 1e-6
+            for subset in combinations(range(len(centers)), size)
+        ):
+            capacity = size
+        else:
+            break
+
+    margins = []
+    required = min(SMALL_CLUSTER_TARGET_FOCUS_COUNT, len(centers))
+    for subset in combinations(range(len(centers)), required):
+        span = float(np.max(pairwise[np.ix_(subset, subset)]))
+        if float(minimum_effect_span_px) <= span <= maximum_span:
+            margins.append(
+                min(
+                    span - float(minimum_effect_span_px),
+                    maximum_span - span,
+                )
+            )
+    return capacity, (max(margins) if margins else 0.0)
 
 
 def _select_cell_execution_choice(
@@ -3292,6 +3341,26 @@ class JointPathologyEditWorkflow:
                         )
                     )
                 )
+                if (
+                    case.primitive_id
+                    == "peritumoral-small-cluster-increase-v1"
+                ):
+                    (
+                        localized_multifocus_capacity,
+                        localized_front_span_window_margin,
+                    ) = _localized_focus_capacity_metrics(
+                        center_rows=center_rows,
+                        center_cols=center_cols,
+                        nominal_nucleus_diameter_px=(
+                            contract.cell_program.nominal_nucleus_diameter_px
+                        ),
+                        minimum_effect_span_px=(
+                            contract.cell_program.minimum_effect_span_px
+                        ),
+                    )
+                else:
+                    localized_multifocus_capacity = 0
+                    localized_front_span_window_margin = 0.0
                 metrics = {
                     "certificate_capacity_margin": packing_margin,
                     "executable_capacity_margin": (
@@ -3307,6 +3376,12 @@ class JointPathologyEditWorkflow:
                     "bridge_risk_count": float(bridge_risk),
                     "structural_risk_count": float(structural_risk),
                     "protected_distance_px": minimum_protected_distance,
+                    "localized_multifocus_capacity": float(
+                        localized_multifocus_capacity
+                    ),
+                    "localized_front_span_window_margin": float(
+                        localized_front_span_window_margin
+                    ),
                 }
                 candidate_payload = {
                     "plan": plan,

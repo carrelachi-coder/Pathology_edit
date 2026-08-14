@@ -57,6 +57,14 @@ PREFERENCE_METRIC_CATALOG = {
         "median_tumor_distance_px",
         "min",
     ),
+    "pref:annulus:maximize-localized-multifocus-capacity": (
+        "localized_multifocus_capacity",
+        "max",
+    ),
+    "pref:annulus:bind-one-front-segment-with-span-window": (
+        "localized_front_span_window_margin",
+        "max",
+    ),
     "pref:complete-shape:maximize-packing-margin": (
         "complete_shape_packing_margin",
         "max",
