@@ -1,6 +1,6 @@
 {
   "primitive_id": "peritumoral-small-cluster-increase-v1",
-  "version": "1.2.0-research",
+  "version": "1.3.0-research",
   "review_status": "draft",
   "scope": "cell_only",
   "summary": "Add one localized peritumoral hotspot containing multiple tight class-1 neoplastic foci of two to four nuclei inside a certified outer Tumor--Stroma annulus while preserving tissue labels.",

@@ -29,6 +29,10 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 from .spatial_contracts import (
+    BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS,
+    BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS,
+    BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
+    BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT,
     SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE,
@@ -38,7 +42,7 @@ from .spatial_contracts import (
     small_cluster_maximum_hotspot_span_px,
 )
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v14"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v15"
 
 _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
@@ -78,6 +82,7 @@ def independent_focus_minimum_center_separation_px(
 def certificate_aligned_cluster_size_range(
     *,
     primitive_id: str,
+    mechanism_id: str | None = None,
     configured_range: tuple[int, int],
     packing_certificate: dict[str, Any],
     nominal_nucleus_diameter_px: float,
@@ -98,19 +103,33 @@ def certificate_aligned_cluster_size_range(
         and required_separation > 0.0
         and certified_separation + 1e-6 >= required_separation
     )
+    strict_breast_cluster = (
+        mechanism_id == "breast-peritumoral-small-cluster"
+    )
+    minimum_focus_size = (
+        BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
+        if strict_breast_cluster
+        else SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
+    )
+    target_focus_count = (
+        BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT
+        if strict_breast_cluster
+        else SMALL_CLUSTER_TARGET_FOCUS_COUNT
+    )
     if (
         primitive_id == "peritumoral-small-cluster-increase-v1"
-        and minimum <= 2 <= maximum
+        and minimum <= minimum_focus_size <= maximum
         and certificate_proves_independent_foci
-        and int(packing_certificate.get("requested_count", 0)) >= 4
+        and int(packing_certificate.get("requested_count", 0))
+        >= target_focus_count * minimum_focus_size
     ):
         # The certificate proves count and complete-shape capacity, while the
         # executor must still prove the stricter localized budding-like
         # topology. Exclude singleton groups and let the executor balance an
-        # eight-cell request as two obvious 4-cell buds instead of scattering
-        # small groups around the full annulus.
+        # request as at least three obvious 3--4-cell buds instead of
+        # scattering small groups around the full annulus.
         return (
-            SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
+            minimum_focus_size,
             min(SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE, maximum),
         )
     return (minimum, maximum)
@@ -511,6 +530,7 @@ def generate_cell_layouts(
     reserve_count = min(reserve_count, max(0, requested_count - replacement_count))
     execution_cluster_size_range = certificate_aligned_cluster_size_range(
         primitive_id=bundle.primitive.primitive_id,
+        mechanism_id=bundle.mechanism.mechanism_id,
         configured_range=bundle.mechanism.cell_program.cluster_size_range,
         packing_certificate=packing_certificate,
         nominal_nucleus_diameter_px=(
@@ -590,6 +610,16 @@ def generate_cell_layouts(
                 bundle.primitive.primitive_id
                 == "peritumoral-small-cluster-increase-v1"
             ),
+            strict_breast_small_cluster=(
+                bundle.mechanism.mechanism_id
+                == "breast-peritumoral-small-cluster"
+            ),
+            enforce_multisite_population=(
+                bundle.mechanism.mechanism_id
+                == "breast-local-population-modulation"
+                and bundle.primitive.primitive_id
+                == "neoplastic-cell-abundance-increase-v1"
+            ),
             certified_witness_centers=(),
             seed=seed + variant * 104729,
         )
@@ -638,6 +668,16 @@ def generate_cell_layouts(
             enforce_small_cluster_group_separation=(
                 bundle.primitive.primitive_id
                 == "peritumoral-small-cluster-increase-v1"
+            ),
+            strict_breast_small_cluster=(
+                bundle.mechanism.mechanism_id
+                == "breast-peritumoral-small-cluster"
+            ),
+            enforce_multisite_population=(
+                bundle.mechanism.mechanism_id
+                == "breast-local-population-modulation"
+                and bundle.primitive.primitive_id
+                == "neoplastic-cell-abundance-increase-v1"
             ),
             certified_witness_centers=certified_focus_witness_centers,
             certified_fallback_reference_ids=(
@@ -1665,6 +1705,8 @@ def _place_layout(
     seed,
     enforce_single_scatter_separation=True,
     enforce_small_cluster_group_separation=True,
+    strict_breast_small_cluster=False,
+    enforce_multisite_population=False,
     certified_witness_centers=(),
     certified_fallback_reference_ids=(),
     previously_used_reference_digests=(),
@@ -1698,6 +1740,41 @@ def _place_layout(
     order = np.argsort(-values)
     anchors = coords[order]
     anchor_sampling_policy = "probnet_ranked"
+    planned_small_cluster_group_count = 0
+    small_cluster_target_focus_count = (
+        BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT
+        if strict_breast_small_cluster
+        else SMALL_CLUSTER_TARGET_FOCUS_COUNT
+    )
+    if (
+        layout_program == "small_cluster"
+        and requested_count > 0
+        and (
+            enforce_small_cluster_group_separation
+            or enforce_multisite_population
+        )
+    ):
+        planned_small_cluster_group_count = max(
+            max(0, int(minimum_effect_foci)),
+            (
+                int(
+                    np.ceil(
+                        requested_count
+                        / max(1, int(cluster_size_range[1]))
+                    )
+                )
+                if (
+                    strict_breast_small_cluster
+                    or enforce_multisite_population
+                )
+                else 0
+            ),
+            (
+                small_cluster_target_focus_count
+                if enforce_small_cluster_group_separation
+                else 0
+            ),
+        )
     if requested_count > 0 and len(coords):
         anchors = _continuity_first_anchors(
             coords=coords,
@@ -1764,9 +1841,11 @@ def _place_layout(
                 default_order=anchors,
                 nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
                 minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
-                required_focus_count=max(
-                    SMALL_CLUSTER_TARGET_FOCUS_COUNT,
-                    int(minimum_effect_foci),
+                required_focus_count=planned_small_cluster_group_count,
+                minimum_anchor_separation_diameters=(
+                    BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
+                    if strict_breast_small_cluster
+                    else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
                 ),
             )
             anchor_sampling_policy = (
@@ -1776,7 +1855,10 @@ def _place_layout(
             anchors = _effect_first_anchors(
                 anchors,
                 minimum_effect_span_px=max(0, int(minimum_effect_span_px)),
-                minimum_effect_foci=max(0, int(minimum_effect_foci)),
+                minimum_effect_foci=max(
+                    max(0, int(minimum_effect_foci)),
+                    planned_small_cluster_group_count,
+                ),
             )
             anchors = _certified_witness_first_anchors(
                 anchors,
@@ -1815,17 +1897,13 @@ def _place_layout(
         anchor_index += 1
         remaining_count = requested_count - placed
         group_cluster_range = effective_cluster_range
-        if (
-            layout_program == "small_cluster"
-            and enforce_small_cluster_group_separation
+        if layout_program == "small_cluster" and (
+            enforce_small_cluster_group_separation
+            or enforce_multisite_population
         ):
             remaining_groups = max(
                 1,
-                max(
-                    SMALL_CLUSTER_TARGET_FOCUS_COUNT,
-                    int(minimum_effect_foci),
-                )
-                - committed_group_count,
+                planned_small_cluster_group_count - committed_group_count,
             )
             planned_group_size = int(
                 np.ceil(remaining_count / remaining_groups)
@@ -1850,6 +1928,7 @@ def _place_layout(
             orientation_mask=orientation_mask,
             nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
             seed=seed,
+            compact_small_cluster=strict_breast_small_cluster,
         )
         if layout_program in {"pair", "small_cluster", "short_cord"}:
             minimum_group_size = max(1, int(effective_cluster_range[0]))
@@ -2048,6 +2127,9 @@ def _localized_small_cluster_anchor_order(
     nominal_nucleus_diameter_px: float,
     minimum_effect_span_px: int,
     required_focus_count: int,
+    minimum_anchor_separation_diameters: float = (
+        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+    ),
 ) -> np.ndarray:
     """Front-load a compact multi-focus hotspot on one interface segment.
 
@@ -2067,7 +2149,7 @@ def _localized_small_cluster_anchor_order(
 
     diameter = max(1.0, float(nominal_nucleus_diameter_px))
     minimum_between = (
-        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * diameter
+        max(0.0, float(minimum_anchor_separation_diameters)) * diameter
     )
     maximum_span = small_cluster_maximum_hotspot_span_px(
         diameter,
@@ -2091,6 +2173,7 @@ def _localized_small_cluster_anchor_order(
             index
             for index in ranked_indices
             if index != seed_index
+            and seed_distances[index] > minimum_between
             and minimum_span <= seed_distances[index] <= maximum_span
         ]
         for endpoint_index in endpoint_candidates[:128]:
@@ -2665,6 +2748,7 @@ def _layout_offsets(
     orientation_mask: np.ndarray,
     nominal_nucleus_diameter_px: float,
     seed: int,
+    compact_small_cluster: bool = False,
 ) -> tuple[tuple[int, int], ...]:
     lower = max(1, int(cluster_range[0]))
     upper = max(lower, int(cluster_range[1]))
@@ -2700,6 +2784,54 @@ def _layout_offsets(
             for index in range(cardinality)
         )
     if program == "small_cluster":
+        if compact_small_cluster:
+            # Budding-like foci are packed as one compact geometric unit.
+            # The anchor is the focus centroid rather than a mandatory cell
+            # center, so triangular/square templates avoid the former
+            # center-plus-wide-ring appearance.  Cardinality remains 3--4 and
+            # every pair is close enough for the final-raster focus graph.
+            cluster_spacing = max(
+                4,
+                round(
+                    float(nominal_nucleus_diameter_px)
+                    * BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS
+                ),
+            )
+            half = cluster_spacing / 2.0
+            if cardinality <= 1:
+                compact = ((0.0, 0.0),)
+            elif cardinality == 2:
+                compact = ((0.0, -half), (0.0, half))
+            elif cardinality == 3:
+                height = np.sqrt(3.0) * cluster_spacing / 2.0
+                compact = (
+                    (-2.0 * height / 3.0, 0.0),
+                    (height / 3.0, -half),
+                    (height / 3.0, half),
+                )
+            else:
+                compact = (
+                    (-half, -half),
+                    (-half, half),
+                    (half, -half),
+                    (half, half),
+                )
+            angle = (
+                2.0
+                * np.pi
+                * ((int(anchor_y) * 1009 + int(anchor_x) * 9176 + int(seed)) % 8)
+                / 8.0
+            )
+            cosine, sine = np.cos(angle), np.sin(angle)
+            rotated = []
+            for dy, dx in compact:
+                offset = (
+                    round(dy * cosine - dx * sine),
+                    round(dy * sine + dx * cosine),
+                )
+                if offset not in rotated:
+                    rotated.append(offset)
+            return tuple(rotated)
         # A fixed left/right pair fails in a curved, narrow peritumoral
         # annulus even when another tangential neighbor is legal.  Search a
         # deterministic ring and retain legal partner centers.  A four-pixel

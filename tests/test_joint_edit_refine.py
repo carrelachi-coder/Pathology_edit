@@ -132,6 +132,9 @@ from phase3_joint_edit_refine.skills.execution_aliases import (
     tissue_tool_primitive_id,
 )
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
+from phase3_joint_edit_refine.spatial_contracts import (
+    BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS,
+)
 from phase3_joint_edit_refine.tissue_execution import (
     _bind_and_validate_tissue_candidate_traces,
 )
@@ -2121,6 +2124,60 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(local_placed, 12)
         self.assertLess(peritumoral_placed, local_placed)
 
+    def test_local_abundance_balances_cells_across_multiple_broad_sites(self):
+        shape = (120, 120)
+        legal = np.zeros(shape, dtype=bool)
+        legal[5:-5, 5:-5] = True
+        rows, cols = np.indices(shape)
+        score = -((rows - 60) ** 2 + (cols - 60) ** 2).astype(float)
+
+        _target, placed, trace = _place_layout(
+            base=np.zeros(shape, dtype=np.uint8),
+            references=(
+                ReferenceNucleusShape(
+                    "ref", 1, np.ones((3, 3), dtype=bool), "test", 9
+                ),
+            ),
+            class_id=1,
+            legal_zone=legal,
+            valid_footprint_region=legal,
+            halo=legal,
+            score=score,
+            requested_count=18,
+            layout_program="small_cluster",
+            cluster_size_range=(1, 4),
+            nominal_nucleus_diameter_px=8.0,
+            orientation_mask=np.zeros(shape, dtype=bool),
+            continuity_region=np.zeros(shape, dtype=bool),
+            continuity_anchor_mask=np.zeros(shape, dtype=bool),
+            continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
+            minimum_effect_span_px=50,
+            minimum_effect_foci=4,
+            seed=7,
+            enforce_small_cluster_group_separation=False,
+            enforce_multisite_population=True,
+        )
+
+        self.assertEqual(placed, 18)
+        groups = tuple(dict.fromkeys(item["cluster_id"] for item in trace))
+        self.assertEqual(len(groups), 5)
+        self.assertEqual(
+            sorted(
+                sum(item["cluster_id"] == group for item in trace)
+                for group in groups
+            ),
+            [3, 3, 4, 4, 4],
+        )
+        centers = np.asarray(
+            [item["center_xy"] for item in trace], dtype=float
+        )
+        distances = np.linalg.norm(
+            centers[:, None, :] - centers[None, :, :], axis=2
+        )
+        self.assertGreaterEqual(float(np.max(distances)), 50.0)
+
     def test_every_mechanism_has_a_unique_registered_postcondition_gate(self):
         repository = JointSkillRepository()
         registry = JointGateRegistry()
@@ -2453,15 +2510,16 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(
             certificate_aligned_cluster_size_range(
                 primitive_id="peritumoral-small-cluster-increase-v1",
+                mechanism_id="breast-peritumoral-small-cluster",
                 configured_range=(1, 4),
                 packing_certificate={
                     "passed": True,
-                    "requested_count": 8,
+                    "requested_count": 12,
                     "minimum_center_separation_px": separation,
                 },
                 nominal_nucleus_diameter_px=diameter,
             ),
-            (2, 4),
+            (3, 4),
         )
         self.assertEqual(
             certificate_aligned_cluster_size_range(
@@ -2477,7 +2535,7 @@ class JointSkillTests(unittest.TestCase):
             (1, 4),
         )
 
-    def test_small_cluster_forms_one_localized_two_focus_hotspot(self):
+    def test_small_cluster_forms_one_localized_three_focus_hotspot(self):
         shape = (100, 100)
         legal = np.zeros(shape, dtype=bool)
         legal[5:-5, 5:-5] = True
@@ -2499,9 +2557,9 @@ class JointSkillTests(unittest.TestCase):
             valid_footprint_region=legal,
             halo=legal,
             score=score,
-            requested_count=8,
+            requested_count=12,
             layout_program="small_cluster",
-            cluster_size_range=(2, 4),
+            cluster_size_range=(3, 4),
             nominal_nucleus_diameter_px=8.0,
             orientation_mask=np.zeros(shape, dtype=bool),
             continuity_region=np.zeros(shape, dtype=bool),
@@ -2510,18 +2568,19 @@ class JointSkillTests(unittest.TestCase):
             continuity_minimum_anchor_coverage_fraction=0.0,
             continuity_preferred_count=0,
             minimum_effect_span_px=20,
-            minimum_effect_foci=2,
+            minimum_effect_foci=3,
             seed=1,
+            strict_breast_small_cluster=True,
         )
 
-        self.assertEqual(placed, 8)
+        self.assertEqual(placed, 12)
         group_ids = tuple(dict.fromkeys(item["cluster_id"] for item in trace))
         self.assertEqual(
             sorted(
                 sum(item["cluster_id"] == group_id for item in trace)
                 for group_id in group_ids
             ),
-            [4, 4],
+            [4, 4, 4],
         )
         centers = np.asarray(
             [item["center_xy"][::-1] for item in trace], dtype=float
@@ -2542,10 +2601,14 @@ class JointSkillTests(unittest.TestCase):
             center_cols=(10, 30, 60, 110),
             nominal_nucleus_diameter_px=8.0,
             minimum_effect_span_px=20,
+            required_focus_count=3,
+            minimum_anchor_separation_diameters=(
+                BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
+            ),
         )
 
         self.assertEqual(capacity, 2)
-        self.assertEqual(span_margin, 2.0)
+        self.assertEqual(span_margin, 0.0)
 
     def test_capacity_optimized_certificate_preserves_diverse_execution_family(self):
         references = tuple(
@@ -5797,14 +5860,14 @@ class JointWorkflowTests(unittest.TestCase):
                 "breast-peritumoral-small-cluster",
                 None,
                 CellCountExtentBudget(
-                    target_delta_count=8,
-                    min_delta_count=6,
-                    max_delta_count=10,
-                    maximum_extent_px=48,
+                    target_delta_count=12,
+                    min_delta_count=12,
+                    max_delta_count=16,
+                    maximum_extent_px=64,
                     interface_min_px=4,
-                    interface_max_px=48,
+                    interface_max_px=64,
                     minimum_effect_span_px=20,
-                    minimum_effect_foci=2,
+                    minimum_effect_foci=3,
                 ),
             ),
         )
@@ -5816,7 +5879,12 @@ class JointWorkflowTests(unittest.TestCase):
                 tempfile.TemporaryDirectory() as directory,
             ):
                 root = Path(directory)
-                case = _as_breast_growth_case(_write_synthetic_case(root))
+                synthetic = (
+                    _write_synthetic_case(root, size=256, tumor_radius=70)
+                    if primitive == "peritumoral-small-cluster-increase-v1"
+                    else _write_synthetic_case(root)
+                )
+                case = _as_breast_growth_case(synthetic)
                 case = replace(
                     case,
                     case_id=f"breast-mask-graph-{index:02d}",

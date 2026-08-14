@@ -89,6 +89,8 @@ from .scene import build_joint_scene_analysis
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
 from .spatial_contracts import (
+    BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS,
+    BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT,
     SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_TARGET_FOCUS_COUNT,
     small_cluster_maximum_hotspot_span_px,
@@ -150,6 +152,10 @@ def _localized_focus_capacity_metrics(
     center_cols,
     nominal_nucleus_diameter_px: float,
     minimum_effect_span_px: int,
+    required_focus_count: int = SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+    minimum_anchor_separation_diameters: float = (
+        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+    ),
 ) -> tuple[int, float]:
     """Score whether packing witnesses contain a localized focus window."""
 
@@ -162,7 +168,7 @@ def _localized_focus_capacity_metrics(
         minimum_effect_span_px,
     )
     minimum_between = (
-        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * nominal
+        max(0.0, float(minimum_anchor_separation_diameters)) * nominal
     )
     pairwise = np.linalg.norm(
         centers[:, None, :] - centers[None, :, :], axis=2
@@ -185,7 +191,7 @@ def _localized_focus_capacity_metrics(
             break
 
     margins = []
-    required = min(SMALL_CLUSTER_TARGET_FOCUS_COUNT, len(centers))
+    required = min(max(1, int(required_focus_count)), len(centers))
     for subset in combinations(range(len(centers)), required):
         span = float(np.max(pairwise[np.ix_(subset, subset)]))
         separated = all(
@@ -3445,6 +3451,18 @@ class JointPathologyEditWorkflow:
                         ),
                         minimum_effect_span_px=(
                             contract.cell_program.minimum_effect_span_px
+                        ),
+                        required_focus_count=(
+                            BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT
+                            if bundle.mechanism.mechanism_id
+                            == "breast-peritumoral-small-cluster"
+                            else SMALL_CLUSTER_TARGET_FOCUS_COUNT
+                        ),
+                        minimum_anchor_separation_diameters=(
+                            BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
+                            if bundle.mechanism.mechanism_id
+                            == "breast-peritumoral-small-cluster"
+                            else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
                         ),
                     )
                 else:

@@ -40,11 +40,18 @@ from .seam import (
 )
 from .skills.repository import JointSkillBundle
 from .spatial_contracts import (
+    BREAST_SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS,
+    BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS,
+    BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
+    BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT,
     SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
+    SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS,
     SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE,
+    SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS,
     SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
     SMALL_CLUSTER_TARGET_FOCUS_COUNT,
     SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS,
+    breast_small_cluster_within_focus_link_px,
     small_cluster_maximum_focus_diameter_px,
     small_cluster_maximum_hotspot_span_px,
 )
@@ -992,15 +999,36 @@ def _small_cluster_cardinality(c):
             "small-cluster cardinality is not applicable",
             metrics={"applicable": False},
         )
+    strict_breast_cluster = (
+        c.bundle.mechanism.mechanism_id
+        == "breast-peritumoral-small-cluster"
+    )
+    nominal = max(
+        1.0,
+        float(c.executable_contract.cell_program.nominal_nucleus_diameter_px),
+    )
+    within_focus_link = (
+        breast_small_cluster_within_focus_link_px(nominal) / nominal
+        if strict_breast_cluster
+        else SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+    )
+    minimum_focus_size = (
+        BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
+        if strict_breast_cluster
+        else SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
+    )
+    target_focus_count = (
+        BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT
+        if strict_breast_cluster
+        else SMALL_CLUSTER_TARGET_FOCUS_COUNT
+    )
     audit = _reconstruct_added_class1_foci(
         c,
-        focus_link_distance_diameters=(
-            SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
-        ),
+        focus_link_distance_diameters=within_focus_link,
     )
     minimum, maximum = c.bundle.mechanism.cell_program.cluster_size_range
     required_foci = max(
-        SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+        target_focus_count,
         int(c.case.cell_count_extent_budget.minimum_effect_foci),
     )
     sizes = audit["focus_sizes"]
@@ -1010,7 +1038,7 @@ def _small_cluster_cardinality(c):
         and audit["source_bridge_pixels"] == 0
         and len(sizes) >= required_foci
         and all(
-            max(minimum, SMALL_CLUSTER_MINIMUM_FOCUS_SIZE)
+            max(minimum, minimum_focus_size)
             <= value
             <= min(maximum, SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE)
             for value in sizes
@@ -1047,18 +1075,46 @@ def _small_cluster_focus_compactness(c):
             c.executable_contract.cell_program.nominal_nucleus_diameter_px
         ),
     )
+    strict_breast_cluster = (
+        c.bundle.mechanism.mechanism_id
+        == "breast-peritumoral-small-cluster"
+    )
+    within_focus_link = (
+        breast_small_cluster_within_focus_link_px(nominal) / nominal
+        if strict_breast_cluster
+        else SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+    )
+    minimum_focus_size = (
+        BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
+        if strict_breast_cluster
+        else SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
+    )
+    target_focus_count = (
+        BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT
+        if strict_breast_cluster
+        else SMALL_CLUSTER_TARGET_FOCUS_COUNT
+    )
     audit = _reconstruct_added_class1_foci(
         c,
-        focus_link_distance_diameters=(
-            SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
-        ),
+        focus_link_distance_diameters=within_focus_link,
     )
     required_foci = max(
-        SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+        target_focus_count,
         int(c.case.cell_count_extent_budget.minimum_effect_foci),
     )
     maximum_focus_diameter_px = small_cluster_maximum_focus_diameter_px(
-        nominal
+        nominal,
+        member_spacing_diameters=(
+            BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS
+            if strict_breast_cluster
+            else SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS
+        ),
+        maximum_focus_diameter_diameters=(
+            BREAST_SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS
+            if strict_breast_cluster
+            else SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS
+        ),
+        compact_template=strict_breast_cluster,
     )
     minimum_inter_focus_distance_px = (
         SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * nominal
@@ -1075,7 +1131,7 @@ def _small_cluster_focus_compactness(c):
         audit["ledger_matches_instances"]
         and audit["focus_count"] >= required_foci
         and all(
-            SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
+            minimum_focus_size
             <= size
             <= SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE
             for size in audit["focus_sizes"]
@@ -1099,7 +1155,7 @@ def _small_cluster_focus_compactness(c):
             **audit,
             "required_focus_count": required_foci,
             "within_focus_link_distance_diameters": (
-                SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+                within_focus_link
             ),
             "maximum_allowed_focus_diameter_px": (
                 maximum_focus_diameter_px

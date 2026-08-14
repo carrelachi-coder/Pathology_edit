@@ -4,15 +4,15 @@
   "supported_primitives": [
     "peritumoral-small-cluster-increase-v1"
   ],
-  "version": "1.2.0-draft",
+  "version": "1.3.0-draft",
   "review_status": "draft",
-  "summary": "Add one localized invasive-front hotspot containing multiple tight synthetic neoplastic foci of two to four complete class-1 nuclei within a certified outer annulus adjacent to annotated invasive Tumor.",
+  "summary": "Add one localized invasive-front hotspot containing at least three tight synthetic neoplastic foci of three to four complete class-1 nuclei within a certified outer annulus adjacent to annotated invasive Tumor.",
   "recognition_contract": {
     "required_observations": [
       "annotated invasive Tumor fine ID 1",
       "adjacent operational Stroma fine ID 2",
       "certified external boundary and receiving-side annulus",
-      "capacity for at least two nearby but distinct tight 2--4-cell foci inside one bounded hotspot"
+      "capacity for at least three nearby but distinct tight 3--4-cell foci inside one bounded hotspot"
     ],
     "contraindications": [
       "internal hole or cleft",
@@ -130,7 +130,7 @@
       48
     ],
     "cluster_size_range": [
-      1,
+      3,
       4
     ],
     "seam_contract": {
@@ -201,8 +201,8 @@
     ],
     "mask_guarantees": [
       "tissue mask preserved",
-      "two to four complete class-1 nuclei per tight focus",
-      "multiple distinct foci inside one localized outer-annulus front segment"
+      "three to four complete class-1 nuclei per tight focus",
+      "at least three distinct foci inside one localized outer-annulus front segment"
     ],
     "render_only_claims": [
       "tumor-budding diagnosis or score",

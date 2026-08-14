@@ -12,6 +12,17 @@ SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS = 1.05
 SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS = 1.35
 SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS = 2.25
 SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS = 1.6
+
+BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT = 3
+BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE = 3
+BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS = 0.75
+BREAST_SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS = 1.10
+BREAST_SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS = 1.35
+BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS = (
+    SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+    + sqrt(2.0) * BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS
+    + 0.10
+)
 SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS = 2.25
 
 # The edit is a localized invasive-front hotspot, not a second scatter field.
@@ -40,15 +51,42 @@ def small_cluster_maximum_hotspot_span_px(
 
 def small_cluster_maximum_focus_diameter_px(
     nominal_nucleus_diameter_px: float,
+    *,
+    member_spacing_diameters: float = SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS,
+    maximum_focus_diameter_diameters: float = (
+        SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS
+    ),
+    compact_template: bool = False,
 ) -> float:
-    """Mirror the executor's four-pixel minimum member radius."""
+    """Mirror the executor's compact square-template raster diameter."""
 
     nominal = max(1.0, float(nominal_nucleus_diameter_px))
-    raster_member_radius = max(
+    raster_member_spacing = max(
         4,
-        round(nominal * SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS),
+        round(nominal * member_spacing_diameters),
+    )
+    raster_diameter = (
+        sqrt(2.0) * (raster_member_spacing + sqrt(0.5))
+        if compact_template
+        else 2.0 * (raster_member_spacing + sqrt(0.5))
     )
     return max(
-        SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS * nominal,
-        2.0 * (raster_member_radius + sqrt(0.5)),
+        maximum_focus_diameter_diameters * nominal,
+        raster_diameter,
+    )
+
+
+def breast_small_cluster_within_focus_link_px(
+    nominal_nucleus_diameter_px: float,
+) -> float:
+    """Return the compact-template link with its four-pixel raster floor."""
+
+    nominal = max(1.0, float(nominal_nucleus_diameter_px))
+    raster_member_spacing = max(
+        4,
+        round(nominal * BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS),
+    )
+    return max(
+        BREAST_SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS * nominal,
+        raster_member_spacing + sqrt(0.5),
     )

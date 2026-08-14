@@ -8,9 +8,9 @@
     "cellularity-decrease-v1",
     "neoplastic-cell-abundance-increase-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
-  "summary": "Change a bounded local breast cell population inside one mask-defined tissue component while preserving every tissue label pixel-exactly.",
+  "summary": "Change a broad, potentially multi-site local breast cell population inside one mask-defined tissue component while preserving every tissue label pixel-exactly.",
   "recognition_contract": {
     "required_observations": [
       "one explicit component population zone",
