@@ -5,44 +5,88 @@
   "review_status": "draft",
   "summary": "Interface-bound tumor expansion with explicit area and source contracts.",
   "capabilities": {
-    "source_label_options": ["Stroma", "Other tissue"],
+    "source_label_options": [
+      "Stroma",
+      "Other tissue"
+    ],
     "target_label": "Tumor",
-    "allowed_tools": ["interface_sdf", "connected_morphology", "organic_v2", "directional_tapered_projection"]
+    "allowed_tools": [
+      "interface_sdf",
+      "connected_morphology",
+      "organic_v2",
+      "directional_tapered_projection"
+    ]
   },
   "rules": [
     {
       "rule_id": "primitive.tumor_increase.transition",
       "scope": "candidate_gate",
       "applies_when": {},
-      "claim": "Every changed pixel must convert one declared source label to Tumor and no other pixel may change.",
-      "required_observation": "Compare source, target, and change region pixel by pixel.",
+      "claim": "Enforce the compiler-bound label_transition execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "label_transition",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": ["Changing Normal epithelium because it lies near the selected polygon."],
+      "counterexamples": [],
       "evidence_citations": [],
       "dataset_statistics": {},
       "version": "1.0.0-draft",
       "review_status": "draft",
-      "known_limitations": []
+      "known_limitations": [],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:label_transition"
+        }
+      ],
+      "selection_preference": null,
+      "expected_morphology": [],
+      "forbidden_morphology": []
     },
     {
       "rule_id": "primitive.tumor_increase.interface",
       "scope": "candidate_gate",
       "applies_when": {},
-      "claim": "Every changed component must touch the selected pre-edit tumor/source interface and satisfy area, topology, depth/span, provenance, and profile checks.",
-      "required_observation": "Run all bound deterministic checks before critic review.",
+      "claim": "Enforce the compiler-bound interface_contact execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "interface_contact",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": ["A remote tumor island created only to meet the area target."],
+      "counterexamples": [],
       "evidence_citations": [],
       "dataset_statistics": {},
       "version": "1.0.0-draft",
       "review_status": "draft",
-      "known_limitations": []
+      "known_limitations": [],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:interface_contact"
+        }
+      ],
+      "selection_preference": null,
+      "expected_morphology": [],
+      "forbidden_morphology": []
     }
   ]
 }

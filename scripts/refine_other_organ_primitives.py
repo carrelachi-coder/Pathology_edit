@@ -627,6 +627,9 @@ def _retreat_transform(contract: dict[str, Any]) -> None:
         "whole_instance_changes",
         "residual_fragmentation_topology",
     ]
+    contract["cell_program"]["halo_policy"] = (
+        "operational_receiver_compatible_non_neoplastic_population"
+    )
     _add_retreat_primitives(contract)
     if domain_id == "oral-squamous-cell-carcinoma-v1":
         contract["supported_primitives"] = [
@@ -1441,6 +1444,41 @@ def _assert_clean_non_breast_catalog(root: Path) -> None:
             raise ValueError(
                 f"non-Breast mechanism contamination in {path}: {contaminated}"
             )
+        if str(payload.get("mechanism_id", "")).endswith(
+            "operational-tumor-retreat"
+        ):
+            halo_policy = (payload.get("cell_program") or {}).get("halo_policy")
+            if halo_policy != (
+                "operational_receiver_compatible_non_neoplastic_population"
+            ):
+                raise ValueError(
+                    f"operational retreat has untyped receiver population in {path}"
+                )
+            positive_surfaces = {
+                "summary": payload.get("summary"),
+                "required_observations": (
+                    payload.get("recognition_contract") or {}
+                ).get("required_observations"),
+                "tissue_program": payload.get("tissue_program"),
+                "cell_program": payload.get("cell_program"),
+                "required_findings": (
+                    payload.get("render_contract") or {}
+                ).get("required_findings"),
+                "mask_guarantees": (
+                    payload.get("render_contract") or {}
+                ).get("mask_guarantees"),
+            }
+            positive_text = json.dumps(
+                positive_surfaces, ensure_ascii=False
+            ).lower()
+            overclaims = sorted(
+                token for token in ("tumor bed", "tumor-bed", "fibros")
+                if token in positive_text
+            )
+            if overclaims:
+                raise ValueError(
+                    f"operational retreat execution overclaim in {path}: {overclaims}"
+                )
         if payload.get("pathology_domain_id") == (
             "oral-squamous-cell-carcinoma-v1"
         ):

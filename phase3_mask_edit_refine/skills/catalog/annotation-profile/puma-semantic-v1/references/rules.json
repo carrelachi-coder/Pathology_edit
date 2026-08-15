@@ -53,24 +53,15 @@
       "applies_when": {
         "annotation_profile_id": "puma-semantic-v1"
       },
-      "claim": "Require primary-versus-metastatic status and source site, and retrieve statistics/examples from the matching stratum.",
-      "required_observation": "Validate case provenance before loading empirical thresholds or reference panels.",
+      "claim": "Enforce the compiler-bound profile_required_provenance execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
       "critic_requirement": null,
-      "exceptions": [
-        "Use a reviewed hierarchical fallback only when a stratum has insufficient samples and report the uncertainty."
-      ],
-      "counterexamples": [
-        "Applying epidermal-interface priors from primary cutaneous melanoma to a lymph-node metastasis.",
-        "Comparing component size without stratifying source site."
-      ],
-      "expected_morphology": [
-        "Reference examples share the relevant primary/metastatic tissue context."
-      ],
-      "forbidden_morphology": [
-        "Epidermis-dependent reasoning in a metastatic ROI lacking epidermis."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://puma.grand-challenge.org/dataset/"
       ],
@@ -81,7 +72,19 @@
       "review_status": "draft",
       "known_limitations": [
         "The current profile has no certified stratified statistics artifact."
-      ]
+      ],
+      "execution_role": "provenance_precondition",
+      "observation_authority": [
+        {
+          "source": "case_provenance",
+          "binding": "profile_required_provenance"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:profile_required_provenance"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "puma.white_background_is_immutable",
@@ -89,22 +92,15 @@
       "applies_when": {
         "canonical_label": "Background"
       },
-      "claim": "Preserve white background exactly and never use it as tumor, stroma, epidermis, necrosis, or vessel source/target support.",
-      "required_observation": "Verify zero/background pixels remain identical and no selected scene component is background.",
+      "claim": "Enforce the compiler-bound background_seed_protection execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "background_seed_protection",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Expanding dermal tumor into blank slide background.",
-        "Filling a white cleft to connect two tumor regions."
-      ],
-      "expected_morphology": [
-        "The white-background footprint remains pixel-identical."
-      ],
-      "forbidden_morphology": [
-        "Background seeding, filling, crossing, or bridging."
-      ],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://puma.grand-challenge.org/dataset/"
       ],
@@ -115,7 +111,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Tears and processing clefts may look white on H&E; the mask contract remains pixel-preserving."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:background_seed_protection"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "puma.normal_epithelium_means_epidermis",
@@ -152,7 +164,10 @@
       "known_limitations": [
         "The tissue label alone does not encode epidermal layers or ulceration criteria.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "puma.immune_is_not_a_tissue_region_label",
@@ -160,22 +175,15 @@
       "applies_when": {
         "requested_label": "Immune infiltrate"
       },
-      "claim": "Do not synthesize an immune tissue-region mask from the nuclei layer or from Stroma; PUMA immune information belongs to separate cell annotations.",
-      "required_observation": "Check whether the requested primitive requires a tissue-region label absent from the profile and reject it before planning.",
+      "claim": "Enforce the compiler-bound semantic_capability_guard execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "semantic_capability_guard",
       "critic_requirement": null,
-      "exceptions": [
-        "A separately designed cell-edit workflow may operate on the nuclei layer without mutating tissue semantics."
-      ],
-      "counterexamples": [
-        "Converting stromal pixels to Immune infiltrate because lymphocytes are present.",
-        "Rasterizing immune nuclei into a solid immune tissue component."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
       "expected_morphology": [],
-      "forbidden_morphology": [
-        "Invented immune tissue regions in the semantic mask."
-      ],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://puma.grand-challenge.org/dataset/"
       ],
@@ -186,7 +194,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Cell-level editing is outside phase3_mask_edit_refine v1."
-      ]
+      ],
+      "execution_role": "semantic_capability_precondition",
+      "observation_authority": [
+        {
+          "source": "instruction_semantic_intent",
+          "binding": "primitive_id"
+        },
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:semantic_capability_guard"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "puma.preserve_tissue_component_topology",
@@ -198,25 +222,15 @@
           "stroma-increase-v1"
         ]
       },
-      "claim": "Do not create tumor islands, merge separated tumor foci, fill necrotic holes, split epidermis, or absorb vessels during a generic burden edit.",
-      "required_observation": "Compare source/target connected components and holes and preserve every non-source label exactly.",
+      "claim": "Enforce the compiler-bound edited_label_topology execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "edited_label_topology",
       "critic_requirement": null,
-      "exceptions": [
-        "A dedicated perivascular, epidermal-invasion, ulceration, or necrosis primitive with its own contract."
-      ],
-      "counterexamples": [
-        "A tumor bridge across stroma joining separate foci.",
-        "Tumor expansion that closes a labeled necrotic center.",
-        "Tumor growth that swallows a small vessel component."
-      ],
-      "expected_morphology": [
-        "One selected interface is deformed while unrelated epidermis, vessel, necrosis, and tumor components remain intact."
-      ],
-      "forbidden_morphology": [
-        "New islands, merges, splits, filled holes, or unrequested label loss."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://puma.grand-challenge.org/dataset/"
       ],
@@ -227,7 +241,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Microscopic satellite detection requires sufficient resolution and expert review."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:edited_label_topology"
+        }
+      ],
+      "selection_preference": null
     }
   ]
 }

@@ -30,7 +30,10 @@ from phase3_mask_edit_refine.models import (
     ToolProgram,
 )
 from phase3_mask_edit_refine.scene import SceneAnalysis
-from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
+from phase3_mask_edit_refine.skills import (
+    ActiveKnowledgeBundle,
+    validate_active_bundle_authority,
+)
 
 EDIT_PLAN_SCHEMA_VERSION = "mask-edit-refine-plan-v2"
 BREAST_EXECUTION_DOMAIN_ID = "breast-invasive-carcinoma-v1"
@@ -39,6 +42,13 @@ BREAST_EXECUTION_PROFILE_ID = "bcss-semantic-v1"
 
 class AgentProviderError(RuntimeError):
     """Raised when a remote Planner or Critic cannot return strict JSON."""
+
+
+def _is_non_breast_execution_case(case: CaseContext) -> bool:
+    return bool(
+        case.pathology_domain_id != BREAST_EXECUTION_DOMAIN_ID
+        or case.annotation_profile_id != BREAST_EXECUTION_PROFILE_ID
+    )
 
 
 def validate_execution_agent_image_paths(
@@ -56,11 +66,7 @@ def validate_execution_agent_image_paths(
     """
 
     paths = tuple(image_paths)
-    breast_execution_case = bool(
-        case.pathology_domain_id == BREAST_EXECUTION_DOMAIN_ID
-        and case.annotation_profile_id == BREAST_EXECUTION_PROFILE_ID
-    )
-    if not breast_execution_case and paths:
+    if _is_non_breast_execution_case(case) and paths:
         raise RefineContractError(
             "non-Breast execution Planner/Critic rejects caller-supplied raster "
             "paths; only the joint sealed mask-panel capability may carry images"
@@ -437,15 +443,28 @@ class OpenAIMultimodalPlanner:
             case=case,
             image_paths=image_paths,
         )
-        base_prompt = _planner_prompt(case=case, scene=scene, bundle=bundle)
-        system_prompt = (
-            "You are a pathology mask-edit planner. Select legal existing interfaces and "
-            "deterministic tools. Never output polygons, raster pixels, or a new area budget. "
-            "Treat every active mask constraint as mandatory and cite its constraint_id on "
-            "every planned interface. Do not claim that a semantic mask guarantees microscopic "
-            "H&E morphology; preserve generation_handoff requirements for downstream rendering. "
-            "Return only the strict JSON schema. State uncertainty instead of guessing."
+        validate_active_bundle_authority(
+            bundle,
+            case_provenance=case.provenance,
         )
+        base_prompt = _planner_prompt(case=case, scene=scene, bundle=bundle)
+        if _is_non_breast_execution_case(case):
+            system_prompt = (
+                "You are a mask-certificate selection agent. Use only the supplied semantic "
+                "intent, tissue-mask scene graph, typed authority bindings, deterministic "
+                "metrics, and candidate certificates. Never identify, confirm, classify, or "
+                "infer an unannotated histologic structure. Select only listed certified IDs; "
+                "legality belongs exclusively to deterministic checkers. Return strict JSON."
+            )
+        else:
+            system_prompt = (
+                "You are a pathology mask-edit planner. Select legal existing interfaces and "
+                "deterministic tools. Never output polygons, raster pixels, or a new area budget. "
+                "Treat every active mask constraint as mandatory and cite its constraint_id on "
+                "every planned interface. Do not claim that a semantic mask guarantees microscopic "
+                "H&E morphology; preserve generation_handoff requirements for downstream rendering. "
+                "Return only the strict JSON schema. State uncertainty instead of guessing."
+            )
         attempt_audit: list[dict[str, Any]] = []
         validation_feedback = ""
         for attempt_index in range(self.max_schema_attempts):
@@ -516,6 +535,10 @@ class OpenAIMultimodalCritic:
             case=case,
             image_paths=image_paths,
         )
+        validate_active_bundle_authority(
+            bundle,
+            case_provenance=case.provenance,
+        )
         passed_ids = [report.candidate_id for report in gate_reports if report.passed]
         prompt = _critic_prompt(
             case=case,
@@ -523,12 +546,20 @@ class OpenAIMultimodalCritic:
             gate_reports=gate_reports,
             passed_ids=passed_ids,
         )
-        raw, usage = self.client.call(
-            system_prompt=(
+        system_prompt = (
+            "You are a mask-certificate ranker. Rank only deterministic-gate-passing "
+            "candidate IDs from their typed metrics and certificates. Do not identify, "
+            "confirm, classify, or veto based on unannotated histology. A deterministic "
+            "failure can never be restored. Return strict JSON."
+            if _is_non_breast_execution_case(case)
+            else (
                 "You are an independent pathology morphology critic. You do not see the "
                 "Planner's free-form reasoning. Review only deterministic-gate-passing "
                 "candidates. A deterministic failure can never be restored. Return strict JSON."
-            ),
+            )
+        )
+        raw, usage = self.client.call(
+            system_prompt=system_prompt,
             user_prompt=prompt,
             image_paths=image_paths,
             schema_name="mask_edit_refine_critic",
@@ -674,7 +705,7 @@ def _planner_prompt(
     *, case: CaseContext, scene: SceneAnalysis, bundle: ActiveKnowledgeBundle
 ) -> str:
     payload = {
-        "case": case.to_metadata(),
+        "case": _execution_case_metadata(case, bundle=bundle),
         "scene_graph": scene.graph.to_metadata(),
         "composed_contract": bundle.to_metadata(),
         "requirements": {
@@ -698,6 +729,45 @@ def _planner_prompt(
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
+def _execution_case_metadata(
+    case: CaseContext, *, bundle: ActiveKnowledgeBundle
+) -> dict[str, Any]:
+    """Remove raw-image locations and undeclared provenance from mask-only prompts."""
+
+    if not _is_non_breast_execution_case(case):
+        return case.to_metadata()
+    required = bundle.annotation_profile.capabilities.get(
+        "required_provenance_fields", []
+    )
+    if not isinstance(required, list) or not all(
+        isinstance(item, str) and item for item in required
+    ):
+        raise RefineContractError(
+            "annotation profile required_provenance_fields must be strings"
+        )
+    allowed_provenance = {"source_mask_sha256", *required}
+    return {
+        "case_id": case.case_id,
+        "instruction": case.instruction,
+        "source_mask_uri": case.source_mask_uri,
+        "pathology_domain_id": case.pathology_domain_id,
+        "annotation_profile_id": case.annotation_profile_id,
+        "primitive_id": case.primitive_id,
+        "area_budget": {
+            "target_fraction": case.area_budget.target_fraction,
+            "min_fraction": case.area_budget.min_fraction,
+            "max_fraction": case.area_budget.max_fraction,
+        },
+        "seed": case.seed,
+        "provenance": {
+            key: value
+            for key, value in case.provenance.items()
+            if key in allowed_provenance
+        },
+        "pixel_size_um": case.pixel_size_um,
+    }
+
+
 def _critic_prompt(
     *,
     case: CaseContext,
@@ -705,15 +775,11 @@ def _critic_prompt(
     gate_reports: Sequence[GateReport],
     passed_ids: Sequence[str],
 ) -> str:
-    payload = {
-        "case_id": case.case_id,
-        "instruction": case.instruction,
-        "pathology_domain_id": case.pathology_domain_id,
-        "annotation_profile_id": case.annotation_profile_id,
-        "primitive_id": case.primitive_id,
-        "gate_passing_candidate_ids": list(passed_ids),
-        "gate_reports": [report.to_metadata() for report in gate_reports if report.passed],
-        "pathology_reference_rules": [
+    non_breast_execution = _is_non_breast_execution_case(case)
+    rule_metadata = (
+        [rule.to_execution_metadata() for rule in bundle.active_rules]
+        if non_breast_execution
+        else [
             {
                 "rule_id": rule.rule_id,
                 "claim": rule.claim,
@@ -726,8 +792,21 @@ def _critic_prompt(
                 "counterexamples": list(rule.counterexamples),
             }
             for rule in bundle.active_rules
-        ],
-        "active_mask_constraints": [
+        ]
+    )
+    constraint_metadata = (
+        [
+            {
+                "constraint_id": item.constraint_id,
+                "observability": list(item.observability),
+                "enforcement": item.enforcement,
+                "checker_ids": list(item.checker_ids),
+                "required_inputs": list(item.required_inputs),
+            }
+            for item in bundle.active_mask_constraints
+        ]
+        if non_breast_execution
+        else [
             {
                 "constraint_id": item.constraint_id,
                 "mask_statement": item.mask_statement,
@@ -739,10 +818,23 @@ def _critic_prompt(
                 "known_limitations": list(item.known_limitations),
             }
             for item in bundle.active_mask_constraints
-        ],
+        ]
+    )
+    payload = {
+        "case_id": case.case_id,
+        "instruction": case.instruction,
+        "pathology_domain_id": case.pathology_domain_id,
+        "annotation_profile_id": case.annotation_profile_id,
+        "primitive_id": case.primitive_id,
+        "gate_passing_candidate_ids": list(passed_ids),
+        "gate_reports": [report.to_metadata() for report in gate_reports if report.passed],
+        "pathology_reference_rules": rule_metadata,
+        "active_mask_constraints": constraint_metadata,
         "requirements": {
             "rank_only_gate_passing_candidates": True,
-            "veto_morphologically_illegal_candidates": True,
+            "rank_only_from_typed_metrics_and_certificates": non_breast_execution,
+            "unannotated_histology_veto_forbidden": non_breast_execution,
+            "veto_morphologically_illegal_candidates": not non_breast_execution,
             "use_pathology_rules_as_visual_reference_not_mask_guarantees": True,
             "mask_constraints_are_mandatory_and_cannot_be_waived": True,
         },

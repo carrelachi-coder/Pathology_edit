@@ -52,16 +52,13 @@
       "applies_when": {
         "annotation_profile_id": "panda-gleason-v1"
       },
-      "claim": "Use this profile only for verified Radboud-style fine masks; do not apply its six-class meaning to Karolinska-style coarse masks.",
-      "required_observation": "Verify provider, preprocessing revision, label-map digest, and observed fine-ID signature before planning.",
+      "claim": "Enforce the compiler-bound profile_required_provenance execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Reading Karolinska label 2 as stroma or benign epithelium under the Radboud contract.",
-        "Inferring provider from prostate organ metadata."
-      ],
+      "counterexamples": [],
       "expected_morphology": [],
       "forbidden_morphology": [],
       "evidence_citations": [
@@ -75,7 +72,19 @@
       "review_status": "draft",
       "known_limitations": [
         "The current provenance checker verifies presence; a certified profile router must additionally validate allowed provider values."
-      ]
+      ],
+      "execution_role": "provenance_precondition",
+      "observation_authority": [
+        {
+          "source": "case_provenance",
+          "binding": "profile_required_provenance"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:profile_required_provenance"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "panda.background_unknown_is_immutable",
@@ -83,22 +92,15 @@
       "applies_when": {
         "native_label": 0
       },
-      "claim": "Preserve label 0 exactly because it includes background, unknown, and potentially unannotated regions rather than a source tissue class.",
-      "required_observation": "Verify no source/target component or changed pixel belongs to the zero footprint.",
+      "claim": "Enforce the compiler-bound background_seed_protection execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "background_seed_protection",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Expanding a Gleason region into unlabeled tissue.",
-        "Backfilling a sparse unknown gap with stroma before tumor expansion."
-      ],
-      "expected_morphology": [
-        "The source zero footprint remains pixel-identical."
-      ],
-      "forbidden_morphology": [
-        "Unknown-label filling, seeding, crossing, or cleanup."
-      ],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://panda.grand-challenge.org/Data/"
       ],
@@ -109,7 +111,23 @@
       "review_status": "draft",
       "known_limitations": [
         "An unlabeled H&E region may contain tissue; this profile still cannot authorize editing it."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:background_seed_protection"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "panda.gleason_label_requires_architectural_support",
@@ -153,7 +171,10 @@
       "known_limitations": [
         "Architectural assessment needs sufficient H&E resolution and expert validation.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "panda.burden_edit_preserves_gleason_fine_ids",
@@ -164,24 +185,15 @@
           "tumor-burden-decrease-v1"
         ]
       },
-      "claim": "Do not perform an implicit Gleason transition during a generic tumor burden edit.",
-      "required_observation": "Audit every changed source and target fine ID against the selected component's existing pattern and primitive contract.",
+      "claim": "Enforce the compiler-bound label_transition execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "label_transition",
       "critic_requirement": null,
-      "exceptions": [
-        "A dedicated pattern-transition primitive with a separate H&E morphology contract."
-      ],
-      "counterexamples": [
-        "Changing pattern 3 to pattern 4 while increasing only tumor area.",
-        "Collapsing all patterns to canonical Tumor in the saved fine mask."
-      ],
-      "expected_morphology": [
-        "Unrequested Gleason components retain fine IDs exactly."
-      ],
-      "forbidden_morphology": [
-        "Silent grade upgrade, downgrade, or fine-to-coarse collapse."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://panda.grand-challenge.org/Data/"
       ],
@@ -190,7 +202,23 @@
       },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": []
+      "known_limitations": [],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:label_transition"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "panda.sparse_masks_do_not_license_topology_repair",
@@ -202,24 +230,15 @@
           "noisy"
         ]
       },
-      "claim": "Do not bridge, fill, or connect sparse annotated regions merely to make the tumor mask look complete.",
-      "required_observation": "Compare source/target component and hole topology and preserve all unrequested labels.",
+      "claim": "Enforce the compiler-bound edited_label_topology execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "edited_label_topology",
       "critic_requirement": null,
-      "exceptions": [
-        "An independently reviewed annotation-repair task outside mask edit."
-      ],
-      "counterexamples": [
-        "Joining separate pattern-4 regions across unknown pixels.",
-        "Filling unlabeled holes inside a tumor component."
-      ],
-      "expected_morphology": [
-        "The edit deforms one selected existing interface without repairing unrelated annotation gaps."
-      ],
-      "forbidden_morphology": [
-        "New bridges, islands, merges, splits, or hole filling."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://panda.grand-challenge.org/Data/",
         "https://doi.org/10.1038/s41591-021-01620-2"
@@ -231,7 +250,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Quantitative sparsity envelopes must be learned separately by provider and split."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:edited_label_topology"
+        }
+      ],
+      "selection_preference": null
     }
   ]
 }

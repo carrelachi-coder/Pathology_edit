@@ -313,6 +313,7 @@ def _qualify_tissue_case(
         primitive_id=tool_primitive_id,
         production=False,
         available_checker_ids=set(GateRegistry().available_checker_ids),
+        case_provenance=case.provenance,
     )
     if tool_primitive_id != case.primitive_id:
         tissue_bundle = replace(

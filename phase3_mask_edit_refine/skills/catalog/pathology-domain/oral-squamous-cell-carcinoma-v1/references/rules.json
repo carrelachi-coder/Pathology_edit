@@ -65,18 +65,21 @@
       "known_limitations": [
         "ORCA does not label normal/dysplastic surface epithelium separately from Other tissue.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "oral_scc.cohesive_nest_and_cord_boundaries_remain_coherent",
-      "scope": "interface_selection_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": "cohesive_invasive_nest_or_cord"
       },
       "claim": "Avoid partial internal cuts, deep slots, narrow necks, or remote islands that make a cohesive invasive nest or cord anatomically implausible.",
-      "required_observation": "Trace the entire local nest/cord boundary and compare epithelial cohesion and stromal reaction along the proposed anchor.",
-      "severity": "hard",
-      "deterministic_check_id": "depth_span_ratio",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "Discohesive or satellite invasion must be explicitly identified and use its own rule."
@@ -99,19 +102,23 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "Numeric curvature/depth calibration needs oral-site and scale stratification."
-      ]
+        "Numeric curvature/depth calibration needs oral-site and scale stratification.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "oral_scc.keratinized_centers_are_not_fill_or_seed_regions",
-      "scope": "planner_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": "keratin_pearl"
       },
       "claim": "Preserve the concentric relationship between viable squamous tumor and central keratin; do not fill keratinized centers with tumor or seed growth from detached keratin debris.",
-      "required_observation": "Identify the complete keratin pearl, viable peripheral tumor rim, detached surface keratin/debris, and any necrosis.",
-      "severity": "hard",
-      "deterministic_check_id": "edited_label_topology",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "A dedicated differentiation/keratinization primitive with separate semantic support."
@@ -133,8 +140,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "ORCA carcinoma masks do not separately label viable tumor, keratin, and necrosis."
-      ]
+        "ORCA carcinoma masks do not separately label viable tumor, keratin, and necrosis.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "oral_scc.dispersed_invasive_front_is_not_bulk_filled",
@@ -170,11 +181,14 @@
       "known_limitations": [
         "Worst-pattern-of-invasion assessment may require a wider field than a patch.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "oral_scc.nerve_and_vessel_relationships_are_protected",
-      "scope": "candidate_gate_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": [
           "nerve",
@@ -182,9 +196,9 @@
         ]
       },
       "claim": "Do not create, erase, or bridge perineural or lymphovascular invasion during a generic burden edit.",
-      "required_observation": "Identify nerve fascicle/perineurium or endothelial-lined vascular space and inspect the tumor relationship around or within it.",
-      "severity": "hard",
-      "deterministic_check_id": "unrequested_labels_preserved",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "A dedicated perineural/lymphovascular invasion primitive with containment and continuity constraints."
@@ -207,8 +221,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "Definitive small-vessel or nerve identification can require ancillary stains or larger context."
-      ]
+        "Definitive small-vessel or nerve identification can require ancillary stains or larger context.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "oral_scc.other_tissue_is_not_automatically_desmoplastic_stroma",
@@ -250,7 +268,10 @@
       "known_limitations": [
         "ORCA has no tissue subtype label inside non-carcinoma tissue.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "oral_scc.prefer_broad_verified_invasive_front",
@@ -289,7 +310,10 @@
       "known_limitations": [
         "Quantitative thresholds require oral-site, scale, and annotation-profile calibration.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     }
   ]
 }

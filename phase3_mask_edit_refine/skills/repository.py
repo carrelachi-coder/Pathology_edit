@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -136,6 +136,8 @@ class SkillRepository:
         primitive_id: str,
         production: bool,
         available_checker_ids: Iterable[str] = (),
+        case_provenance: dict[str, object] | None = None,
+        available_auxiliary_authority_digests: Mapping[str, str] | None = None,
     ) -> ActiveKnowledgeBundle:
         pathology = self.get(pathology_domain_id, expected_kind="pathology_domain")
         annotation = self.get(annotation_profile_id, expected_kind="annotation_profile")
@@ -176,12 +178,41 @@ class SkillRepository:
                 f"{primitive_id}; configured options={list(source_options)}"
             )
 
-        active_rules = tuple(
-            rule
-            for package in packages
-            for rule in package.rules
-            if not rule.scope.startswith("reader_only_")
+        auxiliary_authority_digests = dict(
+            available_auxiliary_authority_digests or {}
         )
+        non_breast_execution = bool(
+            pathology_domain_id != "breast-invasive-carcinoma-v1"
+            or annotation_profile_id != "bcss-semantic-v1"
+        )
+        active_rules_list = []
+        for package in packages:
+            for rule in package.rules:
+                if rule.scope.startswith("reader_only_"):
+                    continue
+                if not non_breast_execution:
+                    active_rules_list.append(rule)
+                    continue
+                if not _rule_applies(
+                    rule.applies_when,
+                    pathology_domain_id=pathology_domain_id,
+                    annotation_profile_id=annotation_profile_id,
+                    primitive_id=primitive_id,
+                    annotation=annotation,
+                    relevant_labels={target_label, *resolved_sources},
+                    case_provenance=case_provenance,
+                ):
+                    continue
+                active_rules_list.append(rule)
+        active_rules = tuple(active_rules_list)
+        if non_breast_execution:
+            _validate_composed_rule_authority(
+                rules=active_rules,
+                annotation=annotation,
+                case_provenance=case_provenance,
+                available_auxiliary_authority_digests=auxiliary_authority_digests,
+                require_materialized_provenance=case_provenance is not None,
+            )
         active_mask_constraints = tuple(
             constraint
             for package in packages
@@ -300,13 +331,19 @@ _EXECUTION_HE_PATTERN = re.compile(
 
 
 def _validate_non_breast_execution_authority(package: SkillPackage) -> None:
-    """Reject catalog drift that restores H&E selection/veto authority."""
+    """Reject catalog drift unless execution authority is positively typed."""
 
     if package.skill_id not in _NON_BREAST_EXECUTION_SKILLS:
         return
     for rule in package.rules:
         if rule.scope.startswith("reader_only_"):
-            if rule.critic_requirement or rule.deterministic_check_id:
+            if (
+                rule.critic_requirement
+                or rule.deterministic_check_id
+                or rule.execution_role
+                or rule.observation_authority
+                or rule.selection_preference
+            ):
                 raise RefineContractError(
                     f"reader-only pathology fact {rule.rule_id} carries execution authority"
                 )
@@ -315,10 +352,9 @@ def _validate_non_breast_execution_authority(package: SkillPackage) -> None:
             raise RefineContractError(
                 f"non-Breast rule {rule.rule_id} grants execution critic veto authority"
             )
-        authority_text = f"{rule.claim} {rule.required_observation}"
-        if _EXECUTION_HE_PATTERN.search(authority_text):
+        if not rule.execution_role or not rule.observation_authority:
             raise RefineContractError(
-                f"non-Breast rule {rule.rule_id} grants execution H&E authority"
+                f"non-Breast rule {rule.rule_id} lacks typed observation authority"
             )
     for constraint in package.mask_constraints:
         authority_text = " ".join(
@@ -338,6 +374,273 @@ def _validate_non_breast_execution_authority(package: SkillPackage) -> None:
             raise RefineContractError(
                 f"non-Breast constraint {constraint.constraint_id} grants execution H&E authority"
             )
+
+
+def validate_active_bundle_authority(
+    bundle: ActiveKnowledgeBundle,
+    *,
+    case_provenance: dict[str, object],
+    available_auxiliary_authority_digests: Mapping[str, str] | None = None,
+) -> None:
+    """Revalidate a non-Breast bundle at every direct agent entry point."""
+
+    non_breast_execution = bool(
+        bundle.pathology_domain.skill_id != "breast-invasive-carcinoma-v1"
+        or bundle.annotation_profile.skill_id != "bcss-semantic-v1"
+    )
+    if not non_breast_execution:
+        return
+    _validate_composed_rule_authority(
+        rules=bundle.active_rules,
+        annotation=bundle.annotation_profile,
+        case_provenance=case_provenance,
+        available_auxiliary_authority_digests=dict(
+            available_auxiliary_authority_digests or {}
+        ),
+        require_materialized_provenance=True,
+    )
+
+
+def _validate_composed_rule_authority(
+    *,
+    rules: Iterable,
+    annotation: SkillPackage,
+    case_provenance: dict[str, object] | None,
+    available_auxiliary_authority_digests: dict[str, str],
+    require_materialized_provenance: bool,
+) -> None:
+    structure_bindings = annotation.capabilities.get(
+        "profile_owned_structure_authorities", {}
+    )
+    if not isinstance(structure_bindings, dict):
+        raise RefineContractError(
+            "profile_owned_structure_authorities must be a mapping"
+        )
+    required_provenance = _strings_from_capability(
+        annotation, "required_provenance_fields"
+    )
+    for rule in rules:
+        if rule.scope.startswith("reader_only_"):
+            raise RefineContractError(
+                f"reader-only rule {rule.rule_id} entered the execution bundle"
+            )
+        if not rule.execution_role or not rule.observation_authority:
+            raise RefineContractError(
+                f"execution rule {rule.rule_id} lacks typed observation authority"
+            )
+        authority = {
+            (item.source, item.binding) for item in rule.observation_authority
+        }
+        sources = {source for source, _binding in authority}
+        required_sources = {
+            "deterministic_mask_invariant": {
+                "tissue_mask",
+                "scene_graph",
+                "deterministic_metric",
+            },
+            "provenance_precondition": {
+                "case_provenance",
+                "deterministic_metric",
+            },
+            "semantic_capability_precondition": {
+                "instruction_semantic_intent",
+                "tissue_mask",
+                "deterministic_metric",
+            },
+            "profile_auxiliary_selection_preference": {
+                "profile_owned_auxiliary_map",
+                "candidate_certificate",
+                "deterministic_metric",
+            },
+            "certified_candidate_selection_preference": {
+                "candidate_certificate",
+                "deterministic_metric",
+            },
+        }[rule.execution_role]
+        allowed_sources = {
+            "deterministic_mask_invariant": required_sources
+            | {"nuclei_mask", "candidate_certificate"},
+            "provenance_precondition": required_sources
+            | {"instruction_semantic_intent"},
+            "semantic_capability_precondition": required_sources
+            | {"case_provenance"},
+            "profile_auxiliary_selection_preference": required_sources
+            | {"tissue_mask", "nuclei_mask", "scene_graph"},
+            "certified_candidate_selection_preference": required_sources
+            | {"tissue_mask", "nuclei_mask", "scene_graph"},
+        }[rule.execution_role]
+        missing_sources = sorted(required_sources - sources)
+        unexpected_sources = sorted(sources - allowed_sources)
+        if missing_sources or unexpected_sources:
+            raise RefineContractError(
+                f"rule {rule.rule_id} has authority sources detached from role "
+                f"{rule.execution_role}: missing={missing_sources}, "
+                f"unexpected={unexpected_sources}"
+            )
+        for source, binding in authority:
+            if source == "instruction_semantic_intent" and binding != "primitive_id":
+                raise RefineContractError(
+                    f"rule {rule.rule_id} has an unbound semantic-intent authority"
+                )
+            if source == "tissue_mask" and binding != "source_mask_sha256":
+                raise RefineContractError(
+                    f"rule {rule.rule_id} has an unbound tissue-mask authority"
+                )
+            if source == "nuclei_mask" and binding != "source_nuclei_sha256":
+                raise RefineContractError(
+                    f"rule {rule.rule_id} has an unbound nuclei-mask authority"
+                )
+            if source == "scene_graph" and binding != "compiler_scene_graph":
+                raise RefineContractError(
+                    f"rule {rule.rule_id} has an unbound scene-graph authority"
+                )
+            if (
+                source == "candidate_certificate"
+                and binding != "compiler_candidate_certificate"
+            ):
+                raise RefineContractError(
+                    f"rule {rule.rule_id} has an unbound candidate-certificate authority"
+                )
+            if source == "deterministic_metric":
+                expected = (
+                    f"checker:{rule.deterministic_check_id}"
+                    if rule.deterministic_check_id
+                    else None
+                )
+                if binding != expected:
+                    raise RefineContractError(
+                        f"rule {rule.rule_id} has a detached deterministic metric"
+                    )
+            if source == "case_provenance":
+                if binding == "profile_required_provenance":
+                    declared_keys = required_provenance
+                elif binding.startswith("provenance:"):
+                    declared_keys = (binding.removeprefix("provenance:"),)
+                else:
+                    raise RefineContractError(
+                        f"rule {rule.rule_id} has an unbound provenance authority"
+                    )
+                if require_materialized_provenance:
+                    missing = [
+                        key
+                        for key in declared_keys
+                        if not isinstance((case_provenance or {}).get(key), str)
+                        or not str((case_provenance or {}).get(key)).strip()
+                    ]
+                    if missing:
+                        raise RefineContractError(
+                            f"rule {rule.rule_id} lacks materialized provenance authority: "
+                            + ", ".join(missing)
+                        )
+            if source == "profile_owned_auxiliary_map":
+                prefix = "profile_auxiliary:"
+                if not binding.startswith(prefix):
+                    raise RefineContractError(
+                        f"rule {rule.rule_id} has an unbound profile auxiliary authority"
+                    )
+                auxiliary_id = binding.removeprefix(prefix)
+                digest = available_auxiliary_authority_digests.get(auxiliary_id)
+                if not isinstance(digest, str) or not re.fullmatch(
+                    r"[0-9a-f]{64}", digest
+                ):
+                    raise RefineContractError(
+                        f"rule {rule.rule_id} lacks digest-bound profile auxiliary authority: "
+                        f"{auxiliary_id}"
+                    )
+
+        structures = _condition_values(rule.applies_when.get("structure"))
+        if structures:
+            if rule.execution_role != "profile_auxiliary_selection_preference":
+                raise RefineContractError(
+                    f"rule {rule.rule_id} references structure without a typed "
+                    "profile-auxiliary selection role"
+                )
+            for structure in structures:
+                auxiliary_id = structure_bindings.get(str(structure))
+                if not isinstance(auxiliary_id, str) or not auxiliary_id:
+                    raise RefineContractError(
+                        f"rule {rule.rule_id} references unbound structure {structure!r}"
+                    )
+                expected = ("profile_owned_auxiliary_map", f"profile_auxiliary:{auxiliary_id}")
+                if expected not in authority:
+                    raise RefineContractError(
+                        f"rule {rule.rule_id} structure {structure!r} is detached from "
+                        "its profile-owned auxiliary authority"
+                    )
+
+
+def _condition_values(value: object) -> tuple[object, ...]:
+    if value is None:
+        return ()
+    return tuple(value) if isinstance(value, list) else (value,)
+
+
+def _rule_applies(
+    applies_when: dict[str, object],
+    *,
+    pathology_domain_id: str,
+    annotation_profile_id: str,
+    primitive_id: str,
+    annotation: SkillPackage,
+    relevant_labels: set[str],
+    case_provenance: dict[str, object] | None,
+) -> bool:
+    """Match only conditions backed by an explicit execution observation."""
+
+    static_values: dict[str, object] = {
+        "pathology_domain_id": pathology_domain_id,
+        "annotation_profile_id": annotation_profile_id,
+        "primitive": primitive_id,
+        "primitive_id": primitive_id,
+        "dataset": annotation.capabilities.get("dataset_config_name"),
+    }
+    for key, observed in static_values.items():
+        expected = _condition_values(applies_when.get(key))
+        if expected and observed not in expected:
+            return False
+
+    background = annotation.capabilities.get("background_policy", {})
+    background_label = (
+        background.get("canonical_label") if isinstance(background, dict) else None
+    )
+    expected_labels = _condition_values(applies_when.get("canonical_label"))
+    if expected_labels and not set(expected_labels).intersection(
+        {*relevant_labels, background_label}
+    ):
+        return False
+    requested_labels = _condition_values(applies_when.get("requested_label"))
+    if requested_labels and not set(requested_labels).intersection(relevant_labels):
+        return False
+    native_labels = _condition_values(applies_when.get("native_label"))
+    if native_labels and not (0 in native_labels and isinstance(background, dict)):
+        return False
+    annotation_qualities = _condition_values(
+        applies_when.get("annotation_quality")
+    )
+    if annotation_qualities:
+        observed_quality = (case_provenance or {}).get("annotation_quality")
+        if observed_quality not in annotation_qualities:
+            return False
+
+    recognized_keys = {
+        "pathology_domain_id",
+        "annotation_profile_id",
+        "primitive",
+        "primitive_id",
+        "dataset",
+        "canonical_label",
+        "requested_label",
+        "native_label",
+        "annotation_quality",
+        "structure",
+    }
+    unknown = sorted(set(applies_when) - recognized_keys)
+    if unknown:
+        raise RefineContractError(
+            "execution rule applies_when references unbound observation axes: "
+            + ", ".join(unknown)
+        )
+    return True
 
 
 def _mask_constraint_applies(

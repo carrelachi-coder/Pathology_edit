@@ -96,7 +96,7 @@
       "boundary_aligned"
     ],
     "core_policy": "remove every complete class-1 instance whose footprint enters the converted tissue and regenerate a source-matched non-neoplastic population",
-    "halo_policy": "preserve every exterior instance; only whole-instance closure may extend beyond tissue change",
+    "halo_policy": "operational_receiver_compatible_non_neoplastic_population",
     "halo_distance_px": [
       0,
       32

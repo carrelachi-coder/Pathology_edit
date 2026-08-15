@@ -62,7 +62,10 @@
       "known_limitations": [
         "Tangentially sectioned crypts require broader context and may be ambiguous.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "colorectal.gland_boundary_and_lumen_continuity",
@@ -103,18 +106,21 @@
       "known_limitations": [
         "Native gland instances are required to distinguish touching glands reliably.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "colorectal.cribriform_units_preserve_internal_spaces",
-      "scope": "planner_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": "cribriform_gland"
       },
       "claim": "Treat a cribriform tumor as a coherent epithelial unit with multiple internal luminal spaces; do not fill the spaces or carve a local slot through the unit.",
-      "required_observation": "Identify the external outline and all visible internal luminal spaces before generating candidates.",
-      "severity": "hard",
-      "deterministic_check_id": "edited_label_topology",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "True intraglandular necrosis/debris is not equivalent to a luminal space and requires explicit distinction."
@@ -136,8 +142,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "Cribriform architecture may be absent from coarse gland annotations."
-      ]
+        "Cribriform architecture may be absent from coarse gland annotations.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "colorectal.mucin_and_dirty_necrosis_are_not_stroma",
@@ -177,7 +187,10 @@
       "known_limitations": [
         "Profiles such as transformed GLaS do not separately encode mucin, lumen, or necrosis.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "colorectal.budding_and_discohesive_cells_are_not_bulk_tumor",
@@ -213,7 +226,10 @@
       "known_limitations": [
         "Tumor budding assessment is scale- and field-selection-dependent.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "colorectal.desmoplastic_interface_requires_true_stromal_support",
@@ -254,18 +270,21 @@
       "known_limitations": [
         "Depth/span thresholds require scale- and profile-specific calibration.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "colorectal.bowel_wall_compartments_are_not_interchangeable_stroma",
-      "scope": "semantic_contract_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": "smooth_muscle_or_submucosa"
       },
       "claim": "Do not use muscularis mucosae, muscularis propria, submucosa, nerve, or vessel as generic stroma in a local burden edit.",
-      "required_observation": "Identify bowel-wall compartment, smooth-muscle bundle orientation, vessels, and nerves at the proposed interface.",
-      "severity": "hard",
-      "deterministic_check_id": "unrequested_labels_preserved",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "A dedicated invasion-depth primitive with bowel-wall compartment labels and review."
@@ -287,8 +306,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "Most patch-level datasets do not explicitly label bowel-wall compartments."
-      ]
+        "Most patch-level datasets do not explicitly label bowel-wall compartments.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     }
   ]
 }

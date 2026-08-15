@@ -144,6 +144,7 @@ class MaskEditRefineWorkflow:
                 primitive_id=case.primitive_id,
                 production=self.config.production,
                 available_checker_ids=self.gates.available_checker_ids,
+                case_provenance=case.provenance,
             )
             scene = build_scene_analysis(
                 source_mask,

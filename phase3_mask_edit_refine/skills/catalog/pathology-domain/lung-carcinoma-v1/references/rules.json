@@ -65,18 +65,21 @@
       "known_limitations": [
         "Collapsed semantic masks may not encode alveolar septa and spaces separately.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "lung.acinar_glands_preserve_luminal_continuity",
-      "scope": "interface_selection_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": "acinar_gland"
       },
       "claim": "Do not create an abrupt notch, split, fusion, or lumen closure in a recognizable acinar tumor gland.",
-      "required_observation": "Trace the entire glandular epithelial contour and central lumen and compare with adjacent same-pattern tumor.",
-      "severity": "hard",
-      "deterministic_check_id": "edited_label_topology",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "Poorly formed or mixed-pattern interfaces require explicit pattern classification and uncertainty."
@@ -99,8 +102,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "Tangential acinar sections can mimic papillary or solid patterns."
-      ]
+        "Tangential acinar sections can mimic papillary or solid patterns.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "lung.papillary_and_micropapillary_are_not_interchangeable",
@@ -139,7 +146,10 @@
       "known_limitations": [
         "Micropapillary clusters may be smaller than semantic-mask resolution.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "lung.solid_growth_does_not_license_cross_structure_fill",
@@ -174,18 +184,21 @@
       "known_limitations": [
         "Solid adenocarcinoma and squamous carcinoma may need ancillary context in difficult cases.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "lung.squamous_nests_preserve_coherence_and_keratin_context",
-      "scope": "planner_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": "squamous_nest_or_keratinization"
       },
       "claim": "A squamous tumor edit must preserve coherent nests/cords and keratinized centers or intercellular-bridge context where present.",
-      "required_observation": "Trace the external nest boundary, keratin pearl/keratinized center, necrotic center, and surrounding stroma before editing.",
-      "severity": "hard",
-      "deterministic_check_id": "depth_span_ratio",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "Discohesive or poorly differentiated SCC requires explicit observation and a compatible reference."
@@ -209,8 +222,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "IGNITE coarse Tumor does not encode histologic subtype or keratinization separately after remap."
-      ]
+        "IGNITE coarse Tumor does not encode histologic subtype or keratinization separately after remap.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "lung.bronchial_alveolar_and_supporting_structures_are_not_stroma",
@@ -250,11 +267,14 @@
       "known_limitations": [
         "The IGNITE unified profile collapses multiple native supporting tissues.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "lung.use_pattern_matched_broad_interface",
-      "scope": "interface_selection",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "primitive": [
           "tumor-burden-increase-v1",
@@ -263,9 +283,9 @@
         ]
       },
       "claim": "Use a broad interface from the same histologic pattern and anatomical context; spread area along the interface before increasing depth.",
-      "required_observation": "Compare histologic pattern, source site, interface length, depth budget, and adjacent tissue compatibility.",
-      "severity": "hard",
-      "deterministic_check_id": "depth_span_ratio",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "If the pattern or site cannot be determined, abstain rather than borrow an incompatible reference."
@@ -288,8 +308,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "Quantitative thresholds must be stratified by scale, specimen, and site."
-      ]
+        "Quantitative thresholds must be stratified by scale, specimen, and site.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     }
   ]
 }

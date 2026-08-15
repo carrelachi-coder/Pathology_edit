@@ -70,16 +70,13 @@
       "applies_when": {
         "annotation_profile_id": "ignite-semantic-v1"
       },
-      "claim": "Require an exact 17-to-8 remap digest and preprocessing revision; the repository coarse ontology is not identical to the public native ontology.",
-      "required_observation": "Verify every native ID maps to one reviewed canonical ID and store the mapping digest with the case.",
+      "claim": "Enforce the compiler-bound profile_required_provenance execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Assuming native erythrocytes mean Blood vessel.",
-        "Treating reactive and bronchial epithelium as interchangeable without checking the remap."
-      ],
+      "counterexamples": [],
       "expected_morphology": [],
       "forbidden_morphology": [],
       "evidence_citations": [
@@ -94,7 +91,19 @@
       "review_status": "draft",
       "known_limitations": [
         "The repository currently lacks a versioned standalone 17-to-8 mapping artifact; production use remains blocked."
-      ]
+      ],
+      "execution_role": "provenance_precondition",
+      "observation_authority": [
+        {
+          "source": "case_provenance",
+          "binding": "profile_required_provenance"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:profile_required_provenance"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "ignite.unannotated_and_background_are_immutable",
@@ -102,22 +111,15 @@
       "applies_when": {
         "canonical_label": "Background"
       },
-      "claim": "Preserve the collapsed zero footprint exactly because it may represent unannotated tissue as well as true background.",
-      "required_observation": "Verify zero pixels do not enter source/target components, edit bands, morphological closing, or candidate diffs.",
+      "claim": "Enforce the compiler-bound background_seed_protection execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "background_seed_protection",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Growing tumor through an unannotated strip.",
-        "Filling an airspace-like zero region with stroma."
-      ],
-      "expected_morphology": [
-        "Every zero pixel remains unchanged."
-      ],
-      "forbidden_morphology": [
-        "Zero-label seeding, filling, crossing, or bridging."
-      ],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://github.com/DIAGNijmegen/ignite-data-toolkit",
         "https://zenodo.org/records/17735903"
@@ -129,7 +131,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Collapsed zero does not retain the native distinction between unannotated and background."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:background_seed_protection"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "ignite.condition_on_source_site_and_specimen",
@@ -137,24 +155,15 @@
       "applies_when": {
         "dataset": "IGNITE"
       },
-      "claim": "Retrieve examples and geometric thresholds from matching primary/metastatic site and specimen type before using broader dataset statistics.",
-      "required_observation": "Record source site, primary-versus-metastatic status when available, specimen type, center/scanner, and pixel scale.",
+      "claim": "Enforce the compiler-bound profile_required_provenance execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
       "critic_requirement": null,
-      "exceptions": [
-        "If a stratum lacks enough cases, abstain or use an explicitly reviewed hierarchical fallback with uncertainty."
-      ],
-      "counterexamples": [
-        "Using a liver-metastasis tissue boundary distribution for a primary lung alveolar ROI.",
-        "Applying resection-derived component sizes to a cytology-like or biopsy specimen without calibration."
-      ],
-      "expected_morphology": [
-        "Reference tissues and thresholds match the case's anatomical and acquisition stratum."
-      ],
-      "forbidden_morphology": [
-        "Unstratified cross-site reference transfer presented as certain."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://arxiv.org/abs/2507.16855",
         "https://zenodo.org/records/17735903"
@@ -166,7 +175,19 @@
       "review_status": "draft",
       "known_limitations": [
         "Primary/metastatic status is not yet a required CaseContext field and may need to be carried inside provenance."
-      ]
+      ],
+      "execution_role": "provenance_precondition",
+      "observation_authority": [
+        {
+          "source": "case_provenance",
+          "binding": "profile_required_provenance"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:profile_required_provenance"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "ignite.collapsed_tissues_are_not_interchangeable",
@@ -210,7 +231,10 @@
       "known_limitations": [
         "H&E resolution and staining quality constrain visual subtype recovery.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "ignite.preserve_native_structure_topology",
@@ -253,7 +277,10 @@
       "known_limitations": [
         "The coarse profile cannot deterministically identify every airspace or lumen; critic veto remains required.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     }
   ]
 }

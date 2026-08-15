@@ -6545,6 +6545,30 @@ class JointWorkflowTests(unittest.TestCase):
             )
 
     def test_glas_periglandular_primitives_execute_from_native_instance_authority(self):
+        contract = json.loads(
+            (
+                Path(__file__).parents[1]
+                / "phase3_joint_edit_refine"
+                / "skills"
+                / "catalog"
+                / "joint-mechanism"
+                / "colorectal-tumor-budding-front"
+                / "references"
+                / "joint_contract.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            set(
+                contract["representability_contract"][
+                    "required_auxiliary_structures"
+                ]
+            ),
+            {"native_gland_instance_map", "gland_or_lumen_support"},
+        )
+        self.assertIn(
+            "native_gland_instance_annulus_binding",
+            contract["cell_program"]["required_checker_ids"],
+        )
         for primitive, minimum_foci in (
             ("peritumoral-neoplastic-scatter-increase-v1", 3),
             ("peritumoral-small-cluster-increase-v1", 2),
@@ -9405,11 +9429,23 @@ class OtherOrganIndependentReviewBlockerTests(unittest.TestCase):
                         "required_observations"
                     ],
                     "mode": contract["tissue_program"]["mode"],
+                    "cell_program": contract["cell_program"],
+                    "required_findings": contract["render_contract"][
+                        "required_findings"
+                    ],
+                    "mask_guarantees": contract["render_contract"][
+                        "mask_guarantees"
+                    ],
                 },
                 sort_keys=True,
             ).lower()
             self.assertNotIn("fibrot", positive_surface)
             self.assertNotIn("tumor bed", positive_surface)
+            self.assertNotIn("tumor-bed", positive_surface)
+            self.assertEqual(
+                contract["cell_program"]["halo_policy"],
+                "operational_receiver_compatible_non_neoplastic_population",
+            )
 
         old_ids = (
             "prostate-treatment-associated-fibrotic-replacement",

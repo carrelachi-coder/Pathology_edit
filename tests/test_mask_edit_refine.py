@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import re
+import shutil
 import tempfile
 import unittest
 from dataclasses import replace
@@ -31,6 +31,8 @@ from phase3_mask_edit_refine.agents import (
     HeuristicInterfacePlanner,
     OpenAIMultimodalCritic,
     OpenAIMultimodalPlanner,
+    _critic_prompt,
+    _planner_prompt,
     validate_edit_plan,
 )
 from phase3_mask_edit_refine.candidates import (
@@ -72,6 +74,7 @@ from phase3_mask_edit_refine.models import (
 )
 from phase3_mask_edit_refine.scene import build_scene_analysis
 from phase3_mask_edit_refine.skills import SkillRepository
+from phase3_mask_edit_refine.skills.schema import ObservationAuthority
 from phase3_mask_edit_refine.workflow import (
     EscalationBudget,
     MaskEditRefineWorkflow,
@@ -126,17 +129,17 @@ class DualAxisSkillTests(unittest.TestCase):
         self.repository = SkillRepository()
         self.gates = GateRegistry()
 
-    def test_breast_pathology_can_compose_with_orca_annotation(self):
-        bundle = self.repository.compose(
-            pathology_domain_id="breast-invasive-carcinoma-v1",
-            annotation_profile_id="orca-semantic-v1",
-            primitive_id="tumor-burden-increase-v1",
-            production=False,
-            available_checker_ids=self.gates.available_checker_ids,
-        )
-        self.assertEqual(bundle.edit_contract.source_label_options, ("Other tissue",))
-        self.assertEqual(bundle.edit_contract.target_label, "Tumor")
-        self.assertIn("mixed non-carcinoma", " ".join(bundle.warnings).lower())
+    def test_breast_pathology_cannot_bypass_orca_mask_only_authority(self):
+        with self.assertRaisesRegex(
+            RefineContractError, "unbound observation axes|typed observation authority"
+        ):
+            self.repository.compose(
+                pathology_domain_id="breast-invasive-carcinoma-v1",
+                annotation_profile_id="orca-semantic-v1",
+                primitive_id="tumor-burden-increase-v1",
+                production=False,
+                available_checker_ids=self.gates.available_checker_ids,
+            )
 
     def test_orca_rejects_stroma_target(self):
         with self.assertRaisesRegex(
@@ -2324,6 +2327,236 @@ class WorkflowTests(unittest.TestCase):
 
 
 class AgentContractTests(unittest.TestCase):
+    def test_non_breast_repository_startup_rejects_rule_without_typed_authority(self):
+        source_catalog = (
+            Path(__file__).resolve().parents[1]
+            / "phase3_mask_edit_refine"
+            / "skills"
+            / "catalog"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            catalog = Path(directory) / "catalog"
+            shutil.copytree(source_catalog, catalog)
+            rules_path = (
+                catalog
+                / "annotation-profile"
+                / "glas-gland-v1"
+                / "references"
+                / "rules.json"
+            )
+            payload = json.loads(rules_path.read_text(encoding="utf-8"))
+            active = next(
+                item
+                for item in payload["rules"]
+                if not item["scope"].startswith("reader_only_")
+            )
+            active["observation_authority"] = []
+            rules_path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                RefineContractError, "lacks typed observation authority"
+            ):
+                SkillRepository(catalog)
+
+    def test_compose_rejects_unbound_structure_even_with_generic_mask_checker(self):
+        repository = SkillRepository()
+        pathology = repository.get("colorectal-adenocarcinoma-v1")
+        template = pathology.rules[0]
+        injected = replace(
+            template,
+            rule_id="adversarial.identify_keratin_pearl",
+            scope="planner_and_critic",
+            applies_when={"structure": "keratin_pearl"},
+            severity="hard",
+            deterministic_check_id="edited_label_topology",
+            critic_requirement=None,
+            execution_role="deterministic_mask_invariant",
+            observation_authority=(
+                ObservationAuthority("tissue_mask", "source_mask_sha256"),
+                ObservationAuthority("scene_graph", "compiler_scene_graph"),
+                ObservationAuthority(
+                    "deterministic_metric", "checker:edited_label_topology"
+                ),
+            ),
+            selection_preference=None,
+        )
+        repository._skills[pathology.skill_id] = replace(
+            pathology, rules=(*pathology.rules, injected)
+        )
+        with self.assertRaisesRegex(
+            RefineContractError, "structure without a typed profile-auxiliary"
+        ):
+            repository.compose(
+                pathology_domain_id="colorectal-adenocarcinoma-v1",
+                annotation_profile_id="glas-gland-v1",
+                primitive_id="tumor-burden-increase-v1",
+                production=False,
+                available_checker_ids=GateRegistry().available_checker_ids,
+            )
+
+    def test_compose_applies_when_filters_mismatched_rules(self):
+        repository = SkillRepository()
+        pathology = repository.get("colorectal-adenocarcinoma-v1")
+        source = repository.get("glas-gland-v1").rules[1]
+        injected = replace(
+            source,
+            rule_id="adversarial.only_tumor_decrease",
+            applies_when={"primitive": "tumor-burden-decrease-v1"},
+        )
+        repository._skills[pathology.skill_id] = replace(
+            pathology, rules=(*pathology.rules, injected)
+        )
+        bundle = repository.compose(
+            pathology_domain_id="colorectal-adenocarcinoma-v1",
+            annotation_profile_id="glas-gland-v1",
+            primitive_id="tumor-burden-increase-v1",
+            production=False,
+            available_checker_ids=GateRegistry().available_checker_ids,
+        )
+        self.assertNotIn(
+            injected.rule_id, {item.rule_id for item in bundle.active_rules}
+        )
+
+    def test_reader_only_rules_and_freeform_pathology_never_enter_execution_prompts(self):
+        repository = SkillRepository()
+        gates = GateRegistry()
+        case = _case(primitive="tumor-burden-increase-v1", area=0.04)
+        bundle = repository.compose(
+            pathology_domain_id=case.pathology_domain_id,
+            annotation_profile_id=case.annotation_profile_id,
+            primitive_id=case.primitive_id,
+            production=False,
+            available_checker_ids=gates.available_checker_ids,
+            case_provenance=case.provenance,
+        )
+        scene = build_scene_analysis(
+            _glas_circle_mask(),
+            schema=repository.annotation_schema(case.annotation_profile_id),
+            pixel_size_um=case.pixel_size_um,
+        )
+        prompts = (
+            json.loads(_planner_prompt(case=case, scene=scene, bundle=bundle)),
+            json.loads(
+                _critic_prompt(
+                    case=case,
+                    bundle=bundle,
+                    gate_reports=(),
+                    passed_ids=(),
+                )
+            ),
+        )
+        reader_ids = {
+            rule.rule_id
+            for package in (
+                repository.get(case.pathology_domain_id),
+                repository.get(case.annotation_profile_id),
+            )
+            for rule in package.rules
+            if rule.scope.startswith("reader_only_")
+        }
+        for prompt in prompts:
+            rendered = json.dumps(prompt, sort_keys=True)
+            with self.subTest(prompt_keys=sorted(prompt)):
+                self.assertTrue(all(rule_id not in rendered for rule_id in reader_ids))
+                self.assertNotIn('"claim"', rendered)
+                self.assertNotIn('"required_observation"', rendered)
+                self.assertNotIn('"expected_morphology"', rendered)
+                self.assertNotIn("source_image_uri", rendered)
+                self.assertNotIn(case.source_image_uri, rendered)
+
+    def test_panda_bundle_never_injects_pattern3_identity_into_p4_p5_execution(self):
+        repository = SkillRepository()
+        provenance = {
+            "source_mask_sha256": "a" * 64,
+            "provider": "radboud",
+            "preprocessing_revision": "panda-fixture-v1",
+            "original_label_map_digest": "b" * 64,
+        }
+        bundle = repository.compose(
+            pathology_domain_id="prostate-adenocarcinoma-v1",
+            annotation_profile_id="panda-gleason-v1",
+            primitive_id="tumor-burden-increase-v1",
+            production=False,
+            available_checker_ids=GateRegistry().available_checker_ids,
+            case_provenance=provenance,
+        )
+        rendered = json.dumps(bundle.to_metadata(), sort_keys=True)
+        self.assertNotIn("pattern3_remains_separate", rendered)
+        self.assertNotIn("well_formed_gland", rendered)
+        self.assertNotIn("gleason_pattern_3", rendered)
+
+    def test_authority_failure_prevents_planner_and_critic_provider_calls(self):
+        class NoCallClient:
+            model = "fixture"
+
+            def __init__(self):
+                self.calls = 0
+
+            def call(self, **_kwargs):
+                self.calls += 1
+                raise AssertionError("provider must not be called")
+
+        repository = SkillRepository()
+        case = _case(primitive="tumor-burden-increase-v1", area=0.04)
+        bundle = repository.compose(
+            pathology_domain_id=case.pathology_domain_id,
+            annotation_profile_id=case.annotation_profile_id,
+            primitive_id=case.primitive_id,
+            production=False,
+            available_checker_ids=GateRegistry().available_checker_ids,
+            case_provenance=case.provenance,
+        )
+        detached_index = next(
+            index
+            for index, rule in enumerate(bundle.active_rules)
+            if rule.execution_role == "deterministic_mask_invariant"
+        )
+        detached_source = bundle.active_rules[detached_index]
+        detached = replace(
+            detached_source,
+            observation_authority=(
+                ObservationAuthority("tissue_mask", "caller_named_panel"),
+                ObservationAuthority("scene_graph", "compiler_scene_graph"),
+                ObservationAuthority(
+                    "deterministic_metric",
+                    f"checker:{detached_source.deterministic_check_id}",
+                ),
+            ),
+        )
+        invalid_rules = list(bundle.active_rules)
+        invalid_rules[detached_index] = detached
+        invalid_bundle = replace(
+            bundle, active_rules=tuple(invalid_rules)
+        )
+        planner_client = NoCallClient()
+        with self.assertRaisesRegex(
+            RefineContractError, "unbound tissue-mask authority"
+        ):
+            OpenAIMultimodalPlanner(
+                client=planner_client, max_schema_attempts=1
+            ).create_plan(
+                case=case,
+                scene=SimpleNamespace(),
+                bundle=invalid_bundle,
+                image_paths=(),
+            )
+        self.assertEqual(planner_client.calls, 0)
+
+        critic_client = NoCallClient()
+        with self.assertRaisesRegex(
+            RefineContractError, "unbound tissue-mask authority"
+        ):
+            OpenAIMultimodalCritic(client=critic_client).review(
+                case=case,
+                bundle=invalid_bundle,
+                candidates=(),
+                gate_reports=(),
+                image_paths=(),
+            )
+        self.assertEqual(critic_client.calls, 0)
+
     def test_all_non_breast_execution_agents_reject_every_caller_raster_before_api(self):
         class NoCallClient:
             model = "fixture"
@@ -2388,7 +2621,7 @@ class AgentContractTests(unittest.TestCase):
                         )
                     self.assertEqual(critic_client.calls, 0)
 
-    def test_non_breast_skill_catalog_has_no_execution_he_or_critic_authority(self):
+    def test_non_breast_skill_catalog_uses_positive_typed_authority_only(self):
         repository = SkillRepository()
         non_breast_skill_ids = {
             "glas-gland-v1",
@@ -2402,20 +2635,35 @@ class AgentContractTests(unittest.TestCase):
             "melanoma-v1",
             "oral-squamous-cell-carcinoma-v1",
         }
-        he_pattern = re.compile(
-            r"(?:\bH\s*&\s*E\b|source[_ -]?he\b|raw histology)",
-            flags=re.IGNORECASE,
-        )
+        allowed_sources = {
+            "instruction_semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "profile_owned_auxiliary_map",
+            "case_provenance",
+            "candidate_certificate",
+            "deterministic_metric",
+        }
         for skill_id in sorted(non_breast_skill_ids):
             package = repository.get(skill_id)
             with self.subTest(skill_id=skill_id):
                 self.assertTrue(
                     all(
-                        rule.scope.startswith("reader_only_")
-                        or (
+                        (
+                            not rule.deterministic_check_id
+                            and not rule.critic_requirement
+                            and not rule.execution_role
+                            and not rule.observation_authority
+                        )
+                        if rule.scope.startswith("reader_only_")
+                        else (
                             not rule.critic_requirement
-                            and not he_pattern.search(
-                                f"{rule.claim} {rule.required_observation}"
+                            and bool(rule.execution_role)
+                            and bool(rule.observation_authority)
+                            and all(
+                                item.source in allowed_sources
+                                for item in rule.observation_authority
                             )
                         )
                         for rule in package.rules
@@ -2425,15 +2673,6 @@ class AgentContractTests(unittest.TestCase):
                     all(
                         not item.critic_requirement
                         and "source_he" not in item.observability
-                        and not he_pattern.search(
-                            " ".join(
-                                (
-                                    item.mask_statement,
-                                    *item.observability,
-                                    *item.required_inputs,
-                                )
-                            )
-                        )
                         for item in package.mask_constraints
                     )
                 )

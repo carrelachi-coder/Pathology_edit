@@ -59,18 +59,21 @@
       "known_limitations": [
         "Basal-cell confirmation is not available on H&E alone in difficult foci.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "prostate.pattern3_remains_separate_well_formed_glands",
-      "scope": "planner_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": "gleason_pattern_3"
       },
       "claim": "A pattern-3 burden edit must preserve discrete, individual, well-formed gland architecture and must not create fusion or solid growth.",
-      "required_observation": "Confirm a complete or nearly complete gland-forming contour and separation from adjacent malignant glands at the anchor and reference component.",
-      "severity": "hard",
-      "deterministic_check_id": "edited_label_topology",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "Tangential sectioning may make a locally incomplete contour; require neighboring context rather than guessing."
@@ -92,8 +95,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "The semantic mask does not explicitly encode gland instances or lumina; H&E critic review is mandatory."
-      ]
+        "The semantic mask does not explicitly encode gland instances or lumina; H&E critic review is mandatory.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "prostate.pattern4_matches_fused_poorly_formed_cribriform_or_glomeruloid_architecture",
@@ -132,7 +139,10 @@
       "known_limitations": [
         "Distinguishing poorly formed glands from tangential pattern 3 needs adequate local context.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "prostate.pattern5_is_not_forced_to_form_glands",
@@ -167,7 +177,10 @@
       "known_limitations": [
         "Comedonecrosis must be distinguished from unrelated necrosis and artifacts.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "prostate.no_implicit_gleason_transition",
@@ -179,24 +192,15 @@
           "stroma-increase-v1"
         ]
       },
-      "claim": "A burden-only edit must not convert Gleason pattern 3, 4, and 5 into one another or overwrite benign epithelium.",
-      "required_observation": "Compare all changed fine IDs with the primitive contract and audit unrequested fine labels pixel-exactly.",
+      "claim": "Enforce the compiler-bound label_transition execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "label_transition",
       "critic_requirement": null,
-      "exceptions": [
-        "A dedicated fine-pattern transition primitive with architectural validation."
-      ],
-      "counterexamples": [
-        "Changing Gleason 3 pixels to Gleason 4 while merely expanding tumor.",
-        "Using benign gland pixels as generic stroma during regression."
-      ],
-      "expected_morphology": [
-        "Fine-pattern identity is retained across a burden-only interface displacement."
-      ],
-      "forbidden_morphology": [
-        "Implicit grade shift, fine-label collapse, or benign-to-tumor transition."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://pubmed.ncbi.nlm.nih.gov/26492179/",
         "https://panda.grand-challenge.org/Data/"
@@ -204,7 +208,23 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": []
+      "known_limitations": [],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:label_transition"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "prostate.lumina_and_intraglandular_contents_are_not_stroma",
@@ -243,7 +263,10 @@
       "known_limitations": [
         "The PANDA fine mask does not separately label lumina.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "prostate.prefer_broad_same_pattern_tumor_stroma_front",
@@ -282,7 +305,10 @@
       "known_limitations": [
         "Numeric depth/span thresholds require provider- and scale-specific calibration.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     }
   ]
 }

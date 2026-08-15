@@ -26,16 +26,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from phase3_mask_edit_refine.agents import (  # noqa: E402
+from phase3_mask_edit_refine.agents import (
     EDIT_PLAN_SCHEMA_VERSION,
     HeuristicInterfacePlanner,
     validate_edit_plan,
 )
-from phase3_mask_edit_refine.candidates import generate_candidates  # noqa: E402
-from phase3_mask_edit_refine.evidence import load_id_mask  # noqa: E402
-from phase3_mask_edit_refine.execution import compile_edit_plan  # noqa: E402
-from phase3_mask_edit_refine.gates import GateContext, GateRegistry  # noqa: E402
-from phase3_mask_edit_refine.models import (  # noqa: E402
+from phase3_mask_edit_refine.candidates import generate_candidates
+from phase3_mask_edit_refine.evidence import load_id_mask
+from phase3_mask_edit_refine.execution import compile_edit_plan
+from phase3_mask_edit_refine.gates import GateContext, GateRegistry
+from phase3_mask_edit_refine.models import (
     CandidateMask,
     CaseContext,
     DepthProfile,
@@ -44,14 +44,13 @@ from phase3_mask_edit_refine.models import (  # noqa: E402
     InterfaceExecutionContract,
     PlannedInterface,
 )
-from phase3_mask_edit_refine.scene import build_scene_analysis  # noqa: E402
-from phase3_mask_edit_refine.skills import SkillRepository  # noqa: E402
-from phase3_mask_edit_refine.visualization import (  # noqa: E402
+from phase3_mask_edit_refine.scene import build_scene_analysis
+from phase3_mask_edit_refine.skills import SkillRepository
+from phase3_mask_edit_refine.visualization import (
     id_mask_to_rgb,
     save_critic_contact_sheet,
     save_planner_panels,
 )
-
 
 COHORT_ALLOCATION = {
     ("breast", "tumor_increase"): 3,
@@ -222,6 +221,7 @@ def _prepare_one(task: tuple[dict[str, Any], str, int, int]) -> dict[str, Any]:
         primitive_id=case.primitive_id,
         production=False,
         available_checker_ids=gates.available_checker_ids,
+        case_provenance=case.provenance,
     )
     scene = build_scene_analysis(mask, schema=schema, pixel_size_um=case.pixel_size_um)
     _write_json(case_dir / "case_context.json", case.to_metadata())

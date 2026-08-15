@@ -27,6 +27,49 @@ MASK_OBSERVABILITY_KINDS = frozenset(
 MASK_ENFORCEMENT_STAGES = frozenset(
     {"input_validation", "planner", "candidate_generation", "mask_gate"}
 )
+EXECUTION_RULE_ROLES = frozenset(
+    {
+        "deterministic_mask_invariant",
+        "provenance_precondition",
+        "semantic_capability_precondition",
+        "profile_auxiliary_selection_preference",
+        "certified_candidate_selection_preference",
+    }
+)
+EXECUTION_OBSERVATION_SOURCES = frozenset(
+    {
+        "instruction_semantic_intent",
+        "tissue_mask",
+        "nuclei_mask",
+        "scene_graph",
+        "profile_owned_auxiliary_map",
+        "case_provenance",
+        "candidate_certificate",
+        "deterministic_metric",
+    }
+)
+
+
+@dataclass(frozen=True)
+class ObservationAuthority:
+    """One positive, typed binding for an execution-time observation."""
+
+    source: str
+    binding: str
+
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, Any]) -> ObservationAuthority:
+        if not isinstance(payload, Mapping):
+            raise RefineContractError("observation_authority entries must be mappings")
+        source = _required_string(payload, "source")
+        if source not in EXECUTION_OBSERVATION_SOURCES:
+            raise RefineContractError(
+                f"unknown execution observation authority source: {source}"
+            )
+        return cls(
+            source=source,
+            binding=_required_string(payload, "binding"),
+        )
 
 
 @dataclass(frozen=True)
@@ -48,6 +91,9 @@ class KnowledgeRule:
     known_limitations: tuple[str, ...]
     expected_morphology: tuple[str, ...]
     forbidden_morphology: tuple[str, ...]
+    execution_role: str | None
+    observation_authority: tuple[ObservationAuthority, ...]
+    selection_preference: str | None
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> KnowledgeRule:
@@ -59,6 +105,32 @@ class KnowledgeRule:
             raise RefineContractError(f"unknown rule review status: {status}")
         deterministic = _optional_string(payload.get("deterministic_check_id"))
         critic = _optional_string(payload.get("critic_requirement"))
+        execution_role = _optional_string(payload.get("execution_role"))
+        if execution_role is not None and execution_role not in EXECUTION_RULE_ROLES:
+            raise RefineContractError(
+                f"unknown execution rule role: {execution_role}"
+            )
+        raw_authority = payload.get("observation_authority", ())
+        if not isinstance(raw_authority, (list, tuple)):
+            raise RefineContractError("observation_authority must be a list")
+        observation_authority = tuple(
+            ObservationAuthority.from_mapping(item) for item in raw_authority
+        )
+        authority_pairs = [
+            (item.source, item.binding) for item in observation_authority
+        ]
+        if len(authority_pairs) != len(set(authority_pairs)):
+            raise RefineContractError("observation_authority contains duplicates")
+        selection_preference = _optional_string(
+            payload.get("selection_preference")
+        )
+        if selection_preference is not None and execution_role not in {
+            "profile_auxiliary_selection_preference",
+            "certified_candidate_selection_preference",
+        }:
+            raise RefineContractError(
+                "selection_preference requires an execution selection-preference role"
+            )
         if severity == "hard" and not (deterministic or critic):
             raise RefineContractError(
                 f"hard rule {_required_string(payload, 'rule_id')} has no checker or critic veto"
@@ -93,7 +165,28 @@ class KnowledgeRule:
             forbidden_morphology=_strings(
                 payload.get("forbidden_morphology", ()), "forbidden_morphology"
             ),
+            execution_role=execution_role,
+            observation_authority=observation_authority,
+            selection_preference=selection_preference,
         )
+
+    def to_execution_metadata(self) -> dict[str, Any]:
+        """Return only typed authority, never free-form pathology prose."""
+
+        payload: dict[str, Any] = {
+            "rule_id": self.rule_id,
+            "scope": self.scope,
+            "applies_when": dict(self.applies_when),
+            "severity": self.severity,
+            "deterministic_check_id": self.deterministic_check_id,
+            "execution_role": self.execution_role,
+            "observation_authority": [
+                asdict(item) for item in self.observation_authority
+            ],
+        }
+        if self.selection_preference is not None:
+            payload["selection_preference"] = self.selection_preference
+        return payload
 
 
 @dataclass(frozen=True)
@@ -264,16 +357,41 @@ class ActiveKnowledgeBundle:
         )
 
     def to_metadata(self) -> dict[str, Any]:
+        non_breast_execution = bool(
+            self.pathology_domain.skill_id != "breast-invasive-carcinoma-v1"
+            or self.annotation_profile.skill_id != "bcss-semantic-v1"
+        )
+        if non_breast_execution:
+            constraint_metadata = [
+                {
+                    "constraint_id": item.constraint_id,
+                    "applies_when": dict(item.applies_when),
+                    "observability": list(item.observability),
+                    "enforcement": item.enforcement,
+                    "enforcement_stages": list(item.enforcement_stages),
+                    "checker_ids": list(item.checker_ids),
+                    "required_inputs": list(item.required_inputs),
+                    "failure_action": item.failure_action,
+                }
+                for item in self.active_mask_constraints
+            ]
+        else:
+            constraint_metadata = [
+                asdict(item) for item in self.active_mask_constraints
+            ]
         return {
             "pathology_domain_id": self.pathology_domain.skill_id,
             "annotation_profile_id": self.annotation_profile.skill_id,
             "edit_primitive_id": self.edit_primitive.skill_id,
             "review_statuses": list(self.review_statuses),
             "edit_contract": asdict(self.edit_contract),
-            "active_rules": [asdict(rule) for rule in self.active_rules],
-            "active_mask_constraints": [
-                asdict(item) for item in self.active_mask_constraints
+            # This metadata is consumed by execution Planners.  Pathology prose,
+            # expected morphology, and reader-only facts belong to a separate
+            # post-generation reader surface and are deliberately absent here.
+            "active_rules": [
+                rule.to_execution_metadata() for rule in self.active_rules
             ],
+            "active_mask_constraints": constraint_metadata,
             "warnings": list(self.warnings),
             "source_paths": {
                 "pathology_domain": self.pathology_domain.source_path,

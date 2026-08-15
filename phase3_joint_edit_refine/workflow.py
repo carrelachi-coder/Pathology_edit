@@ -2026,6 +2026,7 @@ class JointPathologyEditWorkflow:
                             available_checker_ids=(
                                 self.tissue_gates.available_checker_ids
                             ),
+                            case_provenance=candidate_case.provenance,
                         )
                         if tool_primitive_id != primitive_id:
                             tissue_bundle = replace(

@@ -5,45 +5,92 @@
   "review_status": "draft",
   "summary": "Interface-bound tumor retreat with no internal notch shortcut.",
   "capabilities": {
-    "source_label_options": ["Tumor"],
-    "target_label_options": ["Stroma", "Other tissue"],
+    "source_label_options": [
+      "Tumor"
+    ],
+    "target_label_options": [
+      "Stroma",
+      "Other tissue"
+    ],
     "target_label": "Stroma",
-    "allowed_tools": ["interface_sdf", "connected_morphology", "organic_v2"]
+    "allowed_tools": [
+      "interface_sdf",
+      "connected_morphology",
+      "organic_v2"
+    ]
   },
   "rules": [
     {
       "rule_id": "primitive.tumor_decrease.transition",
       "scope": "candidate_gate",
       "applies_when": {},
-      "claim": "Every changed pixel must convert Tumor to the resolved non-tumor target and no other pixel may change.",
-      "required_observation": "Compare source, target, and change region pixel by pixel.",
+      "claim": "Enforce the compiler-bound label_transition execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "label_transition",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": ["Relabeling normal gland or background during tumor retreat."],
+      "counterexamples": [],
       "evidence_citations": [],
       "dataset_statistics": {},
       "version": "1.0.0-draft",
       "review_status": "draft",
-      "known_limitations": []
+      "known_limitations": [],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:label_transition"
+        }
+      ],
+      "selection_preference": null,
+      "expected_morphology": [],
+      "forbidden_morphology": []
     },
     {
       "rule_id": "primitive.tumor_decrease.no_deep_notch",
       "scope": "candidate_gate",
       "applies_when": {},
-      "claim": "The retreat must stay connected to a sufficiently broad selected interface and pass depth/span, area, topology, preservation, profile, and provenance checks.",
-      "required_observation": "Measure changed-pixel depth from the pre-edit interface and the interface contact span.",
+      "claim": "Enforce the compiler-bound depth_span_ratio execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "depth_span_ratio",
-      "critic_requirement": "veto_short_deep_notch",
+      "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": ["A 218-pixel-deep indentation grown from a short edge."],
+      "counterexamples": [],
       "evidence_citations": [],
       "dataset_statistics": {},
       "version": "1.0.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Thresholds must be recalibrated on expert-reviewed edits."]
+      "known_limitations": [
+        "Thresholds must be recalibrated on expert-reviewed edits."
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:depth_span_ratio"
+        }
+      ],
+      "selection_preference": null,
+      "expected_morphology": [],
+      "forbidden_morphology": []
     }
   ]
 }

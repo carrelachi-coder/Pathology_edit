@@ -27,6 +27,43 @@ NON_BREAST_MASK_SKILLS = {
     "melanoma-v1",
     "oral-squamous-cell-carcinoma-v1",
 }
+# This is a positive execution-authority allowlist.  Every other pathology or
+# profile rule is documentation for reader-only post-generation QA unless it
+# gains a profile-owned typed auxiliary map and a structure-specific checker.
+MASK_EXECUTION_RULE_IDS = {
+    "glas.require_instance_and_field_grade_provenance",
+    "glas.background_is_not_non_gland_tissue",
+    "glas.no_implicit_field_grade_change",
+    "panda.provider_contract_is_not_interchangeable",
+    "panda.background_unknown_is_immutable",
+    "panda.burden_edit_preserves_gleason_fine_ids",
+    "panda.sparse_masks_do_not_license_topology_repair",
+    "ignite.require_exact_native_to_unified_remap",
+    "ignite.unannotated_and_background_are_immutable",
+    "ignite.condition_on_source_site_and_specimen",
+    "puma.condition_on_primary_metastatic_and_site",
+    "puma.white_background_is_immutable",
+    "puma.immune_is_not_a_tissue_region_label",
+    "puma.preserve_tissue_component_topology",
+    "orca.fragmented_non_tissue_is_immutable",
+    "orca.no_new_tissue_islands_holes_or_bridges",
+    "orca.require_profile_identity_and_remap_provenance",
+    "prostate.no_implicit_gleason_transition",
+    "primitive.generic_immune_infiltrate_decrease.transition",
+    "primitive.generic_immune_infiltrate_decrease.interface",
+    "primitive.generic_immune_infiltrate_increase.transition",
+    "primitive.generic_immune_infiltrate_increase.interface",
+    "primitive.necrosis_appearance.transition",
+    "primitive.necrosis_appearance.interface",
+    "primitive.necrosis_resolution.transition",
+    "primitive.necrosis_resolution.interface",
+    "primitive.stroma_increase.transition",
+    "primitive.stroma_increase.interface",
+    "primitive.tumor_decrease.transition",
+    "primitive.tumor_decrease.no_deep_notch",
+    "primitive.tumor_increase.transition",
+    "primitive.tumor_increase.interface",
+}
 EXECUTION_HE_PATTERN = re.compile(
     r"(?:\bH\s*&\s*E\b|\bH&E\b|source[_ -]?he\b|raw histology)",
     flags=re.IGNORECASE,
@@ -180,6 +217,9 @@ def _reader_only_pathology_fact(rule: dict[str, Any]) -> dict[str, Any]:
     migrated["severity"] = "advisory"
     migrated["deterministic_check_id"] = None
     migrated["critic_requirement"] = None
+    migrated["execution_role"] = None
+    migrated["observation_authority"] = []
+    migrated["selection_preference"] = None
     migrated["required_observation"] = (
         "Counterfactual histology may be inspected only after generation in "
         "reader-only QA; this fact is unavailable to execution selection or veto."
@@ -191,6 +231,77 @@ def _reader_only_pathology_fact(rule: dict[str, Any]) -> dict[str, Any]:
     if statement not in limitations:
         limitations.append(statement)
     migrated["known_limitations"] = limitations
+    return migrated
+
+
+def _typed_execution_rule(rule: dict[str, Any]) -> dict[str, Any]:
+    """Replace prose observation authority with a closed typed contract."""
+
+    migrated = dict(rule)
+    checker_id = str(migrated.get("deterministic_check_id") or "").strip()
+    if not checker_id:
+        raise ValueError(
+            f"execution rule {migrated.get('rule_id')} has no deterministic checker"
+        )
+    if checker_id == "profile_required_provenance":
+        role = "provenance_precondition"
+        authority = [
+            {
+                "source": "case_provenance",
+                "binding": "profile_required_provenance",
+            },
+            {
+                "source": "deterministic_metric",
+                "binding": f"checker:{checker_id}",
+            },
+        ]
+    elif checker_id == "semantic_capability_guard":
+        role = "semantic_capability_precondition"
+        authority = [
+            {
+                "source": "instruction_semantic_intent",
+                "binding": "primitive_id",
+            },
+            {
+                "source": "tissue_mask",
+                "binding": "source_mask_sha256",
+            },
+            {
+                "source": "deterministic_metric",
+                "binding": f"checker:{checker_id}",
+            },
+        ]
+    else:
+        role = "deterministic_mask_invariant"
+        authority = [
+            {
+                "source": "tissue_mask",
+                "binding": "source_mask_sha256",
+            },
+            {
+                "source": "scene_graph",
+                "binding": "compiler_scene_graph",
+            },
+            {
+                "source": "deterministic_metric",
+                "binding": f"checker:{checker_id}",
+            },
+        ]
+    migrated["execution_role"] = role
+    migrated["observation_authority"] = authority
+    migrated["selection_preference"] = None
+    migrated["critic_requirement"] = None
+    migrated["claim"] = (
+        f"Enforce the compiler-bound {checker_id} execution invariant."
+    )
+    migrated["required_observation"] = (
+        "Use only the typed observation_authority records; no unannotated "
+        "histologic structure observation is authorized."
+    )
+    migrated["exceptions"] = []
+    migrated["counterexamples"] = []
+    migrated["expected_morphology"] = []
+    migrated["forbidden_morphology"] = []
     return migrated
 
 
@@ -242,15 +353,12 @@ def _sanitize_mask_rules(payload: dict[str, Any]) -> dict[str, Any]:
     rules = []
     for raw in payload.get("rules", ()):
         rule = dict(raw)
-        authority_text = " ".join(
-            (str(rule.get("claim", "")), str(rule.get("required_observation", "")))
-        )
-        if EXECUTION_HE_PATTERN.search(authority_text):
+        if str(rule.get("scope", "")).startswith("reader_only_"):
             rule = _reader_only_pathology_fact(rule)
-        elif rule.get("critic_requirement"):
-            rule["critic_requirement"] = None
-            if not rule.get("deterministic_check_id"):
-                rule = _reader_only_pathology_fact(rule)
+        elif rule.get("rule_id") in MASK_EXECUTION_RULE_IDS:
+            rule = _typed_execution_rule(rule)
+        else:
+            rule = _reader_only_pathology_fact(rule)
         rules.append(rule)
     migrated["rules"] = rules
     return migrated
@@ -319,6 +427,18 @@ def _migrate_mask_skill_authority(root: Path, *, check: bool) -> list[Path]:
                 changed.append(skill_path)
                 if not check:
                     skill_path.write_text(rendered_skill, encoding="utf-8")
+    for base in sorted((catalog / "edit-primitive").iterdir()):
+        rules_path = base / "references" / "rules.json"
+        if not rules_path.is_file():
+            continue
+        payload = json.loads(rules_path.read_text(encoding="utf-8"))
+        rendered = json.dumps(
+            _sanitize_mask_rules(payload), indent=2, ensure_ascii=False
+        ) + "\n"
+        if rendered != rules_path.read_text(encoding="utf-8"):
+            changed.append(rules_path)
+            if not check:
+                rules_path.write_text(rendered, encoding="utf-8")
     return changed
 
 

@@ -66,7 +66,10 @@
       "known_limitations": [
         "Adnexal epithelium may be merged with epidermis or absent from a coarse profile.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "melanoma.junctional_component_follows_epidermal_relationship",
@@ -101,11 +104,14 @@
       "known_limitations": [
         "Pagetoid single cells may be below tissue-mask resolution.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "melanoma.cohesive_and_discohesive_growth_use_different_geometry",
-      "scope": "planner_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": [
           "dermal_tumor_nest_or_sheet",
@@ -113,9 +119,9 @@
         ]
       },
       "claim": "Use broad-boundary deformation for cohesive nests/sheets, but do not turn scattered or discohesive melanoma cells into a solid filled mass.",
-      "required_observation": "Classify the local component as cohesive nest/sheet versus dispersed single-cell infiltration and select same-pattern references.",
-      "severity": "hard",
-      "deterministic_check_id": "boundary_naturalness",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "Mixed growth requires candidate restriction to a single locally coherent pattern."
@@ -137,8 +143,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "Some metastatic melanomas form sharply circumscribed nodules unlike primary dermal invasion."
-      ]
+        "Some metastatic melanomas form sharply circumscribed nodules unlike primary dermal invasion.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "melanoma.ulceration_is_not_a_mask_gap",
@@ -174,18 +184,21 @@
       "known_limitations": [
         "Reliable ulceration assessment may require slide-level context beyond a patch.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "melanoma.regression_bed_is_not_generic_stroma",
-      "scope": "semantic_contract_and_critic",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "structure": "regression_bed"
       },
       "claim": "Do not equate regression-associated fibrosis/inflammation/melanophages with ordinary stroma or use it as a generic source for tumor growth/regression.",
-      "required_observation": "Look for fibrosis, inflammatory infiltrate, pigment-laden macrophages, vascular change, attenuated/absent tumor, and epidermal change in context.",
-      "severity": "hard",
-      "deterministic_check_id": "semantic_capability_guard",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "A dedicated regression primitive with reviewed criteria and an annotation profile capable of representing it."
@@ -208,8 +221,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "Histologic regression criteria and reporting practices require expert review and may be heterogeneous."
-      ]
+        "Histologic regression criteria and reporting practices require expert review and may be heterogeneous.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "melanoma.necrosis_and_vessels_are_protected_in_burden_edit",
@@ -248,11 +265,14 @@
       "known_limitations": [
         "Small vessels may need nuclei/cell annotations or higher magnification for confirmation.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "melanoma.primary_and_metastatic_interfaces_are_not_interchangeable",
-      "scope": "retrieval_and_interface_selection",
+      "scope": "reader_only_pathology_fact",
       "applies_when": {
         "case_context": [
           "primary",
@@ -260,9 +280,9 @@
         ]
       },
       "claim": "Choose references and interface priors from the same primary/metastatic and source-site context; do not assume epidermal or dermal architecture at metastatic sites.",
-      "required_observation": "Require primary/metastatic status, source site, presence of epidermis, and local tumor growth pattern before planning.",
-      "severity": "hard",
-      "deterministic_check_id": "profile_required_provenance",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
       "critic_requirement": null,
       "exceptions": [
         "A reviewed hierarchical fallback may be used with explicit uncertainty if no matched references exist."
@@ -285,8 +305,12 @@
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": [
-        "CaseContext presently carries this stratum in annotation-profile provenance rather than a dedicated field."
-      ]
+        "CaseContext presently carries this stratum in annotation-profile provenance rather than a dedicated field.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     }
   ]
 }

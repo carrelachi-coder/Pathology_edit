@@ -1,6 +1,6 @@
 """Versioned pathology, annotation-profile, and edit-primitive skills."""
 
-from .repository import SkillRepository
+from .repository import SkillRepository, validate_active_bundle_authority
 from .schema import (
     ActiveKnowledgeBundle,
     KnowledgeRule,
@@ -16,4 +16,5 @@ __all__ = [
     "ResolvedEditContract",
     "SkillPackage",
     "SkillRepository",
+    "validate_active_bundle_authority",
 ]

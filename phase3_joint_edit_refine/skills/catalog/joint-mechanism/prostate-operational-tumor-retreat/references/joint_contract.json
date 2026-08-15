@@ -90,7 +90,7 @@
       "population_replacement"
     ],
     "core_policy": "remove_complete_viable_tumor_instances_in_tissue_change",
-    "halo_policy": "regenerate_source_matched_non_neoplastic_tumor_bed_population",
+    "halo_policy": "operational_receiver_compatible_non_neoplastic_population",
     "halo_distance_px": [
       0,
       48

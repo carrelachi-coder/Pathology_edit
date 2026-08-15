@@ -75,7 +75,10 @@
       "known_limitations": [
         "The public class contract does not subdivide non-carcinoma tissue.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "orca.fragmented_non_tissue_is_immutable",
@@ -83,24 +86,15 @@
       "applies_when": {
         "native_label": 0
       },
-      "claim": "Every native non-tissue pixel, including small internal fragments, is immutable and cannot seed, receive, connect, or be crossed by Tumor or Other tissue edits.",
-      "required_observation": "Compare source and candidate masks at native-zero pixels and verify selected source/target component IDs are nonzero scene components.",
+      "claim": "Enforce the compiler-bound background_seed_protection execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "background_seed_protection",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Using a one-pixel background fragment as the seed for tumor growth.",
-        "Filling scattered zero holes with tumor during morphological closing.",
-        "Bridging two tumor lobes across a thin non-tissue gap.",
-        "Converting zero pixels to Other tissue before expanding tumor."
-      ],
-      "expected_morphology": [
-        "All original non-tissue fragments are pixel-identical after editing."
-      ],
-      "forbidden_morphology": [
-        "Hole filling, background swallowing, or cross-background bridges."
-      ],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://sites.google.com/unibas.it/orca/home",
         "https://doi.org/10.3390/app10228285"
@@ -112,7 +106,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Fragmentation thresholds must be measured from the mounted dataset; the invariant itself does not depend on a threshold."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:background_seed_protection"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "orca.edit_only_existing_carcinoma_tissue_interfaces",
@@ -150,7 +160,10 @@
       "known_limitations": [
         "H&E artifact recognition requires multimodal review.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "orca.no_new_tissue_islands_holes_or_bridges",
@@ -161,25 +174,15 @@
           "tumor-burden-decrease-v1"
         ]
       },
-      "claim": "A local burden edit must not create a new tumor island, split source tissue, merge separated tumor components, or introduce/fill a hole.",
-      "required_observation": "Compare connected components and holes for source and target labels before and after editing.",
+      "claim": "Enforce the compiler-bound edited_label_topology execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "edited_label_topology",
       "critic_requirement": null,
-      "exceptions": [
-        "A dedicated, explicitly requested topology-changing primitive with its own reviewed contract."
-      ],
-      "counterexamples": [
-        "A narrow bridge merging separate carcinoma components.",
-        "A detached carcinoma island inside Other tissue.",
-        "A regression cut splitting one carcinoma nest in two."
-      ],
-      "expected_morphology": [
-        "Boundary displacement preserves pre-edit component relationships."
-      ],
-      "forbidden_morphology": [
-        "New islands, holes, component splits, or merges."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://doi.org/10.3390/app10228285"
       ],
@@ -190,7 +193,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Topology-changing instructions are outside the v1 primitive set."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:edited_label_topology"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "orca.require_profile_identity_and_remap_provenance",
@@ -198,16 +217,13 @@
       "applies_when": {
         "annotation_profile_id": "orca-semantic-v1"
       },
-      "claim": "Do not infer ORCA from organ or color alone; require an explicit profile ID, preprocessing revision, and label-map digest.",
-      "required_observation": "Validate declared profile metadata and native-to-canonical remap provenance before planning.",
+      "claim": "Enforce the compiler-bound profile_required_provenance execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Assuming every oral SCC mask uses ORCA conventions.",
-        "Applying ORCA semantics to an unlabeled 0/1/2 mask by visual color."
-      ],
+      "counterexamples": [],
       "expected_morphology": [],
       "forbidden_morphology": [],
       "evidence_citations": [
@@ -220,7 +236,19 @@
       "review_status": "draft",
       "known_limitations": [
         "The repository has not yet mounted a complete immutable ORCA evidence manifest."
-      ]
+      ],
+      "execution_role": "provenance_precondition",
+      "observation_authority": [
+        {
+          "source": "case_provenance",
+          "binding": "profile_required_provenance"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:profile_required_provenance"
+        }
+      ],
+      "selection_preference": null
     }
   ]
 }

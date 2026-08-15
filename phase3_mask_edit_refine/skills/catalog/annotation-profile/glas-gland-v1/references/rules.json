@@ -48,16 +48,13 @@
       "applies_when": {
         "annotation_profile_id": "glas-gland-v1"
       },
-      "claim": "Require the original gland-instance mask digest, field grade, and preprocessing revision; the semantic fine mask alone cannot prove gland identity or independently graded subtypes.",
-      "required_observation": "Verify all three provenance fields before scene construction and retain instance IDs in the audit artifact.",
+      "claim": "Enforce the compiler-bound profile_required_provenance execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Calling a fine-12 gland independently expert-labeled as moderately differentiated when the value was propagated from the field.",
-        "Editing a semantic mask after losing original gland instance boundaries."
-      ],
+      "counterexamples": [],
       "expected_morphology": [],
       "forbidden_morphology": [],
       "evidence_citations": [
@@ -71,7 +68,19 @@
       "review_status": "draft",
       "known_limitations": [
         "The current scene graph uses semantic components; direct native gland-instance constraints remain to be integrated."
-      ]
+      ],
+      "execution_role": "provenance_precondition",
+      "observation_authority": [
+        {
+          "source": "case_provenance",
+          "binding": "profile_required_provenance"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:profile_required_provenance"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "glas.background_is_not_non_gland_tissue",
@@ -79,22 +88,15 @@
       "applies_when": {
         "canonical_label": "Background"
       },
-      "claim": "Do not use zero as gland-adjacent stroma or lumen; valid non-gland pixels are represented by the transformed Stroma label, while zero remains protected.",
-      "required_observation": "Verify exact preservation of zero and choose anchors only between explicit nonzero scene components.",
+      "claim": "Enforce the compiler-bound background_seed_protection execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "background_seed_protection",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": [
-        "Growing a gland into a zero border region.",
-        "Using an internal zero artifact as a gland lumen seed."
-      ],
-      "expected_morphology": [
-        "All zero pixels are identical in source and target."
-      ],
-      "forbidden_morphology": [
-        "Zero-label seeding, filling, crossing, or relabeling."
-      ],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://doi.org/10.1016/j.media.2016.08.008"
       ],
@@ -105,7 +107,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Exact transformed zero semantics must be frozen per preprocessing revision."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:background_seed_protection"
+        }
+      ],
+      "selection_preference": null
     },
     {
       "rule_id": "glas.preserve_individual_gland_objects",
@@ -148,7 +166,10 @@
       "known_limitations": [
         "Semantic connected components can merge touching instances; native instance topology is the authoritative check.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "glas.stroma_is_a_non_gland_complement",
@@ -184,7 +205,10 @@
       "known_limitations": [
         "The transformed mask cannot recover non-gland histologic subtypes.",
         "Reader-only pathology facts are excluded from the execution knowledge bundle."
-      ]
+      ],
+      "execution_role": null,
+      "observation_authority": [],
+      "selection_preference": null
     },
     {
       "rule_id": "glas.no_implicit_field_grade_change",
@@ -195,24 +219,15 @@
           "tumor-burden-decrease-v1"
         ]
       },
-      "claim": "A burden edit must preserve the selected field-derived fine tumor ID and every unrequested gland subtype.",
-      "required_observation": "Audit changed fine IDs against the primitive transition and recorded patch grade.",
+      "claim": "Enforce the compiler-bound label_transition execution invariant.",
+      "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
       "severity": "hard",
       "deterministic_check_id": "label_transition",
       "critic_requirement": null,
-      "exceptions": [
-        "A separate, explicitly requested differentiation-change primitive."
-      ],
-      "counterexamples": [
-        "Turning fine-11 adenomatous gland pixels into fine-12 while only growing tumor.",
-        "Using a neighboring field's grade as the target label."
-      ],
-      "expected_morphology": [
-        "Fine IDs outside the declared transition remain pixel-identical."
-      ],
-      "forbidden_morphology": [
-        "Implicit differentiation upgrade or downgrade."
-      ],
+      "exceptions": [],
+      "counterexamples": [],
+      "expected_morphology": [],
+      "forbidden_morphology": [],
       "evidence_citations": [
         "https://doi.org/10.1016/j.media.2016.08.008"
       ],
@@ -223,7 +238,23 @@
       "review_status": "draft",
       "known_limitations": [
         "Field-level labels may not capture intrafield heterogeneity."
-      ]
+      ],
+      "execution_role": "deterministic_mask_invariant",
+      "observation_authority": [
+        {
+          "source": "tissue_mask",
+          "binding": "source_mask_sha256"
+        },
+        {
+          "source": "scene_graph",
+          "binding": "compiler_scene_graph"
+        },
+        {
+          "source": "deterministic_metric",
+          "binding": "checker:label_transition"
+        }
+      ],
+      "selection_preference": null
     }
   ]
 }
