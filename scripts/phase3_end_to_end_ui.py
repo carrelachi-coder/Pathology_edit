@@ -3331,6 +3331,9 @@ def _build_online_agent_command(
     segmentator_python = str(runtime.get("segmentator_python") or "").strip()
     if segmentator_python:
         command.extend(["--segmentator-python", segmentator_python])
+    primitive_id = _generation_primitive_id(state)
+    if primitive_id:
+        command.extend(["--primitive-id", primitive_id])
     nuclei_generation_log = state.get("cell_fill_log")
     if not nuclei_generation_log:
         raise gr.Error(
@@ -3341,6 +3344,25 @@ def _build_online_agent_command(
         ["--nuclei-generation-log", str(nuclei_generation_log)]
     )
     return command, agent_output_dir
+
+
+def _generation_primitive_id(state: dict[str, Any]) -> str | None:
+    phase3 = dict(state.get("phase3") or {})
+    semantic_intent = dict(state.get("semantic_intent") or {})
+    phase3_semantic_intent = dict(phase3.get("semantic_intent") or {})
+    for candidate in (
+        state.get("primitive_id"),
+        semantic_intent.get("primitive_id"),
+        phase3.get("selected_primitive_id"),
+        phase3.get("primitive_id"),
+        phase3_semantic_intent.get("primitive_id"),
+        phase3.get("selected_primitive"),
+        phase3.get("primitive"),
+    ):
+        normalized = str(candidate or "").strip()
+        if normalized:
+            return normalized
+    return None
 
 
 def _run_agentic_generation_stage(

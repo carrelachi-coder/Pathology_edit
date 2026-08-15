@@ -159,6 +159,15 @@ def build_parser() -> argparse.ArgumentParser:
             "stromal collar than the generic bounded-context policy."
         ),
     )
+    parser.add_argument(
+        "--case-context",
+        type=Path,
+        help=(
+            "Optional joint-edit input_case_context.json. When --primitive-id "
+            "is omitted, the runner also discovers this file beside the target "
+            "tissue mask so primitive-specific generation context remains active."
+        ),
+    )
     parser.add_argument("--output", required=True, type=Path)
 
     parser.add_argument("--pretrained-model-name-or-path", default=DEFAULT_PRETRAINED_MODEL)
@@ -1618,6 +1627,49 @@ def _validate_image_generation_contract(
     }
 
 
+def _resolve_generation_primitive_id(
+    args: argparse.Namespace,
+) -> tuple[str | None, str, Path | None]:
+    explicit = str(getattr(args, "primitive_id", None) or "").strip()
+    requested_context = getattr(args, "case_context", None)
+    context_path = (
+        Path(requested_context)
+        if requested_context is not None
+        else Path(args.target_tissue_mask).parent / "input_case_context.json"
+    )
+    context_is_explicit = requested_context is not None
+    context_primitive = ""
+    if context_path.is_file():
+        payload = json.loads(context_path.read_text(encoding="utf-8"))
+        semantic_intent = payload.get("semantic_intent") or {}
+        context_primitive = str(
+            payload.get("primitive_id")
+            or semantic_intent.get("primitive_id")
+            or ""
+        ).strip()
+        if context_is_explicit and not context_primitive:
+            raise ValueError(
+                f"Case context has no primitive_id: {context_path}"
+            )
+    elif context_is_explicit:
+        raise FileNotFoundError(f"Case context not found: {context_path}")
+
+    if explicit and context_primitive and explicit != context_primitive:
+        raise ValueError(
+            "Explicit primitive_id contradicts case context: "
+            f"{explicit!r} != {context_primitive!r} ({context_path})"
+        )
+    if explicit:
+        return (
+            explicit,
+            "explicit_cli",
+            context_path if context_path.is_file() else None,
+        )
+    if context_primitive:
+        return context_primitive, "adjacent_case_context", context_path
+    return None, "generic_default", None
+
+
 def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]:
     required_paths = {
         "reference image": args.reference_image,
@@ -1646,6 +1698,10 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
         )
     if missing:
         raise FileNotFoundError("Required runtime paths not found:\n" + "\n".join(missing))
+
+    primitive_id, primitive_id_source, primitive_context_path = (
+        _resolve_generation_primitive_id(args)
+    )
 
     reference_image = _load_rgb_image(args.reference_image)
     reference_tissue = load_id_mask(args.reference_tissue_mask)
@@ -1710,9 +1766,20 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
             bound_generation_context_region(
                 semantic_change_region,
                 generation_change_region,
-                primitive_id=args.primitive_id,
+                primitive_id=primitive_id,
             )
         )
+    generation_region_policy.update(
+        {
+            "primitive_id": primitive_id,
+            "primitive_id_source": primitive_id_source,
+            "primitive_context_path": (
+                str(primitive_context_path)
+                if primitive_context_path is not None
+                else None
+            ),
+        }
+    )
     return {
         "reference_image": reference_image,
         "reference_tissue": reference_tissue,

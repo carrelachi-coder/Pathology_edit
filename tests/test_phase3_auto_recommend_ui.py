@@ -76,6 +76,7 @@ class OnlineProductIntegrationTests(unittest.TestCase):
     def test_agentic_ui_delegates_to_release_driven_production_runner(self):
         state = {
             "profile": "BCSS",
+            "primitive_id": "invasive-cord-formation-v1",
             "output_dir": "/tmp/ui-run",
             "reference_image": "/tmp/source.png",
             "reference_tissue_mask": "/tmp/source_tissue.png",
@@ -121,6 +122,7 @@ class OnlineProductIntegrationTests(unittest.TestCase):
         self.assertNotIn("--segmentator-checkpoint", command)
         self.assertEqual(value("--semantic-change-region"), "/tmp/semantic.png")
         self.assertEqual(value("--generation-change-region"), "/tmp/generation.png")
+        self.assertEqual(value("--primitive-id"), "invasive-cord-formation-v1")
         self.assertEqual(value("--semantic-postprocess-mode"), "shadow")
         self.assertEqual(value("--cellvit-script"), "/tmp/cellvit-wrapper.py")
         self.assertEqual(value("--cellvit-python"), "/tmp/cellvit-python")

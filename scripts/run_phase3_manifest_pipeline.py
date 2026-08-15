@@ -333,6 +333,10 @@ def _prepare_state(
     )
     return {
         "profile": case.get("profile") or case.get("dataset"),
+        "primitive_id": (
+            case.get("primitive_id")
+            or case.get("selected_joint_primitive")
+        ),
         "output_dir": _path_text(output_dir),
         "reference_image": _path_text(image_path),
         "reference_tissue_mask": _path_text(tissue_path),

@@ -1130,7 +1130,7 @@ class AgenticWorkflowTests(unittest.TestCase):
                 loaded["generation_region_policy"]["capped"]
             )
 
-    def test_cli_uses_wider_generation_context_for_cord_primitive(self):
+    def test_cli_discovers_wider_generation_context_for_cord_primitive(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             image = root / "reference.png"
@@ -1154,6 +1154,12 @@ class AgenticWorkflowTests(unittest.TestCase):
             Image.fromarray(np.full((64, 64), 255, dtype=np.uint8)).save(
                 generation_region
             )
+            (root / "input_case_context.json").write_text(
+                json.dumps(
+                    {"primitive_id": "invasive-cord-formation-v1"}
+                ),
+                encoding="utf-8",
+            )
 
             args = build_agentic_parser().parse_args(
                 [
@@ -1173,8 +1179,6 @@ class AgenticWorkflowTests(unittest.TestCase):
                     str(semantic_region),
                     "--generation-change-region",
                     str(generation_region),
-                    "--primitive-id",
-                    "invasive-cord-formation-v1",
                     "--output",
                     str(root / "output"),
                 ]
@@ -1190,6 +1194,10 @@ class AgenticWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 loaded["generation_region_policy"]["primitive_id"],
                 "invasive-cord-formation-v1",
+            )
+            self.assertEqual(
+                loaded["generation_region_policy"]["primitive_id_source"],
+                "adjacent_case_context",
             )
 
     def test_cli_preserves_glas_whole_component_generation_region(self):
