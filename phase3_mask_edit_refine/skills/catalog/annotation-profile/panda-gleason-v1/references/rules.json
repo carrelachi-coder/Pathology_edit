@@ -84,7 +84,7 @@
           "binding": "checker:profile_required_provenance"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "panda.background_unknown_is_immutable",
@@ -127,7 +127,7 @@
           "binding": "checker:background_seed_protection"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "panda.gleason_label_requires_architectural_support",
@@ -174,7 +174,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "panda.burden_edit_preserves_gleason_fine_ids",
@@ -218,17 +218,13 @@
           "binding": "checker:label_transition"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "panda.sparse_masks_do_not_license_topology_repair",
       "scope": "candidate_gate",
       "applies_when": {
-        "annotation_quality": [
-          "sparse",
-          "incomplete",
-          "noisy"
-        ]
+        "annotation_profile_id": "panda-gleason-v1"
       },
       "claim": "Enforce the compiler-bound edited_label_topology execution invariant.",
       "required_observation": "Use only the typed observation_authority records; no unannotated histologic structure observation is authorized.",
@@ -266,7 +262,7 @@
           "binding": "checker:edited_label_topology"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

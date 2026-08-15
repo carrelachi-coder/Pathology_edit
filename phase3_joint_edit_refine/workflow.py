@@ -25,7 +25,13 @@ from phase3_mask_edit_refine.models import (
     GateReport,
     RefineContractError,
 )
-from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
+from phase3_mask_edit_refine.skills import (
+    SkillRepository as MaskSkillRepository,
+)
+from phase3_mask_edit_refine.skills import (
+    bind_active_bundle_to_case,
+    validate_active_bundle_authority,
+)
 
 from .audit import JointAuditWriter
 from .auxiliary import materialize_profile_auxiliaries
@@ -2028,22 +2034,17 @@ class JointPathologyEditWorkflow:
                             ),
                             case_provenance=candidate_case.provenance,
                         )
-                        if tool_primitive_id != primitive_id:
-                            tissue_bundle = replace(
-                                tissue_bundle,
-                                edit_contract=replace(
-                                    tissue_bundle.edit_contract,
-                                    primitive_id=primitive_id,
-                                ),
-                                warnings=(
-                                    *tissue_bundle.warnings,
-                                    (
-                                        "deterministic tissue implementation adapter: "
-                                        f"{primitive_id} -> {tool_primitive_id}; "
-                                        "joint mechanism remains semantic authority"
-                                    ),
-                                ),
-                            )
+                        tissue_bundle = bind_active_bundle_to_case(
+                            tissue_bundle,
+                            case=candidate_case,
+                            scene=scene,
+                            semantic_primitive_id=primitive_id,
+                        )
+                        validate_active_bundle_authority(
+                            tissue_bundle,
+                            case_provenance=candidate_case.provenance,
+                            require_live_binding=True,
+                        )
                         nuclei_preflight = build_joint_nuclei_preflight(
                             case=candidate_case,
                             source_tissue=source_tissue,

@@ -16,7 +16,9 @@ from phase3_mask_edit_refine.agents import (
     Critic,
     Planner,
     critic_satisfies_hard_rules,
+    deterministic_gate_certificate_selection,
     validate_edit_plan,
+    validate_non_breast_legacy_workflow_planner,
 )
 from phase3_mask_edit_refine.audit import AuditWriter
 from phase3_mask_edit_refine.candidates import generate_candidates
@@ -35,7 +37,12 @@ from phase3_mask_edit_refine.models import (
     WorkflowResult,
 )
 from phase3_mask_edit_refine.scene import SceneAnalysis, build_scene_analysis
-from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle, SkillRepository
+from phase3_mask_edit_refine.skills import (
+    ActiveKnowledgeBundle,
+    SkillRepository,
+    bind_active_bundle_to_case,
+    validate_active_bundle_authority,
+)
 from phase3_mask_edit_refine.visualization import (
     save_critic_contact_sheet,
     save_mask_planner_panels,
@@ -151,6 +158,12 @@ class MaskEditRefineWorkflow:
                 schema=schema,
                 pixel_size_um=case.pixel_size_um,
             )
+            bundle = bind_active_bundle_to_case(bundle, case=case, scene=scene)
+            validate_active_bundle_authority(
+                bundle,
+                case_provenance=case.provenance,
+                require_live_binding=True,
+            )
             audit.write_inputs(
                 case=case,
                 source_mask=source_mask,
@@ -160,6 +173,11 @@ class MaskEditRefineWorkflow:
             non_breast_mask_only = (
                 case.pathology_domain_id != BREAST_EXECUTION_DOMAIN_ID
                 or case.annotation_profile_id != BREAST_EXECUTION_PROFILE_ID
+            )
+            validate_non_breast_legacy_workflow_planner(
+                case,
+                planner=self.planner,
+                escalation_planner=self.escalation_planner,
             )
             planner_panels = (
                 save_mask_planner_panels(
@@ -232,29 +250,29 @@ class MaskEditRefineWorkflow:
                     usage=usage,
                 )
 
-            contact_sheet = save_critic_contact_sheet(
-                image_path=(
-                    None if non_breast_mask_only else case.source_image_uri
-                ),
-                source_mask=source_mask,
-                candidates=candidates,
-                gate_reports=final_reports,
-                scene=scene,
-                output_path=audit.case_dir / "critic_contact_sheet.png",
-            )
-            audit.paths["critic_contact_sheet"] = contact_sheet
-            critic_images = (
-                ()
-                if non_breast_mask_only
-                else (*planner_panels[:2], contact_sheet)
-            )
-            final_critic = self.critic.review(
-                case=case,
-                bundle=bundle,
-                candidates=passing,
-                gate_reports=final_reports,
-                image_paths=critic_images,
-            )
+            if non_breast_mask_only:
+                final_critic = deterministic_gate_certificate_selection(
+                    bundle=bundle,
+                    candidates=passing,
+                    gate_reports=final_reports,
+                )
+            else:
+                contact_sheet = save_critic_contact_sheet(
+                    image_path=case.source_image_uri,
+                    source_mask=source_mask,
+                    candidates=candidates,
+                    gate_reports=final_reports,
+                    scene=scene,
+                    output_path=audit.case_dir / "critic_contact_sheet.png",
+                )
+                audit.paths["critic_contact_sheet"] = contact_sheet
+                final_critic = self.critic.review(
+                    case=case,
+                    bundle=bundle,
+                    candidates=passing,
+                    gate_reports=final_reports,
+                    image_paths=(*planner_panels[:2], contact_sheet),
+                )
             usage["critic_calls"].append(final_critic.usage)
             audit.write_critic(final_critic)
             critic_ok, critic_reasons = critic_satisfies_hard_rules(

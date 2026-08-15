@@ -68,7 +68,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "lung.acinar_glands_preserve_luminal_continuity",
@@ -107,7 +107,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "lung.papillary_and_micropapillary_are_not_interchangeable",
@@ -149,7 +149,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "lung.solid_growth_does_not_license_cross_structure_fill",
@@ -187,7 +187,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "lung.squamous_nests_preserve_coherence_and_keratin_context",
@@ -227,7 +227,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "lung.bronchial_alveolar_and_supporting_structures_are_not_stroma",
@@ -270,7 +270,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "lung.use_pattern_matched_broad_interface",
@@ -313,7 +313,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

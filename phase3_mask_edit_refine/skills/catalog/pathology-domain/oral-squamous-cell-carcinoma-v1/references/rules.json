@@ -68,7 +68,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "oral_scc.cohesive_nest_and_cord_boundaries_remain_coherent",
@@ -107,7 +107,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "oral_scc.keratinized_centers_are_not_fill_or_seed_regions",
@@ -145,7 +145,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "oral_scc.dispersed_invasive_front_is_not_bulk_filled",
@@ -184,7 +184,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "oral_scc.nerve_and_vessel_relationships_are_protected",
@@ -226,7 +226,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "oral_scc.other_tissue_is_not_automatically_desmoplastic_stroma",
@@ -271,7 +271,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "oral_scc.prefer_broad_verified_invasive_front",
@@ -313,7 +313,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

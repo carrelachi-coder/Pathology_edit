@@ -219,7 +219,8 @@ def _reader_only_pathology_fact(rule: dict[str, Any]) -> dict[str, Any]:
     migrated["critic_requirement"] = None
     migrated["execution_role"] = None
     migrated["observation_authority"] = []
-    migrated["selection_preference"] = None
+    migrated.pop("selection_preference", None)
+    migrated["preference_rule_id"] = None
     migrated["required_observation"] = (
         "Counterfactual histology may be inspected only after generation in "
         "reader-only QA; this fact is unavailable to execution selection or veto."
@@ -289,7 +290,15 @@ def _typed_execution_rule(rule: dict[str, Any]) -> dict[str, Any]:
         ]
     migrated["execution_role"] = role
     migrated["observation_authority"] = authority
-    migrated["selection_preference"] = None
+    migrated.pop("selection_preference", None)
+    migrated["preference_rule_id"] = None
+    if migrated.get("rule_id") == "panda.sparse_masks_do_not_license_topology_repair":
+        # Sparse PANDA annotation never authorizes the editor to invent or repair
+        # topology.  This is an unconditional profile constraint; activation may
+        # not depend on a caller-provided, untyped annotation_quality value.
+        migrated["applies_when"] = {
+            "annotation_profile_id": "panda-gleason-v1"
+        }
     migrated["critic_requirement"] = None
     migrated["claim"] = (
         f"Enforce the compiler-bound {checker_id} execution invariant."

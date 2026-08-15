@@ -69,7 +69,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "melanoma.junctional_component_follows_epidermal_relationship",
@@ -107,7 +107,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "melanoma.cohesive_and_discohesive_growth_use_different_geometry",
@@ -148,7 +148,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "melanoma.ulceration_is_not_a_mask_gap",
@@ -187,7 +187,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "melanoma.regression_bed_is_not_generic_stroma",
@@ -226,7 +226,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "melanoma.necrosis_and_vessels_are_protected_in_burden_edit",
@@ -268,7 +268,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "melanoma.primary_and_metastatic_interfaces_are_not_interchangeable",
@@ -310,7 +310,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

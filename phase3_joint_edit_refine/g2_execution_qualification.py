@@ -21,7 +21,13 @@ import numpy as np
 from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_mask_edit_refine.gates import GateRegistry
 from phase3_mask_edit_refine.models import CandidateMask
-from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
+from phase3_mask_edit_refine.skills import (
+    SkillRepository as MaskSkillRepository,
+)
+from phase3_mask_edit_refine.skills import (
+    bind_active_bundle_to_case,
+    validate_active_bundle_authority,
+)
 
 from .auxiliary import materialize_profile_auxiliaries
 from .budget import JointFeasibilitySolver
@@ -315,21 +321,17 @@ def _qualify_tissue_case(
         available_checker_ids=set(GateRegistry().available_checker_ids),
         case_provenance=case.provenance,
     )
-    if tool_primitive_id != case.primitive_id:
-        tissue_bundle = replace(
-            tissue_bundle,
-            edit_contract=replace(
-                tissue_bundle.edit_contract,
-                primitive_id=case.primitive_id,
-            ),
-            warnings=(
-                *tissue_bundle.warnings,
-                (
-                    "read-only execution adapter: "
-                    f"{case.primitive_id} -> {tool_primitive_id}"
-                ),
-            ),
-        )
+    tissue_bundle = bind_active_bundle_to_case(
+        tissue_bundle,
+        case=case,
+        scene=scene,
+        semantic_primitive_id=case.primitive_id,
+    )
+    validate_active_bundle_authority(
+        tissue_bundle,
+        case_provenance=case.provenance,
+        require_live_binding=True,
+    )
     preflight = build_joint_nuclei_preflight(
         case=case,
         source_tissue=source_tissue,

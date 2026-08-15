@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -36,6 +38,23 @@ EXECUTION_RULE_ROLES = frozenset(
         "certified_candidate_selection_preference",
     }
 )
+EXECUTION_PREFERENCE_REGISTRY = {
+    "pref.capacity_margin.maximize": {
+        "metric_id": "certified_capacity_margin",
+        "direction": "maximize",
+    },
+    "pref.topology_risk.minimize": {
+        "metric_id": "certified_topology_risk",
+        "direction": "minimize",
+    },
+}
+EXECUTION_PREFERENCE_CATALOG_SHA256 = hashlib.sha256(
+    json.dumps(
+        EXECUTION_PREFERENCE_REGISTRY,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()
 EXECUTION_OBSERVATION_SOURCES = frozenset(
     {
         "instruction_semantic_intent",
@@ -93,7 +112,7 @@ class KnowledgeRule:
     forbidden_morphology: tuple[str, ...]
     execution_role: str | None
     observation_authority: tuple[ObservationAuthority, ...]
-    selection_preference: str | None
+    preference_rule_id: str | None
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> KnowledgeRule:
@@ -121,15 +140,32 @@ class KnowledgeRule:
         ]
         if len(authority_pairs) != len(set(authority_pairs)):
             raise RefineContractError("observation_authority contains duplicates")
-        selection_preference = _optional_string(
-            payload.get("selection_preference")
-        )
-        if selection_preference is not None and execution_role not in {
+        if "selection_preference" in payload:
+            raise RefineContractError(
+                "free-form selection_preference is forbidden; use a registered "
+                "preference_rule_id"
+            )
+        preference_rule_id = _optional_string(payload.get("preference_rule_id"))
+        if preference_rule_id is not None and preference_rule_id not in (
+            EXECUTION_PREFERENCE_REGISTRY
+        ):
+            raise RefineContractError(
+                f"unknown execution preference_rule_id: {preference_rule_id}"
+            )
+        if preference_rule_id is not None and execution_role not in {
             "profile_auxiliary_selection_preference",
             "certified_candidate_selection_preference",
         }:
             raise RefineContractError(
-                "selection_preference requires an execution selection-preference role"
+                "preference_rule_id requires an execution selection-preference role"
+            )
+        if execution_role in {
+            "profile_auxiliary_selection_preference",
+            "certified_candidate_selection_preference",
+        } and preference_rule_id is None:
+            raise RefineContractError(
+                "execution selection-preference roles require a registered "
+                "preference_rule_id"
             )
         if severity == "hard" and not (deterministic or critic):
             raise RefineContractError(
@@ -167,7 +203,7 @@ class KnowledgeRule:
             ),
             execution_role=execution_role,
             observation_authority=observation_authority,
-            selection_preference=selection_preference,
+            preference_rule_id=preference_rule_id,
         )
 
     def to_execution_metadata(self) -> dict[str, Any]:
@@ -184,8 +220,11 @@ class KnowledgeRule:
                 asdict(item) for item in self.observation_authority
             ],
         }
-        if self.selection_preference is not None:
-            payload["selection_preference"] = self.selection_preference
+        if self.preference_rule_id is not None:
+            payload["preference_rule_id"] = self.preference_rule_id
+            payload["preference_spec"] = dict(
+                EXECUTION_PREFERENCE_REGISTRY[self.preference_rule_id]
+            )
         return payload
 
 
@@ -284,6 +323,7 @@ class SkillPackage:
     rules: tuple[KnowledgeRule, ...]
     mask_constraints: tuple[MaskConstraint, ...]
     source_path: str
+    package_digest_sha256: str
 
     @classmethod
     def from_mapping(
@@ -326,6 +366,14 @@ class SkillPackage:
             rules=rules,
             mask_constraints=constraints,
             source_path=source_path,
+            package_digest_sha256=hashlib.sha256(
+                json.dumps(
+                    payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest(),
         )
 
 
@@ -347,6 +395,12 @@ class ActiveKnowledgeBundle:
     active_rules: tuple[KnowledgeRule, ...]
     active_mask_constraints: tuple[MaskConstraint, ...]
     warnings: tuple[str, ...]
+    checker_catalog_ids: tuple[str, ...]
+    preference_catalog_sha256: str
+    live_authority: dict[str, Any]
+    online_selection_scope: str
+    candidate_portfolio_sha256: str | None
+    authority_binding_sha256: str
 
     @property
     def review_statuses(self) -> tuple[str, ...]:
@@ -370,7 +424,6 @@ class ActiveKnowledgeBundle:
                     "enforcement": item.enforcement,
                     "enforcement_stages": list(item.enforcement_stages),
                     "checker_ids": list(item.checker_ids),
-                    "required_inputs": list(item.required_inputs),
                     "failure_action": item.failure_action,
                 }
                 for item in self.active_mask_constraints
@@ -392,12 +445,50 @@ class ActiveKnowledgeBundle:
                 rule.to_execution_metadata() for rule in self.active_rules
             ],
             "active_mask_constraints": constraint_metadata,
-            "warnings": list(self.warnings),
-            "source_paths": {
-                "pathology_domain": self.pathology_domain.source_path,
-                "annotation_profile": self.annotation_profile.source_path,
-                "edit_primitive": self.edit_primitive.source_path,
-            },
+            "warning_ids": (
+                [
+                    item
+                    for item in self.warnings
+                    if item == "research_only_unreviewed_skills"
+                ]
+                + (
+                    ["annotation_profile_reader_only_limitations_present"]
+                    if any(
+                        item != "research_only_unreviewed_skills"
+                        for item in self.warnings
+                    )
+                    else []
+                )
+                if non_breast_execution
+                else list(self.warnings)
+            ),
+            "checker_catalog_ids": list(self.checker_catalog_ids),
+            "preference_catalog_sha256": self.preference_catalog_sha256,
+            "live_authority": dict(self.live_authority),
+            "online_selection_scope": self.online_selection_scope,
+            "candidate_portfolio_sha256": self.candidate_portfolio_sha256,
+            "authority_binding_sha256": self.authority_binding_sha256,
+            **(
+                {
+                    "source_artifact_sha256": {
+                        "pathology_domain": (
+                            self.pathology_domain.package_digest_sha256
+                        ),
+                        "annotation_profile": (
+                            self.annotation_profile.package_digest_sha256
+                        ),
+                        "edit_primitive": self.edit_primitive.package_digest_sha256,
+                    }
+                }
+                if non_breast_execution
+                else {
+                    "source_paths": {
+                        "pathology_domain": self.pathology_domain.source_path,
+                        "annotation_profile": self.annotation_profile.source_path,
+                        "edit_primitive": self.edit_primitive.source_path,
+                    }
+                }
+            ),
         }
 
 

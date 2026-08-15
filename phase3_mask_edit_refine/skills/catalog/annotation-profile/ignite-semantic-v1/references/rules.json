@@ -103,7 +103,7 @@
           "binding": "checker:profile_required_provenance"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "ignite.unannotated_and_background_are_immutable",
@@ -147,7 +147,7 @@
           "binding": "checker:background_seed_protection"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "ignite.condition_on_source_site_and_specimen",
@@ -187,7 +187,7 @@
           "binding": "checker:profile_required_provenance"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "ignite.collapsed_tissues_are_not_interchangeable",
@@ -234,7 +234,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "ignite.preserve_native_structure_topology",
@@ -280,7 +280,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

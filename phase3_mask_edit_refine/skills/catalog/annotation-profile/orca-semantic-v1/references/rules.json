@@ -78,7 +78,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "orca.fragmented_non_tissue_is_immutable",
@@ -122,7 +122,7 @@
           "binding": "checker:background_seed_protection"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "orca.edit_only_existing_carcinoma_tissue_interfaces",
@@ -163,7 +163,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "orca.no_new_tissue_islands_holes_or_bridges",
@@ -209,7 +209,7 @@
           "binding": "checker:edited_label_topology"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "orca.require_profile_identity_and_remap_provenance",
@@ -248,7 +248,7 @@
           "binding": "checker:profile_required_provenance"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

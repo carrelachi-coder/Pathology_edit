@@ -47,9 +47,9 @@
           "binding": "checker:label_transition"
         }
       ],
-      "selection_preference": null,
       "expected_morphology": [],
-      "forbidden_morphology": []
+      "forbidden_morphology": [],
+      "preference_rule_id": null
     },
     {
       "rule_id": "primitive.generic_immune_infiltrate_decrease.interface",
@@ -82,9 +82,9 @@
           "binding": "checker:interface_contact"
         }
       ],
-      "selection_preference": null,
       "expected_morphology": [],
-      "forbidden_morphology": []
+      "forbidden_morphology": [],
+      "preference_rule_id": null
     }
   ]
 }

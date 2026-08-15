@@ -38,6 +38,7 @@ from phase3_mask_edit_refine.skills import (
 EDIT_PLAN_SCHEMA_VERSION = "mask-edit-refine-plan-v2"
 BREAST_EXECUTION_DOMAIN_ID = "breast-invasive-carcinoma-v1"
 BREAST_EXECUTION_PROFILE_ID = "bcss-semantic-v1"
+NON_BREAST_COMPILER_CRITIC_PROVIDER = "compiler_owned_gate_certificate_selector"
 
 
 class AgentProviderError(RuntimeError):
@@ -49,6 +50,16 @@ def _is_non_breast_execution_case(case: CaseContext) -> bool:
         case.pathology_domain_id != BREAST_EXECUTION_DOMAIN_ID
         or case.annotation_profile_id != BREAST_EXECUTION_PROFILE_ID
     )
+
+
+def validate_legacy_online_agent_scope(case: CaseContext) -> None:
+    """Close the legacy free-form online plan/review schemas outside Breast."""
+
+    if _is_non_breast_execution_case(case):
+        raise RefineContractError(
+            "non-Breast legacy online Planner/Critic is disabled; use the joint "
+            "compiler-issued immutable candidate portfolio"
+        )
 
 
 def validate_execution_agent_image_paths(
@@ -230,6 +241,29 @@ class HeuristicInterfacePlanner:
             escalation_reason="heuristic_research_mode_requires_multimodal_review",
         )
         return plan, {"provider": self.name, "input_tokens": 0, "output_tokens": 0}
+
+
+def validate_non_breast_legacy_workflow_planner(
+    case: CaseContext,
+    *,
+    planner: object,
+    escalation_planner: object | None,
+) -> None:
+    """Allow only the exact repository-owned deterministic legacy compiler."""
+
+    if not _is_non_breast_execution_case(case):
+        return
+    if type(planner) is not HeuristicInterfacePlanner:
+        raise RefineContractError(
+            "non-Breast legacy workflow rejects caller-supplied Planner; only the "
+            "repository-owned deterministic research compiler is allowed"
+        )
+    if escalation_planner is not None and type(
+        escalation_planner
+    ) is not HeuristicInterfacePlanner:
+        raise RefineContractError(
+            "non-Breast legacy workflow rejects caller-supplied escalation Planner"
+        )
 
 
 @dataclass(frozen=True)
@@ -437,6 +471,7 @@ class OpenAIMultimodalPlanner:
         bundle: ActiveKnowledgeBundle,
         image_paths: Sequence[str | Path],
     ) -> tuple[EditPlan, dict[str, Any]]:
+        validate_legacy_online_agent_scope(case)
         if self.max_schema_attempts not in {1, 2}:
             raise RefineContractError("Planner max_schema_attempts must be 1 or 2")
         image_paths = validate_execution_agent_image_paths(
@@ -446,6 +481,7 @@ class OpenAIMultimodalPlanner:
         validate_active_bundle_authority(
             bundle,
             case_provenance=case.provenance,
+            require_live_binding=True,
         )
         base_prompt = _planner_prompt(case=case, scene=scene, bundle=bundle)
         if _is_non_breast_execution_case(case):
@@ -531,6 +567,7 @@ class OpenAIMultimodalCritic:
         gate_reports: Sequence[GateReport],
         image_paths: Sequence[str | Path],
     ) -> CriticResult:
+        validate_legacy_online_agent_scope(case)
         image_paths = validate_execution_agent_image_paths(
             case=case,
             image_paths=image_paths,
@@ -538,6 +575,7 @@ class OpenAIMultimodalCritic:
         validate_active_bundle_authority(
             bundle,
             case_provenance=case.provenance,
+            require_live_binding=True,
         )
         passed_ids = [report.candidate_id for report in gate_reports if report.passed]
         prompt = _critic_prompt(
@@ -682,6 +720,24 @@ def critic_satisfies_hard_rules(
     bundle: ActiveKnowledgeBundle,
     minimum_confidence: float = 0.70,
 ) -> tuple[bool, tuple[str, ...]]:
+    non_breast_execution = bool(
+        bundle.pathology_domain.skill_id != BREAST_EXECUTION_DOMAIN_ID
+        or bundle.annotation_profile.skill_id != BREAST_EXECUTION_PROFILE_ID
+    )
+    if non_breast_execution and result.usage.get("provider") != (
+        NON_BREAST_COMPILER_CRITIC_PROVIDER
+    ):
+        return False, ("untrusted_non_breast_critic_result",)
+    if non_breast_execution and (
+        result.summary
+        not in {
+            "deterministic_gate_certificate_selection",
+            "no_deterministic_gate_certificate_survivor",
+        }
+        or any(item.veto_reasons for item in result.rankings)
+        or (not result.abstain and len(result.rankings) != 1)
+    ):
+        return False, ("invalid_non_breast_compiler_critic_payload",)
     if result.abstain or not result.rankings:
         return False, (result.summary,)
     top = result.rankings[0]
@@ -699,6 +755,60 @@ def critic_satisfies_hard_rules(
             f"critic confidence {top.confidence:.3f} below {minimum_confidence:.3f}"
         )
     return not reasons, tuple(reasons)
+
+
+def deterministic_gate_certificate_selection(
+    *,
+    bundle: ActiveKnowledgeBundle,
+    candidates: Sequence[CandidateMask],
+    gate_reports: Sequence[GateReport],
+) -> CriticResult:
+    """Select one passing non-Breast artifact without provider or prose authority."""
+
+    passing_ids = {
+        report.candidate_id for report in gate_reports if report.passed
+    }
+    eligible_ids = sorted(
+        candidate.candidate_id
+        for candidate in candidates
+        if candidate.candidate_id in passing_ids
+    )
+    if not eligible_ids:
+        return CriticResult(
+            rankings=(),
+            abstain=True,
+            summary="no_deterministic_gate_certificate_survivor",
+            usage={
+                "provider": NON_BREAST_COMPILER_CRITIC_PROVIDER,
+                "input_tokens": 0,
+                "output_tokens": 0,
+            },
+        )
+    supporting_ids = tuple(
+        sorted(
+            {rule.rule_id for rule in bundle.active_rules}.union(
+                item.constraint_id for item in bundle.active_mask_constraints
+            )
+        )
+    )
+    return CriticResult(
+        rankings=(
+            CriticRanking(
+                candidate_id=eligible_ids[0],
+                score=1.0,
+                confidence=1.0,
+                supporting_rule_ids=supporting_ids,
+                veto_reasons=(),
+            ),
+        ),
+        abstain=False,
+        summary="deterministic_gate_certificate_selection",
+        usage={
+            "provider": NON_BREAST_COMPILER_CRITIC_PROVIDER,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        },
+    )
 
 
 def _planner_prompt(
@@ -801,7 +911,6 @@ def _critic_prompt(
                 "observability": list(item.observability),
                 "enforcement": item.enforcement,
                 "checker_ids": list(item.checker_ids),
-                "required_inputs": list(item.required_inputs),
             }
             for item in bundle.active_mask_constraints
         ]

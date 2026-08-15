@@ -16,6 +16,7 @@ from phase3_mask_edit_refine.agents import (
     OpenAIMultimodalCritic,
     OpenAIMultimodalPlanner,
     OpenAIResponsesJSONClient,
+    validate_legacy_online_agent_scope,
 )
 from phase3_mask_edit_refine.evaluation import load_evaluation_jsonl, score_evaluation
 from phase3_mask_edit_refine.evidence import (
@@ -209,6 +210,7 @@ def _run(args: argparse.Namespace) -> int:
         escalation_planner = None
         escalation_critic = None
     else:
+        validate_legacy_online_agent_scope(case)
         client_options = {
             "api_base_url": args.api_base_url
             or os.environ.get("OPENAI_API_BASE_URL", "https://api.openai.com/v1"),

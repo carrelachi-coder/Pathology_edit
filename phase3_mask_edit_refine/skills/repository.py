@@ -2,20 +2,35 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
+import secrets
 from collections.abc import Iterable, Mapping
-from dataclasses import replace
+from dataclasses import asdict, is_dataclass, replace
 from pathlib import Path
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import RefineContractError
 
 from .schema import (
+    EXECUTION_PREFERENCE_CATALOG_SHA256,
+    EXECUTION_PREFERENCE_REGISTRY,
     ActiveKnowledgeBundle,
     ResolvedEditContract,
     SkillPackage,
 )
+
+_REPOSITORY_BUNDLE_SIGNING_KEY = secrets.token_bytes(32)
+_TISSUE_TOOL_PRIMITIVE_ALIASES = {
+    "cohesive-boundary-expansion-v1": "tumor-burden-increase-v1",
+    "infiltrative-nest-cord-extension-v1": "tumor-burden-increase-v1",
+    "invasive-front-expansion-v1": "tumor-burden-increase-v1",
+    "invasive-tumor-footprint-decrease-v1": "tumor-burden-decrease-v1",
+    "residual-tumor-fragmentation-v1": "tumor-burden-decrease-v1",
+    "local-invasive-clearance-v1": "tumor-burden-decrease-v1",
+}
 
 
 class SkillRepository:
@@ -139,6 +154,7 @@ class SkillRepository:
         case_provenance: dict[str, object] | None = None,
         available_auxiliary_authority_digests: Mapping[str, str] | None = None,
     ) -> ActiveKnowledgeBundle:
+        checker_catalog_ids = tuple(sorted(set(available_checker_ids)))
         pathology = self.get(pathology_domain_id, expected_kind="pathology_domain")
         annotation = self.get(annotation_profile_id, expected_kind="annotation_profile")
         primitive = self.get(primitive_id, expected_kind="edit_primitive")
@@ -237,7 +253,7 @@ class SkillRepository:
                 )
             )
         )
-        missing_checkers = sorted(set(required_check_ids) - set(available_checker_ids))
+        missing_checkers = sorted(set(required_check_ids) - set(checker_catalog_ids))
         if missing_checkers:
             raise RefineContractError(
                 "hard skill rules reference unavailable checkers: "
@@ -250,7 +266,7 @@ class SkillRepository:
         limitations = annotation.capabilities.get("semantic_limitations", [])
         if isinstance(limitations, list):
             warnings.extend(str(item) for item in limitations)
-        return ActiveKnowledgeBundle(
+        bundle = ActiveKnowledgeBundle(
             pathology_domain=pathology,
             annotation_profile=annotation,
             edit_primitive=primitive,
@@ -264,7 +280,18 @@ class SkillRepository:
             active_rules=active_rules,
             active_mask_constraints=active_mask_constraints,
             warnings=tuple(warnings),
+            checker_catalog_ids=checker_catalog_ids,
+            preference_catalog_sha256=EXECUTION_PREFERENCE_CATALOG_SHA256,
+            live_authority={"status": "unbound"},
+            online_selection_scope=(
+                "disabled_non_breast_legacy_online"
+                if non_breast_execution
+                else "legacy_breast_online"
+            ),
+            candidate_portfolio_sha256=None,
+            authority_binding_sha256="",
         )
+        return _seal_bundle(bundle)
 
     def _attach_annotation_statistics(
         self, package: SkillPackage, *, production: bool
@@ -342,7 +369,7 @@ def _validate_non_breast_execution_authority(package: SkillPackage) -> None:
                 or rule.deterministic_check_id
                 or rule.execution_role
                 or rule.observation_authority
-                or rule.selection_preference
+                or rule.preference_rule_id
             ):
                 raise RefineContractError(
                     f"reader-only pathology fact {rule.rule_id} carries execution authority"
@@ -381,15 +408,53 @@ def validate_active_bundle_authority(
     *,
     case_provenance: dict[str, object],
     available_auxiliary_authority_digests: Mapping[str, str] | None = None,
+    require_live_binding: bool = False,
 ) -> None:
     """Revalidate a non-Breast bundle at every direct agent entry point."""
 
+    _validate_repository_bundle_seal(bundle)
     non_breast_execution = bool(
         bundle.pathology_domain.skill_id != "breast-invasive-carcinoma-v1"
         or bundle.annotation_profile.skill_id != "bcss-semantic-v1"
     )
     if not non_breast_execution:
         return
+    if bundle.online_selection_scope != "disabled_non_breast_legacy_online":
+        raise RefineContractError(
+            "non-Breast bundle illegally enables the legacy online selection scope"
+        )
+    if bundle.preference_catalog_sha256 != EXECUTION_PREFERENCE_CATALOG_SHA256:
+        raise RefineContractError("execution preference catalog digest is detached")
+    if require_live_binding:
+        live = bundle.live_authority
+        required_live_digests = (
+            "case_binding_sha256",
+            "source_mask_live_sha256",
+            "scene_graph_sha256",
+            "budget_sha256",
+        )
+        if live.get("status") != "bound" or any(
+            not isinstance(live.get(key), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", str(live.get(key)))
+            for key in required_live_digests
+        ):
+            raise RefineContractError(
+                "non-Breast execution bundle lacks exact live-input authority binding"
+            )
+        current_source_digest = case_provenance.get(
+            "source_mask_sha256"
+        ) or case_provenance.get("source_tissue_mask_sha256")
+        if current_source_digest != live.get("source_mask_live_sha256"):
+            raise RefineContractError(
+                "live-input authority is detached from current case provenance"
+            )
+        if (
+            bundle.candidate_portfolio_sha256 is not None
+            or live.get("candidate_portfolio_sha256") is not None
+        ):
+            raise RefineContractError(
+                "disabled non-Breast legacy online scope cannot carry a candidate portfolio"
+            )
     _validate_composed_rule_authority(
         rules=bundle.active_rules,
         annotation=bundle.annotation_profile,
@@ -431,6 +496,20 @@ def _validate_composed_rule_authority(
         authority = {
             (item.source, item.binding) for item in rule.observation_authority
         }
+        if rule.preference_rule_id is not None:
+            if rule.preference_rule_id not in EXECUTION_PREFERENCE_REGISTRY:
+                raise RefineContractError(
+                    f"rule {rule.rule_id} cites an unknown preference_rule_id"
+                )
+            preference = EXECUTION_PREFERENCE_REGISTRY[rule.preference_rule_id]
+            metric_binding = (
+                "deterministic_metric",
+                f"checker:{preference['metric_id']}",
+            )
+            if metric_binding not in authority:
+                raise RefineContractError(
+                    f"rule {rule.rule_id} preference metric is detached from authority"
+                )
         sources = {source for source, _binding in authority}
         required_sources = {
             "deterministic_mask_invariant": {
@@ -614,14 +693,6 @@ def _rule_applies(
     native_labels = _condition_values(applies_when.get("native_label"))
     if native_labels and not (0 in native_labels and isinstance(background, dict)):
         return False
-    annotation_qualities = _condition_values(
-        applies_when.get("annotation_quality")
-    )
-    if annotation_qualities:
-        observed_quality = (case_provenance or {}).get("annotation_quality")
-        if observed_quality not in annotation_qualities:
-            return False
-
     recognized_keys = {
         "pathology_domain_id",
         "annotation_profile_id",
@@ -631,7 +702,6 @@ def _rule_applies(
         "canonical_label",
         "requested_label",
         "native_label",
-        "annotation_quality",
         "structure",
     }
     unknown = sorted(set(applies_when) - recognized_keys)
@@ -641,6 +711,198 @@ def _rule_applies(
             + ", ".join(unknown)
         )
     return True
+
+
+def bind_active_bundle_to_case(
+    bundle: ActiveKnowledgeBundle,
+    *,
+    case: object,
+    scene: object,
+    semantic_primitive_id: str | None = None,
+) -> ActiveKnowledgeBundle:
+    """Bind a repository-issued bundle to exact live mask, scene, case, and budget."""
+
+    _validate_repository_bundle_seal(bundle)
+    case_domain = getattr(case, "pathology_domain_id", None)
+    case_profile = getattr(case, "annotation_profile_id", None)
+    case_primitive = getattr(case, "primitive_id", None)
+    if case_domain != bundle.pathology_domain.skill_id:
+        raise RefineContractError("live case pathology domain is detached from skill bundle")
+    if case_profile != bundle.annotation_profile.skill_id:
+        raise RefineContractError(
+            "live case annotation profile is detached from skill bundle"
+        )
+    semantic_primitive_id = semantic_primitive_id or case_primitive
+    if semantic_primitive_id != case_primitive:
+        raise RefineContractError(
+            "semantic primitive adapter is detached from the live case primitive"
+        )
+    tool_primitive_id = bundle.edit_contract.primitive_id
+    expected_tool_primitive_id = _TISSUE_TOOL_PRIMITIVE_ALIASES.get(
+        str(semantic_primitive_id), str(semantic_primitive_id)
+    )
+    if tool_primitive_id != expected_tool_primitive_id:
+        raise RefineContractError(
+            "skill-bundle primitive is detached from the registered tissue-tool adapter"
+        )
+    source_uri = getattr(case, "source_mask_uri", None) or getattr(
+        case, "source_tissue_mask_uri", None
+    )
+    if not isinstance(source_uri, str) or not source_uri:
+        raise RefineContractError("live bundle binding requires a source mask URI")
+    if "://" in source_uri and not source_uri.startswith("file://"):
+        raise RefineContractError(
+            "live bundle binding requires a locally digestible source mask"
+        )
+    source_path = Path(source_uri.removeprefix("file://"))
+    if not source_path.is_file():
+        raise RefineContractError(
+            f"live bundle source mask does not exist: {source_path}"
+        )
+    live_source_digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    provenance = getattr(case, "provenance", {})
+    if not isinstance(provenance, dict):
+        raise RefineContractError("live bundle case provenance must be a mapping")
+    expected_source_digest = provenance.get("source_mask_sha256") or provenance.get(
+        "source_tissue_mask_sha256"
+    )
+    if expected_source_digest != live_source_digest:
+        raise RefineContractError(
+            "live source-mask bytes are detached from case provenance"
+        )
+    graph = getattr(scene, "graph", scene)
+    graph_metadata = (
+        graph.to_metadata() if hasattr(graph, "to_metadata") else graph
+    )
+    if not isinstance(graph_metadata, dict):
+        raise RefineContractError("live scene graph must expose mapping metadata")
+    budget_payload: dict[str, object] = {}
+    for field in (
+        "area_budget",
+        "joint_area_budget",
+        "cell_count_extent_budget",
+    ):
+        value = getattr(case, field, None)
+        if value is None:
+            continue
+        if hasattr(value, "to_metadata"):
+            budget_payload[field] = value.to_metadata()
+        elif is_dataclass(value):
+            budget_payload[field] = asdict(value)
+        else:
+            raise RefineContractError(
+                f"live bundle budget {field} is not canonically serializable"
+            )
+    case_payload = {
+        "case_id": getattr(case, "case_id", None),
+        "instruction": getattr(case, "instruction", None),
+        "pathology_domain_id": getattr(case, "pathology_domain_id", None),
+        "annotation_profile_id": getattr(case, "annotation_profile_id", None),
+        "primitive_id": case_primitive,
+        "tool_primitive_id": tool_primitive_id,
+        "seed": getattr(case, "seed", None),
+        "pixel_size_um": getattr(case, "pixel_size_um", None),
+        "budget": budget_payload,
+        "source_mask_live_sha256": live_source_digest,
+    }
+    live_authority = {
+        "status": "bound",
+        "case_binding_sha256": _canonical_sha256(case_payload),
+        "source_mask_live_sha256": live_source_digest,
+        "scene_graph_sha256": _canonical_sha256(graph_metadata),
+        "budget_sha256": _canonical_sha256(budget_payload),
+        # The legacy non-Breast online path is disabled.  Joint selection uses
+        # its own compiler-issued portfolio authority and never this null slot.
+        "candidate_portfolio_sha256": None,
+    }
+    adapted_warnings = bundle.warnings
+    adapted_contract = bundle.edit_contract
+    if tool_primitive_id != semantic_primitive_id:
+        adapted_contract = replace(
+            adapted_contract,
+            primitive_id=str(semantic_primitive_id),
+        )
+        adapted_warnings = (
+            *adapted_warnings,
+            (
+                "registered_tissue_tool_adapter:"
+                f"{semantic_primitive_id}:{tool_primitive_id}"
+            ),
+        )
+    return _seal_bundle(
+        replace(
+            bundle,
+            edit_contract=adapted_contract,
+            warnings=adapted_warnings,
+            live_authority=live_authority,
+            authority_binding_sha256="",
+        )
+    )
+
+
+def _canonical_sha256(payload: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _bundle_authority_payload(bundle: ActiveKnowledgeBundle) -> dict[str, object]:
+    return {
+        "packages": [
+            asdict(package)
+            for package in (
+                bundle.pathology_domain,
+                bundle.annotation_profile,
+                bundle.edit_primitive,
+            )
+        ],
+        "edit_contract": asdict(bundle.edit_contract),
+        "active_rules": [
+            {
+                "version": rule.version,
+                **rule.to_execution_metadata(),
+            }
+            for rule in bundle.active_rules
+        ],
+        "active_mask_constraints": [
+            asdict(item) for item in bundle.active_mask_constraints
+        ],
+        "warnings": list(bundle.warnings),
+        "checker_catalog_ids": list(bundle.checker_catalog_ids),
+        "preference_catalog_sha256": bundle.preference_catalog_sha256,
+        "live_authority": bundle.live_authority,
+        "online_selection_scope": bundle.online_selection_scope,
+        "candidate_portfolio_sha256": bundle.candidate_portfolio_sha256,
+    }
+
+
+def _seal_bundle(bundle: ActiveKnowledgeBundle) -> ActiveKnowledgeBundle:
+    signature = hmac.new(
+        _REPOSITORY_BUNDLE_SIGNING_KEY,
+        json.dumps(
+            _bundle_authority_payload(bundle),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return replace(bundle, authority_binding_sha256=signature)
+
+
+def _validate_repository_bundle_seal(bundle: ActiveKnowledgeBundle) -> None:
+    expected = _seal_bundle(
+        replace(bundle, authority_binding_sha256="")
+    ).authority_binding_sha256
+    if not hmac.compare_digest(bundle.authority_binding_sha256, expected):
+        raise RefineContractError(
+            "execution bundle is not a repository-issued sealed capability"
+        )
 
 
 def _mask_constraint_applies(
