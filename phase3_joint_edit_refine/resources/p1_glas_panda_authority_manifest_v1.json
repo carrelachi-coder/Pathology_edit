@@ -1,0 +1,181 @@
+{
+  "all_candidate_portfolios_compiled": false,
+  "all_required_authority_bound": false,
+  "api_used": false,
+  "authority_materializer_code_commit": "c2e65ed73bb151d2bee31a563a48033bb3a5a81b",
+  "authority_records": "p1_glas_panda_authority_records_v1.jsonl",
+  "authority_records_sha256": "87a3c9666dd02791cec2a05eaf2b9780b3b1f85f2a9f64943548ee31e4c2c8d5",
+  "auxiliary_materialization_manifest": "p1_glas_panda_auxiliary_materialization_v1.json",
+  "auxiliary_materialization_manifest_sha256": "e1bd163f0565ec46b8b80667989eb77a5cb8248d2a4946457b00e067d0d4214e",
+  "before_after_counts": {
+    "binding_external_auxiliary_missing": {
+      "after": 15,
+      "before": 15
+    },
+    "binding_local_clearance_roi_missing": {
+      "after": 5,
+      "before": 5
+    },
+    "bindings_with_missing_source_digest": {
+      "after": 40,
+      "before": 40
+    },
+    "profile_owned_auxiliary_outputs_materialized": {
+      "after": 0,
+      "before": 0
+    },
+    "selection_runtime_digest_fields_missing": {
+      "after": 3,
+      "before": 3
+    },
+    "source_digest_fields_missing": {
+      "after": 80,
+      "before": 80
+    }
+  },
+  "candidate_preflight_records": "p1_glas_panda_candidate_preflight_v1.jsonl",
+  "candidate_preflight_records_sha256": "4c2ba6cd8d0d8f97a5053b4ad8772319f03bb84f75c77b3439ac9e876e21032d",
+  "eligible_for_later_visualization_count": 0,
+  "evaluation_count": 24,
+  "execution_status": "blocked_pending_authority_and_surviving_certificates",
+  "executor_called": false,
+  "fixed_cases_per_evaluation": 5,
+  "frozen_binding_count": 120,
+  "frozen_case_replacement_allowed": false,
+  "frozen_cases_changed": false,
+  "full_case_status_table": "p1_glas_panda_preflight_status_v1.tsv",
+  "full_case_status_table_sha256": "05dc692b2ec6ef778aff556ee46ff1673eb748ccf30c5efc7e0e3a1573ca1239",
+  "generated_he_run": false,
+  "manifest_content_sha256": "a89d63759f1ee1c67ec86e300347d4b6c4a273b45a4bdcdc5aa390137871a4bb",
+  "planner_called": false,
+  "production_status": "shadow_only",
+  "runtime_authority": {
+    "all_required_runtime_assets_verified": false,
+    "authority_materializer_code_commit": "c2e65ed73bb151d2bee31a563a48033bb3a5a81b",
+    "code_assets": [
+      {
+        "file_sha256": "250b54fe9cbc9fc8ff8423c482e67d9d5f49f953c06349f008f478f44ee5f8fa",
+        "path": "phase3_joint_edit_refine/mature_probnet_adapter.py"
+      },
+      {
+        "file_sha256": "951233c7459b9ca004a61275bd6aa64356dbfb77679bfccbc947495cd74b3b6c",
+        "path": "phase3_joint_edit_refine/probnet_adapter.py"
+      },
+      {
+        "file_sha256": "b01bb92b1dc870abcbdea48462acf949236ce9edc6615d5e7c1a4897accd7ddc",
+        "path": "phase3_joint_edit_refine/candidate_feasibility.py"
+      },
+      {
+        "file_sha256": "0ea19c122c6120e5eb8935d6bf359b259330840ee5b38ed29695a02aee5b8577",
+        "path": "phase3_joint_edit_refine/cell_programs.py"
+      },
+      {
+        "file_sha256": "967f067af345a4d20d5cb142a374acb3b2b0a5b6a314e9945d96be1bf936cc22",
+        "path": "phase3_joint_edit_refine/gates.py"
+      },
+      {
+        "file_sha256": "c05670dae774483902c41a935d0980e7a45af809904472d99aeda622c690ee0b",
+        "path": "phase3_joint_edit_refine/portfolio_authority.py"
+      },
+      {
+        "file_sha256": "6b2967594d758af092309585f6aeea247ef61a27057d1bebb7d8df735a6845b2",
+        "path": "phase3_joint_edit_refine/workflow.py"
+      },
+      {
+        "file_sha256": "9a12d50afb761c57bd06062f602178b35bd56fb254a58ab26cf0310e45e158e9",
+        "path": "phase3_mask_edit_refine/skills/catalog_manifest_v1.json"
+      },
+      {
+        "file_sha256": "2af506163c9e00622ceaaa1b2576ad128c4193ef7389d7becf8b8063dd0f7445",
+        "path": "inpaint_cells/generate.py"
+      },
+      {
+        "file_sha256": "5ed2d95c19bf1ec81acdf8c4a3a6d78ade20fd567ef63b20edd733e1a200e804",
+        "path": "inpaint_cells/nuclei_library/library.py"
+      }
+    ],
+    "external_assets": [
+      {
+        "asset_id": "mature_probnet_checkpoint",
+        "canonical_path": null,
+        "declared_sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8",
+        "failure_code": "runtime_asset_path_unbound",
+        "observed_sha256": null,
+        "verified": false
+      },
+      {
+        "asset_id": "frozen_probnet_spatial_ranker_checkpoint",
+        "canonical_path": null,
+        "declared_sha256": null,
+        "failure_code": "runtime_asset_digest_and_path_unbound",
+        "observed_sha256": null,
+        "verified": false
+      },
+      {
+        "asset_id": "glas_nucleus_instance_library",
+        "canonical_path": null,
+        "declared_sha256": null,
+        "failure_code": "runtime_asset_digest_and_path_unbound",
+        "observed_sha256": null,
+        "verified": false
+      },
+      {
+        "asset_id": "panda_nucleus_instance_library",
+        "canonical_path": null,
+        "declared_sha256": null,
+        "failure_code": "runtime_asset_digest_and_path_unbound",
+        "observed_sha256": null,
+        "verified": false
+      },
+      {
+        "asset_id": "later_he_generator_checkpoint",
+        "canonical_path": null,
+        "declared_sha256": null,
+        "failure_code": "runtime_asset_digest_and_path_unbound",
+        "observed_sha256": null,
+        "reader_side_only": true,
+        "used_during_this_stage": false,
+        "verified": false
+      }
+    ],
+    "runtime_authority_sha256": "0d7e91d2f57b1b2cabca36bc87102eb793df70db4b379b96467039cf212c6e9b",
+    "runtime_code_set_sha256": "5d1d0f6e82d26a14ed386586a2fa7875fb348ea092f3f8951d34dfeac53bf417",
+    "schema_version": "p1-runtime-authority-materialization-v1",
+    "selection_runtime_authority": {
+      "all_required_digests_bound": false,
+      "frozen_spatial_ranker_sha256": null,
+      "generator_checkpoint_sha256": null,
+      "instance_library_sha256": null,
+      "mature_probnet_checkpoint_sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8",
+      "selection_generator_sha256": "77e1553d587f344871a50fd7d9c39e670cb687bcca5d7076999dfbae372ff418"
+    },
+    "selection_runtime_digest_fields_missing": [
+      "frozen_spatial_ranker_sha256",
+      "instance_library_sha256",
+      "generator_checkpoint_sha256"
+    ],
+    "unverified_external_asset_ids": [
+      "mature_probnet_checkpoint",
+      "frozen_probnet_spatial_ranker_checkpoint",
+      "glas_nucleus_instance_library",
+      "panda_nucleus_instance_library",
+      "later_he_generator_checkpoint"
+    ]
+  },
+  "schema_version": "p1-glas-panda-authority-manifest-v1",
+  "selection_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_meta_eval_selection_v1.json",
+  "selection_manifest_sha256": "df4cbf3d1af5ba407a260ea2f490ca2b26aafb14f171a83d516836b280978d59",
+  "source_asset_mutated": false,
+  "source_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_source_case_pool_v1.json",
+  "source_manifest_sha256": "5ce6d9bbb84bae82db576b38a1f15328d2bd620b844daf3cac47572c9ded3223",
+  "status_counts": {
+    "abstain": 0,
+    "eligible": 0,
+    "reject": 120
+  },
+  "target_mask_created": false,
+  "terminal_reason_counts": {
+    "frozen_source_authority_failed": 120
+  },
+  "visualization_run": false
+}
