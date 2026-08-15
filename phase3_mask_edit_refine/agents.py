@@ -33,10 +33,39 @@ from phase3_mask_edit_refine.scene import SceneAnalysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
 EDIT_PLAN_SCHEMA_VERSION = "mask-edit-refine-plan-v2"
+BREAST_EXECUTION_DOMAIN_ID = "breast-invasive-carcinoma-v1"
+BREAST_EXECUTION_PROFILE_ID = "bcss-semantic-v1"
 
 
 class AgentProviderError(RuntimeError):
     """Raised when a remote Planner or Critic cannot return strict JSON."""
+
+
+def validate_execution_agent_image_paths(
+    *,
+    case: CaseContext,
+    image_paths: Sequence[str | Path],
+) -> tuple[str | Path, ...]:
+    """Fail closed on every caller-supplied non-Breast execution raster.
+
+    The joint workflow has a sealed, digest-bound mask-panel registry.  The
+    legacy tissue-only workflow has no equivalent capability object, so its
+    safest non-Breast execution contract is text/scene-graph only: it may not
+    forward raw H&E, an overlay, a renamed crop, or a caller-created panel.
+    Reader-only post-generation QA is intentionally outside this interface.
+    """
+
+    paths = tuple(image_paths)
+    breast_execution_case = bool(
+        case.pathology_domain_id == BREAST_EXECUTION_DOMAIN_ID
+        and case.annotation_profile_id == BREAST_EXECUTION_PROFILE_ID
+    )
+    if not breast_execution_case and paths:
+        raise RefineContractError(
+            "non-Breast execution Planner/Critic rejects caller-supplied raster "
+            "paths; only the joint sealed mask-panel capability may carry images"
+        )
+    return paths
 
 
 class Planner(Protocol):
@@ -404,6 +433,10 @@ class OpenAIMultimodalPlanner:
     ) -> tuple[EditPlan, dict[str, Any]]:
         if self.max_schema_attempts not in {1, 2}:
             raise RefineContractError("Planner max_schema_attempts must be 1 or 2")
+        image_paths = validate_execution_agent_image_paths(
+            case=case,
+            image_paths=image_paths,
+        )
         base_prompt = _planner_prompt(case=case, scene=scene, bundle=bundle)
         system_prompt = (
             "You are a pathology mask-edit planner. Select legal existing interfaces and "
@@ -479,6 +512,10 @@ class OpenAIMultimodalCritic:
         gate_reports: Sequence[GateReport],
         image_paths: Sequence[str | Path],
     ) -> CriticResult:
+        image_paths = validate_execution_agent_image_paths(
+            case=case,
+            image_paths=image_paths,
+        )
         passed_ids = [report.candidate_id for report in gate_reports if report.passed]
         prompt = _critic_prompt(
             case=case,

@@ -223,8 +223,8 @@
     ]
   },
   "evidence_citations": [
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC6748796/",
-    "https://documents.cap.org/protocols/Breast.Invasive.Res_4.11.0.0.REL_CAPCP.pdf"
+    "https://panda.grand-challenge.org/Data/",
+    "https://doi.org/10.1038/s41591-021-01620-2"
   ],
   "counterexamples": [
     "anchoring scatter to a fine-8 or fine-9-only boundary",

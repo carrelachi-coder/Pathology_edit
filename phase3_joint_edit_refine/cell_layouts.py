@@ -1155,7 +1155,12 @@ def _build_multiclass_addition_results(
                 halo=np.zeros_like(class_zone),
                 score=np.asarray(score, dtype=float),
                 requested_count=requested,
-                layout_program=plan.cell_plan.layout_program_id,
+                # Cellularity is a composition-preserving density effect, not
+                # permission to collapse twelve accepted instances into one
+                # trace-labelled clump.  Execute its complete instances as
+                # spatially independent centers; the plan-level mechanism ID
+                # remains unchanged and final-mask gates rebuild the foci.
+                layout_program="single",
                 cluster_size_range=(1, 1),
                 nominal_nucleus_diameter_px=(
                     compiled_program.nominal_nucleus_diameter_px
@@ -1176,8 +1181,14 @@ def _build_multiclass_addition_results(
                     if class_id == effect_class
                     else 0
                 ),
-                enforce_single_scatter_separation=False,
+                enforce_single_scatter_separation=True,
                 enforce_small_cluster_group_separation=False,
+                minimum_single_center_separation_diameters=3.0,
+                previously_accepted_centers_xy=tuple(
+                    item["center_xy"]
+                    for item in placements
+                    if isinstance(item, dict) and "center_xy" in item
+                ),
                 seed=seed + variant * 104729 + offset * 8191,
             )
             placements.extend(current)
@@ -1748,6 +1759,10 @@ def _place_layout(
     enforce_small_cluster_group_separation=True,
     strict_breast_small_cluster=False,
     enforce_multisite_population=False,
+    minimum_single_center_separation_diameters=(
+        SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS
+    ),
+    previously_accepted_centers_xy=(),
     certified_witness_centers=(),
     certified_fallback_reference_ids=(),
     previously_used_reference_digests=(),
@@ -1775,6 +1790,21 @@ def _place_layout(
             border_value=0,
         )
     executable_centers = np.asarray(legal_zone, dtype=bool) & initially_fit
+    previous_center_mask = np.zeros_like(executable_centers, dtype=bool)
+    for center in previously_accepted_centers_xy:
+        if not isinstance(center, (list, tuple)) or len(center) != 2:
+            continue
+        col, row = int(center[0]), int(center[1])
+        if 0 <= row < target.shape[0] and 0 <= col < target.shape[1]:
+            previous_center_mask[row, col] = True
+    if np.any(previous_center_mask):
+        previous_distance = ndimage.distance_transform_edt(
+            ~previous_center_mask
+        )
+        executable_centers &= previous_distance + 1e-9 >= (
+            float(minimum_single_center_separation_diameters)
+            * float(nominal_nucleus_diameter_px)
+        )
     coords = np.argwhere(executable_centers)
     jitter = rng.uniform(0.0, 1e-6, size=len(coords))
     values = score[executable_centers] + jitter
@@ -2042,7 +2072,7 @@ def _place_layout(
                     (cy - int(item["center_xy"][1])) ** 2
                     + (cx - int(item["center_xy"][0])) ** 2
                     <= (
-                        SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS
+                        float(minimum_single_center_separation_diameters)
                         * float(nominal_nucleus_diameter_px)
                     )
                     ** 2

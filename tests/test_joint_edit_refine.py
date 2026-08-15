@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import re
 import tempfile
@@ -14,6 +15,7 @@ from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 from inpaint_cells.instance_authority import array_sha256
 from phase3_joint_edit_refine.agents import (
@@ -40,8 +42,8 @@ from phase3_joint_edit_refine.cell_layouts import (
     _multisite_population_anchor_order,
     _place_layout,
     _probnet_hard_core_anchor_order,
-    _reference_shape_digest,
     _reference_sampling_order,
+    _reference_shape_digest,
     _unique_reference_shapes,
     build_reference_shape_library,
     certificate_aligned_cluster_size_range,
@@ -72,6 +74,7 @@ from phase3_joint_edit_refine.gates import (
     _nearest_reference_area_ratio,
     _recorded_instance_areas_by_class,
     audit_added_class1_foci,
+    audit_cell_effect_foci,
     audit_directional_extension_raster,
     mechanism_postcondition_checker_id,
 )
@@ -103,6 +106,7 @@ from phase3_joint_edit_refine.nuclei import iter_instances
 from phase3_joint_edit_refine.packing import certify_complete_footprint_packing
 from phase3_joint_edit_refine.planner import (
     CellPlanSelectionHandle,
+    CompilerOwnedDepletionAnchor,
     HeuristicJointPlanner,
     JointInterpretationOption,
     _issue_cell_plan_portfolio,
@@ -186,6 +190,7 @@ from phase3_mask_edit_refine.models import (
     RefineContractError,
 )
 from phase3_mask_edit_refine.scene import build_scene_analysis
+from scripts import refine_other_organ_primitives as other_organ_generator
 from scripts.prepare_p1_meta_eval_selection import validate_selection
 
 
@@ -500,8 +505,8 @@ class JointSkillTests(unittest.TestCase):
                             (domain_id, instruction),
                         )
                         if capability["mechanism_id"] in {
-                            "prostate-treatment-associated-fibrotic-replacement",
-                            "lung-treatment-associated-fibrotic-replacement",
+                            "prostate-operational-tumor-retreat",
+                            "lung-operational-tumor-retreat",
                             "melanoma-operational-tumor-retreat",
                             "oral-scc-operational-tumor-retreat",
                         }:
@@ -556,7 +561,7 @@ class JointSkillTests(unittest.TestCase):
             item
             for item in invalid_treatment["evaluations"]
             if item["mechanism_id"]
-            == "prostate-treatment-associated-fibrotic-replacement"
+            == "prostate-operational-tumor-retreat"
         )
         treatment["instruction"] = "Increase operational stroma after treatment."
         with self.assertRaisesRegex(ValueError, "post-treatment binding"):
@@ -1193,8 +1198,8 @@ class JointSkillTests(unittest.TestCase):
                     maximum_sources,
                 )
                 if primitive_id == "residual-tumor-fragmentation-v1":
-                    self.assertEqual(primitive.minimum_residual_components, 3)
-                    self.assertEqual(primitive.maximum_residual_components, 8)
+                    self.assertEqual(primitive.minimum_residual_components, 2)
+                    self.assertEqual(primitive.maximum_residual_components, 6)
                     self.assertEqual(
                         primitive.maximum_residual_area_fraction, 0.88
                     )
@@ -3360,7 +3365,7 @@ class JointSkillTests(unittest.TestCase):
                     primitive_id="stroma-increase-v1",
                 )
             ],
-            ["lung-treatment-associated-fibrotic-replacement"],
+            ["lung-operational-tumor-retreat"],
         )
         self.assertEqual(
             [
@@ -3370,7 +3375,7 @@ class JointSkillTests(unittest.TestCase):
                     primitive_id="stroma-increase-v1",
                 )
             ],
-            ["prostate-treatment-associated-fibrotic-replacement"],
+            ["prostate-operational-tumor-retreat"],
         )
 
     def test_evidence_authorities_are_explicit_and_non_interchangeable(self):
@@ -3636,7 +3641,7 @@ class JointSkillTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot invent treatment history"):
             repository.compose(
                 case=case,
-                mechanism_id="lung-treatment-associated-fibrotic-replacement",
+                mechanism_id="lung-operational-tumor-retreat",
                 available_checker_ids=JointGateRegistry().available_checker_ids,
                 production=False,
             )
@@ -3648,13 +3653,13 @@ class JointSkillTests(unittest.TestCase):
                     "scenario": "treatment_response",
                 },
             ),
-            mechanism_id="lung-treatment-associated-fibrotic-replacement",
+            mechanism_id="lung-operational-tumor-retreat",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
         self.assertEqual(
             bundle.mechanism.mechanism_id,
-            "lung-treatment-associated-fibrotic-replacement",
+            "lung-operational-tumor-retreat",
         )
 
     def test_budget_broker_reserves_whole_instance_union_without_lowering_floor(self):
@@ -7096,7 +7101,7 @@ class JointWorkflowTests(unittest.TestCase):
                 "ignite-semantic-v1",
                 "lung-cellvit-source-first-v1",
                 2,
-                "lung-treatment-associated-fibrotic-replacement",
+                "lung-operational-tumor-retreat",
                 {"source_site": "lung", "specimen_type": "resection"},
             ),
             (
@@ -7633,9 +7638,9 @@ class JointWorkflowTests(unittest.TestCase):
                 case_id="panda-unreachable-depletion-quota",
                 joint_area_budget=None,
                 cell_count_extent_budget=CellCountExtentBudget(
-                    12,
-                    12,
-                    15,
+                    200,
+                    200,
+                    210,
                     96,
                     0,
                     128,
@@ -7661,7 +7666,12 @@ class JointWorkflowTests(unittest.TestCase):
             ).run(case, output_root=root / "unreachable-quota")
             self.assertEqual(result.status, "abstained")
             reason = " ".join(result.abstain_reasons)
-            self.assertIn("stronger-core gradient", reason)
+            self.assertTrue(
+                "quota" in reason
+                or "capacity" in reason
+                or "does not contain 200" in reason,
+                reason,
+            )
             self.assertNotIn("deterministic_replan_stalled", reason)
 
     def test_cross_organ_necrosis_without_executor_survivor_abstains(self):
@@ -7712,7 +7722,7 @@ class JointWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             primitive_id = "residual-tumor-fragmentation-v1"
-            mechanism_id = "prostate-treatment-associated-fibrotic-replacement"
+            mechanism_id = "prostate-operational-tumor-retreat"
             source = _as_panda_case(
                 _write_synthetic_case(root),
                 fine_id=10,
@@ -9275,6 +9285,583 @@ class StructuralHierarchyTests(unittest.TestCase):
                 "explicit_profile_structure",
             )
             self.assertFalse(producer["empty_map_is_valid_observation"])
+
+
+class OtherOrganIndependentReviewBlockerTests(unittest.TestCase):
+    def test_non_breast_generated_contracts_are_free_of_cross_organ_pollution(self):
+        root = Path(__file__).parents[1]
+        catalog = (
+            root
+            / "phase3_joint_edit_refine"
+            / "skills"
+            / "catalog"
+            / "joint-mechanism"
+        )
+        forbidden = (
+            "breast",
+            "bcss",
+            "dcis",
+            "angioinvasion",
+            "benign_duct",
+            "breast.mask",
+            "cap breast",
+        )
+        for path in sorted(catalog.glob("*/references/joint_contract.json")):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("pathology_domain_id") == "breast-invasive-carcinoma-v1":
+                continue
+            rendered = json.dumps(payload, sort_keys=True).lower()
+            with self.subTest(mechanism_id=payload.get("mechanism_id")):
+                self.assertFalse(
+                    {token for token in forbidden if token in rendered},
+                    path,
+                )
+
+        cord_source = inspect.getsource(other_organ_generator._cord).lower()
+        self.assertNotIn("breast", cord_source)
+        self.assertNotIn("deepcopy", cord_source)
+
+        for mechanism_id in (
+            "prostate-operational-tumor-retreat",
+            "lung-operational-tumor-retreat",
+        ):
+            contract = json.loads(
+                (
+                    catalog
+                    / mechanism_id
+                    / "references"
+                    / "joint_contract.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                contract["tissue_program"]["mode"],
+                "operational_tumor_retreat_to_profile_receiver",
+            )
+            positive_surface = json.dumps(
+                {
+                    "mechanism_id": contract["mechanism_id"],
+                    "summary": contract["summary"],
+                    "required_observations": contract["recognition_contract"][
+                        "required_observations"
+                    ],
+                    "mode": contract["tissue_program"]["mode"],
+                },
+                sort_keys=True,
+            ).lower()
+            self.assertNotIn("fibrot", positive_surface)
+            self.assertNotIn("tumor bed", positive_surface)
+
+        old_ids = (
+            "prostate-treatment-associated-fibrotic-replacement",
+            "lung-treatment-associated-fibrotic-replacement",
+        )
+        generated_surfaces = (
+            root / "phase3_joint_edit_refine" / "resources",
+            root / "phase3_joint_edit_refine" / "skills",
+        )
+        for old_id in old_ids:
+            self.assertTrue(
+                all(
+                    old_id not in path.read_text(encoding="utf-8", errors="ignore")
+                    for surface in generated_surfaces
+                    for path in surface.rglob("*")
+                    if path.is_file()
+                )
+            )
+
+    def test_orca_contracts_use_only_annotation_observable_other_tissue(self):
+        root = (
+            Path(__file__).parents[1]
+            / "phase3_joint_edit_refine"
+            / "skills"
+            / "catalog"
+            / "joint-mechanism"
+        )
+        dispersed = json.loads(
+            (
+                root
+                / "oral-scc-dispersed-invasive-front"
+                / "references"
+                / "joint_contract.json"
+            ).read_text(encoding="utf-8")
+        )
+        required = " ".join(
+            dispersed["recognition_contract"]["required_observations"]
+        ).lower()
+        self.assertNotIn("strom", required)
+        self.assertNotIn("verified dispersed front", required)
+        self.assertNotIn("source evidence", required)
+        self.assertEqual(
+            set(dispersed["supported_primitives"]),
+            {
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "peritumoral-small-cluster-increase-v1",
+            },
+        )
+        for label_contract in dispersed["tissue_program"][
+            "primitive_label_contracts"
+        ].values():
+            self.assertEqual(label_contract["source_labels"], ["Other tissue"])
+            self.assertEqual(label_contract["target_labels"], ["Other tissue"])
+
+        local = json.loads(
+            (
+                root
+                / "oral-scc-local-population-modulation"
+                / "references"
+                / "joint_contract.json"
+            ).read_text(encoding="utf-8")
+        )
+        for label_contract in local["tissue_program"][
+            "primitive_label_contracts"
+        ].values():
+            self.assertNotIn("Stroma", label_contract["source_labels"])
+            self.assertNotIn("Stroma", label_contract["target_labels"])
+
+    def test_p1_selection_binds_versioned_source_pool_and_all_authority_digests(self):
+        resources = (
+            Path(__file__).parents[1]
+            / "phase3_joint_edit_refine"
+            / "resources"
+        )
+        selection_path = resources / "p1_glas_panda_meta_eval_selection_v1.json"
+        source_path = resources / "p1_glas_panda_source_case_pool_v1.json"
+        selection = json.loads(selection_path.read_text(encoding="utf-8"))
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        validate_selection(selection)
+        self.assertEqual(selection["evaluation_count"], 24)
+        self.assertEqual(
+            sum(len(item["selected_cases"]) for item in selection["evaluations"]),
+            120,
+        )
+        self.assertEqual(
+            selection["source_manifest"],
+            "phase3_joint_edit_refine/resources/"
+            "p1_glas_panda_source_case_pool_v1.json",
+        )
+        self.assertEqual(selection["source_manifest_sha256"], _sha(source_path))
+        self.assertEqual(
+            selection["source_manifest_schema_version"],
+            source["schema_version"],
+        )
+        self.assertEqual(len(source["cases"]), 10)
+        self.assertTrue(
+            all(
+                not row["execution_allowed"]
+                for evaluation in selection["evaluations"]
+                for row in evaluation["selected_cases"]
+            )
+        )
+        gland_scatter = next(
+            item
+            for item in selection["evaluations"]
+            if item["annotation_profile_id"] == "glas-gland-v1"
+            and item["primitive_id"]
+            == "peritumoral-neoplastic-scatter-increase-v1"
+        )
+        self.assertIn(
+            "native_gland_instance_map",
+            gland_scatter["required_auxiliary_structures"],
+        )
+        self.assertTrue(
+            all(
+                "native_gland_instance_map"
+                in row["missing_required_auxiliary_structures"]
+                for row in gland_scatter["selected_cases"]
+            )
+        )
+        clearance = next(
+            item
+            for item in selection["evaluations"]
+            if item["primitive_id"] == "local-invasive-clearance-v1"
+        )
+        self.assertTrue(
+            all(
+                "local_clearance_roi"
+                in row["missing_required_auxiliary_structures"]
+                for row in clearance["selected_cases"]
+            )
+        )
+        runtime = selection["runtime_authority"]
+        self.assertFalse(runtime["all_required_digests_bound"])
+        self.assertEqual(len(runtime["selection_generator_sha256"]), 64)
+        tampered = json.loads(json.dumps(selection))
+        tampered["runtime_authority"]["all_required_digests_bound"] = True
+        with self.assertRaisesRegex(ValueError, "completeness declaration"):
+            validate_selection(tampered)
+
+    def test_cellularity_meaningful_effect_rebuilds_four_spatial_foci(self):
+        nominal = 10.0
+        adjacent_chain = [(index * 10.0, 10.0) for index in range(12)]
+        adjacent = audit_cell_effect_foci(
+            centers_xy=adjacent_chain,
+            nominal_nucleus_diameter_px=nominal,
+        )
+        self.assertEqual(adjacent["focus_count"], 0)
+        self.assertFalse(adjacent["no_chain_no_bridge_passed"])
+        self.assertFalse(adjacent["trace_cluster_ids_used_as_evidence"])
+
+        compact_single_focus = [
+            (float(col), float(row))
+            for row in (10, 15, 20)
+            for col in (10, 15, 20, 22)
+        ]
+        compact = audit_cell_effect_foci(
+            centers_xy=compact_single_focus,
+            nominal_nucleus_diameter_px=nominal,
+        )
+        self.assertEqual(compact["focus_count"], 1)
+
+        bridge = audit_cell_effect_foci(
+            centers_xy=((0, 0), (10, 0), (20, 0), (30, 0)),
+            nominal_nucleus_diameter_px=nominal,
+        )
+        self.assertEqual(bridge["focus_count"], 0)
+        self.assertFalse(bridge["no_chain_no_bridge_passed"])
+
+        three = audit_cell_effect_foci(
+            centers_xy=((0, 0), (40, 0), (80, 0)),
+            nominal_nucleus_diameter_px=nominal,
+        )
+        self.assertEqual(three["focus_count"], 3)
+        self.assertLess(three["focus_count"], 4)
+
+        four_groups = [
+            (base + offset, row)
+            for base, row in ((0, 0), (50, 40), (100, 0), (150, 40))
+            for offset in (0, 5, 10)
+        ]
+        accepted = audit_cell_effect_foci(
+            centers_xy=four_groups,
+            nominal_nucleus_diameter_px=nominal,
+        )
+        self.assertTrue(accepted["spatial_focus_contract_passed"])
+        self.assertEqual(accepted["reconstructed_complete_instance_count"], 12)
+        self.assertEqual(accepted["focus_count"], 4)
+        self.assertGreaterEqual(accepted["effect_center_span_px"], 6 * nominal)
+        self.assertGreaterEqual(
+            accepted["observed_minimum_inter_focus_distance_px"],
+            accepted["minimum_inter_focus_separation_px"],
+        )
+
+        forged_incomplete_ledger = audit_cell_effect_foci(
+            centers_xy=four_groups,
+            nominal_nucleus_diameter_px=nominal,
+            complete_instance_ledger_valid=False,
+        )
+        self.assertEqual(forged_incomplete_ledger["focus_count"], 0)
+
+    def _panda_depletion_context(self, root: Path):
+        primitive_id = "cellularity-decrease-v1"
+        case = _as_panda_case(
+            _write_synthetic_case(root, size=256, tumor_radius=70),
+            fine_id=10,
+            mechanism_id="prostate-local-population-modulation",
+            primitive_id=primitive_id,
+        )
+        case = replace(
+            case,
+            case_id="panda-compiler-owned-depletion",
+            joint_area_budget=None,
+            cell_count_extent_budget=CellCountExtentBudget(
+                12,
+                12,
+                15,
+                96,
+                0,
+                128,
+                minimum_effect_span_px=66,
+                minimum_effect_foci=4,
+            ),
+        )
+        workflow = JointPathologyEditWorkflow(
+            tissue_planner=HeuristicInterfacePlanner(),
+            joint_planner=HeuristicJointPlanner(),
+            critic=_ApprovingJointCritic(),
+        )
+        source_tissue = np.load(case.source_tissue_mask_uri, allow_pickle=False)
+        source_nuclei = np.asarray(Image.open(case.source_nuclei_mask_uri))
+        schema = workflow.mask_skills.annotation_schema(case.annotation_profile_id)
+        scene = build_joint_scene_analysis(
+            source_tissue,
+            source_nuclei,
+            schema=schema,
+            pixel_size_um=case.pixel_size_um,
+            nuclei_instances_path=case.source_nuclei_instances_uri,
+        )
+        component_labels = {
+            item.component_id: item.label
+            for item in scene.tissue.graph.components
+        }
+        zone = next(
+            item
+            for item in scene.population.zones
+            if item.zone_kind == "component"
+            and component_labels.get(item.tissue_component_id) == "Tumor"
+        )
+        case = replace(
+            case,
+            provenance={
+                **case.provenance,
+                "joint_population_zone_id": zone.zone_id,
+            },
+        )
+        bundle = workflow.joint_skills.compose(
+            case=case,
+            mechanism_id="prostate-local-population-modulation",
+            available_checker_ids=workflow.joint_gates.available_checker_ids,
+            production=False,
+        )
+        return workflow, case, source_tissue, source_nuclei, schema, scene, bundle
+
+    def test_non_breast_depletion_anchor_is_compiler_owned_and_full_portfolio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (
+                workflow,
+                case,
+                source_tissue,
+                source_nuclei,
+                schema,
+                scene,
+                bundle,
+            ) = self._panda_depletion_context(root)
+            malicious = replace(
+                case,
+                provenance={
+                    **case.provenance,
+                    "cellularity_depletion_anchor": {
+                        "type": "interface",
+                        "interface_ids": ["if:caller-single-candidate"],
+                        "anchor_ids": ["anchor:caller-detached"],
+                        "observation": "renamed H&E assertion",
+                        "confidence": 1.0,
+                    },
+                },
+            )
+
+            with self.assertRaisesRegex(
+                JointContractError, "compiler-owned depletion anchor"
+            ):
+                HeuristicJointPlanner().create_plan(
+                    case=malicious,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                )
+
+            interface = next(
+                item
+                for item in scene.tissue.graph.interfaces
+                if {item.source_label, item.target_label} == {"Tumor", "Stroma"}
+                and item.anchor_segment_ids
+            )
+            valid_capability = CompilerOwnedDepletionAnchor.issue(
+                case=case,
+                zone_id=case.provenance["joint_population_zone_id"],
+                interface_ids=(interface.interface_id,),
+                anchor_ids=(interface.anchor_segment_ids[0],),
+            )
+            detached = replace(valid_capability, binding_sha256="0" * 64)
+            with self.assertRaisesRegex(JointContractError, "digest-detached"):
+                HeuristicJointPlanner().create_plan(
+                    case=case,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                    compiler_owned_depletion_anchor=detached,
+                )
+
+            unknown = CompilerOwnedDepletionAnchor.issue(
+                case=case,
+                zone_id=case.provenance["joint_population_zone_id"],
+                interface_ids=("if:unknown",),
+                anchor_ids=("anchor:unknown",),
+            )
+            with self.assertRaisesRegex(JointContractError, "unknown"):
+                HeuristicJointPlanner().create_plan(
+                    case=case,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                    compiler_owned_depletion_anchor=unknown,
+                )
+
+            def compile_portfolio(current_case):
+                return workflow._compile_cell_only_candidate_portfolio(
+                    case=current_case,
+                    source_tissue=source_tissue,
+                    source_nuclei=source_nuclei,
+                    schema=schema,
+                    scene=scene,
+                    bundle=bundle,
+                )
+
+            baseline = compile_portfolio(case)
+            adversarial = compile_portfolio(malicious)
+            replay = compile_portfolio(case)
+            self.assertGreater(len(baseline.choices), 1)
+            baseline_bindings = tuple(
+                (
+                    item.certificate.candidate_id,
+                    item.certificate.compiler_certificate_sha256,
+                    item.certificate.authority_binding_sha256,
+                )
+                for item in baseline.choices
+            )
+            self.assertEqual(
+                baseline_bindings,
+                tuple(
+                    (
+                        item.certificate.candidate_id,
+                        item.certificate.compiler_certificate_sha256,
+                        item.certificate.authority_binding_sha256,
+                    )
+                    for item in adversarial.choices
+                ),
+            )
+            self.assertEqual(
+                baseline_bindings,
+                tuple(
+                    (
+                        item.certificate.candidate_id,
+                        item.certificate.compiler_certificate_sha256,
+                        item.certificate.authority_binding_sha256,
+                    )
+                    for item in replay.choices
+                ),
+            )
+            result = workflow.run(
+                malicious,
+                output_root=root / "positive-compiler-owned-depletion",
+            )
+            self.assertEqual(
+                result.status,
+                "selected_research",
+                result.abstain_reasons,
+            )
+
+    def test_panda_residual_fragmentation_rebuilds_final_mask_topology(self):
+        from tests.test_joint_breast_workflow import _write_breast_case
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            primitive_id = "residual-tumor-fragmentation-v1"
+            mechanism_id = "prostate-operational-tumor-retreat"
+            source = _write_breast_case(
+                root,
+                instruction="Fragment residual tumor after treatment.",
+                mechanism_id="breast-residual-disease-fragmentation",
+            )
+            tissue_path = Path(source.source_tissue_mask_uri)
+            tissue = np.load(tissue_path, allow_pickle=False)
+            tissue[tissue == 1] = 10
+            np.save(tissue_path, tissue, allow_pickle=False)
+            tissue_digest = _sha(tissue_path)
+
+            nuclei = np.asarray(Image.open(source.source_nuclei_mask_uri))
+            native_instances = {}
+            for index, (instance_id, class_id, component) in enumerate(
+                iter_instances(nuclei)
+            ):
+                rows, cols = np.nonzero(component)
+                native_instances[str(index)] = {
+                    "type": int(class_id),
+                    "centroid": [float(rows.mean()), float(cols.mean())],
+                    "contour": [
+                        [int(cols.min()), int(rows.min())],
+                        [int(cols.max()), int(rows.min())],
+                        [int(cols.max()), int(rows.max())],
+                        [int(cols.min()), int(rows.max())],
+                    ],
+                    "source_instance_id": instance_id,
+                }
+            instances_path = root / "panda_instances.json"
+            instances_path.write_text(
+                json.dumps({"nuc": native_instances}),
+                encoding="utf-8",
+            )
+            instances_digest = _sha(instances_path)
+            case = replace(
+                source,
+                case_id="panda-residual-fragmentation-positive",
+                pathology_domain_id="prostate-adenocarcinoma-v1",
+                annotation_profile_id="panda-gleason-v1",
+                cell_population_profile_id="prostate-cellvit-source-first-v1",
+                source_nuclei_instances_uri=str(instances_path),
+                primitive_id=primitive_id,
+                joint_area_budget=JointAreaBudget(
+                    target_fraction=0.035,
+                    min_fraction=0.03,
+                    max_fraction=0.05,
+                    tissue_min_fraction=0.03,
+                ),
+                provenance={
+                    **source.provenance,
+                    "source_tissue_mask_sha256": tissue_digest,
+                    "original_label_map_digest": tissue_digest,
+                    "source_nuclei_instances_sha256": instances_digest,
+                    "original_instance_mask_digest": instances_digest,
+                    "preprocessing_revision": "synthetic-panda-fragment-v1",
+                    "provider": "synthetic-fixture",
+                    "joint_mechanism_id": mechanism_id,
+                    "joint_primitive_id": primitive_id,
+                },
+            )
+            case, _intent = bind_semantic_intent(
+                case.to_metadata(), RuleBasedSemanticParser()
+            )
+            result = JointPathologyEditWorkflow(
+                tissue_planner=MultiInterfaceResearchTissuePlanner(),
+                joint_planner=HeuristicJointPlanner(),
+                critic=_ApprovingJointCritic(),
+            ).run(case, output_root=root / "panda-fragmentation")
+            self.assertEqual(
+                result.status,
+                "selected_research",
+                result.abstain_reasons,
+            )
+
+            final_tumor = result.condition.target_tissue_mask == 10
+            labels, component_count = ndimage.label(
+                final_tumor,
+                structure=np.ones((3, 3), dtype=bool),
+            )
+            sizes = [
+                int(np.count_nonzero(labels == component_id))
+                for component_id in range(1, component_count + 1)
+            ]
+            self.assertGreaterEqual(component_count, 2)
+            self.assertLessEqual(component_count, 6)
+            self.assertGreaterEqual(min(sizes), 96)
+            self.assertEqual(
+                ndimage.label(final_tumor, structure=np.ones((3, 3)))[1],
+                component_count,
+            )
+            reports = json.loads(
+                Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            selected = next(
+                item
+                for item in reports
+                if item["candidate_id"] == result.selected_candidate_id
+            )
+            topology = next(
+                check
+                for check in selected["checks"]
+                if check["check_id"] == "residual_fragmentation_topology"
+            )
+            self.assertTrue(topology["passed"])
+            self.assertGreaterEqual(
+                topology["metrics"]["observed_minimum_residual_spacing_px"],
+                topology["metrics"]["minimum_residual_spacing_px"],
+            )
+            self.assertEqual(topology["metrics"]["holes_after"], 0)
 
 
 if __name__ == "__main__":

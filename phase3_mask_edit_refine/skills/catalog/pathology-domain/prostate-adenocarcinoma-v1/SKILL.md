@@ -3,10 +3,10 @@ name: prostate-adenocarcinoma-v1
 description: Plan prostate adenocarcinoma mask edits using gland, lumen, benign epithelium, stroma, and Gleason architectural constraints. Use only for pathology_domain_id prostate-adenocarcinoma-v1.
 ---
 
-# Prostate adenocarcinoma mask-edit planning
+# prostate-adenocarcinoma-v1 mask-only execution authority
 
-1. Read `references/mask_contract.json` first; apply all active mask constraints. Then read `references/rules.json` for Gleason H&E interpretation and rendering handoff.
-2. Treat fine-ID transitions and semantic topology as mask-enforceable. Treat gland/lumen preservation as conditional on a native or auxiliary structure map; H&E alone does not make it deterministic.
-3. Classify the anchor as benign gland, pattern-3 well-formed gland, pattern-4 fused/poorly formed/cribriform/glomeruloid unit, pattern-5 non-gland-forming tumor, lumen, or fibromuscular stroma.
-4. Preserve encoded fine IDs, gland/lumen maps, components, holes, and one broad directed interface. Reject implicit grade change and topology repair.
-5. Hand actual pattern-3/4/5 microscopic architecture to generation/post-generation audit. Cite both constraint and pathology rule IDs; abstain when the required structure map is absent.
+1. Read `references/mask_contract.json` first and enforce only digest-bound provenance, semantic masks, scene graphs, native annotations, auxiliary structure maps, and deterministic candidate certificates.
+2. Raw histology, overlays, crops, reader boards, and renamed image panels are unavailable to the execution Planner and Critic.
+3. Unencoded glands, lumina, epidermis, lung structures, invasive fronts, grades, and treatment effects cannot be inferred for anchor selection or veto.
+4. Rules marked `reader_only_pathology_fact` may guide post-generation reader QA only and are excluded from the execution knowledge bundle.
+5. Abstain whenever the required native or auxiliary authority is absent; all capabilities remain draft and shadow-only.

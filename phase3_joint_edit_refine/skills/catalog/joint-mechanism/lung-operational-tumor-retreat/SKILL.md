@@ -1,5 +1,5 @@
 ---
-name: lung-treatment-associated-fibrotic-replacement
+name: lung-operational-tumor-retreat
 description: IGNITE post-treatment operational tumor retreat
 ---
 

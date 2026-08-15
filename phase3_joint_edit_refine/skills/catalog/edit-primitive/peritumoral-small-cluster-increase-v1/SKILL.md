@@ -10,7 +10,7 @@ Use this primitive for a cell-only set of complete class-1 foci adjacent to an a
 - Preserve tissue labels pixel-exactly.
 - Bind a certified external Tumor--host interface and outer annulus.
 - Select one finite peritumoral neighborhood rather than the full annulus.
-- Generate multiple tight foci containing two to four complete nuclei each; organ-specific mechanisms may require a stronger minimum.
+- Generate multiple tight foci containing two to four complete nuclei each.
 - Require visible within-focus adjacency and clear between-focus separation.
 - Keep all foci near the main Tumor component; reject solid bridges and remote deposits.
 - Describe the result as synthetic peritumoral small-cluster morphology, not a tumor-budding diagnosis or score.

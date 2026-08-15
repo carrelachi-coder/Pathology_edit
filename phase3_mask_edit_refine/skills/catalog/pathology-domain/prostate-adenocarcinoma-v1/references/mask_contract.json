@@ -6,59 +6,125 @@
   "constraints": [
     {
       "constraint_id": "prostate.mask.no_implicit_gleason_transition",
-      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1", "stroma-increase-v1"]},
+      "applies_when": {
+        "primitive": [
+          "tumor-burden-increase-v1",
+          "tumor-burden-decrease-v1",
+          "stroma-increase-v1"
+        ]
+      },
       "mask_statement": "A burden edit may alter only the declared source-to-target pixels; all Gleason 3, 4, and 5 fine IDs outside that transition remain pixel-identical.",
-      "observability": ["semantic_mask"],
+      "observability": [
+        "semantic_mask"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["label_transition", "unrequested_labels_preserved"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "label_transition",
+        "unrequested_labels_preserved"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["fine-ID semantic mask"],
+      "required_inputs": [
+        "fine-ID semantic mask"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Render only the retained fine pattern; ID preservation does not guarantee pattern-appropriate glands."],
-      "known_limitations": ["A coarse tumor-only profile cannot provide Gleason-level enforcement."]
+      "generation_handoff": [
+        "Render only the retained fine pattern; ID preservation does not guarantee pattern-appropriate glands."
+      ],
+      "known_limitations": [
+        "A coarse tumor-only profile cannot provide Gleason-level enforcement."
+      ]
     },
     {
       "constraint_id": "prostate.mask.preserve_encoded_gland_and_lumen_topology",
       "applies_when": {},
-      "mask_statement": "If gland instances or lumen maps exist, reject gland split/merge, lumen filling, and partial benign-gland cuts; if only H&E reveals them, treat protection as conditional and abstain when a legal band cannot be established.",
-      "observability": ["native_annotation", "auxiliary_structure_map", "source_he"],
+      "mask_statement": "If gland instances or lumen maps exist, reject gland split/merge, lumen filling, and partial benign-gland cuts; if only digest-bound native/auxiliary structure authority reveals them, treat protection as conditional and abstain when a legal band cannot be established.",
+      "observability": [
+        "native_annotation",
+        "auxiliary_structure_map"
+      ],
       "enforcement": "conditional",
-      "enforcement_stages": ["planner", "candidate_generation", "mask_gate"],
-      "checker_ids": ["prohibited_region", "edited_label_topology"],
-      "critic_requirement": "veto_unencoded_prostate_gland_or_lumen_overlap",
-      "required_inputs": ["source H&E", "gland/lumen map when available"],
+      "enforcement_stages": [
+        "planner",
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "prohibited_region",
+        "edited_label_topology"
+      ],
+      "critic_requirement": null,
+      "required_inputs": [
+        "digest-bound native/auxiliary structure map",
+        "gland/lumen map when available"
+      ],
       "failure_action": "abstain_case",
-      "generation_handoff": ["Generate well-formed, fused/cribriform, or non-gland-forming architecture according to the retained Gleason pattern and re-audit after rendering."],
-      "known_limitations": ["PANDA semantic masks do not explicitly encode gland instances or lumina."]
+      "generation_handoff": [
+        "Generate well-formed, fused/cribriform, or non-gland-forming architecture according to the retained Gleason pattern and re-audit after rendering."
+      ],
+      "known_limitations": [
+        "PANDA semantic masks do not explicitly encode gland instances or lumina."
+      ]
     },
     {
       "constraint_id": "prostate.mask.same_component_interface_band",
       "applies_when": {},
       "mask_statement": "Use one existing directed component interface, keep all pixels inside its band, and reject short/deep changes or changes detached from that interface.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["interface_contact", "tumor_stroma_interface", "depth_span_ratio", "boundary_naturalness"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "interface_contact",
+        "tumor_stroma_interface",
+        "depth_span_ratio",
+        "boundary_naturalness"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["component/interface scene graph"],
+      "required_inputs": [
+        "component/interface scene graph"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Use a same-pattern H&E reference for the newly changed band."],
-      "known_limitations": ["The mask gate cannot determine whether adjacent H&E truly matches the fine pattern."]
+      "generation_handoff": [
+        "Use a same-pattern H&E reference for the newly changed band."
+      ],
+      "known_limitations": [
+        "The mask gate cannot determine whether adjacent H&E truly matches the fine pattern."
+      ]
     },
     {
       "constraint_id": "prostate.mask.no_island_split_merge_or_hole_change",
       "applies_when": {},
       "mask_statement": "Do not create tumor islands, split source tissue, merge separate target components, or add/fill holes.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["mask_gate"],
-      "checker_ids": ["component_topology", "edited_label_topology"],
+      "enforcement_stages": [
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "component_topology",
+        "edited_label_topology"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["source and candidate masks"],
+      "required_inputs": [
+        "source and candidate masks"
+      ],
       "failure_action": "reject_candidate",
       "generation_handoff": [],
-      "known_limitations": ["True grade-transition or topology-changing tasks require separate primitives."]
+      "known_limitations": [
+        "True grade-transition or topology-changing tasks require separate primitives."
+      ]
     }
   ]
 }

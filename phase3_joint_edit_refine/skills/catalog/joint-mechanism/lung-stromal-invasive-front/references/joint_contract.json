@@ -52,14 +52,13 @@
       "profile_fine_transition_authority"
     ],
     "prohibited_structures": [
-      "benign_duct",
-      "benign_lobule",
-      "dcis_unit",
-      "angioinvasion",
+      "collapsed_zero",
+      "encoded_airspace_or_lumen",
       "vessel",
       "necrosis",
       "immune_infiltrate",
-      "collapsed_zero"
+      "normal_epithelium",
+      "other_protected_profile_structure"
     ],
     "front_contract": {
       "profile_mode": "tapered_lobe",
@@ -82,10 +81,7 @@
       "add"
     ],
     "allowed_cell_classes": [
-      1,
-      2,
-      3,
-      5
+      1
     ],
     "layout_programs": [
       "boundary_aligned"
@@ -135,8 +131,8 @@
   },
   "coupling_contract": {
     "compatibility_rule_ids": [
-      "breast.mask.narrow_extension_connected",
-      "breast.mask.boundary_aligned_population_in_narrow_extension"
+      "ignite.mask.synthetic_cord_connected",
+      "ignite.mask.boundary_aligned_population_in_extension"
     ],
     "allow_neoplastic_in_non_tumor_tissue": false,
     "joint_area_mode": "joint_footprint",
@@ -158,16 +154,16 @@
   ],
   "render_contract": {
     "required_findings": [
-      "continuous invasive tumor front with a coupled neoplastic population"
+      "one connected annotation-anchored narrow synthetic Tumor extension",
+      "complete class-1 population continuity inside the changed Tumor footprint"
     ],
     "veto_findings": [
-      "lepidic septal coating called stromal invasion",
-      "free airspace cluster",
-      "rectangular tumor fill"
+      "remote island, side merge or protected-profile overlap",
+      "histologic invasive-front, subtype or prognostic claim"
     ],
     "mask_guarantees": [
-      "source-to-target conversion begins at a selected stromal interface",
-      "complete-instance nuclei edits"
+      "only operational Stroma converts to Tumor",
+      "complete-instance nuclei edits only"
     ],
     "render_only_claims": [
       "histologic subtype identity",
@@ -179,9 +175,9 @@
     "https://pubmed.ncbi.nlm.nih.gov/21252716/"
   ],
   "counterexamples": [
-    "calling STAS a stromal front",
-    "filling an alveolar airspace",
-    "remote tumor island"
+    "remote Tumor island",
+    "broad fill instead of one tapered extension",
+    "edit of an encoded protected structure"
   ],
   "planner_policy": {
     "allowed_observation_sources": [

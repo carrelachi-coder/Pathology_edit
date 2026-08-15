@@ -3,10 +3,10 @@ name: puma-semantic-v1
 description: Interpret masks following the PUMA melanoma tissue protocol with tumor, stroma, necrosis, epidermis, and blood vessel classes. Use when annotation_profile_id is puma-semantic-v1.
 ---
 
-# PUMA annotation protocol
+# puma-semantic-v1 mask-only execution authority
 
-1. Read `references/mask_contract.json` first; enforce anatomical provenance, background, tissue-label, nuclei separation, and topology constraints. Then read `references/rules.json` for melanoma interpretation.
-2. Interpret canonical `Normal epithelium` strictly as PUMA epidermis and preserve its continuity outside epidermis-specific primitives.
-3. Keep semantic tissue and nuclei annotations separate. Never rasterize immune nuclei into an invented immune tissue region.
-4. Preserve white background exactly and exclude it from edit sources, anchors, bands, filling, and bridges.
-5. Retrieve matched statistics, cite constraints and rules, and hand epidermal/melanoma morphology to generation/post-generation audit. Abstain when the anatomical stratum or raw epithelium mapping is unknown.
+1. Read `references/mask_contract.json` first and enforce only digest-bound provenance, semantic masks, scene graphs, native annotations, auxiliary structure maps, and deterministic candidate certificates.
+2. Raw histology, overlays, crops, reader boards, and renamed image panels are unavailable to the execution Planner and Critic.
+3. Unencoded glands, lumina, epidermis, lung structures, invasive fronts, grades, and treatment effects cannot be inferred for anchor selection or veto.
+4. Rules marked `reader_only_pathology_fact` may guide post-generation reader QA only and are excluded from the execution knowledge bundle.
+5. Abstain whenever the required native or auxiliary authority is absent; all capabilities remain draft and shadow-only.

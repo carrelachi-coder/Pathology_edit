@@ -246,6 +246,39 @@
           "status": "conditionally_supported"
         },
         {
+          "closed_reason": null,
+          "mechanism_id": "prostate-operational-tumor-retreat",
+          "primitive_id": "stroma-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Simulate a post-treatment response by increasing operational stroma."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-operational-tumor-retreat",
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Simulate a post-treatment response by decreasing tumor area."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "prostate-operational-tumor-retreat",
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
           "closed_reason": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist.",
           "mechanism_id": "prostate-pattern-3-growth",
           "primitive_id": "tumor-burden-increase-v1",
@@ -333,39 +366,6 @@
           ],
           "simple_instructions": [
             "Add scattered tumor cells near the tumor boundary."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
-          "primitive_id": "stroma-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Simulate a post-treatment response by increasing operational stroma."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
-          "primitive_id": "invasive-tumor-footprint-decrease-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Simulate a post-treatment response by decreasing tumor area."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "prostate-treatment-associated-fibrotic-replacement",
-          "primitive_id": "residual-tumor-fragmentation-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
           ],
           "status": "conditionally_supported"
         }
@@ -605,6 +605,39 @@
         },
         {
           "closed_reason": null,
+          "mechanism_id": "lung-operational-tumor-retreat",
+          "primitive_id": "stroma-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Simulate a post-treatment response by increasing operational stroma."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-operational-tumor-retreat",
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Simulate a post-treatment response by decreasing tumor area."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "mechanism_id": "lung-operational-tumor-retreat",
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
           "mechanism_id": "lung-solid-squamous-growth",
           "primitive_id": "tumor-burden-increase-v1",
           "production_status": "shadow_only",
@@ -647,39 +680,6 @@
           "required_auxiliary_structures": [],
           "simple_instructions": [
             "Add a narrow connected tumor cord."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "lung-treatment-associated-fibrotic-replacement",
-          "primitive_id": "stroma-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Simulate a post-treatment response by increasing operational stroma."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "lung-treatment-associated-fibrotic-replacement",
-          "primitive_id": "invasive-tumor-footprint-decrease-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Simulate a post-treatment response by decreasing tumor area."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "lung-treatment-associated-fibrotic-replacement",
-          "primitive_id": "residual-tumor-fragmentation-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
           ],
           "status": "conditionally_supported"
         }

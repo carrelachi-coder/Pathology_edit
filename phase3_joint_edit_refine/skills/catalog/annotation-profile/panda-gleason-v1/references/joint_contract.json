@@ -26,7 +26,7 @@
     "prostate-pattern-4-growth",
     "prostate-pattern-5-growth",
     "prostate-pattern-5-infiltrative-front",
-    "prostate-treatment-associated-fibrotic-replacement",
+    "prostate-operational-tumor-retreat",
     "prostate-gleason-architecture-progression",
     "prostate-local-tumor-clearance",
     "prostate-pattern-5-peripheral-scatter"
@@ -44,7 +44,7 @@
     "prostate-pattern-5-infiltrative-front": [
       10
     ],
-    "prostate-treatment-associated-fibrotic-replacement": [
+    "prostate-operational-tumor-retreat": [
       9,
       10
     ],
@@ -85,7 +85,7 @@
     "prostate-pattern-5-infiltrative-front": [
       2
     ],
-    "prostate-treatment-associated-fibrotic-replacement": [
+    "prostate-operational-tumor-retreat": [
       9,
       10
     ],
@@ -104,7 +104,7 @@
     "prostate-pattern-5-infiltrative-front": [
       10
     ],
-    "prostate-treatment-associated-fibrotic-replacement": [
+    "prostate-operational-tumor-retreat": [
       2
     ],
     "prostate-local-tumor-clearance": [

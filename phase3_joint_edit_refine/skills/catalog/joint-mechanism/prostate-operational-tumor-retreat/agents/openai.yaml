@@ -1,0 +1,4 @@
+interface:
+  display_name: "PANDA operational tumor-to-stroma turnover"
+  short_description: "Shadow-only certified mask mechanism"
+  default_prompt: "Use $prostate-operational-tumor-retreat only to select compiler-certified mask candidates; never infer execution authority from H&E."

@@ -8,57 +8,116 @@
       "constraint_id": "melanoma.mask.preserve_epidermis_necrosis_vessel_labels",
       "applies_when": {},
       "mask_statement": "Epidermis, necrosis, vessel, and every other unrequested semantic label remain pixel-identical in a generic burden edit.",
-      "observability": ["semantic_mask"],
+      "observability": [
+        "semantic_mask"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["label_transition", "unrequested_labels_preserved"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "label_transition",
+        "unrequested_labels_preserved"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["semantic mask with the declared PUMA/profile mapping"],
+      "required_inputs": [
+        "semantic mask with the declared PUMA/profile mapping"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Preserve epidermal continuity, necrotic appearance, and vessel morphology visually."],
-      "known_limitations": ["A coarse profile may not label regression, junctional melanoma, ulceration, or small vessels."]
+      "generation_handoff": [
+        "Preserve epidermal continuity, necrotic appearance, and vessel morphology visually."
+      ],
+      "known_limitations": [
+        "A coarse profile may not label regression, junctional melanoma, ulceration, or small vessels."
+      ]
     },
     {
       "constraint_id": "melanoma.mask.protect_unencoded_surface_and_regression_structures_conditionally",
       "applies_when": {},
-      "mask_statement": "If junctional component, ulcerated surface, regression bed, or small vessels are available as auxiliary regions, exclude them; if they are visible only on H&E, mask edit cannot assert their preservation and must abstain when the band overlaps them ambiguously.",
-      "observability": ["auxiliary_structure_map", "source_he"],
+      "mask_statement": "If junctional component, ulcerated surface, regression bed, or small vessels are available as auxiliary regions, exclude them; if they are visible only on digest-bound native/auxiliary structure authority, mask edit cannot assert their preservation and must abstain when the band overlaps them ambiguously.",
+      "observability": [
+        "auxiliary_structure_map"
+      ],
       "enforcement": "conditional",
-      "enforcement_stages": ["planner", "candidate_generation", "mask_gate"],
-      "checker_ids": ["prohibited_region", "unrequested_labels_preserved"],
-      "critic_requirement": "veto_unencoded_melanoma_structure_overlap",
-      "required_inputs": ["source H&E", "auxiliary structure map when available"],
+      "enforcement_stages": [
+        "planner",
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "prohibited_region",
+        "unrequested_labels_preserved"
+      ],
+      "critic_requirement": null,
+      "required_inputs": [
+        "digest-bound native/auxiliary structure map",
+        "auxiliary structure map when available"
+      ],
       "failure_action": "abstain_case",
-      "generation_handoff": ["Cohesive versus discohesive growth, ulceration, and regression morphology must be rendered and audited after mask selection."],
-      "known_limitations": ["Mask gaps cannot diagnose ulceration and stromal labels cannot diagnose regression."]
+      "generation_handoff": [
+        "Cohesive versus discohesive growth, ulceration, and regression morphology must be rendered and audited after mask selection."
+      ],
+      "known_limitations": [
+        "Mask gaps cannot diagnose ulceration and stromal labels cannot diagnose regression."
+      ]
     },
     {
       "constraint_id": "melanoma.mask.existing_interface_band_only",
       "applies_when": {},
       "mask_statement": "Every changed component must touch one selected directed interface, stay inside its allowed band, and avoid rectangle-like or short/deep geometry.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["interface_contact", "tumor_stroma_interface", "depth_span_ratio", "boundary_naturalness"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "interface_contact",
+        "tumor_stroma_interface",
+        "depth_span_ratio",
+        "boundary_naturalness"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["component/interface scene graph"],
+      "required_inputs": [
+        "component/interface scene graph"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Use a primary/metastatic- and growth-pattern-matched H&E reference for rendering."],
-      "known_limitations": ["Geometric continuity cannot distinguish cohesive nests from dispersed melanoma cells."]
+      "generation_handoff": [
+        "Use a primary/metastatic- and growth-pattern-matched H&E reference for rendering."
+      ],
+      "known_limitations": [
+        "Geometric continuity cannot distinguish cohesive nests from dispersed melanoma cells."
+      ]
     },
     {
       "constraint_id": "melanoma.mask.no_island_bridge_split_merge_or_hole_change",
       "applies_when": {},
       "mask_statement": "Reject tumor islands, bridges between separate foci, source splits, target merges, and new/filled holes.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["mask_gate"],
-      "checker_ids": ["component_topology", "edited_label_topology"],
+      "enforcement_stages": [
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "component_topology",
+        "edited_label_topology"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["source and candidate masks"],
+      "required_inputs": [
+        "source and candidate masks"
+      ],
       "failure_action": "reject_candidate",
       "generation_handoff": [],
-      "known_limitations": ["Dedicated satellite-creation or topology-changing tasks are outside v1."]
+      "known_limitations": [
+        "Dedicated satellite-creation or topology-changing tasks are outside v1."
+      ]
     }
   ]
 }

@@ -109,7 +109,7 @@ MECHANISM_POSTCONDITION_IDS = (
     "lung-solid-squamous-growth",
     "lung-stas-airspace-spread",
     "lung-stromal-invasive-front",
-    "lung-treatment-associated-fibrotic-replacement",
+    "lung-operational-tumor-retreat",
     "melanoma-cohesive-nest-sheet",
     "melanoma-discohesive-junctional",
     "melanoma-intratumoral-necrosis-turnover",
@@ -131,7 +131,7 @@ MECHANISM_POSTCONDITION_IDS = (
     "prostate-pattern-5-growth",
     "prostate-gleason-architecture-progression",
     "prostate-pattern-5-infiltrative-front",
-    "prostate-treatment-associated-fibrotic-replacement",
+    "prostate-operational-tumor-retreat",
 )
 
 
@@ -2273,10 +2273,14 @@ def _reference_shape_integrity(c):
     deterministic_without_replacement = bool(
         sampling_policy
         in {
-            "same_class_source_without_replacement_then_"
-            "calibrated_library_without_replacement_then_certified_fallback",
-            "same_class_source_without_replacement_then_calibrated_library_or_"
-            "bounded_source_resize_without_replacement_then_certified_fallback",
+            (
+                "same_class_source_without_replacement_then_"
+                "calibrated_library_without_replacement_then_certified_fallback"
+            ),
+            (
+                "same_class_source_without_replacement_then_calibrated_library_or_"
+                "bounded_source_resize_without_replacement_then_certified_fallback"
+            ),
         }
     )
     required_unique_shape_count = min(
@@ -3444,10 +3448,32 @@ def _mechanism_realization(c):
     modifier_certified = (
         c.candidate.tool_trace.get("mechanism_modifier_certified") is True
     )
+    removed_trace_ids = tuple(
+        str(value)
+        for value in c.candidate.tool_trace.get(
+            "removed_source_instance_ids", ()
+        )
+    )
+    removal_ledger_certified = bool(
+        any(
+            str(action).startswith("remove")
+            for action in c.plan.cell_plan.actions
+        )
+        and layout == "localized_density_gradient"
+        and removed_trace_ids
+        and removed_trace_ids
+        == tuple(c.candidate.ledger.removed_instance_ids)
+        and bool(_cell_effect_geometry(c)["complete_instance_ledger_valid"])
+    )
     passed = (
         layout in allowed
         and sizes_ok
-        and (bool(placements) or mature_baseline_only or modifier_certified)
+        and (
+            bool(placements)
+            or mature_baseline_only
+            or modifier_certified
+            or removal_ledger_certified
+        )
     )
     return _result(
         "mechanism_realization",
@@ -3463,6 +3489,7 @@ def _mechanism_realization(c):
             "declared_cluster_sizes": declared_sizes,
             "mature_baseline_only": mature_baseline_only,
             "mechanism_modifier_certified": modifier_certified,
+            "removal_ledger_certified": removal_ledger_certified,
         },
     )
 
@@ -3691,10 +3718,10 @@ def _mechanism_specific_postcondition(
         )
 
     operational_retreat_mechanisms = {
-        "lung-treatment-associated-fibrotic-replacement",
+        "lung-operational-tumor-retreat",
         "melanoma-operational-tumor-retreat",
         "oral-scc-operational-tumor-retreat",
-        "prostate-treatment-associated-fibrotic-replacement",
+        "prostate-operational-tumor-retreat",
     }
     if expected_mechanism_id in operational_retreat_mechanisms:
         subchecks["documented_treatment_context"] = bool(
@@ -3717,7 +3744,7 @@ def _mechanism_specific_postcondition(
             subchecks["coherent_footprint_retreat"] = (
                 _coherent_footprint_retreat(c).passed
             )
-        if expected_mechanism_id == "prostate-treatment-associated-fibrotic-replacement":
+        if expected_mechanism_id == "prostate-operational-tumor-retreat":
             source = np.asarray(c.source_tissue)
             target = np.asarray(c.candidate.target_tissue_mask)
             change = np.asarray(c.candidate.tissue_change, dtype=bool)
@@ -4335,7 +4362,18 @@ def _joint_area(c):
     if c.bundle.primitive.budget_mode == "count_extent":
         budget = c.case.cell_count_extent_budget
         extent = _maximum_changed_distance_to_interfaces(c)
-        effect_span, effect_foci = _cell_effect_geometry(c)
+        effect_geometry = _cell_effect_geometry(c)
+        effect_span = float(effect_geometry["effect_center_span_px"])
+        meaningful_cellularity_spatial_contract = bool(
+            c.case.primitive_id == "cellularity-increase-v1"
+        )
+        effect_foci = int(
+            effect_geometry[
+                "focus_count"
+                if meaningful_cellularity_spatial_contract
+                else "raw_spatial_component_count"
+            ]
+        )
         minimum_effect_span_px = max(
             budget.minimum_effect_span_px if budget else 0,
             c.executable_contract.cell_program.minimum_effect_span_px,
@@ -4405,6 +4443,10 @@ def _joint_area(c):
             budget
             and extent <= budget.maximum_extent_px
             and effect_span >= minimum_effect_span_px
+            and (
+                not meaningful_cellularity_spatial_contract
+                or bool(effect_geometry["spatial_focus_contract_passed"])
+            )
             and effect_foci >= minimum_effect_foci
             and multisite_population_ok
         )
@@ -4439,6 +4481,10 @@ def _joint_area(c):
                 ),
                 "observed_effect_foci": effect_foci,
                 "minimum_effect_foci": minimum_effect_foci if budget else None,
+                "effect_geometry": effect_geometry,
+                "meaningful_cellularity_spatial_contract_required": (
+                    meaningful_cellularity_spatial_contract
+                ),
                 "multisite_population_required": multisite_population_required,
                 "multisite_population_passed": multisite_population_ok,
                 "population_site_counts": normalized_site_counts,
@@ -4566,51 +4612,276 @@ def _joint_area(c):
     )
 
 
-def _cell_effect_geometry(c) -> tuple[float, int]:
-    """Return changed-instance center diameter and independent focus count."""
+def _cell_effect_geometry(c) -> dict[str, object]:
+    """Reconstruct meaningful changed-cell foci from final masks and ledgers."""
 
     trace = c.candidate.tool_trace
-    placements = trace.get("placements")
+    nominal = max(
+        1.0,
+        float(c.executable_contract.cell_program.nominal_nucleus_diameter_px),
+    )
     centers: list[tuple[float, float]] = []
-    focus_ids: set[str] = set()
-    if isinstance(placements, list):
-        for index, item in enumerate(placements):
-            if not isinstance(item, dict):
-                continue
-            center = item.get("center_xy")
-            if isinstance(center, (list, tuple)) and len(center) == 2:
-                centers.append((float(center[0]), float(center[1])))
-                focus_ids.add(str(item.get("cluster_id") or f"center-{index}"))
-    if not centers:
+    ledger_complete = True
+    if "add" in c.plan.cell_plan.actions:
         accepted = trace.get("accepted_center_ledger")
-        if isinstance(accepted, list):
-            for index, item in enumerate(accepted):
-                if not isinstance(item, dict):
-                    continue
-                row, col = item.get("row"), item.get("col")
-                if isinstance(row, (int, float)) and isinstance(col, (int, float)):
-                    centers.append((float(col), float(row)))
-                    focus_ids.add(f"center-{index}")
-    if not centers:
-        removed = trace.get("removed_source_instance_ids")
-        if isinstance(removed, list):
-            instances = {
-                item.instance_id: item for item in c.scene.cells.instances
-            }
-            for index, instance_id in enumerate(removed):
-                item = instances.get(str(instance_id))
-                if item is None:
-                    continue
-                centers.append(
-                    (float(item.centroid_xy[0]), float(item.centroid_xy[1]))
+        accepted = accepted if isinstance(accepted, list) else []
+        source = np.asarray(c.source_nuclei)
+        target = np.asarray(c.candidate.target_nuclei_mask)
+        added = (target > 0) & (source == 0)
+        accepted_keys: list[tuple[int, int, int]] = []
+        for item in accepted:
+            if not isinstance(item, dict):
+                ledger_complete = False
+                continue
+            row = int(item.get("row", -1))
+            col = int(item.get("col", -1))
+            class_id = int(item.get("class_id", -1))
+            if (
+                row < 0
+                or col < 0
+                or row >= target.shape[0]
+                or col >= target.shape[1]
+                or not added[row, col]
+                or int(target[row, col]) != class_id
+            ):
+                ledger_complete = False
+                continue
+            centers.append((float(col), float(row)))
+            accepted_keys.append((row, col, class_id))
+        raw_complete_ledger = (
+            trace.get("accepted_instance_area_ledger")
+            or trace.get("placements")
+            or ()
+        )
+        complete_ledger: list[tuple[int, int, int, int]] = []
+        if not isinstance(raw_complete_ledger, (list, tuple)):
+            ledger_complete = False
+            raw_complete_ledger = ()
+        for item in raw_complete_ledger:
+            if not isinstance(item, dict):
+                ledger_complete = False
+                continue
+            center_xy = item.get("center_xy")
+            row = item.get("row")
+            col = item.get("col")
+            if isinstance(center_xy, (list, tuple)) and len(center_xy) == 2:
+                col, row = center_xy
+            class_id = item.get("class_id", item.get("cell_class", -1))
+            area_px = item.get("area_px", 0)
+            try:
+                normalized = (
+                    int(row),
+                    int(col),
+                    int(class_id),
+                    int(area_px),
                 )
-                focus_ids.add(f"removed-{index}")
-    if len(centers) < 2:
-        return 0.0, len(focus_ids)
-    points = np.asarray(centers, dtype=float)
-    deltas = points[:, None, :] - points[None, :, :]
-    span = float(np.sqrt(np.max(np.sum(deltas**2, axis=2))))
-    return span, len(focus_ids)
+            except (TypeError, ValueError):
+                ledger_complete = False
+                continue
+            if normalized[3] <= 0:
+                ledger_complete = False
+            complete_ledger.append(normalized)
+        expected_count = int(trace.get("placed_count", -1))
+        ledger_complete = bool(
+            ledger_complete
+            and expected_count >= 0
+            and len(centers) == expected_count
+            and len(complete_ledger) == expected_count
+            and len(set(centers)) == len(centers)
+            and len(set(accepted_keys)) == len(accepted_keys)
+            and {
+                (row, col, class_id)
+                for row, col, class_id, _area in complete_ledger
+            }
+            == set(accepted_keys)
+        )
+        recorded_area_by_class: dict[int, int] = {}
+        for _row, _col, class_id, area_px in complete_ledger:
+            recorded_area_by_class[class_id] = (
+                recorded_area_by_class.get(class_id, 0) + area_px
+            )
+        realized_area_by_class = {
+            int(class_id): int(np.count_nonzero(added & (target == class_id)))
+            for class_id in np.unique(target[added])
+            if int(class_id) > 0
+        }
+        ledger_complete = bool(
+            ledger_complete
+            and recorded_area_by_class == realized_area_by_class
+        )
+        labels, component_count = ndimage.label(
+            added,
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        seeded_components = {
+            int(labels[round(y), round(x)])
+            for x, y in centers
+            if int(labels[round(y), round(x)]) > 0
+        }
+        ledger_complete = bool(
+            ledger_complete
+            and seeded_components == set(range(1, int(component_count) + 1))
+        )
+        change_direction = "add"
+    else:
+        instances = {item.instance_id: item for item in c.scene.cells.instances}
+        target = np.asarray(c.candidate.target_nuclei_mask)
+        removed_ids = tuple(c.candidate.ledger.removed_instance_ids)
+        removed_union = np.zeros_like(target, dtype=bool)
+        for instance_id in removed_ids:
+            item = instances.get(str(instance_id))
+            component = c.scene.instance_masks.get(str(instance_id))
+            if item is None or component is None:
+                ledger_complete = False
+                continue
+            component = np.asarray(component, dtype=bool)
+            if np.any(target[component] != 0):
+                ledger_complete = False
+                continue
+            removed_union |= component
+            centers.append(
+                (float(item.centroid_xy[0]), float(item.centroid_xy[1]))
+            )
+        ledger_complete = bool(
+            ledger_complete
+            and len(centers) == len(removed_ids)
+            and len(set(centers)) == len(centers)
+            and np.array_equal(
+                removed_union,
+                (np.asarray(c.source_nuclei) > 0) & (target == 0),
+            )
+        )
+        change_direction = "remove"
+    return audit_cell_effect_foci(
+        centers_xy=centers,
+        nominal_nucleus_diameter_px=nominal,
+        complete_instance_ledger_valid=ledger_complete,
+        change_direction=change_direction,
+    )
+
+
+def audit_cell_effect_foci(
+    *,
+    centers_xy,
+    nominal_nucleus_diameter_px: float,
+    complete_instance_ledger_valid: bool = True,
+    change_direction: str = "add",
+    within_focus_link_diameters: float = 1.5,
+    maximum_focus_diameter_diameters: float = 2.5,
+    minimum_inter_focus_separation_diameters: float = 3.0,
+) -> dict[str, object]:
+    """Cluster final changed-instance centers with no-chain/no-bridge rules.
+
+    Focus IDs from an executor trace are never accepted.  Single-link spatial
+    components define candidate foci, but every component must also satisfy a
+    complete-link diameter cap.  Therefore a chain of adjacent nuclei cannot
+    bridge distant sites into one valid focus, and splitting such a chain into
+    fake trace clusters cannot inflate the independent-focus count.
+    """
+
+    centers = np.asarray(tuple(centers_xy), dtype=float)
+    if centers.size == 0:
+        centers = np.empty((0, 2), dtype=float)
+    if centers.ndim != 2 or centers.shape[1:] != (2,):
+        raise ValueError("changed-instance centers must have shape (N, 2)")
+    nominal = max(1.0, float(nominal_nucleus_diameter_px))
+    link_px = float(within_focus_link_diameters) * nominal
+    maximum_focus_diameter_px = (
+        float(maximum_focus_diameter_diameters) * nominal
+    )
+    minimum_inter_focus_separation_px = (
+        float(minimum_inter_focus_separation_diameters) * nominal
+    )
+    if len(centers) <= 1:
+        distances = np.zeros((len(centers), len(centers)), dtype=float)
+    else:
+        distances = np.linalg.norm(
+            centers[:, None, :] - centers[None, :, :], axis=2
+        )
+    adjacency = (distances <= link_px + 1e-9) & (distances > 0)
+    groups: list[set[int]] = []
+    unseen = set(range(len(centers)))
+    while unseen:
+        seed = min(unseen)
+        unseen.remove(seed)
+        group = {seed}
+        frontier = [seed]
+        while frontier:
+            current = frontier.pop()
+            neighbors = {
+                int(index) for index in np.flatnonzero(adjacency[current])
+            } & unseen
+            unseen -= neighbors
+            group |= neighbors
+            frontier.extend(sorted(neighbors))
+        groups.append(group)
+    focus_diameters = [
+        float(
+            np.max(
+                distances[
+                    np.ix_(
+                        np.asarray(sorted(group), dtype=int),
+                        np.asarray(sorted(group), dtype=int),
+                    )
+                ],
+                initial=0.0,
+            )
+        )
+        for group in groups
+    ]
+    no_chain = all(
+        value <= maximum_focus_diameter_px + 1e-9
+        for value in focus_diameters
+    )
+    cross_distances = []
+    for left_index, left in enumerate(groups):
+        for right in groups[left_index + 1 :]:
+            cross_distances.append(
+                float(
+                    np.min(
+                        distances[
+                            np.ix_(
+                                np.asarray(sorted(left), dtype=int),
+                                np.asarray(sorted(right), dtype=int),
+                            )
+                        ]
+                    )
+                )
+            )
+    minimum_inter_focus_distance = min(cross_distances) if cross_distances else None
+    separated = bool(
+        not cross_distances
+        or float(minimum_inter_focus_distance)
+        >= minimum_inter_focus_separation_px - 1e-9
+    )
+    span = float(np.max(distances, initial=0.0))
+    spatial_passed = bool(
+        complete_instance_ledger_valid and no_chain and separated and groups
+    )
+    return {
+        "change_direction": change_direction,
+        "reconstructed_complete_instance_count": len(centers),
+        "complete_instance_ledger_valid": bool(
+            complete_instance_ledger_valid
+        ),
+        "focus_count": int(len(groups) if spatial_passed else 0),
+        "raw_spatial_component_count": len(groups),
+        "focus_sizes": [len(group) for group in groups],
+        "focus_diameters_px": focus_diameters,
+        "effect_center_span_px": span,
+        "within_focus_link_px": link_px,
+        "maximum_focus_diameter_px": maximum_focus_diameter_px,
+        "minimum_inter_focus_separation_px": (
+            minimum_inter_focus_separation_px
+        ),
+        "observed_minimum_inter_focus_distance_px": (
+            minimum_inter_focus_distance
+        ),
+        "no_chain_no_bridge_passed": bool(no_chain),
+        "inter_focus_separation_passed": separated,
+        "spatial_focus_contract_passed": spatial_passed,
+        "trace_cluster_ids_used_as_evidence": False,
+    }
 
 
 def _tissue_floor(c):

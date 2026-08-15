@@ -1,6 +1,6 @@
 {
   "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
   "scope": "cell_only",
   "summary": "Increase only observable generic class-2 inflammatory nuclei in an existing mask-defined tissue component without creating an immune tissue label or subtype claim.",

@@ -11,9 +11,9 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
-
+from typing import Any
 
 CATALOG = Path("phase3_joint_edit_refine/skills/catalog")
 MECHANISMS = CATALOG / "joint-mechanism"
@@ -181,8 +181,105 @@ def _remove_mixed_scope_dispersion_checks(contract: dict[str, Any]) -> None:
         field[:] = [item for item in field if item not in dispersion_checks]
 
 
+def _sanitize_orca_language(value: Any) -> Any:
+    """Remove tissue classes and claims that ORCA does not encode."""
+
+    if isinstance(value, str):
+        return (
+            value.replace("Stroma", "Other tissue")
+            .replace("stromal", "connective-tissue")
+            .replace("stroma", "a specific connective-tissue compartment")
+        )
+    if isinstance(value, list):
+        result = []
+        for item in value:
+            sanitized = _sanitize_orca_language(item)
+            if sanitized not in result:
+                result.append(sanitized)
+        return result
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_orca_language(item) for key, item in value.items()
+        }
+    return value
+
+
+def _oral_scatter_transform(contract: dict[str, Any]) -> None:
+    """Define non-diagnostic ORCA scatter from annotation-only authority."""
+
+    contract["summary"] = (
+        "Add annotation-anchored synthetic class-1 singles or 1-4-cell foci "
+        "outside an explicit ORCA Tumor component without diagnosing invasion."
+    )
+    contract["recognition_contract"] = {
+        "required_observations": [
+            "explicit ORCA Tumor/Other-tissue external mask boundary",
+            "compiler-certified bounded outer annulus",
+            "source-matched complete class-1 reference nuclei",
+        ],
+        "contraindications": [
+            "fragmented zero/non-tissue or another protected footprint",
+            "remote focus or bridge to bulk Tumor",
+            "WPOI, budding, invasion or prognostic diagnosis requested",
+        ],
+        "minimum_confidence": 0.9,
+    }
+    contract["tissue_program"]["mode"] = (
+        "preserve_orca_tissue_for_annotation_anchored_scatter"
+    )
+    contract["tissue_program"]["prohibited_structures"] = [
+        "fragmented_non_tissue",
+        "surface_space",
+    ]
+    contract["cell_program"]["actions"] = ["retain", "add"]
+    contract["cell_program"]["allowed_cell_classes"] = [1]
+    contract["cell_program"]["layout_programs"] = ["single", "small_cluster"]
+    contract["cell_program"]["halo_policy"] = (
+        "add_complete_class1_in_certified_tumor_outer_annulus"
+    )
+    contract["cell_program"]["halo_distance_px"] = [4, 32]
+    contract["cell_program"]["cluster_size_range"] = [1, 4]
+    contract["coupling_contract"]["compatibility_rule_ids"] = [
+        "orca.mask.annotation_anchored_outer_annulus",
+        "orca.mask.complete_class1_synthetic_foci",
+        "orca.mask.fragmented_zero_preserved",
+    ]
+    contract["render_contract"] = {
+        "required_findings": [
+            "bounded synthetic singles or 1-4-cell foci in Other tissue",
+            "ORCA Tumor and fragmented zero/non-tissue remain pixel-exact",
+        ],
+        "veto_findings": [
+            "bulk bridge, remote focus or protected-footprint overlap",
+            "diagnostic WPOI, budding, invasion or prognostic claim",
+        ],
+        "mask_guarantees": [
+            "tissue mask is pixel-exact",
+            "complete class-1 footprints remain inside the certified annulus",
+        ],
+        "render_only_claims": [
+            "WPOI",
+            "tumor budding",
+            "histologic invasion",
+            "prognosis",
+        ],
+    }
+    contract["counterexamples"] = [
+        "calling synthetic scatter diagnostic WPOI or budding",
+        "placing a focus in fragmented zero/non-tissue",
+        "accepting a remote focus or solid bridge",
+    ]
+
+
 def _add_local_cell_primitives(
-    contract: dict[str, Any], *, include_generic_inflammatory: bool
+    contract: dict[str, Any],
+    *,
+    include_generic_inflammatory: bool,
+    generic_host_labels: tuple[str, ...] = (
+        "Tumor",
+        "Stroma",
+        "Other tissue",
+    ),
 ) -> None:
     label_contracts = {
         "neoplastic-cell-abundance-increase-v1": {
@@ -205,8 +302,8 @@ def _add_local_cell_primitives(
         ):
             primitive = f"generic-inflammatory-cell-abundance-{direction}-v1"
             label_contracts[primitive] = {
-                "source_labels": ["Tumor", "Stroma", "Other tissue"],
-                "target_labels": ["Tumor", "Stroma", "Other tissue"],
+                "source_labels": list(generic_host_labels),
+                "target_labels": list(generic_host_labels),
             }
             layouts[primitive] = layout
     _add_primitives(contract, label_contracts=label_contracts, layouts=layouts)
@@ -280,7 +377,6 @@ def _generic_boundary_growth(contract: dict[str, Any], *, host: str) -> None:
 
 
 def _cord(contract: dict[str, Any], *, host: str) -> None:
-    breast = contract.pop("_breast_template")
     contract["supported_primitives"] = ["infiltrative-nest-cord-extension-v1"]
     contract["summary"] = (
         "Create one annotation-anchored narrow connected Tumor extension with "
@@ -299,22 +395,66 @@ def _cord(contract: dict[str, Any], *, host: str) -> None:
         ],
         "minimum_confidence": 0.9,
     }
-    contract["tissue_program"] = copy.deepcopy(breast["tissue_program"])
-    contract["tissue_program"]["mode"] = "annotation_anchored_narrow_connected_extension"
-    contract["tissue_program"]["primitive_label_contracts"] = {
+    tissue_program = contract["tissue_program"]
+    tissue_program["mode"] = "annotation_anchored_narrow_connected_extension"
+    tissue_program["target_component_merge_policy"] = "selected_only"
+    tissue_program["primitive_label_contracts"] = {
         "infiltrative-nest-cord-extension-v1": {
             "source_labels": [host],
             "target_labels": ["Tumor"],
         }
     }
-    contract["tissue_program"]["required_checker_ids"] = [
+    tissue_program["allowed_tools"] = ["directional_tapered_projection"]
+    tissue_program["required_checker_ids"] = [
         "tissue_gate_binding",
         "external_boundary_binding",
         "annotation_anchored_extension_geometry",
         "profile_fine_transition_authority",
     ]
-    contract["cell_program"] = copy.deepcopy(breast["cell_program"])
-    contract["coupling_contract"] = copy.deepcopy(breast["coupling_contract"])
+    tissue_program["prohibited_structures"] = [
+        "collapsed_zero",
+        "encoded_airspace_or_lumen",
+        "vessel",
+        "necrosis",
+        "immune_infiltrate",
+        "normal_epithelium",
+        "other_protected_profile_structure",
+    ]
+    tissue_program["front_contract"] = {
+        "profile_mode": "tapered_lobe",
+        "edge_depth_ratio": 0.12,
+        "taper_fraction": 0.42,
+        "lobe_count": 1,
+        "noise_depth_ratio": 0.02,
+        "maximum_band_px": 64,
+        "maximum_depth_span_ratio": 4.0,
+        "maximum_boundary_compactness": 14.0,
+        "directional_sector_required": True,
+        "maximum_selected_anchor_fraction": 0.5,
+        "minimum_unselected_anchor_count": 1,
+    }
+    contract["cell_program"].update(
+        actions=["retain", "remove_whole", "add"],
+        allowed_cell_classes=[1],
+        layout_programs=["boundary_aligned"],
+        layout_program_by_primitive={
+            "infiltrative-nest-cord-extension-v1": "boundary_aligned"
+        },
+        core_policy="replace_complete_instances_in_narrow_tissue_extension",
+        halo_policy="no_cell_only_halo",
+        halo_distance_px=[0, 12],
+        cluster_size_range=[2, 6],
+    )
+    contract["coupling_contract"].update(
+        compatibility_rule_ids=[
+            "ignite.mask.synthetic_cord_connected",
+            "ignite.mask.boundary_aligned_population_in_extension",
+        ],
+        allow_neoplastic_in_non_tumor_tissue=False,
+        joint_area_mode="joint_footprint",
+        tissue_floor_applies=True,
+        cell_only_target_fraction=0.0,
+    )
     contract["joint_gate_ids"] = [
         "joint_area",
         "tissue_floor",
@@ -331,6 +471,29 @@ def _cord(contract: dict[str, Any], *, host: str) -> None:
         "annotation_anchored_extension_geometry",
         "profile_fine_transition_authority",
         "whole_instance_changes",
+    ]
+    contract["render_contract"] = {
+        "required_findings": [
+            "one connected annotation-anchored narrow synthetic Tumor extension",
+            "complete class-1 population continuity inside the changed Tumor footprint",
+        ],
+        "veto_findings": [
+            "remote island, side merge or protected-profile overlap",
+            "histologic invasive-front, subtype or prognostic claim",
+        ],
+        "mask_guarantees": [
+            f"only operational {host} converts to Tumor",
+            "complete-instance nuclei edits only",
+        ],
+        "render_only_claims": [
+            "histologic subtype identity",
+            "desmoplastic reaction",
+        ],
+    }
+    contract["counterexamples"] = [
+        "remote Tumor island",
+        "broad fill instead of one tapered extension",
+        "edit of an encoded protected structure",
     ]
 
 
@@ -440,6 +603,12 @@ def _retreat_transform(contract: dict[str, Any]) -> None:
         "minimum_confidence": 0.9,
     }
     contract["representability_contract"]["required_auxiliary_structures"] = []
+    contract["tissue_program"]["mode"] = (
+        "operational_tumor_retreat_to_profile_receiver"
+    )
+    # Operational retreat is a mask-defined footprint contraction. It must
+    # not inherit Breast's directional front selector from a schema template.
+    contract["tissue_program"].pop("front_contract", None)
     contract["tissue_program"]["required_checker_ids"] = [
         "tissue_gate_binding",
         "profile_fine_transition_authority",
@@ -1154,6 +1323,10 @@ def _prostate_pattern5_scatter_transform(contract: dict[str, Any]) -> None:
         "placing cells in a protected native lumen",
         "calling synthetic peripheral scatter diagnostic invasion or grade progression",
     ]
+    contract["evidence_citations"] = [
+        "https://panda.grand-challenge.org/Data/",
+        "https://doi.org/10.1038/s41591-021-01620-2",
+    ]
 
 
 def _update_profile(
@@ -1242,9 +1415,83 @@ def _update_profile(
     writer.json(evidence_path, evidence)
 
 
+def _assert_clean_non_breast_catalog(root: Path) -> None:
+    """Fail generator checks on inherited Breast or ORCA semantic authority."""
+
+    forbidden_cross_organ = (
+        "breast",
+        "bcss",
+        "dcis",
+        "angioinvasion",
+        "benign_duct",
+        "cap breast",
+        "breast.mask",
+    )
+    for path in sorted(
+        (root / MECHANISMS).glob("*/references/joint_contract.json")
+    ):
+        payload = _load(path)
+        if payload.get("pathology_domain_id") == "breast-invasive-carcinoma-v1":
+            continue
+        text = json.dumps(payload, ensure_ascii=False).lower()
+        contaminated = sorted(
+            token for token in forbidden_cross_organ if token in text
+        )
+        if contaminated:
+            raise ValueError(
+                f"non-Breast mechanism contamination in {path}: {contaminated}"
+            )
+        if payload.get("pathology_domain_id") == (
+            "oral-squamous-cell-carcinoma-v1"
+        ):
+            execution_surfaces = {
+                "summary": payload.get("summary"),
+                "required_observations": (
+                    payload.get("recognition_contract") or {}
+                ).get("required_observations"),
+                "representability_contract": payload.get(
+                    "representability_contract"
+                ),
+                "tissue_program": payload.get("tissue_program"),
+                "cell_program": payload.get("cell_program"),
+                "coupling_contract": payload.get("coupling_contract"),
+                "required_findings": (
+                    payload.get("render_contract") or {}
+                ).get("required_findings"),
+                "mask_guarantees": (
+                    payload.get("render_contract") or {}
+                ).get("mask_guarantees"),
+            }
+            authority_text = json.dumps(
+                execution_surfaces, ensure_ascii=False
+            ).lower()
+            overclaims = sorted(
+                token
+                for token in ("stroma", "fibros", "immune tissue")
+                if token in authority_text
+            )
+            if overclaims:
+                raise ValueError(
+                    f"ORCA execution semantic overclaim in {path}: {overclaims}"
+                )
+
+
 def refine(root: Path, *, check: bool) -> list[Path]:
     writer = Writer(root, check=check)
     _install_primitives(writer)
+    fragmentation_path = (
+        CATALOG
+        / "edit-primitive"
+        / "residual-tumor-fragmentation-v1"
+        / "references"
+        / "primitive_contract.json"
+    )
+    fragmentation = _load(root / fragmentation_path)
+    fragmentation["version"] = "1.1.15-draft"
+    fragmentation_topology = fragmentation["tissue_topology_contract"]
+    fragmentation_topology["minimum_residual_components"] = 2
+    fragmentation_topology["maximum_residual_components"] = 6
+    writer.json(fragmentation_path, fragmentation)
     execution_scope_path = CATALOG / "execution-scope-v1.json"
     execution_scope = _load(root / execution_scope_path)
     execution_scope["executable_primitives"] = _ordered_union(
@@ -1293,12 +1540,12 @@ def refine(root: Path, *, check: bool) -> list[Path]:
             "change, histologic invasion, extraprostatic extension or prognosis.\n"
         ),
     )
-    prostate_retreat = _contract(root, "prostate-treatment-associated-fibrotic-replacement")
+    prostate_retreat = _contract(root, "prostate-operational-tumor-retreat")
     _retreat_transform(prostate_retreat)
     _write_contract(writer, prostate_retreat)
     _write_shadow_skill(
         writer,
-        "prostate-treatment-associated-fibrotic-replacement",
+        "prostate-operational-tumor-retreat",
         title="PANDA operational tumor-to-stroma turnover",
         body=(
             "Require explicit post-treatment semantic intent and fine-9/10 source "
@@ -1323,9 +1570,6 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ),
     )
     lung_cord = _contract(root, "lung-stromal-invasive-front")
-    lung_cord["_breast_template"] = _contract(
-        root, "breast-infiltrative-nest-cord-extension"
-    )
     _cord(lung_cord, host="Stroma")
     _write_contract(writer, lung_cord)
     _write_shadow_skill(
@@ -1343,12 +1587,12 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     _cell_only_dispersion(lung_local, host_label="Stroma", include_cluster=True)
     _remove_mixed_scope_dispersion_checks(lung_local)
     _write_contract(writer, lung_local)
-    lung_retreat = _contract(root, "lung-treatment-associated-fibrotic-replacement")
+    lung_retreat = _contract(root, "lung-operational-tumor-retreat")
     _retreat_transform(lung_retreat)
     _write_contract(writer, lung_retreat)
     _write_shadow_skill(
         writer,
-        "lung-treatment-associated-fibrotic-replacement",
+        "lung-operational-tumor-retreat",
         title="IGNITE post-treatment operational tumor retreat",
         body=(
             "Require explicit post-treatment context and certified fine-1 to "
@@ -1423,16 +1667,20 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     oral_growth = _contract(root, "oral-scc-cohesive-nest-cord")
     _generic_boundary_growth(oral_growth, host="Other tissue")
     oral_growth["supported_primitives"] = [
-        item
-        for item in oral_growth["supported_primitives"]
-        if item != "infiltrative-nest-cord-extension-v1"
+        "tumor-burden-increase-v1",
+        "cohesive-boundary-expansion-v1",
     ]
-    oral_growth["tissue_program"]["primitive_label_contracts"].pop(
-        "infiltrative-nest-cord-extension-v1", None
-    )
-    oral_growth["cell_program"]["layout_program_by_primitive"].pop(
-        "infiltrative-nest-cord-extension-v1", None
-    )
+    oral_growth["tissue_program"]["primitive_label_contracts"] = {
+        primitive_id: {
+            "source_labels": ["Other tissue"],
+            "target_labels": ["Tumor"],
+        }
+        for primitive_id in oral_growth["supported_primitives"]
+    }
+    oral_growth["cell_program"]["layout_program_by_primitive"] = {
+        primitive_id: "boundary_aligned"
+        for primitive_id in oral_growth["supported_primitives"]
+    }
     oral_growth["tissue_program"]["allowed_tools"] = [
         item
         for item in oral_growth["tissue_program"]["allowed_tools"]
@@ -1443,7 +1691,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
             "tissue_program"
         ]["front_contract"]
     )
-    _write_contract(writer, oral_growth)
+    _write_contract(writer, _sanitize_orca_language(oral_growth))
     _write_shadow_skill(
         writer,
         "oral-scc-cohesive-nest-cord",
@@ -1459,12 +1707,13 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     oral_scatter["tissue_program"]["primitive_label_contracts"] = {}
     oral_scatter["cell_program"]["layout_program_by_primitive"] = {}
     _cell_only_dispersion(oral_scatter, host_label="Other tissue", include_cluster=True)
+    _oral_scatter_transform(oral_scatter)
     oral_scatter["coupling_contract"].update(
         joint_area_mode="cell_count_extent",
         tissue_floor_applies=False,
         cell_only_target_fraction=1,
     )
-    _write_contract(writer, oral_scatter)
+    _write_contract(writer, _sanitize_orca_language(oral_scatter))
     _write_shadow_skill(
         writer,
         "oral-scc-dispersed-invasive-front",
@@ -1476,8 +1725,12 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ),
     )
     oral_local = _contract(root, "oral-scc-local-population-modulation")
-    _add_local_cell_primitives(oral_local, include_generic_inflammatory=True)
-    _write_contract(writer, oral_local)
+    _add_local_cell_primitives(
+        oral_local,
+        include_generic_inflammatory=True,
+        generic_host_labels=("Tumor", "Other tissue"),
+    )
+    _write_contract(writer, _sanitize_orca_language(oral_local))
 
     _new_mechanism(
         writer,
@@ -1606,7 +1859,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         sources={
             "lung-solid-squamous-growth": [2],
             "lung-stromal-invasive-front": [2],
-            "lung-treatment-associated-fibrotic-replacement": [1],
+            "lung-operational-tumor-retreat": [1],
             "lung-generic-immune-compartment-turnover": [2, 4],
             "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [2],
             "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [4],
@@ -1615,7 +1868,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         targets={
             "lung-solid-squamous-growth": [1],
             "lung-stromal-invasive-front": [1],
-            "lung-treatment-associated-fibrotic-replacement": [2],
+            "lung-operational-tumor-retreat": [2],
             "lung-generic-immune-compartment-turnover": [2, 4],
             "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [4],
             "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [2],
@@ -1683,6 +1936,8 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         }
     )
     writer.json(governance_path, governance)
+    if not check or not writer.changed:
+        _assert_clean_non_breast_catalog(root)
     return writer.changed
 
 

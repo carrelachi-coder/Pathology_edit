@@ -3,10 +3,10 @@ name: glas-gland-v1
 description: Interpret masks following the repository's GlaS instance-gland plus patch-grade to unified fine-label preprocessing protocol. Use when annotation_profile_id is glas-gland-v1.
 ---
 
-# GlaS annotation protocol
+# glas-gland-v1 mask-only execution authority
 
-1. Read `references/mask_contract.json` first; enforce provenance, zero, label, interface, and conditional native-instance constraints. Then read `references/rules.json` for gland interpretation.
-2. Treat gland instances as the authoritative topology. Preserve each gland's boundary and lumen; do not merge, split, or fill glands with semantic morphology.
-3. Treat repository fine subtype IDs as field-derived values, not independently annotated per-gland grades.
-4. Interpret `Stroma` only as transformed non-gland complement. Use H&E to exclude lumen, mucin, debris, muscle, inflammation, and unrelated tissue before selecting it.
-5. Preserve zero exactly, cite constraints and rules, and abstain if the native instance layer is unavailable for a gland-topology guarantee. Hand microscopic gland/lumen quality to generation and post-generation audit.
+1. Read `references/mask_contract.json` first and enforce only digest-bound provenance, semantic masks, scene graphs, native annotations, auxiliary structure maps, and deterministic candidate certificates.
+2. Raw histology, overlays, crops, reader boards, and renamed image panels are unavailable to the execution Planner and Critic.
+3. Unencoded glands, lumina, epidermis, lung structures, invasive fronts, grades, and treatment effects cannot be inferred for anchor selection or veto.
+4. Rules marked `reader_only_pathology_fact` may guide post-generation reader QA only and are excluded from the execution knowledge bundle.
+5. Abstain whenever the required native or auxiliary authority is absent; all capabilities remain draft and shadow-only.

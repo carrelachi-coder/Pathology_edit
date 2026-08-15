@@ -6,8 +6,16 @@
   "summary": "PANDA Radboud-style fine Gleason annotation contract with provider-specific provenance and protected unknown/background.",
   "capabilities": {
     "dataset_config_name": "PANDA",
-    "canonical_labels": ["Tumor", "Stroma", "Normal epithelium"],
-    "fine_labels": ["Gleason 3", "Gleason 4", "Gleason 5"],
+    "canonical_labels": [
+      "Tumor",
+      "Stroma",
+      "Normal epithelium"
+    ],
+    "fine_labels": [
+      "Gleason 3",
+      "Gleason 4",
+      "Gleason 5"
+    ],
     "supported_provider_contract": "radboud_fine_0_to_5",
     "annotation_traits": [
       "Radboud masks encode background/unknown, stroma, benign epithelium, and Gleason patterns 3, 4, and 5",
@@ -16,7 +24,11 @@
     ],
     "background_policy": {
       "canonical_label": "Background",
-      "native_meanings": ["background", "unknown", "unannotated"],
+      "native_meanings": [
+        "background",
+        "unknown",
+        "unannotated"
+      ],
       "editable": false,
       "may_seed_edit": false,
       "preserve_exactly": true,
@@ -37,81 +49,145 @@
     {
       "rule_id": "panda.provider_contract_is_not_interchangeable",
       "scope": "input_validation",
-      "applies_when": {"annotation_profile_id": "panda-gleason-v1"},
+      "applies_when": {
+        "annotation_profile_id": "panda-gleason-v1"
+      },
       "claim": "Use this profile only for verified Radboud-style fine masks; do not apply its six-class meaning to Karolinska-style coarse masks.",
       "required_observation": "Verify provider, preprocessing revision, label-map digest, and observed fine-ID signature before planning.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": ["Reading Karolinska label 2 as stroma or benign epithelium under the Radboud contract.", "Inferring provider from prostate organ metadata."],
+      "counterexamples": [
+        "Reading Karolinska label 2 as stroma or benign epithelium under the Radboud contract.",
+        "Inferring provider from prostate organ metadata."
+      ],
       "expected_morphology": [],
       "forbidden_morphology": [],
       "evidence_citations": [
         "https://panda.grand-challenge.org/Data/",
         "https://doi.org/10.1038/s41591-021-01620-2"
       ],
-      "dataset_statistics": {"status": "pending_provider_stratified_computation"},
+      "dataset_statistics": {
+        "status": "pending_provider_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["The current provenance checker verifies presence; a certified profile router must additionally validate allowed provider values."]
+      "known_limitations": [
+        "The current provenance checker verifies presence; a certified profile router must additionally validate allowed provider values."
+      ]
     },
     {
       "rule_id": "panda.background_unknown_is_immutable",
       "scope": "candidate_generation_and_gate",
-      "applies_when": {"native_label": 0},
+      "applies_when": {
+        "native_label": 0
+      },
       "claim": "Preserve label 0 exactly because it includes background, unknown, and potentially unannotated regions rather than a source tissue class.",
       "required_observation": "Verify no source/target component or changed pixel belongs to the zero footprint.",
       "severity": "hard",
       "deterministic_check_id": "background_seed_protection",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": ["Expanding a Gleason region into unlabeled tissue.", "Backfilling a sparse unknown gap with stroma before tumor expansion."],
-      "expected_morphology": ["The source zero footprint remains pixel-identical."],
-      "forbidden_morphology": ["Unknown-label filling, seeding, crossing, or cleanup."],
-      "evidence_citations": ["https://panda.grand-challenge.org/Data/"],
-      "dataset_statistics": {"status": "pending_provider_stratified_computation"},
+      "counterexamples": [
+        "Expanding a Gleason region into unlabeled tissue.",
+        "Backfilling a sparse unknown gap with stroma before tumor expansion."
+      ],
+      "expected_morphology": [
+        "The source zero footprint remains pixel-identical."
+      ],
+      "forbidden_morphology": [
+        "Unknown-label filling, seeding, crossing, or cleanup."
+      ],
+      "evidence_citations": [
+        "https://panda.grand-challenge.org/Data/"
+      ],
+      "dataset_statistics": {
+        "status": "pending_provider_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["An unlabeled H&E region may contain tissue; this profile still cannot authorize editing it."]
+      "known_limitations": [
+        "An unlabeled H&E region may contain tissue; this profile still cannot authorize editing it."
+      ]
     },
     {
       "rule_id": "panda.gleason_label_requires_architectural_support",
-      "scope": "planner_and_critic",
-      "applies_when": {"fine_label": ["Gleason 3", "Gleason 4", "Gleason 5"]},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "fine_label": [
+          "Gleason 3",
+          "Gleason 4",
+          "Gleason 5"
+        ]
+      },
       "claim": "A Gleason label represents tumor architecture, not merely tumor presence or mask color; local H&E must support the retained pattern.",
-      "required_observation": "Inspect whether glands are discrete and well formed, fused/poorly formed/cribriform/glomeruloid, or solid/single-cell/comedonecrotic before ranking an interface.",
-      "severity": "hard",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
       "deterministic_check_id": null,
-      "critic_requirement": "veto_gleason_architecture_mismatch",
-      "exceptions": ["A burden-only boundary displacement may retain the existing fine label only where adjacent H&E resembles the same component."],
-      "counterexamples": ["Extending Gleason 3 over a solid H&E focus.", "Extending Gleason 5 into a field of separate well-formed glands."],
-      "expected_morphology": ["Pattern 3: individual well-formed glands.", "Pattern 4: fused, poorly formed, cribriform, or glomeruloid architecture.", "Pattern 5: solid sheets, cords, single cells, or comedonecrosis."],
-      "forbidden_morphology": ["A fine label expanded across visibly incompatible architecture."],
+      "critic_requirement": null,
+      "exceptions": [
+        "A burden-only boundary displacement may retain the existing fine label only where adjacent H&E resembles the same component."
+      ],
+      "counterexamples": [
+        "Extending Gleason 3 over a solid H&E focus.",
+        "Extending Gleason 5 into a field of separate well-formed glands."
+      ],
+      "expected_morphology": [
+        "Pattern 3: individual well-formed glands.",
+        "Pattern 4: fused, poorly formed, cribriform, or glomeruloid architecture.",
+        "Pattern 5: solid sheets, cords, single cells, or comedonecrosis."
+      ],
+      "forbidden_morphology": [
+        "A fine label expanded across visibly incompatible architecture."
+      ],
       "evidence_citations": [
         "https://pubmed.ncbi.nlm.nih.gov/26492179/",
         "https://panda.grand-challenge.org/Data/"
       ],
-      "dataset_statistics": {"status": "pending_provider_stratified_computation"},
+      "dataset_statistics": {
+        "status": "pending_provider_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Architectural assessment needs sufficient H&E resolution and expert validation."]
+      "known_limitations": [
+        "Architectural assessment needs sufficient H&E resolution and expert validation.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "panda.burden_edit_preserves_gleason_fine_ids",
       "scope": "candidate_gate",
-      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1"]},
+      "applies_when": {
+        "primitive": [
+          "tumor-burden-increase-v1",
+          "tumor-burden-decrease-v1"
+        ]
+      },
       "claim": "Do not perform an implicit Gleason transition during a generic tumor burden edit.",
       "required_observation": "Audit every changed source and target fine ID against the selected component's existing pattern and primitive contract.",
       "severity": "hard",
       "deterministic_check_id": "label_transition",
       "critic_requirement": null,
-      "exceptions": ["A dedicated pattern-transition primitive with a separate H&E morphology contract."],
-      "counterexamples": ["Changing pattern 3 to pattern 4 while increasing only tumor area.", "Collapsing all patterns to canonical Tumor in the saved fine mask."],
-      "expected_morphology": ["Unrequested Gleason components retain fine IDs exactly."],
-      "forbidden_morphology": ["Silent grade upgrade, downgrade, or fine-to-coarse collapse."],
-      "evidence_citations": ["https://panda.grand-challenge.org/Data/"],
-      "dataset_statistics": {"status": "pending_provider_stratified_computation"},
+      "exceptions": [
+        "A dedicated pattern-transition primitive with a separate H&E morphology contract."
+      ],
+      "counterexamples": [
+        "Changing pattern 3 to pattern 4 while increasing only tumor area.",
+        "Collapsing all patterns to canonical Tumor in the saved fine mask."
+      ],
+      "expected_morphology": [
+        "Unrequested Gleason components retain fine IDs exactly."
+      ],
+      "forbidden_morphology": [
+        "Silent grade upgrade, downgrade, or fine-to-coarse collapse."
+      ],
+      "evidence_citations": [
+        "https://panda.grand-challenge.org/Data/"
+      ],
+      "dataset_statistics": {
+        "status": "pending_provider_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
       "known_limitations": []
@@ -119,24 +195,43 @@
     {
       "rule_id": "panda.sparse_masks_do_not_license_topology_repair",
       "scope": "candidate_gate",
-      "applies_when": {"annotation_quality": ["sparse", "incomplete", "noisy"]},
+      "applies_when": {
+        "annotation_quality": [
+          "sparse",
+          "incomplete",
+          "noisy"
+        ]
+      },
       "claim": "Do not bridge, fill, or connect sparse annotated regions merely to make the tumor mask look complete.",
       "required_observation": "Compare source/target component and hole topology and preserve all unrequested labels.",
       "severity": "hard",
       "deterministic_check_id": "edited_label_topology",
       "critic_requirement": null,
-      "exceptions": ["An independently reviewed annotation-repair task outside mask edit."],
-      "counterexamples": ["Joining separate pattern-4 regions across unknown pixels.", "Filling unlabeled holes inside a tumor component."],
-      "expected_morphology": ["The edit deforms one selected existing interface without repairing unrelated annotation gaps."],
-      "forbidden_morphology": ["New bridges, islands, merges, splits, or hole filling."],
+      "exceptions": [
+        "An independently reviewed annotation-repair task outside mask edit."
+      ],
+      "counterexamples": [
+        "Joining separate pattern-4 regions across unknown pixels.",
+        "Filling unlabeled holes inside a tumor component."
+      ],
+      "expected_morphology": [
+        "The edit deforms one selected existing interface without repairing unrelated annotation gaps."
+      ],
+      "forbidden_morphology": [
+        "New bridges, islands, merges, splits, or hole filling."
+      ],
       "evidence_citations": [
         "https://panda.grand-challenge.org/Data/",
         "https://doi.org/10.1038/s41591-021-01620-2"
       ],
-      "dataset_statistics": {"status": "pending_provider_stratified_computation"},
+      "dataset_statistics": {
+        "status": "pending_provider_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Quantitative sparsity envelopes must be learned separately by provider and split."]
+      "known_limitations": [
+        "Quantitative sparsity envelopes must be learned separately by provider and split."
+      ]
     }
   ]
 }

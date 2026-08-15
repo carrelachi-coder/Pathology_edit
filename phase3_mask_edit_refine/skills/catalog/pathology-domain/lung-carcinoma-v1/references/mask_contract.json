@@ -8,57 +8,120 @@
       "constraint_id": "lung.mask.preserve_all_unrequested_tissue_labels",
       "applies_when": {},
       "mask_statement": "Bronchial/reactive epithelium, vessel, necrosis, immune, and every other non-source label remain pixel-identical under the declared native-to-unified profile.",
-      "observability": ["semantic_mask", "provenance"],
+      "observability": [
+        "semantic_mask",
+        "provenance"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["label_transition", "unrequested_labels_preserved", "profile_required_provenance"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "label_transition",
+        "unrequested_labels_preserved",
+        "profile_required_provenance"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["semantic mask", "verified remap provenance"],
+      "required_inputs": [
+        "semantic mask",
+        "digest-bound remap provenance"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Do not alter protected bronchial, vascular, necrotic, or immune structures visually."],
-      "known_limitations": ["The unified IGNITE profile collapses several native lung/supporting tissues."]
+      "generation_handoff": [
+        "Do not alter protected bronchial, vascular, necrotic, or immune structures visually."
+      ],
+      "known_limitations": [
+        "The unified IGNITE profile collapses several native lung/supporting tissues."
+      ]
     },
     {
       "constraint_id": "lung.mask.protect_airspace_lumen_and_support_maps_when_available",
       "applies_when": {},
-      "mask_statement": "If airspace, gland lumen, papillary core, bronchial lumen, cartilage, or muscle is encoded in native/auxiliary maps, exclude it from the edit band; if visible only on H&E, mask edit cannot guarantee preservation and must abstain on ambiguous overlap.",
-      "observability": ["native_annotation", "auxiliary_structure_map", "source_he"],
+      "mask_statement": "If airspace, gland lumen, papillary core, bronchial lumen, cartilage, or muscle is encoded in native/auxiliary maps, exclude it from the edit band; without a digest-bound native/auxiliary map, that structure is unavailable to execution and the affected candidate must abstain.",
+      "observability": [
+        "native_annotation",
+        "auxiliary_structure_map"
+      ],
       "enforcement": "conditional",
-      "enforcement_stages": ["planner", "candidate_generation", "mask_gate"],
-      "checker_ids": ["prohibited_region", "unrequested_labels_preserved"],
-      "critic_requirement": "veto_unencoded_lung_structure_overlap",
-      "required_inputs": ["source H&E", "native/auxiliary structure map when available"],
+      "enforcement_stages": [
+        "planner",
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "prohibited_region",
+        "unrequested_labels_preserved"
+      ],
+      "critic_requirement": null,
+      "required_inputs": [
+        "digest-bound native/auxiliary structure map",
+        "native/auxiliary structure map when available"
+      ],
       "failure_action": "abstain_case",
-      "generation_handoff": ["Render lepidic, acinar, papillary, micropapillary, solid, or squamous morphology from a pattern-matched reference; semantic geometry alone is insufficient."],
-      "known_limitations": ["Semantic hole preservation does not prove alveolar or gland-lumen preservation."]
+      "generation_handoff": [
+        "Render lepidic, acinar, papillary, micropapillary, solid, or squamous morphology from a pattern-matched reference; semantic geometry alone is insufficient."
+      ],
+      "known_limitations": [
+        "Semantic hole preservation does not prove alveolar or gland-lumen preservation."
+      ]
     },
     {
       "constraint_id": "lung.mask.one_pattern_component_interface_band",
       "applies_when": {},
       "mask_statement": "A candidate must remain connected to one selected directed component interface and inside its depth band; it cannot create a remote focus or use a different component as a shortcut.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["interface_contact", "tumor_stroma_interface", "depth_span_ratio", "boundary_naturalness"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "interface_contact",
+        "tumor_stroma_interface",
+        "depth_span_ratio",
+        "boundary_naturalness"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["component/interface scene graph"],
+      "required_inputs": [
+        "component/interface scene graph"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Planner and renderer must retain the selected histologic pattern; mask IDs alone cannot verify it."],
-      "known_limitations": ["Coarse tumor components may contain mixed lung carcinoma patterns."]
+      "generation_handoff": [
+        "Planner and renderer must retain the selected histologic pattern; mask IDs alone cannot verify it."
+      ],
+      "known_limitations": [
+        "Coarse tumor components may contain mixed lung carcinoma patterns."
+      ]
     },
     {
       "constraint_id": "lung.mask.no_airspace_like_hole_fill_or_component_merge",
       "applies_when": {},
       "mask_statement": "Reject new/filled holes, source splits, target merges, and tumor islands; never apply global closing to repair a coarse lung mask.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["mask_gate"],
-      "checker_ids": ["component_topology", "edited_label_topology"],
+      "enforcement_stages": [
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "component_topology",
+        "edited_label_topology"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["source and candidate masks"],
+      "required_inputs": [
+        "source and candidate masks"
+      ],
       "failure_action": "reject_candidate",
       "generation_handoff": [],
-      "known_limitations": ["Some biologically real airspaces are not holes in the semantic tumor mask."]
+      "known_limitations": [
+        "Some biologically real airspaces are not holes in the semantic tumor mask."
+      ]
     }
   ]
 }

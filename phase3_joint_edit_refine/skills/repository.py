@@ -643,7 +643,11 @@ class JointSkillRepository:
             case.primitive_id == "stroma-increase-v1"
             and "treatment-associated" not in mechanism_id
             and mechanism_id
-            not in {"melanoma-operational-tumor-retreat"}
+            not in {
+                "prostate-operational-tumor-retreat",
+                "lung-operational-tumor-retreat",
+                "melanoma-operational-tumor-retreat",
+            }
         ):
             raise JointContractError(
                 "Tumor-to-Stroma replacement is not owned by a growth mechanism"
@@ -672,12 +676,12 @@ class JointSkillRepository:
             "breast-treatment-associated-stromal-replacement": {
                 "treatment_response"
             },
-            "prostate-treatment-associated-fibrotic-replacement": {
+            "prostate-operational-tumor-retreat": {
                 "treatment_response",
                 "disease_regression",
                 "residual_disease",
             },
-            "lung-treatment-associated-fibrotic-replacement": {
+            "lung-operational-tumor-retreat": {
                 "treatment_response",
                 "disease_regression",
                 "residual_disease",
@@ -700,7 +704,8 @@ class JointSkillRepository:
             not in treatment_context_required[mechanism_id]
         ):
             raise JointContractError(
-                f"{mechanism_id} requires an explicit compatible post-treatment scenario; H&E cannot infer treatment history"
+                f"{mechanism_id} requires an explicit compatible post-treatment "
+                "scenario; H&E cannot invent treatment history"
             )
         if (
             mechanism_id == "breast-local-population-modulation"

@@ -5,7 +5,7 @@
     "invasive-tumor-footprint-decrease-v1",
     "residual-tumor-fragmentation-v1"
   ],
-  "version": "1.1.1-draft",
+  "version": "1.1.2-draft",
   "review_status": "draft",
   "summary": "Retreat annotation-defined Tumor into the profile's operational non-tumor receiving label under explicit post-treatment context.",
   "recognition_contract": {
@@ -32,21 +32,8 @@
     "failure_action": "abstain_case"
   },
   "tissue_program": {
-    "mode": "residual_preserving_invasive_front_retreat",
+    "mode": "operational_tumor_retreat_to_profile_receiver",
     "target_component_merge_policy": "selected_only",
-    "front_contract": {
-      "profile_mode": "multi_lobe",
-      "edge_depth_ratio": 0.55,
-      "taper_fraction": 0.24,
-      "lobe_count": 3,
-      "noise_depth_ratio": 0.12,
-      "maximum_band_px": 220,
-      "maximum_depth_span_ratio": 1.35,
-      "maximum_boundary_compactness": 4.8,
-      "directional_sector_required": true,
-      "maximum_selected_anchor_fraction": 0.75,
-      "minimum_unselected_anchor_count": 1
-    },
     "topology_fallback_by_primitive": {},
     "primitive_label_contracts": {
       "invasive-tumor-footprint-decrease-v1": {

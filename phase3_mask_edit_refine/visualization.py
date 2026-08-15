@@ -107,7 +107,7 @@ def build_mask_planner_panels(
 
 def save_critic_contact_sheet(
     *,
-    image_path: str | Path,
+    image_path: str | Path | None,
     source_mask: np.ndarray,
     candidates: Sequence[CandidateMask],
     gate_reports: Sequence[GateReport],
@@ -126,7 +126,11 @@ def save_critic_contact_sheet(
         raise ValueError("critic contact sheet requires at least one gate-passing candidate")
     if np.asarray(source_mask).shape != passed[0].change_region.shape:
         raise ValueError("source mask and candidate dimensions differ")
-    base = _load_rgb(image_path, expected_shape=passed[0].change_region.shape)
+    base = (
+        id_mask_to_rgb(source_mask)
+        if image_path is None
+        else _load_rgb(image_path, expected_shape=passed[0].change_region.shape)
+    )
     tile_width, tile_height = base.shape[1], base.shape[0]
     header_height = 40
     rows = int(np.ceil(len(passed) / columns))

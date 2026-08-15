@@ -73,6 +73,7 @@ from .planner import (
     CellPlanCandidateVeto,
     CellPlanSelectionHandle,
     CertifiedCellPlanPortfolio,
+    CompilerOwnedDepletionAnchor,
     HeuristicJointPlanner,
     JointInterpretationOption,
     JointPlanner,
@@ -3128,22 +3129,10 @@ class JointPathologyEditWorkflow:
                 item.anchor_segment_id: item
                 for item in scene.tissue.graph.anchor_segments
             }
-            for zone in zones[:4]:
+            candidate_zones = zones if requires_depletion_anchor else zones[:4]
+            for zone in candidate_zones:
                 provenance = {"joint_population_zone_id": zone.zone_id}
                 if requires_depletion_anchor:
-                    requested_anchor = case.provenance.get(
-                        "cellularity_depletion_anchor"
-                    )
-                    if isinstance(requested_anchor, Mapping):
-                        variants.append(
-                            {
-                                **provenance,
-                                "cellularity_depletion_anchor": dict(
-                                    requested_anchor
-                                ),
-                            }
-                        )
-                        continue
                     touching = [
                         interface
                         for interface in scene.tissue.graph.interfaces
@@ -3170,7 +3159,7 @@ class JointPathologyEditWorkflow:
                     eligible_touching.sort(
                         key=lambda item: (-item.contact_pixels, item.interface_id)
                     )
-                    for interface in eligible_touching[:4]:
+                    for interface in eligible_touching:
                         if not interface.anchor_segment_ids:
                             continue
                         ordered_anchor_ids = tuple(
@@ -3197,8 +3186,7 @@ class JointPathologyEditWorkflow:
                         # floors and minimum-effect checks.
                         anchor_groups = [ordered_anchor_ids]
                         anchor_groups.extend(
-                            (anchor_id,)
-                            for anchor_id in ordered_anchor_ids[:3]
+                            (anchor_id,) for anchor_id in ordered_anchor_ids
                         )
                         for anchor_ids in dict.fromkeys(anchor_groups):
                             variants.append(
@@ -3296,10 +3284,33 @@ class JointPathologyEditWorkflow:
         seen_sha: set[str] = set()
         vetoes: list[CellPlanCandidateVeto] = []
         for index, provenance_update in enumerate(variants):
+            compiler_anchor_payload = provenance_update.get(
+                "cellularity_depletion_anchor"
+            )
+            case_provenance = dict(case.provenance)
+            if case.pathology_domain_id != "breast-invasive-carcinoma-v1":
+                case_provenance.pop("cellularity_depletion_anchor", None)
+            case_provenance.update(
+                {
+                    key: value
+                    for key, value in provenance_update.items()
+                    if key != "cellularity_depletion_anchor"
+                }
+            )
             candidate_case = replace(
                 case,
-                provenance={**case.provenance, **provenance_update},
+                provenance=case_provenance,
             )
+            compiler_anchor = None
+            if isinstance(compiler_anchor_payload, Mapping):
+                compiler_anchor = CompilerOwnedDepletionAnchor.issue(
+                    case=candidate_case,
+                    zone_id=str(candidate_case.provenance["joint_population_zone_id"]),
+                    interface_ids=compiler_anchor_payload.get(
+                        "interface_ids", ()
+                    ),
+                    anchor_ids=compiler_anchor_payload.get("anchor_ids", ()),
+                )
             try:
                 plan, _usage = planner.create_plan(
                     case=candidate_case,
@@ -3307,6 +3318,7 @@ class JointPathologyEditWorkflow:
                     bundle=bundle,
                     tissue_plan=None,
                     image_paths=(),
+                    compiler_owned_depletion_anchor=compiler_anchor,
                 )
                 interface_id = (
                     plan.cell_plan.interface_ids[0]

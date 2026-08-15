@@ -1,5 +1,5 @@
 ---
-name: prostate-treatment-associated-fibrotic-replacement
+name: prostate-operational-tumor-retreat
 description: PANDA operational tumor-to-stroma turnover
 ---
 

@@ -22,7 +22,7 @@
     ],
     "contraindications": [
       "fragmented non-tissue used as a seed or host",
-      "Other tissue interpreted as stroma without digest-bound mask-graph evidence",
+      "Other tissue interpreted as a specific connective-tissue compartment without digest-bound mask-graph evidence",
       "keratinized center or surface space included",
       "target class unsupported"
     ],
@@ -97,24 +97,20 @@
       "generic-inflammatory-cell-abundance-increase-v1": {
         "source_labels": [
           "Tumor",
-          "Stroma",
           "Other tissue"
         ],
         "target_labels": [
           "Tumor",
-          "Stroma",
           "Other tissue"
         ]
       },
       "generic-inflammatory-cell-abundance-decrease-v1": {
         "source_labels": [
           "Tumor",
-          "Stroma",
           "Other tissue"
         ],
         "target_labels": [
           "Tumor",
-          "Stroma",
           "Other tissue"
         ]
       }
@@ -235,7 +231,7 @@
     ],
     "veto_findings": [
       "cells in fragmented non-tissue",
-      "Other tissue silently treated as stroma",
+      "Other tissue silently treated as a specific connective-tissue compartment",
       "keratin center filled",
       "cohesive epithelial rim partially removed"
     ],
@@ -256,7 +252,7 @@
   "counterexamples": [
     "using ORCA background fragments as tumor cell seeds",
     "placing cells in a keratin center",
-    "relabeling Other tissue as stroma by assumption"
+    "relabeling Other tissue as a specific connective-tissue compartment by assumption"
   ],
   "planner_policy": {
     "allowed_observation_sources": [

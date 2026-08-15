@@ -7,23 +7,55 @@
   "capabilities": {
     "organ": "skin_or_metastatic_site",
     "cancer_family": "melanoma",
-    "recognized_structures": ["epidermis", "junctional_component", "dermal_tumor_nest_or_sheet", "discohesive_melanoma_cells", "ulceration", "regression_bed", "necrosis", "blood_vessel"],
-    "retrieval_strata": ["primary_or_metastatic", "source_site", "epidermis_present", "ulceration_status", "regression_status", "tumor_growth_pattern"]
+    "recognized_structures": [
+      "epidermis",
+      "junctional_component",
+      "dermal_tumor_nest_or_sheet",
+      "discohesive_melanoma_cells",
+      "ulceration",
+      "regression_bed",
+      "necrosis",
+      "blood_vessel"
+    ],
+    "retrieval_strata": [
+      "primary_or_metastatic",
+      "source_site",
+      "epidermis_present",
+      "ulceration_status",
+      "regression_status",
+      "tumor_growth_pattern"
+    ]
   },
   "rules": [
     {
       "rule_id": "melanoma.preserve_epidermis_in_generic_burden_edit",
-      "scope": "semantic_contract_and_critic",
-      "applies_when": {"structure": "epidermis", "primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1", "stroma-increase-v1"]},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "structure": "epidermis",
+        "primitive": [
+          "tumor-burden-increase-v1",
+          "tumor-burden-decrease-v1",
+          "stroma-increase-v1"
+        ]
+      },
       "claim": "Do not consume, split, detach, or notch epidermis during a generic tumor/stroma burden edit.",
-      "required_observation": "Trace the full local epidermal band, dermoepidermal junction, adnexal extensions, and relationship to tumor on H&E and overlay.",
-      "severity": "hard",
-      "deterministic_check_id": "unrequested_labels_preserved",
-      "critic_requirement": "veto_unrequested_epidermal_damage",
-      "exceptions": ["A dedicated epidermal invasion or ulceration primitive with full-thickness and reactive-change rules."],
-      "counterexamples": ["Expanding a dermal tumor by cutting a remote strip from intact epidermis.", "Smoothing the mask by deleting a thin epidermal projection."],
-      "expected_morphology": ["Epidermal continuity and thickness pattern remain unchanged outside an explicit epidermal task."],
-      "forbidden_morphology": ["Epidermal gap, split, isolated remnant, abrupt notch, or remote consumption."],
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
+      "critic_requirement": null,
+      "exceptions": [
+        "A dedicated epidermal invasion or ulceration primitive with full-thickness and reactive-change rules."
+      ],
+      "counterexamples": [
+        "Expanding a dermal tumor by cutting a remote strip from intact epidermis.",
+        "Smoothing the mask by deleting a thin epidermal projection."
+      ],
+      "expected_morphology": [
+        "Epidermal continuity and thickness pattern remain unchanged outside an explicit epidermal task."
+      ],
+      "forbidden_morphology": [
+        "Epidermal gap, split, isolated remnant, abrupt notch, or remote consumption."
+      ],
       "evidence_citations": [
         "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates",
         "https://tumourclassification.iarc.who.int/chapters/28"
@@ -31,97 +63,181 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Adnexal epithelium may be merged with epidermis or absent from a coarse profile."]
+      "known_limitations": [
+        "Adnexal epithelium may be merged with epidermis or absent from a coarse profile.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "melanoma.junctional_component_follows_epidermal_relationship",
-      "scope": "planner_and_critic",
-      "applies_when": {"structure": "junctional_component"},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "structure": "junctional_component"
+      },
       "claim": "A junctional-component edit must remain related to the dermoepidermal junction and must not be treated as a free dermal tumor island.",
-      "required_observation": "Identify atypical melanocytes/nests along the junction, pagetoid spread when visible, and continuity with the selected tumor component.",
-      "severity": "hard",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
       "deterministic_check_id": null,
-      "critic_requirement": "veto_junctional_relationship_violation",
-      "exceptions": ["A profile may label only aggregate tumor; if the junctional component is not reliably visible, avoid structure-specific edits."],
-      "counterexamples": ["Moving a junctional tumor region away from the epidermis.", "Creating a detached epidermal-surface tumor island from a dermal anchor."],
-      "expected_morphology": ["The edited component retains an anatomically plausible relationship with the junction."],
-      "forbidden_morphology": ["Detached junctional island, cross-epidermal jump, or bulk filling of normal epidermis."],
-      "evidence_citations": ["https://tumourclassification.iarc.who.int/chapters/28"],
+      "critic_requirement": null,
+      "exceptions": [
+        "A profile may label only aggregate tumor; if the junctional component is not reliably visible, avoid structure-specific edits."
+      ],
+      "counterexamples": [
+        "Moving a junctional tumor region away from the epidermis.",
+        "Creating a detached epidermal-surface tumor island from a dermal anchor."
+      ],
+      "expected_morphology": [
+        "The edited component retains an anatomically plausible relationship with the junction."
+      ],
+      "forbidden_morphology": [
+        "Detached junctional island, cross-epidermal jump, or bulk filling of normal epidermis."
+      ],
+      "evidence_citations": [
+        "https://tumourclassification.iarc.who.int/chapters/28"
+      ],
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Pagetoid single cells may be below tissue-mask resolution."]
+      "known_limitations": [
+        "Pagetoid single cells may be below tissue-mask resolution.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "melanoma.cohesive_and_discohesive_growth_use_different_geometry",
       "scope": "planner_and_critic",
-      "applies_when": {"structure": ["dermal_tumor_nest_or_sheet", "discohesive_melanoma_cells"]},
+      "applies_when": {
+        "structure": [
+          "dermal_tumor_nest_or_sheet",
+          "discohesive_melanoma_cells"
+        ]
+      },
       "claim": "Use broad-boundary deformation for cohesive nests/sheets, but do not turn scattered or discohesive melanoma cells into a solid filled mass.",
       "required_observation": "Classify the local component as cohesive nest/sheet versus dispersed single-cell infiltration and select same-pattern references.",
       "severity": "hard",
       "deterministic_check_id": "boundary_naturalness",
-      "critic_requirement": "veto_melanoma_growth_pattern_mismatch",
-      "exceptions": ["Mixed growth requires candidate restriction to a single locally coherent pattern."],
-      "counterexamples": ["Applying a convex hull to scattered dermal melanoma cells.", "Carving a deep narrow notch into a large cohesive nest."],
-      "expected_morphology": ["Cohesive tumor retains a continuous natural boundary; discohesive tumor retains intervening stromal spacing."],
-      "forbidden_morphology": ["Forced solidification, remote islands, deep angular bites, or invented single-cell spread."],
-      "evidence_citations": ["https://tumourclassification.iarc.who.int/chapters/28"],
+      "critic_requirement": null,
+      "exceptions": [
+        "Mixed growth requires candidate restriction to a single locally coherent pattern."
+      ],
+      "counterexamples": [
+        "Applying a convex hull to scattered dermal melanoma cells.",
+        "Carving a deep narrow notch into a large cohesive nest."
+      ],
+      "expected_morphology": [
+        "Cohesive tumor retains a continuous natural boundary; discohesive tumor retains intervening stromal spacing."
+      ],
+      "forbidden_morphology": [
+        "Forced solidification, remote islands, deep angular bites, or invented single-cell spread."
+      ],
+      "evidence_citations": [
+        "https://tumourclassification.iarc.who.int/chapters/28"
+      ],
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Some metastatic melanomas form sharply circumscribed nodules unlike primary dermal invasion."]
+      "known_limitations": [
+        "Some metastatic melanomas form sharply circumscribed nodules unlike primary dermal invasion."
+      ]
     },
     {
       "rule_id": "melanoma.ulceration_is_not_a_mask_gap",
-      "scope": "semantic_contract_and_critic",
-      "applies_when": {"structure": "ulceration"},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "structure": "ulceration"
+      },
       "claim": "Do not infer, create, or repair ulceration from an epidermal/background gap alone; ulceration is a histopathologic finding requiring full-thickness epidermal absence over tumor with associated surface/reactive context.",
-      "required_observation": "Inspect the entire surface defect, fibrin/inflammation or reactive epidermal change, underlying tumor, and processing artifact differential.",
-      "severity": "hard",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
       "deterministic_check_id": null,
-      "critic_requirement": "veto_false_ulceration_or_repair",
-      "exceptions": ["A dedicated ulceration primitive reviewed against CAP definitions."],
-      "counterexamples": ["Calling a tissue fold/tear ulceration.", "Deleting epidermis to expand tumor and thereby creating false ulceration.", "Filling a true ulcerated surface because it resembles background."],
-      "expected_morphology": ["Surface and epidermal geometry remain unchanged in generic burden edits."],
-      "forbidden_morphology": ["Artificial full-thickness defect, false repair, or background-based ulceration inference."],
-      "evidence_citations": ["https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"],
+      "critic_requirement": null,
+      "exceptions": [
+        "A dedicated ulceration primitive reviewed against CAP definitions."
+      ],
+      "counterexamples": [
+        "Calling a tissue fold/tear ulceration.",
+        "Deleting epidermis to expand tumor and thereby creating false ulceration.",
+        "Filling a true ulcerated surface because it resembles background."
+      ],
+      "expected_morphology": [
+        "Surface and epidermal geometry remain unchanged in generic burden edits."
+      ],
+      "forbidden_morphology": [
+        "Artificial full-thickness defect, false repair, or background-based ulceration inference."
+      ],
+      "evidence_citations": [
+        "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"
+      ],
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Reliable ulceration assessment may require slide-level context beyond a patch."]
+      "known_limitations": [
+        "Reliable ulceration assessment may require slide-level context beyond a patch.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "melanoma.regression_bed_is_not_generic_stroma",
       "scope": "semantic_contract_and_critic",
-      "applies_when": {"structure": "regression_bed"},
+      "applies_when": {
+        "structure": "regression_bed"
+      },
       "claim": "Do not equate regression-associated fibrosis/inflammation/melanophages with ordinary stroma or use it as a generic source for tumor growth/regression.",
       "required_observation": "Look for fibrosis, inflammatory infiltrate, pigment-laden macrophages, vascular change, attenuated/absent tumor, and epidermal change in context.",
       "severity": "hard",
       "deterministic_check_id": "semantic_capability_guard",
-      "critic_requirement": "veto_regression_bed_as_generic_stroma",
-      "exceptions": ["A dedicated regression primitive with reviewed criteria and an annotation profile capable of representing it."],
-      "counterexamples": ["Expanding tumor uniformly through a regression bed.", "Calling any collagen-rich area regression.", "Converting regression-associated inflammation to plain stroma."],
-      "expected_morphology": ["Regression-associated structures remain unchanged in a burden-only edit."],
-      "forbidden_morphology": ["Generic stroma substitution, bulk tumor refill, or melanophage-based tumor seeding."],
-      "evidence_citations": ["https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"],
+      "critic_requirement": null,
+      "exceptions": [
+        "A dedicated regression primitive with reviewed criteria and an annotation profile capable of representing it."
+      ],
+      "counterexamples": [
+        "Expanding tumor uniformly through a regression bed.",
+        "Calling any collagen-rich area regression.",
+        "Converting regression-associated inflammation to plain stroma."
+      ],
+      "expected_morphology": [
+        "Regression-associated structures remain unchanged in a burden-only edit."
+      ],
+      "forbidden_morphology": [
+        "Generic stroma substitution, bulk tumor refill, or melanophage-based tumor seeding."
+      ],
+      "evidence_citations": [
+        "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"
+      ],
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Histologic regression criteria and reporting practices require expert review and may be heterogeneous."]
+      "known_limitations": [
+        "Histologic regression criteria and reporting practices require expert review and may be heterogeneous."
+      ]
     },
     {
       "rule_id": "melanoma.necrosis_and_vessels_are_protected_in_burden_edit",
-      "scope": "candidate_gate_and_critic",
-      "applies_when": {"structure": ["necrosis", "blood_vessel"]},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "structure": [
+          "necrosis",
+          "blood_vessel"
+        ]
+      },
       "claim": "A generic burden edit must not fill a necrotic component, absorb a vessel, or create/remove perivascular or intravascular relationships.",
-      "required_observation": "Audit necrosis and vessel labels pixel-exactly and inspect the corresponding H&E boundary for lumen/wall and necrotic context.",
-      "severity": "hard",
-      "deterministic_check_id": "unrequested_labels_preserved",
-      "critic_requirement": "veto_necrosis_or_vessel_damage",
-      "exceptions": ["Dedicated necrosis or perivascular/intravascular primitives with separate contracts."],
-      "counterexamples": ["Smoothing tumor by filling central necrosis.", "Expanding tumor across a small vessel because it is below the morphology kernel size."],
-      "expected_morphology": ["Necrosis and vessel topology remain unchanged outside an explicit primitive."],
-      "forbidden_morphology": ["Necrotic-hole filling, vessel deletion, lumen crossing, or false vascular invasion."],
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
+      "critic_requirement": null,
+      "exceptions": [
+        "Dedicated necrosis or perivascular/intravascular primitives with separate contracts."
+      ],
+      "counterexamples": [
+        "Smoothing tumor by filling central necrosis.",
+        "Expanding tumor across a small vessel because it is below the morphology kernel size."
+      ],
+      "expected_morphology": [
+        "Necrosis and vessel topology remain unchanged outside an explicit primitive."
+      ],
+      "forbidden_morphology": [
+        "Necrotic-hole filling, vessel deletion, lumen crossing, or false vascular invasion."
+      ],
       "evidence_citations": [
         "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates",
         "https://puma.grand-challenge.org/dataset/"
@@ -129,21 +245,38 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Small vessels may need nuclei/cell annotations or higher magnification for confirmation."]
+      "known_limitations": [
+        "Small vessels may need nuclei/cell annotations or higher magnification for confirmation.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "melanoma.primary_and_metastatic_interfaces_are_not_interchangeable",
       "scope": "retrieval_and_interface_selection",
-      "applies_when": {"case_context": ["primary", "metastatic"]},
+      "applies_when": {
+        "case_context": [
+          "primary",
+          "metastatic"
+        ]
+      },
       "claim": "Choose references and interface priors from the same primary/metastatic and source-site context; do not assume epidermal or dermal architecture at metastatic sites.",
       "required_observation": "Require primary/metastatic status, source site, presence of epidermis, and local tumor growth pattern before planning.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
-      "critic_requirement": "veto_primary_metastatic_context_mismatch",
-      "exceptions": ["A reviewed hierarchical fallback may be used with explicit uncertainty if no matched references exist."],
-      "counterexamples": ["Applying a dermoepidermal invasion pattern to a lymph-node metastasis.", "Using metastatic nodule compactness thresholds for a junctional primary lesion."],
-      "expected_morphology": ["Interface reasoning matches the anatomical tissue actually present in the patch."],
-      "forbidden_morphology": ["Epidermis-dependent planning without epidermis or cross-site morphology transfer without qualification."],
+      "critic_requirement": null,
+      "exceptions": [
+        "A reviewed hierarchical fallback may be used with explicit uncertainty if no matched references exist."
+      ],
+      "counterexamples": [
+        "Applying a dermoepidermal invasion pattern to a lymph-node metastasis.",
+        "Using metastatic nodule compactness thresholds for a junctional primary lesion."
+      ],
+      "expected_morphology": [
+        "Interface reasoning matches the anatomical tissue actually present in the patch."
+      ],
+      "forbidden_morphology": [
+        "Epidermis-dependent planning without epidermis or cross-site morphology transfer without qualification."
+      ],
       "evidence_citations": [
         "https://puma.grand-challenge.org/dataset/",
         "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"
@@ -151,7 +284,9 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["CaseContext presently carries this stratum in annotation-profile provenance rather than a dedicated field."]
+      "known_limitations": [
+        "CaseContext presently carries this stratum in annotation-profile provenance rather than a dedicated field."
+      ]
     }
   ]
 }

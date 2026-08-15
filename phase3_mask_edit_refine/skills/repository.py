@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
@@ -59,6 +60,7 @@ class SkillRepository:
                 payload = dict(payload)
                 payload["mask_constraints"] = constraints
             package = SkillPackage.from_mapping(payload, source_path=str(path))
+            _validate_non_breast_execution_authority(package)
             if package.skill_id in packages:
                 raise RefineContractError(f"duplicate skill_id: {package.skill_id}")
             packages[package.skill_id] = package
@@ -174,7 +176,12 @@ class SkillRepository:
                 f"{primitive_id}; configured options={list(source_options)}"
             )
 
-        active_rules = tuple(rule for package in packages for rule in package.rules)
+        active_rules = tuple(
+            rule
+            for package in packages
+            for rule in package.rules
+            if not rule.scope.startswith("reader_only_")
+        )
         active_mask_constraints = tuple(
             constraint
             for package in packages
@@ -270,6 +277,67 @@ def _strings_from_capability(package: SkillPackage, key: str) -> tuple[str, ...]
             f"skill {package.skill_id} capability {key} must be a list of strings"
         )
     return tuple(value)
+
+
+_NON_BREAST_EXECUTION_SKILLS = frozenset(
+    {
+        "glas-gland-v1",
+        "panda-gleason-v1",
+        "ignite-semantic-v1",
+        "puma-semantic-v1",
+        "orca-semantic-v1",
+        "colorectal-adenocarcinoma-v1",
+        "prostate-adenocarcinoma-v1",
+        "lung-carcinoma-v1",
+        "melanoma-v1",
+        "oral-squamous-cell-carcinoma-v1",
+    }
+)
+_EXECUTION_HE_PATTERN = re.compile(
+    r"(?:\bH\s*&\s*E\b|\bH&E\b|source[_ -]?he\b|raw histology)",
+    flags=re.IGNORECASE,
+)
+
+
+def _validate_non_breast_execution_authority(package: SkillPackage) -> None:
+    """Reject catalog drift that restores H&E selection/veto authority."""
+
+    if package.skill_id not in _NON_BREAST_EXECUTION_SKILLS:
+        return
+    for rule in package.rules:
+        if rule.scope.startswith("reader_only_"):
+            if rule.critic_requirement or rule.deterministic_check_id:
+                raise RefineContractError(
+                    f"reader-only pathology fact {rule.rule_id} carries execution authority"
+                )
+            continue
+        if rule.critic_requirement:
+            raise RefineContractError(
+                f"non-Breast rule {rule.rule_id} grants execution critic veto authority"
+            )
+        authority_text = f"{rule.claim} {rule.required_observation}"
+        if _EXECUTION_HE_PATTERN.search(authority_text):
+            raise RefineContractError(
+                f"non-Breast rule {rule.rule_id} grants execution H&E authority"
+            )
+    for constraint in package.mask_constraints:
+        authority_text = " ".join(
+            (
+                constraint.mask_statement,
+                *constraint.observability,
+                *constraint.required_inputs,
+            )
+        )
+        if constraint.critic_requirement:
+            raise RefineContractError(
+                f"non-Breast constraint {constraint.constraint_id} grants critic veto authority"
+            )
+        if "source_he" in constraint.observability or _EXECUTION_HE_PATTERN.search(
+            authority_text
+        ):
+            raise RefineContractError(
+                f"non-Breast constraint {constraint.constraint_id} grants execution H&E authority"
+            )
 
 
 def _mask_constraint_applies(

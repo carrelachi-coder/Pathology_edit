@@ -23,7 +23,7 @@
     "lung-acinar-papillary-growth",
     "lung-stromal-invasive-front",
     "lung-stas-airspace-spread",
-    "lung-treatment-associated-fibrotic-replacement",
+    "lung-operational-tumor-retreat",
     "breast-intratumoral-necrosis-turnover",
     "lung-intratumoral-necrosis-turnover",
     "melanoma-intratumoral-necrosis-turnover",
@@ -50,7 +50,7 @@
     "lung-stromal-invasive-front": [
       2
     ],
-    "lung-treatment-associated-fibrotic-replacement": [
+    "lung-operational-tumor-retreat": [
       1
     ],
     "lung-generic-immune-compartment-turnover": [
@@ -74,7 +74,7 @@
     "lung-stromal-invasive-front": [
       1
     ],
-    "lung-treatment-associated-fibrotic-replacement": [
+    "lung-operational-tumor-retreat": [
       2
     ],
     "lung-generic-immune-compartment-turnover": [

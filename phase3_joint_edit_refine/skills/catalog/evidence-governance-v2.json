@@ -313,7 +313,7 @@
       "pathology-lung-cap-v2025",
       "pathology-lung-iaslc-2011"
     ],
-    "lung-treatment-associated-fibrotic-replacement": [
+    "lung-operational-tumor-retreat": [
       "pathology-lung-cap-v2025"
     ],
     "melanoma-cohesive-nest-sheet": [
@@ -358,7 +358,7 @@
       "pathology-prostate-isup-2014",
       "pathology-prostate-pattern5-2015"
     ],
-    "prostate-treatment-associated-fibrotic-replacement": [
+    "prostate-operational-tumor-retreat": [
       "pathology-prostate-cap-treatment-v2023",
       "pathology-prostate-treatment-morphology-1994"
     ],

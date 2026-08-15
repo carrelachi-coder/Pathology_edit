@@ -3,10 +3,10 @@ name: panda-gleason-v1
 description: Interpret masks following the PANDA Radboud-style stroma, benign epithelium, and Gleason 3/4/5 protocol. Use when annotation_profile_id is panda-gleason-v1, regardless of pathology domain metadata.
 ---
 
-# PANDA annotation protocol
+# panda-gleason-v1 mask-only execution authority
 
-1. Read `references/mask_contract.json` first; enforce provider/remap, zero, fine-ID, and topology constraints. Then read `references/rules.json` for Gleason interpretation.
-2. Use this profile only for verified Radboud-style fine masks. Never apply its 0–5 meanings to Karolinska-style coarse masks.
-3. Treat label zero as immutable background/unknown/unannotated support. Never seed, bridge, fill, or expand through it.
-4. Preserve Gleason 3/4/5 fine IDs during burden-only edits. State explicitly that mask ID 9 cannot guarantee fused/cribriform/poorly formed architecture.
-5. Hand pattern rendering to generation/post-generation audit; cite constraints and rules and abstain when provider, fine-mask identity, or required gland/lumen map is uncertain.
+1. Read `references/mask_contract.json` first and enforce only digest-bound provenance, semantic masks, scene graphs, native annotations, auxiliary structure maps, and deterministic candidate certificates.
+2. Raw histology, overlays, crops, reader boards, and renamed image panels are unavailable to the execution Planner and Critic.
+3. Unencoded glands, lumina, epidermis, lung structures, invasive fronts, grades, and treatment effects cannot be inferred for anchor selection or veto.
+4. Rules marked `reader_only_pathology_fact` may guide post-generation reader QA only and are excluded from the execution knowledge bundle.
+5. Abstain whenever the required native or auxiliary authority is absent; all capabilities remain draft and shadow-only.

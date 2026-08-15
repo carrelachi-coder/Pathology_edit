@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import tempfile
 import unittest
 from dataclasses import replace
@@ -28,6 +29,7 @@ from phase3_joint_edit_refine.workflow import (
 )
 from phase3_mask_edit_refine.agents import (
     HeuristicInterfacePlanner,
+    OpenAIMultimodalCritic,
     OpenAIMultimodalPlanner,
     validate_edit_plan,
 )
@@ -2261,6 +2263,21 @@ class _PassingCritic:
 
 class WorkflowTests(unittest.TestCase):
     def test_research_workflow_runs_end_to_end_without_legacy_fallback(self):
+        planner_image_paths = []
+        critic_image_paths = []
+
+        class RecordingPlanner:
+            name = "recording_mask_only_planner"
+
+            def create_plan(self, **kwargs):
+                planner_image_paths.append(tuple(kwargs["image_paths"]))
+                return HeuristicInterfacePlanner().create_plan(**kwargs)
+
+        class RecordingCritic(_PassingCritic):
+            def review(self, **kwargs):
+                critic_image_paths.append(tuple(kwargs["image_paths"]))
+                return super().review(**kwargs)
+
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             mask_path = root / "mask.npy"
@@ -2284,8 +2301,8 @@ class WorkflowTests(unittest.TestCase):
                 },
             )
             workflow = MaskEditRefineWorkflow(
-                planner=HeuristicInterfacePlanner(),
-                critic=_PassingCritic(),
+                planner=RecordingPlanner(),
+                critic=RecordingCritic(),
                 config=WorkflowConfig(production=False, critic_min_score_margin=0.0),
             )
             result = workflow.run(case, output_root=root / "artifacts")
@@ -2300,9 +2317,127 @@ class WorkflowTests(unittest.TestCase):
             )
             self.assertTrue(Path(result.artifact_paths["selection"]).is_file())
             self.assertTrue(Path(result.artifact_paths["active_skills"]).is_file())
+            self.assertTrue(planner_image_paths)
+            self.assertTrue(critic_image_paths)
+            self.assertTrue(all(not paths for paths in planner_image_paths))
+            self.assertTrue(all(not paths for paths in critic_image_paths))
 
 
 class AgentContractTests(unittest.TestCase):
+    def test_all_non_breast_execution_agents_reject_every_caller_raster_before_api(self):
+        class NoCallClient:
+            model = "fixture"
+
+            def __init__(self):
+                self.calls = 0
+
+            def call(self, **_kwargs):
+                self.calls += 1
+                raise AssertionError("execution client must not be called")
+
+        profiles = (
+            ("colorectal-adenocarcinoma-v1", "glas-gland-v1"),
+            ("prostate-adenocarcinoma-v1", "panda-gleason-v1"),
+            ("lung-carcinoma-v1", "ignite-semantic-v1"),
+            ("melanoma-v1", "puma-semantic-v1"),
+            ("oral-squamous-cell-carcinoma-v1", "orca-semantic-v1"),
+            ("breast-invasive-carcinoma-v1", "orca-semantic-v1"),
+        )
+        disguised_paths = (
+            "renamed-neutral-panel.png",
+            "self-registered-component-map.png",
+            "reader-board-without-he-name.png",
+            "arbitrary-caller-raster.bin",
+        )
+        for domain_id, profile_id in profiles:
+            case = replace(
+                _case(primitive="tumor-burden-increase-v1", area=0.04),
+                pathology_domain_id=domain_id,
+                annotation_profile_id=profile_id,
+            )
+            for disguised_path in disguised_paths:
+                with self.subTest(
+                    domain_id=domain_id,
+                    disguised_path=disguised_path,
+                ):
+                    planner_client = NoCallClient()
+                    with self.assertRaisesRegex(
+                        RefineContractError, "rejects caller-supplied raster"
+                    ):
+                        OpenAIMultimodalPlanner(
+                            client=planner_client,
+                            max_schema_attempts=1,
+                        ).create_plan(
+                            case=case,
+                            scene=SimpleNamespace(),
+                            bundle=SimpleNamespace(),
+                            image_paths=(disguised_path,),
+                        )
+                    self.assertEqual(planner_client.calls, 0)
+
+                    critic_client = NoCallClient()
+                    with self.assertRaisesRegex(
+                        RefineContractError, "rejects caller-supplied raster"
+                    ):
+                        OpenAIMultimodalCritic(client=critic_client).review(
+                            case=case,
+                            bundle=SimpleNamespace(),
+                            candidates=(),
+                            gate_reports=(),
+                            image_paths=(disguised_path,),
+                        )
+                    self.assertEqual(critic_client.calls, 0)
+
+    def test_non_breast_skill_catalog_has_no_execution_he_or_critic_authority(self):
+        repository = SkillRepository()
+        non_breast_skill_ids = {
+            "glas-gland-v1",
+            "panda-gleason-v1",
+            "ignite-semantic-v1",
+            "puma-semantic-v1",
+            "orca-semantic-v1",
+            "colorectal-adenocarcinoma-v1",
+            "prostate-adenocarcinoma-v1",
+            "lung-carcinoma-v1",
+            "melanoma-v1",
+            "oral-squamous-cell-carcinoma-v1",
+        }
+        he_pattern = re.compile(
+            r"(?:\bH\s*&\s*E\b|source[_ -]?he\b|raw histology)",
+            flags=re.IGNORECASE,
+        )
+        for skill_id in sorted(non_breast_skill_ids):
+            package = repository.get(skill_id)
+            with self.subTest(skill_id=skill_id):
+                self.assertTrue(
+                    all(
+                        rule.scope.startswith("reader_only_")
+                        or (
+                            not rule.critic_requirement
+                            and not he_pattern.search(
+                                f"{rule.claim} {rule.required_observation}"
+                            )
+                        )
+                        for rule in package.rules
+                    )
+                )
+                self.assertTrue(
+                    all(
+                        not item.critic_requirement
+                        and "source_he" not in item.observability
+                        and not he_pattern.search(
+                            " ".join(
+                                (
+                                    item.mask_statement,
+                                    *item.observability,
+                                    *item.required_inputs,
+                                )
+                            )
+                        )
+                        for item in package.mask_constraints
+                    )
+                )
+
     def test_planner_cannot_omit_an_active_mask_constraint(self):
         repository = SkillRepository()
         gates = GateRegistry()

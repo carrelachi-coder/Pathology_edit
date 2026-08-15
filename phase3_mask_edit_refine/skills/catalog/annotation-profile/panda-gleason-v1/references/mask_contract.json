@@ -5,60 +5,119 @@
   "purpose": "Executable Radboud-style PANDA fine-mask contract; Gleason architecture rendering is downstream.",
   "constraints": [
     {
-      "constraint_id": "panda.mask.require_verified_provider_and_remap",
+      "constraint_id": "panda.mask.require_digest-bound_provider_and_remap",
       "applies_when": {},
       "mask_statement": "Require provider, preprocessing revision, and label-map digest; reject a profile whose provider/signature is not the certified Radboud-style fine contract.",
-      "observability": ["provenance", "semantic_mask"],
+      "observability": [
+        "provenance",
+        "semantic_mask"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["input_validation", "mask_gate"],
-      "checker_ids": ["profile_required_provenance", "profile_signature_consistency"],
+      "enforcement_stages": [
+        "input_validation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "profile_required_provenance",
+        "profile_signature_consistency"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["provider/remap provenance", "fine-ID mask"],
+      "required_inputs": [
+        "provider/remap provenance",
+        "fine-ID mask"
+      ],
       "failure_action": "abstain_case",
       "generation_handoff": [],
-      "known_limitations": ["The current checker validates field presence and ID signature; certified provider-value/digest matching is still pending."]
+      "known_limitations": [
+        "The current checker validates field presence and ID signature; certified provider-value/digest matching is still pending."
+      ]
     },
     {
       "constraint_id": "panda.mask.zero_unknown_is_immutable",
       "applies_when": {},
       "mask_statement": "Preserve every zero pixel exactly; background/unknown/unannotated regions cannot seed, receive, bridge, or be filled by tumor, stroma, or benign epithelium.",
-      "observability": ["semantic_mask"],
+      "observability": [
+        "semantic_mask"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["background_seed_protection"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "background_seed_protection"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["fine-ID semantic mask"],
+      "required_inputs": [
+        "fine-ID semantic mask"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Do not inpaint protected zero pixels."],
-      "known_limitations": ["Some zero pixels may contain real tissue, but the annotation contract still cannot authorize editing them."]
+      "generation_handoff": [
+        "Do not inpaint protected zero pixels."
+      ],
+      "known_limitations": [
+        "Some zero pixels may contain real tissue, but the annotation contract still cannot authorize editing them."
+      ]
     },
     {
       "constraint_id": "panda.mask.preserve_gleason_fine_ids_in_burden_edit",
-      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1", "stroma-increase-v1"]},
+      "applies_when": {
+        "primitive": [
+          "tumor-burden-increase-v1",
+          "tumor-burden-decrease-v1",
+          "stroma-increase-v1"
+        ]
+      },
       "mask_statement": "Do not convert Gleason 3, 4, and 5 or benign epithelium into one another during a burden edit; only declared source pixels may change to the selected target fine ID.",
-      "observability": ["semantic_mask"],
+      "observability": [
+        "semantic_mask"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["label_transition", "unrequested_labels_preserved"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "label_transition",
+        "unrequested_labels_preserved"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["fine-ID semantic mask"],
+      "required_inputs": [
+        "fine-ID semantic mask"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Generate pattern-appropriate architecture for the retained fine ID; the mask only guarantees ID preservation."],
-      "known_limitations": ["A fine ID does not encode individual gland, lumen, or cribriform topology."]
+      "generation_handoff": [
+        "Generate pattern-appropriate architecture for the retained fine ID; the mask only guarantees ID preservation."
+      ],
+      "known_limitations": [
+        "A fine ID does not encode individual gland, lumen, or cribriform topology."
+      ]
     },
     {
       "constraint_id": "panda.mask.no_sparse_annotation_repair",
       "applies_when": {},
       "mask_statement": "Do not bridge separate Gleason components, fill zero/unknown gaps, create islands, split sources, merge targets, or fill holes to make sparse annotation look complete.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["mask_gate"],
-      "checker_ids": ["edited_label_topology", "component_topology"],
+      "enforcement_stages": [
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "edited_label_topology",
+        "component_topology"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["source and candidate masks"],
+      "required_inputs": [
+        "source and candidate masks"
+      ],
       "failure_action": "reject_candidate",
       "generation_handoff": [],
-      "known_limitations": ["Annotation repair is a separate task and remains unsupported."]
+      "known_limitations": [
+        "Annotation repair is a separate task and remains unsupported."
+      ]
     }
   ]
 }

@@ -3,10 +3,10 @@ name: ignite-semantic-v1
 description: Interpret masks following the repository's IGNITE-derived unified lung tissue protocol. Use when annotation_profile_id is ignite-semantic-v1, independently from pathology_domain_id.
 ---
 
-# IGNITE annotation protocol
+# ignite-semantic-v1 mask-only execution authority
 
-1. Read `references/mask_contract.json` first; enforce remap/site provenance, zero, declared transitions, and topology. Then read `references/rules.json` for native-tissue interpretation.
-2. Preserve collapsed zero exactly because it may combine unannotated and background pixels.
-3. Do not reverse-infer native tissue identity from coarse `Stroma`, `Normal epithelium`, `Immune infiltrate`, or `Other tissue`; consult H&E and retained native masks.
-4. Retrieve statistics and references from matching primary/metastatic site, specimen type, center/scanner, and scale before broader fallbacks.
-5. Cite constraints and rules, abstain when remap/site context is missing, and hand native lung-tissue appearance to generation rather than inferring it from unified IDs.
+1. Read `references/mask_contract.json` first and enforce only digest-bound provenance, semantic masks, scene graphs, native annotations, auxiliary structure maps, and deterministic candidate certificates.
+2. Raw histology, overlays, crops, reader boards, and renamed image panels are unavailable to the execution Planner and Critic.
+3. Unencoded glands, lumina, epidermis, lung structures, invasive fronts, grades, and treatment effects cannot be inferred for anchor selection or veto.
+4. Rules marked `reader_only_pathology_fact` may guide post-generation reader QA only and are excluded from the execution knowledge bundle.
+5. Abstain whenever the required native or auxiliary authority is absent; all capabilities remain draft and shadow-only.

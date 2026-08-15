@@ -11,6 +11,8 @@ import numpy as np
 from PIL import Image
 
 from phase3_mask_edit_refine.agents import (
+    BREAST_EXECUTION_DOMAIN_ID,
+    BREAST_EXECUTION_PROFILE_ID,
     Critic,
     Planner,
     critic_satisfies_hard_rules,
@@ -36,6 +38,7 @@ from phase3_mask_edit_refine.scene import SceneAnalysis, build_scene_analysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle, SkillRepository
 from phase3_mask_edit_refine.visualization import (
     save_critic_contact_sheet,
+    save_mask_planner_panels,
     save_planner_panels,
 )
 
@@ -153,11 +156,26 @@ class MaskEditRefineWorkflow:
                 scene_graph=scene.graph,
                 bundle=bundle,
             )
-            planner_panels = save_planner_panels(
-                image_path=case.source_image_uri,
-                mask=source_mask,
-                scene=scene,
-                output_dir=audit.case_dir / "planner_panels",
+            non_breast_mask_only = (
+                case.pathology_domain_id != BREAST_EXECUTION_DOMAIN_ID
+                or case.annotation_profile_id != BREAST_EXECUTION_PROFILE_ID
+            )
+            planner_panels = (
+                save_mask_planner_panels(
+                    mask=source_mask,
+                    scene=scene,
+                    output_dir=audit.case_dir / "planner_panels",
+                )
+                if non_breast_mask_only
+                else save_planner_panels(
+                    image_path=case.source_image_uri,
+                    mask=source_mask,
+                    scene=scene,
+                    output_dir=audit.case_dir / "planner_panels",
+                )
+            )
+            execution_planner_images = (
+                () if non_breast_mask_only else planner_panels
             )
             audit.paths["planner_panels"] = str(audit.case_dir / "planner_panels")
 
@@ -167,7 +185,7 @@ class MaskEditRefineWorkflow:
                 source_mask=source_mask,
                 scene=scene,
                 bundle=bundle,
-                image_paths=planner_panels,
+                image_paths=execution_planner_images,
             )
             usage["planner_calls"].append(attempt.planner_usage)
             escalation_reason = self._attempt_escalation_reason(attempt)
@@ -178,7 +196,7 @@ class MaskEditRefineWorkflow:
                     source_mask=source_mask,
                     scene=scene,
                     bundle=bundle,
-                    image_paths=planner_panels,
+                    image_paths=execution_planner_images,
                     usage=usage,
                 )
                 if escalated is not None:
@@ -214,7 +232,9 @@ class MaskEditRefineWorkflow:
                 )
 
             contact_sheet = save_critic_contact_sheet(
-                image_path=case.source_image_uri,
+                image_path=(
+                    None if non_breast_mask_only else case.source_image_uri
+                ),
                 source_mask=source_mask,
                 candidates=candidates,
                 gate_reports=final_reports,
@@ -222,7 +242,11 @@ class MaskEditRefineWorkflow:
                 output_path=audit.case_dir / "critic_contact_sheet.png",
             )
             audit.paths["critic_contact_sheet"] = contact_sheet
-            critic_images = (*planner_panels[:2], contact_sheet)
+            critic_images = (
+                ()
+                if non_breast_mask_only
+                else (*planner_panels[:2], contact_sheet)
+            )
             final_critic = self.critic.review(
                 case=case,
                 bundle=bundle,
@@ -252,7 +276,7 @@ class MaskEditRefineWorkflow:
                         source_mask=source_mask,
                         scene=scene,
                         bundle=bundle,
-                        image_paths=planner_panels,
+                        image_paths=execution_planner_images,
                         usage=usage,
                     )
                 if escalated is not None:
@@ -273,7 +297,11 @@ class MaskEditRefineWorkflow:
                     ]
                     if passing:
                         contact_sheet = save_critic_contact_sheet(
-                            image_path=case.source_image_uri,
+                            image_path=(
+                                None
+                                if non_breast_mask_only
+                                else case.source_image_uri
+                            ),
                             source_mask=source_mask,
                             candidates=candidates,
                             gate_reports=final_reports,
@@ -285,7 +313,11 @@ class MaskEditRefineWorkflow:
                             bundle=bundle,
                             candidates=passing,
                             gate_reports=final_reports,
-                            image_paths=(*planner_panels[:2], contact_sheet),
+                            image_paths=(
+                                ()
+                                if non_breast_mask_only
+                                else (*planner_panels[:2], contact_sheet)
+                            ),
                         )
                         usage["critic_calls"].append(final_critic.usage)
                         audit.write_critic(final_critic)

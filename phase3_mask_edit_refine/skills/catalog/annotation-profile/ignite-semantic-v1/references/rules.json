@@ -6,10 +6,34 @@
   "summary": "Repository IGNITE 17-to-8 coarse remap contract with native ontology, site/specimen conditioning, and protected unannotated/background pixels.",
   "capabilities": {
     "dataset_config_name": "IGNITE",
-    "canonical_labels": ["Tumor", "Stroma", "Necrosis", "Immune infiltrate", "Normal epithelium", "Blood vessel", "Other tissue"],
+    "canonical_labels": [
+      "Tumor",
+      "Stroma",
+      "Necrosis",
+      "Immune infiltrate",
+      "Normal epithelium",
+      "Blood vessel",
+      "Other tissue"
+    ],
     "native_class_count_including_zero": 17,
     "native_ontology": [
-      "Unannotated", "Background", "Tumor epithelium", "Reactive epithelium", "Stroma", "Inflammation", "Alveolar tissue", "Fat", "Necrotic tissue", "Erythrocytes", "Bronchial epithelium", "Mucus/Plasma/Fluids", "Cartilage/Bone", "Macrophages", "Muscle", "Liver", "Keratinization"
+      "Unannotated",
+      "Background",
+      "Tumor epithelium",
+      "Reactive epithelium",
+      "Stroma",
+      "Inflammation",
+      "Alveolar tissue",
+      "Fat",
+      "Necrotic tissue",
+      "Erythrocytes",
+      "Bronchial epithelium",
+      "Mucus/Plasma/Fluids",
+      "Cartilage/Bone",
+      "Macrophages",
+      "Muscle",
+      "Liver",
+      "Keratinization"
     ],
     "annotation_traits": [
       "multi-center lung-cancer ROIs include primary and metastatic sites",
@@ -18,7 +42,10 @@
     ],
     "background_policy": {
       "canonical_label": "Background",
-      "native_meanings": ["Unannotated", "Background"],
+      "native_meanings": [
+        "Unannotated",
+        "Background"
+      ],
       "editable": false,
       "may_seed_edit": false,
       "preserve_exactly": true,
@@ -40,14 +67,19 @@
     {
       "rule_id": "ignite.require_exact_native_to_unified_remap",
       "scope": "input_validation",
-      "applies_when": {"annotation_profile_id": "ignite-semantic-v1"},
+      "applies_when": {
+        "annotation_profile_id": "ignite-semantic-v1"
+      },
       "claim": "Require an exact 17-to-8 remap digest and preprocessing revision; the repository coarse ontology is not identical to the public native ontology.",
       "required_observation": "Verify every native ID maps to one reviewed canonical ID and store the mapping digest with the case.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": ["Assuming native erythrocytes mean Blood vessel.", "Treating reactive and bronchial epithelium as interchangeable without checking the remap."],
+      "counterexamples": [
+        "Assuming native erythrocytes mean Blood vessel.",
+        "Treating reactive and bronchial epithelium as interchangeable without checking the remap."
+      ],
       "expected_morphology": [],
       "forbidden_morphology": [],
       "evidence_citations": [
@@ -55,98 +87,173 @@
         "https://github.com/DIAGNijmegen/ignite-data-toolkit",
         "https://arxiv.org/abs/2507.16855"
       ],
-      "dataset_statistics": {"status": "pending_site_specimen_and_center_stratified_computation"},
+      "dataset_statistics": {
+        "status": "pending_site_specimen_and_center_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["The repository currently lacks a versioned standalone 17-to-8 mapping artifact; production use remains blocked."]
+      "known_limitations": [
+        "The repository currently lacks a versioned standalone 17-to-8 mapping artifact; production use remains blocked."
+      ]
     },
     {
       "rule_id": "ignite.unannotated_and_background_are_immutable",
       "scope": "candidate_generation_and_gate",
-      "applies_when": {"canonical_label": "Background"},
+      "applies_when": {
+        "canonical_label": "Background"
+      },
       "claim": "Preserve the collapsed zero footprint exactly because it may represent unannotated tissue as well as true background.",
       "required_observation": "Verify zero pixels do not enter source/target components, edit bands, morphological closing, or candidate diffs.",
       "severity": "hard",
       "deterministic_check_id": "background_seed_protection",
       "critic_requirement": null,
       "exceptions": [],
-      "counterexamples": ["Growing tumor through an unannotated strip.", "Filling an airspace-like zero region with stroma."],
-      "expected_morphology": ["Every zero pixel remains unchanged."],
-      "forbidden_morphology": ["Zero-label seeding, filling, crossing, or bridging."],
+      "counterexamples": [
+        "Growing tumor through an unannotated strip.",
+        "Filling an airspace-like zero region with stroma."
+      ],
+      "expected_morphology": [
+        "Every zero pixel remains unchanged."
+      ],
+      "forbidden_morphology": [
+        "Zero-label seeding, filling, crossing, or bridging."
+      ],
       "evidence_citations": [
         "https://github.com/DIAGNijmegen/ignite-data-toolkit",
         "https://zenodo.org/records/17735903"
       ],
-      "dataset_statistics": {"status": "pending_site_specimen_and_center_stratified_computation"},
+      "dataset_statistics": {
+        "status": "pending_site_specimen_and_center_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Collapsed zero does not retain the native distinction between unannotated and background."]
+      "known_limitations": [
+        "Collapsed zero does not retain the native distinction between unannotated and background."
+      ]
     },
     {
       "rule_id": "ignite.condition_on_source_site_and_specimen",
       "scope": "retrieval_and_calibration",
-      "applies_when": {"dataset": "IGNITE"},
+      "applies_when": {
+        "dataset": "IGNITE"
+      },
       "claim": "Retrieve examples and geometric thresholds from matching primary/metastatic site and specimen type before using broader dataset statistics.",
       "required_observation": "Record source site, primary-versus-metastatic status when available, specimen type, center/scanner, and pixel scale.",
       "severity": "hard",
       "deterministic_check_id": "profile_required_provenance",
-      "critic_requirement": "veto_site_incompatible_reference",
-      "exceptions": ["If a stratum lacks enough cases, abstain or use an explicitly reviewed hierarchical fallback with uncertainty."],
-      "counterexamples": ["Using a liver-metastasis tissue boundary distribution for a primary lung alveolar ROI.", "Applying resection-derived component sizes to a cytology-like or biopsy specimen without calibration."],
-      "expected_morphology": ["Reference tissues and thresholds match the case's anatomical and acquisition stratum."],
-      "forbidden_morphology": ["Unstratified cross-site reference transfer presented as certain."],
+      "critic_requirement": null,
+      "exceptions": [
+        "If a stratum lacks enough cases, abstain or use an explicitly reviewed hierarchical fallback with uncertainty."
+      ],
+      "counterexamples": [
+        "Using a liver-metastasis tissue boundary distribution for a primary lung alveolar ROI.",
+        "Applying resection-derived component sizes to a cytology-like or biopsy specimen without calibration."
+      ],
+      "expected_morphology": [
+        "Reference tissues and thresholds match the case's anatomical and acquisition stratum."
+      ],
+      "forbidden_morphology": [
+        "Unstratified cross-site reference transfer presented as certain."
+      ],
       "evidence_citations": [
         "https://arxiv.org/abs/2507.16855",
         "https://zenodo.org/records/17735903"
       ],
-      "dataset_statistics": {"status": "pending_site_specimen_and_center_stratified_computation"},
+      "dataset_statistics": {
+        "status": "pending_site_specimen_and_center_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Primary/metastatic status is not yet a required CaseContext field and may need to be carried inside provenance."]
+      "known_limitations": [
+        "Primary/metastatic status is not yet a required CaseContext field and may need to be carried inside provenance."
+      ]
     },
     {
       "rule_id": "ignite.collapsed_tissues_are_not_interchangeable",
-      "scope": "semantic_contract_and_critic",
-      "applies_when": {"canonical_label": ["Stroma", "Normal epithelium", "Immune infiltrate", "Other tissue"]},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "canonical_label": [
+          "Stroma",
+          "Normal epithelium",
+          "Immune infiltrate",
+          "Other tissue"
+        ]
+      },
       "claim": "Do not treat a canonical coarse class as a single histologic structure after native-label collapse.",
-      "required_observation": "Use H&E and the retained native mask, when available, to distinguish alveolar tissue, bronchial/reactive epithelium, inflammation/macrophages, muscle, cartilage/bone, fat, fluids, erythrocytes, liver, and keratinization.",
-      "severity": "hard",
-      "deterministic_check_id": "semantic_capability_guard",
-      "critic_requirement": "veto_collapsed_lung_tissue_misinterpretation",
-      "exceptions": ["A pixel-aligned retained native mask may support a more specific reviewed rule."],
-      "counterexamples": ["Using alveolar tissue as desmoplastic stroma.", "Using bronchial epithelium as a generic tumor expansion substrate.", "Treating erythrocytes as a vascular wall."],
-      "expected_morphology": ["The selected band is visibly compatible with the specific requested boundary change."],
-      "forbidden_morphology": ["Crossing airspace, bronchial lining, cartilage, muscle, or foreign-site tissue under a generic canonical label."],
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
+      "critic_requirement": null,
+      "exceptions": [
+        "A pixel-aligned retained native mask may support a more specific reviewed rule."
+      ],
+      "counterexamples": [
+        "Using alveolar tissue as desmoplastic stroma.",
+        "Using bronchial epithelium as a generic tumor expansion substrate.",
+        "Treating erythrocytes as a vascular wall."
+      ],
+      "expected_morphology": [
+        "The selected band is visibly compatible with the specific requested boundary change."
+      ],
+      "forbidden_morphology": [
+        "Crossing airspace, bronchial lining, cartilage, muscle, or foreign-site tissue under a generic canonical label."
+      ],
       "evidence_citations": [
         "https://github.com/DIAGNijmegen/ignite-data-toolkit",
         "https://arxiv.org/abs/2507.16855"
       ],
-      "dataset_statistics": {"status": "pending_site_specimen_and_center_stratified_computation"},
+      "dataset_statistics": {
+        "status": "pending_site_specimen_and_center_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["H&E resolution and staining quality constrain visual subtype recovery."]
+      "known_limitations": [
+        "H&E resolution and staining quality constrain visual subtype recovery.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "ignite.preserve_native_structure_topology",
-      "scope": "candidate_gate",
-      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1", "stroma-increase-v1"]},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "primitive": [
+          "tumor-burden-increase-v1",
+          "tumor-burden-decrease-v1",
+          "stroma-increase-v1"
+        ]
+      },
       "claim": "Do not use coarse-mask morphology to bridge separate tumor components, fill air/luminal holes, or split a selected epithelial component.",
-      "required_observation": "Compare source/target component and hole topology and require critic review of H&E airspace and epithelial continuity.",
-      "severity": "hard",
-      "deterministic_check_id": "edited_label_topology",
-      "critic_requirement": "veto_lung_structure_topology_violation",
-      "exceptions": ["A dedicated topology-changing primitive with site-specific review."],
-      "counterexamples": ["Closing alveolar spaces inside a lepidic region.", "Merging tumor across a bronchial lumen.", "Creating a detached tumor island in collapsed Other tissue."],
-      "expected_morphology": ["The candidate deforms one existing tissue interface without repairing unrelated coarse-mask gaps."],
-      "forbidden_morphology": ["New islands, bridges, filled lumina/airspaces, or component splits/merges."],
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
+      "critic_requirement": null,
+      "exceptions": [
+        "A dedicated topology-changing primitive with site-specific review."
+      ],
+      "counterexamples": [
+        "Closing alveolar spaces inside a lepidic region.",
+        "Merging tumor across a bronchial lumen.",
+        "Creating a detached tumor island in collapsed Other tissue."
+      ],
+      "expected_morphology": [
+        "The candidate deforms one existing tissue interface without repairing unrelated coarse-mask gaps."
+      ],
+      "forbidden_morphology": [
+        "New islands, bridges, filled lumina/airspaces, or component splits/merges."
+      ],
       "evidence_citations": [
         "https://arxiv.org/abs/2507.16855",
         "https://github.com/DIAGNijmegen/ignite-data-toolkit"
       ],
-      "dataset_statistics": {"status": "pending_site_specimen_and_center_stratified_computation"},
+      "dataset_statistics": {
+        "status": "pending_site_specimen_and_center_stratified_computation"
+      },
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["The coarse profile cannot deterministically identify every airspace or lumen; critic veto remains required."]
+      "known_limitations": [
+        "The coarse profile cannot deterministically identify every airspace or lumen; critic veto remains required.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     }
   ]
 }

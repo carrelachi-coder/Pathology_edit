@@ -27,6 +27,7 @@ from .skills.schema import JointMechanismSkill
 
 JOINT_PLAN_SCHEMA_VERSION = "joint-pathology-edit-plan-v2"
 _CELL_PORTFOLIO_ISSUER = object()
+_DEPLETION_ANCHOR_ISSUER = object()
 _ISSUED_CELL_PORTFOLIOS: dict[int, tuple[tuple[int, str], ...]] = {}
 
 LOCAL_POPULATION_PRIMITIVES = frozenset(
@@ -41,6 +42,94 @@ LOCAL_POPULATION_PRIMITIVES = frozenset(
         "generic-inflammatory-cell-abundance-increase-v1",
     }
 )
+
+
+def _depletion_anchor_binding_sha256(
+    *,
+    case: JointCaseContext,
+    zone_id: str,
+    interface_ids: tuple[str, ...],
+    anchor_ids: tuple[str, ...],
+) -> str:
+    provenance = case.provenance
+    payload = {
+        "case_id": case.case_id,
+        "pathology_domain_id": case.pathology_domain_id,
+        "annotation_profile_id": case.annotation_profile_id,
+        "primitive_id": case.primitive_id,
+        "mechanism_id": provenance.get("joint_mechanism_id"),
+        "source_tissue_mask_sha256": provenance.get(
+            "source_tissue_mask_sha256"
+        ),
+        "source_nuclei_mask_sha256": provenance.get(
+            "source_nuclei_mask_sha256"
+        ),
+        "zone_id": zone_id,
+        "interface_ids": list(interface_ids),
+        "anchor_ids": list(anchor_ids),
+    }
+    if not payload["source_tissue_mask_sha256"] or not payload[
+        "source_nuclei_mask_sha256"
+    ]:
+        raise JointContractError(
+            "compiler-owned depletion anchor lacks source mask digests"
+        )
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+@dataclass(frozen=True)
+class CompilerOwnedDepletionAnchor:
+    """Typed mask-graph anchor capability unavailable through case provenance."""
+
+    zone_id: str
+    interface_ids: tuple[str, ...]
+    anchor_ids: tuple[str, ...]
+    binding_sha256: str
+    _issuer: object | None = None
+
+    @classmethod
+    def issue(
+        cls,
+        *,
+        case: JointCaseContext,
+        zone_id: str,
+        interface_ids: Sequence[str],
+        anchor_ids: Sequence[str],
+    ) -> CompilerOwnedDepletionAnchor:
+        interfaces = tuple(str(value) for value in interface_ids)
+        anchors = tuple(str(value) for value in anchor_ids)
+        return cls(
+            zone_id=str(zone_id),
+            interface_ids=interfaces,
+            anchor_ids=anchors,
+            binding_sha256=_depletion_anchor_binding_sha256(
+                case=case,
+                zone_id=str(zone_id),
+                interface_ids=interfaces,
+                anchor_ids=anchors,
+            ),
+            _issuer=_DEPLETION_ANCHOR_ISSUER,
+        )
+
+    def validate(self, *, case: JointCaseContext) -> None:
+        if self._issuer is not _DEPLETION_ANCHOR_ISSUER:
+            raise JointContractError(
+                "depletion anchor was not issued by the portfolio compiler"
+            )
+        expected = _depletion_anchor_binding_sha256(
+            case=case,
+            zone_id=self.zone_id,
+            interface_ids=self.interface_ids,
+            anchor_ids=self.anchor_ids,
+        )
+        if expected != self.binding_sha256:
+            raise JointContractError(
+                "compiler-owned depletion anchor is digest-detached"
+            )
 
 
 @dataclass(frozen=True)
@@ -153,6 +242,7 @@ class JointPlanner(Protocol):
         image_paths: Sequence[str | Path],
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
         candidate_portfolio: Sequence[Any] = (),
+        compiler_owned_depletion_anchor: CompilerOwnedDepletionAnchor | None = None,
     ) -> tuple[JointEditPlan, dict[str, Any]]: ...
 
 
@@ -537,6 +627,7 @@ class HeuristicJointPlanner:
         image_paths: Sequence[str | Path],
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
         candidate_portfolio: Sequence[Any] = (),
+        compiler_owned_depletion_anchor: CompilerOwnedDepletionAnchor | None = None,
     ) -> tuple[JointEditPlan, dict[str, Any]]:
         del image_paths, artifact_registry
         if candidate_portfolio:
@@ -608,6 +699,9 @@ class HeuristicJointPlanner:
                     bundle=bundle,
                     tissue_plan=tissue_plan,
                     protected=protected,
+                    compiler_owned_depletion_anchor=(
+                        compiler_owned_depletion_anchor
+                    ),
                 )
             requested_interfaces = case.provenance.get("joint_interface_ids", ())
             if isinstance(requested_interfaces, str):
@@ -778,7 +872,14 @@ class HeuristicJointPlanner:
         }
 
     def _create_local_population_plan(
-        self, *, case, scene, bundle, tissue_plan, protected
+        self,
+        *,
+        case,
+        scene,
+        bundle,
+        tissue_plan,
+        protected,
+        compiler_owned_depletion_anchor=None,
     ):
         if tissue_plan is not None:
             raise JointContractError(
@@ -869,7 +970,35 @@ class HeuristicJointPlanner:
         layout = bundle.mechanism.cell_program.layout_for(case.primitive_id)
         if layout == "localized_density_gradient":
             depletion = bundle.mechanism.cell_program.cellularity_depletion
-            raw_anchor = case.provenance.get("cellularity_depletion_anchor")
+            if case.pathology_domain_id == "breast-invasive-carcinoma-v1":
+                raw_anchor = case.provenance.get(
+                    "cellularity_depletion_anchor"
+                )
+            else:
+                if not isinstance(
+                    compiler_owned_depletion_anchor,
+                    CompilerOwnedDepletionAnchor,
+                ):
+                    raise JointContractError(
+                        "non-Breast cellularity decrease requires a compiler-owned "
+                        "depletion anchor capability"
+                    )
+                compiler_owned_depletion_anchor.validate(case=case)
+                if compiler_owned_depletion_anchor.zone_id != zone.zone_id:
+                    raise JointContractError(
+                        "compiler-owned depletion anchor belongs to another population zone"
+                    )
+                raw_anchor = {
+                    "type": "interface",
+                    "interface_ids": list(
+                        compiler_owned_depletion_anchor.interface_ids
+                    ),
+                    "anchor_ids": list(
+                        compiler_owned_depletion_anchor.anchor_ids
+                    ),
+                    "observation": "compiler-issued deterministic mask-graph adjacency",
+                    "confidence": 1.0,
+                }
             if depletion is None or not isinstance(raw_anchor, Mapping):
                 raise JointContractError(
                     "cellularity decrease requires an explicit mask-graph depletion anchor"

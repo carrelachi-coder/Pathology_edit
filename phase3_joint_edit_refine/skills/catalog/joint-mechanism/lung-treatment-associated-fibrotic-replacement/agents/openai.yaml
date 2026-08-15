@@ -1,4 +1,0 @@
-interface:
-  display_name: "lung-treatment-associated-fibrotic-replacement"
-  short_description: "Shadow-only certified mask mechanism"
-  default_prompt: "Use $lung-treatment-associated-fibrotic-replacement only to select compiler-certified mask candidates; never infer execution authority from H&E."

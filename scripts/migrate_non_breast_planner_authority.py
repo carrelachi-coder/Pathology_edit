@@ -14,8 +14,23 @@ import re
 from pathlib import Path
 from typing import Any
 
-
 BREAST_DOMAIN = "breast-invasive-carcinoma-v1"
+NON_BREAST_MASK_SKILLS = {
+    "glas-gland-v1",
+    "panda-gleason-v1",
+    "ignite-semantic-v1",
+    "puma-semantic-v1",
+    "orca-semantic-v1",
+    "colorectal-adenocarcinoma-v1",
+    "prostate-adenocarcinoma-v1",
+    "lung-carcinoma-v1",
+    "melanoma-v1",
+    "oral-squamous-cell-carcinoma-v1",
+}
+EXECUTION_HE_PATTERN = re.compile(
+    r"(?:\bH\s*&\s*E\b|\bH&E\b|source[_ -]?he\b|raw histology)",
+    flags=re.IGNORECASE,
+)
 ALLOWED_OBSERVATIONS = [
     "instruction",
     "semantic_intent",
@@ -159,8 +174,156 @@ def _planner_policy() -> dict[str, Any]:
     }
 
 
-def migrate(root: Path, *, check: bool) -> list[Path]:
+def _reader_only_pathology_fact(rule: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(rule)
+    migrated["scope"] = "reader_only_pathology_fact"
+    migrated["severity"] = "advisory"
+    migrated["deterministic_check_id"] = None
+    migrated["critic_requirement"] = None
+    migrated["required_observation"] = (
+        "Counterfactual histology may be inspected only after generation in "
+        "reader-only QA; this fact is unavailable to execution selection or veto."
+    )
+    limitations = list(migrated.get("known_limitations", ()))
+    statement = (
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+    )
+    if statement not in limitations:
+        limitations.append(statement)
+    migrated["known_limitations"] = limitations
+    return migrated
+
+
+def _sanitize_mask_contract(payload: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(payload)
+    constraints = []
+    for raw in payload.get("constraints", ()):
+        constraint = _rewrite_strings(dict(raw))
+        constraint["observability"] = [
+            item
+            for item in constraint.get("observability", ())
+            if item != "source_he"
+        ]
+        if not constraint["observability"]:
+            constraint["observability"] = ["auxiliary_structure_map"]
+        constraint["critic_requirement"] = None
+        constraint["required_inputs"] = [
+            (
+                "digest-bound native/auxiliary structure map"
+                if EXECUTION_HE_PATTERN.search(str(item))
+                else item
+            )
+            for item in constraint.get("required_inputs", ())
+        ]
+        statement = str(constraint.get("mask_statement", ""))
+        statement = re.sub(
+            r"if visible only on H&E, mask edit cannot guarantee preservation and must abstain on ambiguous overlap",
+            "without a digest-bound native/auxiliary map, that structure is unavailable to execution and the affected candidate must abstain",
+            statement,
+            flags=re.IGNORECASE,
+        )
+        statement = re.sub(
+            r"H&E recognition alone supports Planner veto, not a mask guarantee",
+            "unencoded structure recognition is unavailable to the execution Planner",
+            statement,
+            flags=re.IGNORECASE,
+        )
+        statement = EXECUTION_HE_PATTERN.sub(
+            "digest-bound native/auxiliary structure authority", statement
+        )
+        constraint["mask_statement"] = statement
+        constraints.append(constraint)
+    migrated["constraints"] = constraints
+    return migrated
+
+
+def _sanitize_mask_rules(payload: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(payload)
+    rules = []
+    for raw in payload.get("rules", ()):
+        rule = dict(raw)
+        authority_text = " ".join(
+            (str(rule.get("claim", "")), str(rule.get("required_observation", "")))
+        )
+        if EXECUTION_HE_PATTERN.search(authority_text):
+            rule = _reader_only_pathology_fact(rule)
+        elif rule.get("critic_requirement"):
+            rule["critic_requirement"] = None
+            if not rule.get("deterministic_check_id"):
+                rule = _reader_only_pathology_fact(rule)
+        rules.append(rule)
+    migrated["rules"] = rules
+    return migrated
+
+
+def _sanitize_mask_skill_markdown(text: str) -> str:
+    lines = text.splitlines()
+    try:
+        second_boundary = lines.index("---", 1)
+    except ValueError:
+        second_boundary = 3
+    frontmatter = "\n".join(lines[: second_boundary + 1])
+    name = next(
+        (
+            line.split(":", 1)[1].strip()
+            for line in lines[: second_boundary + 1]
+            if line.startswith("name:")
+        ),
+        "non-breast-mask-skill",
+    )
+    return (
+        frontmatter
+        + "\n\n# "
+        + name
+        + " mask-only execution authority\n\n"
+        + "1. Read `references/mask_contract.json` first and enforce only "
+        + "digest-bound provenance, semantic masks, scene graphs, native annotations, "
+        + "auxiliary structure maps, and deterministic candidate certificates.\n"
+        + "2. Raw histology, overlays, crops, reader boards, and renamed image panels "
+        + "are unavailable to the execution Planner and Critic.\n"
+        + "3. Unencoded glands, lumina, epidermis, lung structures, invasive fronts, "
+        + "grades, and treatment effects cannot be inferred for anchor selection or veto.\n"
+        + "4. Rules marked `reader_only_pathology_fact` may guide post-generation "
+        + "reader QA only and are excluded from the execution knowledge bundle.\n"
+        + "5. Abstain whenever the required native or auxiliary authority is absent; "
+        + "all capabilities remain draft and shadow-only.\n"
+    )
+
+
+def _migrate_mask_skill_authority(root: Path, *, check: bool) -> list[Path]:
     changed: list[Path] = []
+    catalog = root / "phase3_mask_edit_refine" / "skills" / "catalog"
+    for kind in ("annotation-profile", "pathology-domain"):
+        for skill_id in sorted(NON_BREAST_MASK_SKILLS):
+            base = catalog / kind / skill_id
+            if not base.is_dir():
+                continue
+            for filename, sanitizer in (
+                ("rules.json", _sanitize_mask_rules),
+                ("mask_contract.json", _sanitize_mask_contract),
+            ):
+                path = base / "references" / filename
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                rendered = json.dumps(
+                    sanitizer(payload), indent=2, ensure_ascii=False
+                ) + "\n"
+                if rendered != path.read_text(encoding="utf-8"):
+                    changed.append(path)
+                    if not check:
+                        path.write_text(rendered, encoding="utf-8")
+            skill_path = base / "SKILL.md"
+            rendered_skill = _sanitize_mask_skill_markdown(
+                skill_path.read_text(encoding="utf-8")
+            )
+            if rendered_skill != skill_path.read_text(encoding="utf-8"):
+                changed.append(skill_path)
+                if not check:
+                    skill_path.write_text(rendered_skill, encoding="utf-8")
+    return changed
+
+
+def migrate(root: Path, *, check: bool) -> list[Path]:
+    changed: list[Path] = _migrate_mask_skill_authority(root, check=check)
     mechanism_root = root / "phase3_joint_edit_refine" / "skills" / "catalog" / "joint-mechanism"
     for path in sorted(mechanism_root.glob("*/references/joint_contract.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))

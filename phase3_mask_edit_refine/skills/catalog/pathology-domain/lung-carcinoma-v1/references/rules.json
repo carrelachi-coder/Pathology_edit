@@ -7,23 +7,54 @@
   "capabilities": {
     "organ": "lung",
     "cancer_family": "carcinoma",
-    "recognized_structures": ["alveolar_framework", "lepidic_growth", "acinar_gland", "papillary_core", "micropapillary_tuft", "solid_adenocarcinoma", "squamous_nest_or_keratinization", "bronchial_epithelium", "cartilage_or_muscle", "desmoplastic_stroma"],
-    "retrieval_strata": ["histologic_type", "adenocarcinoma_pattern", "primary_or_metastatic", "source_site", "specimen_type"]
+    "recognized_structures": [
+      "alveolar_framework",
+      "lepidic_growth",
+      "acinar_gland",
+      "papillary_core",
+      "micropapillary_tuft",
+      "solid_adenocarcinoma",
+      "squamous_nest_or_keratinization",
+      "bronchial_epithelium",
+      "cartilage_or_muscle",
+      "desmoplastic_stroma"
+    ],
+    "retrieval_strata": [
+      "histologic_type",
+      "adenocarcinoma_pattern",
+      "primary_or_metastatic",
+      "source_site",
+      "specimen_type"
+    ]
   },
   "rules": [
     {
       "rule_id": "lung.lepidic_growth_preserves_alveolar_framework",
-      "scope": "planner_and_critic",
-      "applies_when": {"structure": ["lepidic_growth", "alveolar_framework"]},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "structure": [
+          "lepidic_growth",
+          "alveolar_framework"
+        ]
+      },
       "claim": "A lepidic-pattern edit must preserve pre-existing alveolar septal geometry and airspaces rather than filling them as a solid tumor mass.",
-      "required_observation": "Trace tumor cells lining alveolar septa, intervening airspaces, and any transition to invasive/desmoplastic growth on H&E.",
-      "severity": "hard",
-      "deterministic_check_id": "edited_label_topology",
-      "critic_requirement": "veto_lepidic_airspace_filling",
-      "exceptions": ["A clearly identified transition to solid or invasive growth requires a separately selected same-pattern interface."],
-      "counterexamples": ["Morphological closing that fills alveolar spaces.", "Growing a convex tumor blob across preserved lung parenchyma."],
-      "expected_morphology": ["Tumor remains distributed along alveolar walls with preserved open airspaces where visible."],
-      "forbidden_morphology": ["Airspace filling, septal bridging, bulk solidification, or loss of alveolar topology."],
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
+      "critic_requirement": null,
+      "exceptions": [
+        "A clearly identified transition to solid or invasive growth requires a separately selected same-pattern interface."
+      ],
+      "counterexamples": [
+        "Morphological closing that fills alveolar spaces.",
+        "Growing a convex tumor blob across preserved lung parenchyma."
+      ],
+      "expected_morphology": [
+        "Tumor remains distributed along alveolar walls with preserved open airspaces where visible."
+      ],
+      "forbidden_morphology": [
+        "Airspace filling, septal bridging, bulk solidification, or loss of alveolar topology."
+      ],
       "evidence_citations": [
         "https://doi.org/10.1016/j.jtho.2011.06.090",
         "https://doi.org/10.1016/j.jtho.2020.11.030"
@@ -31,21 +62,35 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Collapsed semantic masks may not encode alveolar septa and spaces separately."]
+      "known_limitations": [
+        "Collapsed semantic masks may not encode alveolar septa and spaces separately.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "lung.acinar_glands_preserve_luminal_continuity",
       "scope": "interface_selection_and_critic",
-      "applies_when": {"structure": "acinar_gland"},
+      "applies_when": {
+        "structure": "acinar_gland"
+      },
       "claim": "Do not create an abrupt notch, split, fusion, or lumen closure in a recognizable acinar tumor gland.",
       "required_observation": "Trace the entire glandular epithelial contour and central lumen and compare with adjacent same-pattern tumor.",
       "severity": "hard",
       "deterministic_check_id": "edited_label_topology",
-      "critic_requirement": "veto_lung_acinar_gland_violation",
-      "exceptions": ["Poorly formed or mixed-pattern interfaces require explicit pattern classification and uncertainty."],
-      "counterexamples": ["A deep narrow regression bite into one acinus.", "An expansion joining two acini by filling intervening stroma."],
-      "expected_morphology": ["Continuous gland contour and plausible lumen remain identifiable."],
-      "forbidden_morphology": ["Acute notch, gland split/merge, lumen fill, or detached tumor island."],
+      "critic_requirement": null,
+      "exceptions": [
+        "Poorly formed or mixed-pattern interfaces require explicit pattern classification and uncertainty."
+      ],
+      "counterexamples": [
+        "A deep narrow regression bite into one acinus.",
+        "An expansion joining two acini by filling intervening stroma."
+      ],
+      "expected_morphology": [
+        "Continuous gland contour and plausible lumen remain identifiable."
+      ],
+      "forbidden_morphology": [
+        "Acute notch, gland split/merge, lumen fill, or detached tumor island."
+      ],
       "evidence_citations": [
         "https://doi.org/10.1016/j.jtho.2011.06.090",
         "https://doi.org/10.1016/j.jtho.2020.11.030"
@@ -53,21 +98,37 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Tangential acinar sections can mimic papillary or solid patterns."]
+      "known_limitations": [
+        "Tangential acinar sections can mimic papillary or solid patterns."
+      ]
     },
     {
       "rule_id": "lung.papillary_and_micropapillary_are_not_interchangeable",
-      "scope": "planner_and_critic",
-      "applies_when": {"structure": ["papillary_core", "micropapillary_tuft"]},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "structure": [
+          "papillary_core",
+          "micropapillary_tuft"
+        ]
+      },
       "claim": "Preserve fibrovascular cores in papillary growth and the coreless, detached/airspace-associated character of micropapillary tufts; do not convert one into the other through bulk filling.",
-      "required_observation": "Determine whether tumor projections contain fibrovascular cores and whether small tufts are detached within alveolar spaces.",
-      "severity": "hard",
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
       "deterministic_check_id": null,
-      "critic_requirement": "veto_papillary_micropapillary_mismatch",
-      "exceptions": ["Mixed patterns require same-pattern reference selection and may warrant abstention at ambiguous boundaries."],
-      "counterexamples": ["Connecting micropapillary tufts into a solid bridge.", "Erasing a papillary fibrovascular core during tumor expansion."],
-      "expected_morphology": ["Papillary cores remain intact; micropapillary tufts remain compatible with coreless airspace growth."],
-      "forbidden_morphology": ["Core deletion, invented cores, broad bridging, or airspace filling."],
+      "critic_requirement": null,
+      "exceptions": [
+        "Mixed patterns require same-pattern reference selection and may warrant abstention at ambiguous boundaries."
+      ],
+      "counterexamples": [
+        "Connecting micropapillary tufts into a solid bridge.",
+        "Erasing a papillary fibrovascular core during tumor expansion."
+      ],
+      "expected_morphology": [
+        "Papillary cores remain intact; micropapillary tufts remain compatible with coreless airspace growth."
+      ],
+      "forbidden_morphology": [
+        "Core deletion, invented cores, broad bridging, or airspace filling."
+      ],
       "evidence_citations": [
         "https://doi.org/10.1016/j.jtho.2011.06.090",
         "https://doi.org/10.1016/j.jtho.2020.11.030"
@@ -75,40 +136,71 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Micropapillary clusters may be smaller than semantic-mask resolution."]
+      "known_limitations": [
+        "Micropapillary clusters may be smaller than semantic-mask resolution.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "lung.solid_growth_does_not_license_cross_structure_fill",
-      "scope": "interface_selection_and_critic",
-      "applies_when": {"structure": "solid_adenocarcinoma"},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "structure": "solid_adenocarcinoma"
+      },
       "claim": "Even when tumor is solid, expansion must remain on an H&E-compatible invasive front and must not consume airspace, bronchial epithelium, cartilage, vessel, or necrosis as generic stroma.",
-      "required_observation": "Confirm solid tumor cytology and inspect every adjacent structure inside the proposed edit band.",
-      "severity": "hard",
-      "deterministic_check_id": "unrequested_labels_preserved",
-      "critic_requirement": "veto_solid_tumor_cross_structure_fill",
-      "exceptions": ["A dedicated invasion or necrosis primitive with explicit target structure."],
-      "counterexamples": ["Expanding a solid component across a bronchial lumen.", "Filling labeled necrosis to make a smoother solid mass."],
-      "expected_morphology": ["A cohesive boundary displacement limited to compatible adjacent tissue."],
-      "forbidden_morphology": ["Cross-airspace bridges, bronchial-wall damage, vessel loss, or necrosis filling."],
-      "evidence_citations": ["https://doi.org/10.1016/j.jtho.2020.11.030"],
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
+      "critic_requirement": null,
+      "exceptions": [
+        "A dedicated invasion or necrosis primitive with explicit target structure."
+      ],
+      "counterexamples": [
+        "Expanding a solid component across a bronchial lumen.",
+        "Filling labeled necrosis to make a smoother solid mass."
+      ],
+      "expected_morphology": [
+        "A cohesive boundary displacement limited to compatible adjacent tissue."
+      ],
+      "forbidden_morphology": [
+        "Cross-airspace bridges, bronchial-wall damage, vessel loss, or necrosis filling."
+      ],
+      "evidence_citations": [
+        "https://doi.org/10.1016/j.jtho.2020.11.030"
+      ],
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Solid adenocarcinoma and squamous carcinoma may need ancillary context in difficult cases."]
+      "known_limitations": [
+        "Solid adenocarcinoma and squamous carcinoma may need ancillary context in difficult cases.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "lung.squamous_nests_preserve_coherence_and_keratin_context",
       "scope": "planner_and_critic",
-      "applies_when": {"structure": "squamous_nest_or_keratinization"},
+      "applies_when": {
+        "structure": "squamous_nest_or_keratinization"
+      },
       "claim": "A squamous tumor edit must preserve coherent nests/cords and keratinized centers or intercellular-bridge context where present.",
       "required_observation": "Trace the external nest boundary, keratin pearl/keratinized center, necrotic center, and surrounding stroma before editing.",
       "severity": "hard",
       "deterministic_check_id": "depth_span_ratio",
-      "critic_requirement": "veto_lung_squamous_nest_notch",
-      "exceptions": ["Discohesive or poorly differentiated SCC requires explicit observation and a compatible reference."],
-      "counterexamples": ["A deep wedge cut into a keratinized nest.", "Filling a keratin pearl center with tumor label.", "Growing a detached tumor island from remote keratin debris."],
-      "expected_morphology": ["Nest/cord boundary and central keratin relationship remain coherent."],
-      "forbidden_morphology": ["Abrupt nest notch, center filling, keratin-debris seeding, or remote island."],
+      "critic_requirement": null,
+      "exceptions": [
+        "Discohesive or poorly differentiated SCC requires explicit observation and a compatible reference."
+      ],
+      "counterexamples": [
+        "A deep wedge cut into a keratinized nest.",
+        "Filling a keratin pearl center with tumor label.",
+        "Growing a detached tumor island from remote keratin debris."
+      ],
+      "expected_morphology": [
+        "Nest/cord boundary and central keratin relationship remain coherent."
+      ],
+      "forbidden_morphology": [
+        "Abrupt nest notch, center filling, keratin-debris seeding, or remote island."
+      ],
       "evidence_citations": [
         "https://tumourclassification.iarc.who.int/chapters/35",
         "https://www.cap.org/protocols-and-guidelines/cancer-reporting-tools/cancer-protocol-templates"
@@ -116,21 +208,38 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["IGNITE coarse Tumor does not encode histologic subtype or keratinization separately after remap."]
+      "known_limitations": [
+        "IGNITE coarse Tumor does not encode histologic subtype or keratinization separately after remap."
+      ]
     },
     {
       "rule_id": "lung.bronchial_alveolar_and_supporting_structures_are_not_stroma",
-      "scope": "semantic_contract_and_critic",
-      "applies_when": {"structure": ["bronchial_epithelium", "alveolar_framework", "cartilage_or_muscle"]},
+      "scope": "reader_only_pathology_fact",
+      "applies_when": {
+        "structure": [
+          "bronchial_epithelium",
+          "alveolar_framework",
+          "cartilage_or_muscle"
+        ]
+      },
       "claim": "Do not treat bronchial epithelium, alveolar tissue/airspaces, cartilage, or smooth muscle as interchangeable stromal source tissue.",
-      "required_observation": "Use H&E plus the annotation profile's native-to-canonical map to identify the actual adjacent structure.",
-      "severity": "hard",
-      "deterministic_check_id": "semantic_capability_guard",
-      "critic_requirement": "veto_lung_structure_as_stroma",
-      "exceptions": ["A coarse profile may support only a generic non-tumor edit and must state the semantic limitation explicitly."],
-      "counterexamples": ["Growing tumor through an alveolar space because it is zero.", "Using bronchial lining or cartilage as the source of a stroma edit."],
-      "expected_morphology": ["The selected source band is true compatible tissue and protected structures remain unchanged."],
-      "forbidden_morphology": ["Airspace filling, bronchial-rim transection, cartilage/muscle consumption, or zero-label editing."],
+      "required_observation": "Counterfactual histology may be inspected only after generation in reader-only QA; this fact is unavailable to execution selection or veto.",
+      "severity": "advisory",
+      "deterministic_check_id": null,
+      "critic_requirement": null,
+      "exceptions": [
+        "A coarse profile may support only a generic non-tumor edit and must state the semantic limitation explicitly."
+      ],
+      "counterexamples": [
+        "Growing tumor through an alveolar space because it is zero.",
+        "Using bronchial lining or cartilage as the source of a stroma edit."
+      ],
+      "expected_morphology": [
+        "The selected source band is true compatible tissue and protected structures remain unchanged."
+      ],
+      "forbidden_morphology": [
+        "Airspace filling, bronchial-rim transection, cartilage/muscle consumption, or zero-label editing."
+      ],
       "evidence_citations": [
         "https://doi.org/10.1016/j.jtho.2011.06.090",
         "https://arxiv.org/abs/2507.16855"
@@ -138,21 +247,39 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["The IGNITE unified profile collapses multiple native supporting tissues."]
+      "known_limitations": [
+        "The IGNITE unified profile collapses multiple native supporting tissues.",
+        "Reader-only pathology facts are excluded from the execution knowledge bundle."
+      ]
     },
     {
       "rule_id": "lung.use_pattern_matched_broad_interface",
       "scope": "interface_selection",
-      "applies_when": {"primitive": ["tumor-burden-increase-v1", "tumor-burden-decrease-v1", "stroma-increase-v1"]},
+      "applies_when": {
+        "primitive": [
+          "tumor-burden-increase-v1",
+          "tumor-burden-decrease-v1",
+          "stroma-increase-v1"
+        ]
+      },
       "claim": "Use a broad interface from the same histologic pattern and anatomical context; spread area along the interface before increasing depth.",
       "required_observation": "Compare histologic pattern, source site, interface length, depth budget, and adjacent tissue compatibility.",
       "severity": "hard",
       "deterministic_check_id": "depth_span_ratio",
-      "critic_requirement": "veto_short_deep_or_pattern_mismatched_lung_edit",
-      "exceptions": ["If the pattern or site cannot be determined, abstain rather than borrow an incompatible reference."],
-      "counterexamples": ["Using a solid-tumor boundary template for a lepidic focus.", "Meeting the area budget by one narrow channel into lung parenchyma."],
-      "expected_morphology": ["Shallow distributed displacement at a pattern-matched, H&E-supported interface."],
-      "forbidden_morphology": ["Deep slot, pattern switch, remote component, or cross-site reference transfer."],
+      "critic_requirement": null,
+      "exceptions": [
+        "If the pattern or site cannot be determined, abstain rather than borrow an incompatible reference."
+      ],
+      "counterexamples": [
+        "Using a solid-tumor boundary template for a lepidic focus.",
+        "Meeting the area budget by one narrow channel into lung parenchyma."
+      ],
+      "expected_morphology": [
+        "Shallow distributed displacement at a pattern-matched, H&E-supported interface."
+      ],
+      "forbidden_morphology": [
+        "Deep slot, pattern switch, remote component, or cross-site reference transfer."
+      ],
       "evidence_citations": [
         "https://doi.org/10.1016/j.jtho.2020.11.030",
         "https://arxiv.org/abs/2507.16855"
@@ -160,7 +287,9 @@
       "dataset_statistics": {},
       "version": "1.1.0-draft",
       "review_status": "draft",
-      "known_limitations": ["Quantitative thresholds must be stratified by scale, specimen, and site."]
+      "known_limitations": [
+        "Quantitative thresholds must be stratified by scale, specimen, and site."
+      ]
     }
   ]
 }

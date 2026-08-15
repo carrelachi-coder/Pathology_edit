@@ -7,58 +7,118 @@
     {
       "constraint_id": "colorectal.mask.preserve_native_gland_objects_when_available",
       "applies_when": {},
-      "mask_statement": "Use native gland instances or an auxiliary gland/lumen map as prohibited/topology regions; reject partial gland cuts, gland split/merge, and lumen filling. If these structures exist only on H&E, abstain when their protection cannot be rasterized reliably.",
-      "observability": ["native_annotation", "auxiliary_structure_map", "source_he"],
+      "mask_statement": "Use native gland instances or an auxiliary gland/lumen map as prohibited/topology regions; reject partial gland cuts, gland split/merge, and lumen filling. If these structures exist only on digest-bound native/auxiliary structure authority, abstain when their protection cannot be rasterized reliably.",
+      "observability": [
+        "native_annotation",
+        "auxiliary_structure_map"
+      ],
       "enforcement": "conditional",
-      "enforcement_stages": ["planner", "candidate_generation", "mask_gate"],
-      "checker_ids": ["prohibited_region", "edited_label_topology"],
-      "critic_requirement": "veto_unencoded_colorectal_gland_overlap",
-      "required_inputs": ["source H&E", "native instance mask when supplied by the profile"],
+      "enforcement_stages": [
+        "planner",
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "prohibited_region",
+        "edited_label_topology"
+      ],
+      "critic_requirement": null,
+      "required_inputs": [
+        "digest-bound native/auxiliary structure map",
+        "native instance mask when supplied by the profile"
+      ],
       "failure_action": "abstain_case",
-      "generation_handoff": ["Preserve or render continuous gland epithelium and lumina; the semantic mask alone does not guarantee gland morphology."],
-      "known_limitations": ["Semantic connected components may merge touching gland instances."]
+      "generation_handoff": [
+        "Preserve or render continuous gland epithelium and lumina; the semantic mask alone does not guarantee gland morphology."
+      ],
+      "known_limitations": [
+        "Semantic connected components may merge touching gland instances."
+      ]
     },
     {
       "constraint_id": "colorectal.mask.only_declared_fine_transition",
       "applies_when": {},
       "mask_statement": "Only declared source fine IDs may change; normal epithelium, other differentiation IDs, and every unrequested label remain pixel-identical.",
-      "observability": ["semantic_mask"],
+      "observability": [
+        "semantic_mask"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["label_transition", "unrequested_labels_preserved"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "label_transition",
+        "unrequested_labels_preserved"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["fine-ID semantic mask"],
+      "required_inputs": [
+        "fine-ID semantic mask"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Render the retained field-derived differentiation context without claiming an unrequested grade change."],
-      "known_limitations": ["GLaS fine IDs are field-derived rather than per-gland expert grades."]
+      "generation_handoff": [
+        "Render the retained field-derived differentiation context without claiming an unrequested grade change."
+      ],
+      "known_limitations": [
+        "GLaS fine IDs are field-derived rather than per-gland expert grades."
+      ]
     },
     {
       "constraint_id": "colorectal.mask.broad_existing_interface_band",
       "applies_when": {},
       "mask_statement": "Generate candidates only from an existing directed interface, keep them within the allowed band, and reject a short/deep notch or detached changed component.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["candidate_generation", "mask_gate"],
-      "checker_ids": ["interface_contact", "tumor_stroma_interface", "depth_span_ratio", "boundary_naturalness"],
+      "enforcement_stages": [
+        "candidate_generation",
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "interface_contact",
+        "tumor_stroma_interface",
+        "depth_span_ratio",
+        "boundary_naturalness"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["component/interface scene graph"],
+      "required_inputs": [
+        "component/interface scene graph"
+      ],
       "failure_action": "reject_candidate",
-      "generation_handoff": ["Use H&E to ensure the selected non-gland band is true compatible tissue rather than lumen, mucin, debris, or muscle."],
-      "known_limitations": ["Geometric interface validity cannot identify non-gland histology after a coarse remap."]
+      "generation_handoff": [
+        "Use H&E to ensure the selected non-gland band is true compatible tissue rather than lumen, mucin, debris, or muscle."
+      ],
+      "known_limitations": [
+        "Geometric interface validity cannot identify non-gland histology after a coarse remap."
+      ]
     },
     {
       "constraint_id": "colorectal.mask.no_binary_topology_repair",
       "applies_when": {},
       "mask_statement": "Do not use morphology to fill holes, join glands, create tumor islands, split the source component, or merge target components.",
-      "observability": ["semantic_mask", "scene_graph"],
+      "observability": [
+        "semantic_mask",
+        "scene_graph"
+      ],
       "enforcement": "deterministic",
-      "enforcement_stages": ["mask_gate"],
-      "checker_ids": ["component_topology", "edited_label_topology"],
+      "enforcement_stages": [
+        "mask_gate"
+      ],
+      "checker_ids": [
+        "component_topology",
+        "edited_label_topology"
+      ],
       "critic_requirement": null,
-      "required_inputs": ["source and candidate masks"],
+      "required_inputs": [
+        "source and candidate masks"
+      ],
       "failure_action": "reject_candidate",
       "generation_handoff": [],
-      "known_limitations": ["A hole count is not sufficient to distinguish lumen, mucin, necrosis, or annotation artifact."]
+      "known_limitations": [
+        "A hole count is not sufficient to distinguish lumen, mucin, necrosis, or annotation artifact."
+      ]
     }
   ]
 }

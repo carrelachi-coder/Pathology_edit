@@ -36,7 +36,6 @@
     "primitive_label_contracts": {
       "tumor-burden-increase-v1": {
         "source_labels": [
-          "Stroma",
           "Other tissue"
         ],
         "target_labels": [

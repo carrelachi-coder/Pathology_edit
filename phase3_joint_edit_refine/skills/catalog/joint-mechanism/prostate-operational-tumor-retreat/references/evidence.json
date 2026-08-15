@@ -1,12 +1,12 @@
 {
   "schema_version": "joint-skill-evidence-v2",
   "skill_kind": "joint-mechanism",
-  "skill_id": "prostate-treatment-associated-fibrotic-replacement",
+  "skill_id": "prostate-operational-tumor-retreat",
   "review_status": "draft",
   "authority_policy": "../../../evidence-governance-v2.json",
   "records": [
     {
-      "evidence_id": "prostate-treatment-associated-fibrotic-replacement.pathology",
+      "evidence_id": "prostate-operational-tumor-retreat.pathology",
       "authority_category": "pathology_fact",
       "claim_scope": [
         "summary",
@@ -20,7 +20,7 @@
       "production_eligible": false
     },
     {
-      "evidence_id": "prostate-treatment-associated-fibrotic-replacement.execution",
+      "evidence_id": "prostate-operational-tumor-retreat.execution",
       "authority_category": "engineering_proxy",
       "claim_scope": [
         "cell_program",
@@ -35,7 +35,7 @@
       "production_eligible": false
     },
     {
-      "evidence_id": "prostate-treatment-associated-fibrotic-replacement.representability",
+      "evidence_id": "prostate-operational-tumor-retreat.representability",
       "authority_category": "model_representability",
       "claim_scope": [
         "representability_contract",
