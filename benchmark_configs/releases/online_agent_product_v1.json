@@ -192,6 +192,7 @@
     "routing": {
       "t_inpaint": 0.12,
       "t_cross": 0.3,
+      "joint_force_cross_min_generation_support_fraction": 0.5,
       "max_generation_attempts": 2,
       "fallback_policy": "single_alternate_backend_on_any_non_validation_including_evaluator_abstention"
     }

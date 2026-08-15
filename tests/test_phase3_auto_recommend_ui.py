@@ -132,6 +132,10 @@ class OnlineProductIntegrationTests(unittest.TestCase):
         self.assertEqual(value("--seed"), "42")
         self.assertEqual(value("--t-inpaint"), "0.12")
         self.assertEqual(value("--t-cross"), "0.3")
+        self.assertEqual(
+            value("--force-cross-generation-support-fraction"),
+            "0.5",
+        )
         self.assertEqual(value("--max-attempts"), "2")
         self.assertEqual(
             value("--nuclei-generation-log"),

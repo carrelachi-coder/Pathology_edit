@@ -1059,6 +1059,7 @@ def build_product_manifest(
                 "generation_mode": "agentic",
                 "cross_backend": "cross-v1",
                 "route_threshold": 0.30,
+                "joint_force_cross_min_generation_support_fraction": 0.50,
                 "device": "cuda",
             },
             "verification": {"product_release": release_path},

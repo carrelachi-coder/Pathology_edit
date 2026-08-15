@@ -27,7 +27,7 @@ from .models import JointContractError
 @dataclass(frozen=True)
 class JointGeneratorRoutingConfig:
     inpaint_max_generation_support_fraction: float = 0.12
-    force_cross_min_generation_support_fraction: float = 0.30
+    force_cross_min_generation_support_fraction: float = 0.50
 
 
 @dataclass(frozen=True)

@@ -134,7 +134,7 @@ ledger; `G` is the frozen H&E generator erase/regeneration support and is not
 counted toward the 19% budget. Generator routing is based on `G`, because it is
 the region the image model must actually redraw; `J` remains the semantic
 verification authority. A `G` fraction at or above the frozen Cross threshold
-is Cross-only and cannot be replaced by an Inpaint candidate with an
+of `0.50` is Cross-only and cannot be replaced by an Inpaint candidate with an
 evaluator-uncertain preservation score.
 
 Before promoting a new mechanism, freeze a three-arm generator ablation:

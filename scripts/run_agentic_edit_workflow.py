@@ -179,8 +179,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.30,
         help=(
-            "Generation-support fraction at or above which Cross is mandatory "
-            "on an approved joint handoff."
+            "Legacy tissue-normalized threshold used by the generic image "
+            "router when no approved joint handoff is supplied."
+        ),
+    )
+    parser.add_argument(
+        "--force-cross-generation-support-fraction",
+        type=float,
+        default=0.50,
+        help=(
+            "Generation-support fraction G at or above which an approved "
+            "joint handoff is Cross-only."
         ),
     )
     parser.add_argument("--max-attempts", type=int, default=2)
@@ -1425,10 +1434,22 @@ def _validate_image_generation_contract(
     runtime_routing = {
         "t_inpaint": args.t_inpaint,
         "t_cross": args.t_cross,
+        "joint_force_cross_min_generation_support_fraction": (
+            args.force_cross_generation_support_fraction
+        ),
         "max_generation_attempts": args.max_attempts,
     }
     for field, actual_value in runtime_routing.items():
-        expected_value = expected_routing[field]
+        expected_value = expected_routing.get(
+            field,
+            0.50
+            if field == "joint_force_cross_min_generation_support_fraction"
+            else None,
+        )
+        if expected_value is None:
+            raise ValueError(
+                f"Online product release is missing routing field {field!r}"
+            )
         if not _contract_values_equal(actual_value, expected_value):
             raise ValueError(
                 "Image-generation routing does not match the online "
@@ -1723,7 +1744,9 @@ def _validate_joint_generation_handoff(
         dataset=args.profile,
         routing_config=JointGeneratorRoutingConfig(
             inpaint_max_generation_support_fraction=args.t_inpaint,
-            force_cross_min_generation_support_fraction=args.t_cross,
+            force_cross_min_generation_support_fraction=(
+                args.force_cross_generation_support_fraction
+            ),
         ),
     )
     expected_paths = {
@@ -1772,7 +1795,9 @@ def _validate_joint_generation_handoff(
 
     routing_config = JointGeneratorRoutingConfig(
         inpaint_max_generation_support_fraction=args.t_inpaint,
-        force_cross_min_generation_support_fraction=args.t_cross,
+        force_cross_min_generation_support_fraction=(
+            args.force_cross_generation_support_fraction
+        ),
     )
     routing_decision: AgenticRoutingDecision = build_agentic_joint_route(
         manifest,

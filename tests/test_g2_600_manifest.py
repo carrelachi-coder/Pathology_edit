@@ -595,7 +595,7 @@ class G2600ManifestTests(unittest.TestCase):
                 ["Stroma", "Tumor"],
             )
 
-    def test_product_manifest_uses_frozen_online_route_threshold(self):
+    def test_product_manifest_uses_frozen_online_route_thresholds(self):
         manifest = build_product_manifest(
             [],
             seed=42,
@@ -606,6 +606,12 @@ class G2600ManifestTests(unittest.TestCase):
         self.assertEqual(
             manifest["runtime"]["generation"]["route_threshold"],
             0.30,
+        )
+        self.assertEqual(
+            manifest["runtime"]["generation"][
+                "joint_force_cross_min_generation_support_fraction"
+            ],
+            0.50,
         )
 
     def test_necrosis_decrease_manifest_records_both_legal_backfills(self):

@@ -3296,6 +3296,13 @@ def _build_online_agent_command(
         str(routing["t_inpaint"]),
         "--t-cross",
         str(routing["t_cross"]),
+        "--force-cross-generation-support-fraction",
+        str(
+            routing.get(
+                "joint_force_cross_min_generation_support_fraction",
+                0.50,
+            )
+        ),
         "--max-attempts",
         str(routing["max_generation_attempts"]),
         "--product-release",
