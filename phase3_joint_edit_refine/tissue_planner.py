@@ -1178,6 +1178,10 @@ class MultiInterfaceResearchTissuePlanner:
                     minimum_selected_anchor_count=(
                         front_contract.minimum_selected_anchor_count
                     ),
+                    prefer_shallow_front=(
+                        case.primitive_id
+                        == "invasive-tumor-footprint-decrease-v1"
+                    ),
                     preferred_anchor_ids=preferred_anchor_ids,
                     expand_to_selection_limit=area_underfill_replan,
                 )
@@ -1516,6 +1520,7 @@ def _select_executable_anchor_ids(
     maximum_selected_anchor_fraction: float = 1.0,
     minimum_unselected_anchor_count: int = 0,
     minimum_selected_anchor_count: int = 1,
+    prefer_shallow_front: bool = False,
     preferred_anchor_ids: tuple[str, ...] = (),
     expand_to_selection_limit: bool = False,
 ) -> tuple[str, ...]:
@@ -1574,7 +1579,12 @@ def _select_executable_anchor_ids(
     records.sort(
         key=lambda item: (
             item[0] not in preferred,
-            -item[1],
+            (
+                item[1] / max(item[2], 1)
+                if prefer_shallow_front
+                else -item[1]
+            ),
+            -item[2],
             item[0],
         )
     )
@@ -1614,6 +1624,11 @@ def _select_executable_anchor_ids(
                     path_distance,
                     scene.anchor_masks[records[index][0]],
                 ),
+                (
+                    records[index][1] / max(records[index][2], 1)
+                    if prefer_shallow_front
+                    else -records[index][1]
+                ),
                 float(
                     np.min(
                         np.linalg.norm(
@@ -1623,7 +1638,6 @@ def _select_executable_anchor_ids(
                         )
                     )
                 ),
-                -records[index][1],
                 records[index][0],
             ),
         )

@@ -9000,6 +9000,44 @@ class StructuralHierarchyTests(unittest.TestCase):
 
         self.assertEqual(selected, ("left:1", "left:2", "left:3"))
 
+    def test_footprint_anchor_selection_prefers_shallow_external_front(self):
+        shape = (80, 80)
+        source = np.zeros(shape, dtype=bool)
+        source[8:72, 8:72] = True
+        interface_mask = np.zeros(shape, dtype=bool)
+        interface_mask[8, 8:37] = True
+        interface_mask[40, 28:53] = True
+        anchors = {}
+        for anchor_id, row, columns in (
+            ("external", 8, slice(8, 20)),
+            ("internal", 40, slice(34, 46)),
+        ):
+            mask = np.zeros(shape, dtype=bool)
+            mask[row, columns] = True
+            anchors[anchor_id] = mask
+        interface = SimpleNamespace(
+            interface_id="interface:depth-choice",
+            source_component_id="source:1",
+            anchor_segment_ids=("external", "internal"),
+        )
+        scene = SimpleNamespace(
+            component_masks={"source:1": source},
+            prohibited_region_masks={},
+            interface_masks={"interface:depth-choice": interface_mask},
+            anchor_masks=anchors,
+            graph=SimpleNamespace(anchor_segments=()),
+        )
+
+        selected = _select_executable_anchor_ids(
+            scene,
+            interface=interface,
+            required_pixels=1,
+            maximum_depth_px=48,
+            prefer_shallow_front=True,
+        )
+
+        self.assertEqual(selected, ("external",))
+
     def test_pattern3_skill_forbids_selected_gland_component_merge(self):
         schema = MaskProfileSchema.from_reference_profile("PANDA")
         source = np.full((24, 32), 2, dtype=np.uint8)
