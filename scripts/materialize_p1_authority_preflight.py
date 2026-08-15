@@ -12,7 +12,9 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from phase3_joint_edit_refine.p1_authority_preflight import (
+    AUTHORITY_ERRATUM_FILENAME,
     OUTPUT_FILENAMES,
+    RUNTIME_AUTHORITY_FILENAME,
     build_artifacts,
     validate_committed_artifacts,
 )
@@ -30,15 +32,33 @@ def main() -> int:
     )
     parser.add_argument("--selection", type=Path)
     parser.add_argument("--source-manifest", type=Path)
+    parser.add_argument("--authority-erratum", type=Path)
+    parser.add_argument("--runtime-authority", type=Path)
+    parser.add_argument("--auxiliary-output-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
 
     root = REPOSITORY_ROOT
-    resources = args.output_dir or root / "phase3_joint_edit_refine" / "resources"
-    selection = args.selection or resources / "p1_glas_panda_meta_eval_selection_v1.json"
-    source = args.source_manifest or resources / "p1_glas_panda_source_case_pool_v1.json"
+    default_resources = root / "phase3_joint_edit_refine" / "resources"
+    resources = args.output_dir or default_resources
+    selection = args.selection or default_resources / (
+        "p1_glas_panda_meta_eval_selection_v1.json"
+    )
+    source = args.source_manifest or default_resources / (
+        "p1_glas_panda_source_case_pool_v1.json"
+    )
     if args.check:
-        if args.code_commit or args.selection or args.source_manifest or args.output_dir:
+        if any(
+            (
+                args.code_commit,
+                args.selection,
+                args.source_manifest,
+                args.authority_erratum,
+                args.runtime_authority,
+                args.auxiliary_output_dir,
+                args.output_dir,
+            )
+        ):
             raise SystemExit(
                 "--check validates only the committed default P1 authority artifacts"
             )
@@ -51,6 +71,18 @@ def main() -> int:
         selection_path=selection,
         source_manifest_path=source,
         code_commit=args.code_commit,
+        authority_erratum_path=(
+            args.authority_erratum
+            or default_resources / AUTHORITY_ERRATUM_FILENAME
+        ),
+        runtime_authority_path=(
+            args.runtime_authority
+            or default_resources / RUNTIME_AUTHORITY_FILENAME
+        ),
+        auxiliary_output_dir=(
+            args.auxiliary_output_dir
+            or resources / "p1_glas_panda_profile_auxiliary_v1"
+        ),
     )
     resources.mkdir(parents=True, exist_ok=True)
     for filename in OUTPUT_FILENAMES.values():
