@@ -44,6 +44,7 @@ from phase3_mask_edit_refine.execution import (
     _prepare_compiler_work,
     _rebalance_fragmentation_residual_islands,
     _residual_fragmentation_priority,
+    _simulate_topology_safe_execution,
     _whole_mask_topology_audit,
     compile_edit_plan,
 )
@@ -1283,6 +1284,61 @@ class CandidateAndSceneTests(unittest.TestCase):
                 )
             )
         )
+
+    def test_tiny_change_cleanup_continues_only_the_connected_front(self):
+        shape = (40, 40)
+        source = np.zeros(shape, dtype=bool)
+        source[3:37, 3:37] = True
+        # A nearby stromal cleft makes a pixel two steps from the established
+        # top front independently target-connected. A double-dilated cleanup
+        # frontier used to recreate the same 1 px satellite on every pass.
+        source[6, 10:30] = False
+        target = ~source
+        anchor = np.zeros(shape, dtype=bool)
+        anchor[3, 20] = True
+        anchor[36, 32] = True
+        priority = np.full(shape, 1000.0)
+        priority[3, 3:37] = 0.0
+        priority[4, :] = 100.0
+        priority[5, 10:30] = -500.0
+        priority[36, 32] = -1000.0
+        work = SimpleNamespace(
+            planned=SimpleNamespace(
+                source_component_id="source:1",
+                target_component_id="target:1",
+            ),
+            legal_source=source,
+            anchor_mask=anchor,
+            priority=priority,
+            item_capacity_px=int(np.count_nonzero(source)),
+            source_deletion_limit_px=int(np.count_nonzero(source)) - 1,
+            protected_source_necks=np.zeros(shape, dtype=bool),
+        )
+        scene = SimpleNamespace(
+            component_masks={"source:1": source, "target:1": target}
+        )
+
+        selected, audits = _simulate_topology_safe_execution(
+            (work,),
+            allocations=(20,),
+            desired_pixels=20,
+            source_region=source,
+            target_region=target,
+            scene=scene,
+            seed=0,
+            minimum_changed_component_area_px=16,
+        )
+
+        labels, count = ndimage.label(
+            selected[0], structure=np.ones((3, 3), dtype=bool)
+        )
+        sizes = [
+            int(np.count_nonzero(labels == component_id))
+            for component_id in range(1, count + 1)
+        ]
+        self.assertEqual(int(np.count_nonzero(selected[0])), 20)
+        self.assertTrue(all(size >= 16 for size in sizes), sizes)
+        self.assertGreater(audits[0]["tiny_component_pixels_reclaimed"], 0)
 
     def test_fragmentation_retains_hard_safe_whole_instance_closure(self):
         self.assertTrue(

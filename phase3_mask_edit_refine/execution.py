@@ -1398,6 +1398,31 @@ def _resolve_topology_safe_area(
                 maximum_dominant_residual_component_fraction
             ),
         )
+        combined_change = np.logical_or.reduce(selected)
+        changed_labels, changed_component_count = ndimage.label(
+            combined_change, structure=np.ones((3, 3), dtype=bool)
+        )
+        changed_component_sizes = [
+            int(np.count_nonzero(changed_labels == component_id))
+            for component_id in range(1, changed_component_count + 1)
+        ]
+        changed_component_area_passed = all(
+            size >= int(minimum_changed_component_area_px)
+            for size in changed_component_sizes
+        )
+        topology = {
+            **topology,
+            "whole_mask_topology_passed": bool(topology["passed"]),
+            "changed_component_area_passed": bool(
+                changed_component_area_passed
+            ),
+            "changed_component_sizes_px": changed_component_sizes,
+            "minimum_changed_component_area_px": int(
+                minimum_changed_component_area_px
+            ),
+            "passed": bool(topology["passed"])
+            and bool(changed_component_area_passed),
+        }
         valid = realized == total and bool(topology["passed"])
         attempts.append(
             {
@@ -1772,15 +1797,15 @@ def _simulate_topology_safe_execution(
             return 0
         work = works[index]
         component_id = work.planned.source_component_id
-        continued_frontier = ndimage.binary_dilation(
-            selected_by_work[index], structure=np.ones((3, 3), dtype=bool)
-        )
         if continue_existing_front_only and not np.any(selected_by_work[index]):
             return 0
         frontier = (
-            continued_frontier
+            selected_by_work[index]
             if continue_existing_front_only
-            else work.anchor_mask | continued_frontier
+            else work.anchor_mask
+            | ndimage.binary_dilation(
+                selected_by_work[index], structure=np.ones((3, 3), dtype=bool)
+            )
         )
         selected, audit = topology_safe_priority_grow(
             work.legal_source & ~selected_by_work[index],
