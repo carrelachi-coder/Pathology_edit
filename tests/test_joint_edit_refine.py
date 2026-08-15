@@ -9004,13 +9004,17 @@ class StructuralHierarchyTests(unittest.TestCase):
         shape = (80, 80)
         source = np.zeros(shape, dtype=bool)
         source[8:72, 8:72] = True
+        # Form a deep stromal cleft while keeping the tumor connected around
+        # its sides and base.  Its bottom is locally exposed just like the
+        # outer edge, but is not a natural footprint-retreat front.
+        source[8:56, 28:52] = False
         interface_mask = np.zeros(shape, dtype=bool)
         interface_mask[8, 8:37] = True
-        interface_mask[40, 28:53] = True
+        interface_mask[56, 28:52] = True
         anchors = {}
         for anchor_id, row, columns in (
             ("external", 8, slice(8, 20)),
-            ("internal", 40, slice(34, 46)),
+            ("internal", 56, slice(34, 46)),
         ):
             mask = np.zeros(shape, dtype=bool)
             mask[row, columns] = True

@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 from scipy import ndimage
+from skimage.morphology import convex_hull_image
 
 from phase3_mask_edit_refine.agents import (
     EDIT_PLAN_SCHEMA_VERSION,
@@ -1533,6 +1534,11 @@ def _select_executable_anchor_ids(
     """
 
     source_component = scene.component_masks[interface.source_component_id]
+    convex_hull_depth = (
+        ndimage.distance_transform_edt(convex_hull_image(source_component))
+        if prefer_shallow_front
+        else np.zeros_like(source_component, dtype=float)
+    )
     prohibited = np.zeros_like(source_component, dtype=bool)
     for region in scene.prohibited_region_masks.values():
         prohibited |= np.asarray(region, dtype=bool)
@@ -1565,6 +1571,15 @@ def _select_executable_anchor_ids(
             np.count_nonzero(source_component & neighborhood)
             / max(1, np.count_nonzero(neighborhood))
         )
+        # A locally half-exposed boundary can still be the bottom of a deep
+        # re-entrant cleft between two tumor lobes.  Growing there widens the
+        # cleft into an apparent internal excavation, and the topology guard
+        # may then leave a conspicuous straight tumor seam across the change.
+        # Distance to the component's convex-hull boundary separates those
+        # deep concavities from a genuinely exposed footprint front.
+        hull_concavity_depth = float(
+            np.mean(convex_hull_depth[np.asarray(anchor, dtype=bool)])
+        )
         metadata = anchor_metadata.get(anchor_id)
         centroid = (
             metadata.centroid_xy
@@ -1578,6 +1593,7 @@ def _select_executable_anchor_ids(
                 contact,
                 centroid,
                 source_enclosure_fraction,
+                hull_concavity_depth,
             )
         )
     if not records:
@@ -1595,6 +1611,7 @@ def _select_executable_anchor_ids(
     records.sort(
         key=lambda item: (
             (
+                item[5],
                 item[4],
                 item[1] / max(item[2], 1),
                 item[0] not in preferred,
@@ -1646,6 +1663,7 @@ def _select_executable_anchor_ids(
                     path_distance,
                     scene.anchor_masks[records[index][0]],
                 ),
+                records[index][5] if prefer_shallow_front else 0.0,
                 records[index][4] if prefer_shallow_front else 0.0,
                 (
                     records[index][1] / max(records[index][2], 1)
