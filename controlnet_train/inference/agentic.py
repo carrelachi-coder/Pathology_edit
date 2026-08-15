@@ -128,6 +128,7 @@ def run_agentic_workflow(
     verify: Verifier,
     config: AgenticWorkflowConfig | None = None,
     recovery_policy: RecoveryPolicy | None = None,
+    routing_decision: AgenticRoutingDecision | None = None,
 ) -> AgenticWorkflowResult:
     """Route, generate, verify, and perform bounded failure-aware recovery."""
 
@@ -136,7 +137,7 @@ def run_agentic_workflow(
         raise ValueError("max_attempts must be at least 1.")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    route = route_agentic_edit_request(
+    route = routing_decision or route_agentic_edit_request(
         reference_tissue_mask,
         target_tissue_mask,
         config=config.routing,

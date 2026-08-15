@@ -76,6 +76,7 @@ from phase3_joint_edit_refine.gates import (
     mechanism_postcondition_checker_id,
 )
 from phase3_joint_edit_refine.generator_adapter import (
+    build_agentic_joint_route,
     build_frozen_generator_inputs,
     route_joint_handoff,
 )
@@ -3955,18 +3956,30 @@ class JointSkillTests(unittest.TestCase):
             _as_tissue_case(case, allocation=allocation, shape=(512, 512))
 
     def test_joint_router_recognizes_nuclei_only_change_as_non_noop(self):
-        route = route_joint_handoff(
-            {
-                "ledger": {
-                    "tissue_fraction": 0.0,
-                    "cell_fraction": 0.04,
-                    "joint_fraction": 0.04,
-                    "generation_support_fraction": 0.07,
-                }
+        manifest = {
+            "ledger": {
+                "tissue_fraction": 0.0,
+                "cell_fraction": 0.04,
+                "joint_fraction": 0.04,
+                "generation_support_fraction": 0.07,
             }
-        )
+        }
+        route = route_joint_handoff(manifest)
         self.assertEqual(route.mode, "inpaint")
         self.assertGreater(route.joint_fraction, 0)
+
+        change = np.zeros((20, 20), dtype=bool)
+        change[2:4, 2:4] = True
+        change[14:16, 14:16] = True
+        agentic = build_agentic_joint_route(
+            manifest,
+            joint_change_mask=change,
+            reference_tissue_mask=np.ones((20, 20), dtype=np.uint8),
+        )
+        self.assertEqual(agentic.primary_mode, "inpaint")
+        self.assertEqual(agentic.candidate_modes, ("inpaint", "cross"))
+        self.assertEqual(agentic.features.transition_count, 0)
+        self.assertEqual(agentic.features.component_count, 2)
 
     def test_melanoma_scatter_is_cell_only_and_does_not_borrow_tissue_floor(self):
         repository = JointSkillRepository()

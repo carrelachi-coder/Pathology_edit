@@ -140,8 +140,12 @@ The CLI keeps two edit regions separate:
 - the historical `--change-region` remains as a deprecated alias for
   `--semantic-change-region`.
 
-Routing always uses the reference/target tissue-mask difference, independent
-of either explicit region path.
+Routing normally uses the reference/target tissue-mask difference, independent
+of either explicit region path. For a hash-locked
+`joint-generation-handoff-v2/v3`, the approved `joint_change` is authoritative
+for routing so a nuclei-only edit cannot be mistaken for a no-op. The same
+handoff's approved `generation_support` remains authoritative for rendering;
+the legacy context bound is not reapplied to that already audited support.
 
 The final image is written to `generated_image.png`; the compact run result is
 written to `pipeline_summary.json`. The process exits with code `0` for

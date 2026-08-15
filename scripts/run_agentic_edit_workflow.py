@@ -28,7 +28,10 @@ from controlnet_train.inference.agentic import (
     semantic_mask_instance_counts,
     verify_mask_fidelity,
 )
-from controlnet_train.inference.router import AgenticRoutingConfig
+from controlnet_train.inference.router import (
+    AgenticRoutingConfig,
+    AgenticRoutingDecision,
+)
 from controlnet_train.inference.model_paths import (
     DEFAULT_CELLVIT_MODEL,
     DEFAULT_CELLVIT_PYTHON,
@@ -100,6 +103,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reference-nuclei-mask", required=True, type=Path)
     parser.add_argument("--target-tissue-mask", required=True, type=Path)
     parser.add_argument("--target-nuclei-mask", required=True, type=Path)
+    parser.add_argument(
+        "--joint-generation-handoff",
+        type=Path,
+        help=(
+            "Approved joint-generation-handoff-v2/v3 manifest. When supplied, "
+            "its hash-locked joint change is authoritative for routing and its "
+            "generation support is preserved without legacy context truncation."
+        ),
+    )
     parser.add_argument(
         "--nuclei-generation-log",
         type=Path,
@@ -279,6 +291,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     inputs = _load_and_validate_inputs(args)
+    joint_handoff = _validate_joint_generation_handoff(args, inputs)
+    if joint_handoff is not None:
+        args.prompt = joint_handoff["compiled_prompt"]
     nuclei_generation = _validate_nuclei_generation_contract(args)
     image_generation = _validate_image_generation_contract(args)
     output_dir = args.output.resolve()
@@ -681,6 +696,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             routing=AgenticRoutingConfig(t_inpaint=args.t_inpaint, t_cross=args.t_cross),
             max_attempts=args.max_attempts,
         ),
+        routing_decision=(
+            None if joint_handoff is None else joint_handoff["routing_decision"]
+        ),
     )
 
     final_path = output_dir / "generated_image.png"
@@ -692,6 +710,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = workflow.to_metadata()
     summary["generated_image"] = str(final_path) if final_path.exists() else None
     summary["nuclei_generation"] = nuclei_generation
+    summary["joint_generation_handoff"] = (
+        None
+        if joint_handoff is None
+        else joint_handoff["summary"]
+    )
     summary["image_generation_contract"] = image_generation
     summary["image_generation_provenance"] = (
         _selected_image_generation_provenance(summary)
@@ -1620,7 +1643,16 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
             "generation change region must contain every semantic change pixel; "
             f"missing {int(np.count_nonzero(missing_generation_pixels))} pixels."
         )
-    if str(args.profile).upper() == "GLAS":
+    if args.joint_generation_handoff is not None:
+        generation_region_policy = {
+            "policy": "hash_locked_approved_joint_generation_support_v1",
+            "capped": False,
+            "generation_pixels": int(
+                np.count_nonzero(generation_change_region)
+            ),
+            "handoff": str(args.joint_generation_handoff.resolve()),
+        }
+    elif str(args.profile).upper() == "GLAS":
         generation_region_policy = {
             "policy": "preserve_glas_whole_component_and_nucleus_buffer",
             "capped": False,
@@ -1652,6 +1684,100 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
             dtype=bool,
         ),
         "generation_region_policy": generation_region_policy,
+    }
+
+
+def _validate_joint_generation_handoff(
+    args: argparse.Namespace,
+    inputs: Mapping[str, np.ndarray],
+) -> dict[str, Any] | None:
+    if args.joint_generation_handoff is None:
+        return None
+
+    from phase3_joint_edit_refine.generator_adapter import (
+        JointGeneratorRoutingConfig,
+        build_agentic_joint_route,
+        build_frozen_generator_inputs,
+    )
+
+    frozen_inputs, _route, manifest = build_frozen_generator_inputs(
+        args.joint_generation_handoff,
+        output_dir=args.output,
+        prompt=args.prompt,
+        dataset=args.profile,
+        routing_config=JointGeneratorRoutingConfig(
+            inpaint_max_joint_fraction=args.t_inpaint,
+            cross_min_joint_fraction=args.t_cross,
+        ),
+    )
+    expected_paths = {
+        "reference image": (args.reference_image, frozen_inputs.reference_image),
+        "reference tissue mask": (
+            args.reference_tissue_mask,
+            frozen_inputs.reference_tissue_mask,
+        ),
+        "reference nuclei mask": (
+            args.reference_nuclei_mask,
+            frozen_inputs.reference_nuclei_mask,
+        ),
+        "target tissue mask": (
+            args.target_tissue_mask,
+            frozen_inputs.target_tissue_mask,
+        ),
+        "target nuclei mask": (
+            args.target_nuclei_mask,
+            frozen_inputs.target_nuclei_mask,
+        ),
+        "generation change region": (
+            args.generation_change_region,
+            frozen_inputs.generation_change_region,
+        ),
+    }
+    for label, (actual, expected) in expected_paths.items():
+        if actual is None or Path(actual).resolve() != Path(expected).resolve():
+            raise ValueError(
+                f"{label} does not match the approved joint handoff: "
+                f"{actual!s} != {expected!s}"
+            )
+    semantic_path = (
+        args.semantic_change_region
+        if args.semantic_change_region is not None
+        else args.change_region
+    )
+    expected_semantic = Path(manifest["paths"]["joint_change"])
+    if (
+        semantic_path is None
+        or Path(semantic_path).resolve() != expected_semantic.resolve()
+    ):
+        raise ValueError(
+            "semantic change region must be the approved joint-change mask: "
+            f"{semantic_path!s} != {expected_semantic!s}"
+        )
+
+    routing_config = JointGeneratorRoutingConfig(
+        inpaint_max_joint_fraction=args.t_inpaint,
+        cross_min_joint_fraction=args.t_cross,
+    )
+    routing_decision: AgenticRoutingDecision = build_agentic_joint_route(
+        manifest,
+        joint_change_mask=inputs["semantic_change_region"],
+        reference_tissue_mask=inputs["reference_tissue"],
+        config=routing_config,
+    )
+    return {
+        "routing_decision": routing_decision,
+        "compiled_prompt": frozen_inputs.prompt,
+        "summary": {
+            "status": "validated",
+            "manifest": str(args.joint_generation_handoff.resolve()),
+            "schema_version": manifest["schema_version"],
+            "case_id": manifest["case_id"],
+            "candidate_id": manifest["candidate_id"],
+            "executable_contract_id": manifest["executable_contract_id"],
+            "routing_authority": "joint_change",
+            "generation_support_authority": "hash_locked_handoff",
+            "compiled_render_prompt": frozen_inputs.prompt,
+        },
     }
 
 

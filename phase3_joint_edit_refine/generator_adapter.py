@@ -8,6 +8,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from scipy import ndimage
+
+from controlnet_train.inference.router import (
+    AgenticRouteFeatures,
+    AgenticRoutingDecision,
+)
 from controlnet_train.inference.pipeline import (
     EditPipelineInputs,
     resolve_prompt,
@@ -47,6 +54,72 @@ def route_joint_handoff(manifest: dict[str, Any], *, config: JointGeneratorRouti
     else:
         mode, reason = "inpaint", "gray-zone joint edit starts with preservation-oriented inpaint"
     return JointGeneratorRoute(mode, joint, support, reason)
+
+
+def build_agentic_joint_route(
+    manifest: dict[str, Any],
+    *,
+    joint_change_mask: np.ndarray,
+    reference_tissue_mask: np.ndarray,
+    config: JointGeneratorRoutingConfig | None = None,
+) -> AgenticRoutingDecision:
+    """Translate an approved joint handoff into the online agent route.
+
+    The production agent historically routes only on tissue-label deltas.  A
+    nuclei-only joint edit therefore looks like a no-op unless the approved
+    joint-change support is made authoritative.  This adapter preserves the
+    frozen joint routing thresholds while retaining the standard alternate
+    backend candidate used by the online evaluator/recovery loop.
+    """
+
+    route = route_joint_handoff(manifest, config=config)
+    change = np.asarray(joint_change_mask, dtype=bool)
+    tissue = np.asarray(reference_tissue_mask)
+    if change.ndim != 2 or tissue.shape != change.shape:
+        raise JointContractError(
+            "joint change and reference tissue mask must be aligned 2D arrays"
+        )
+    changed_pixels = int(np.count_nonzero(change))
+    if changed_pixels <= 0:
+        raise JointContractError("approved joint handoff has an empty joint mask")
+    components, component_count = ndimage.label(change)
+    sizes = np.bincount(components.ravel())[1:]
+    largest_component = int(sizes.max()) if sizes.size else 0
+    ys, xs = np.where(change)
+    bbox_pixels = int((ys.max() - ys.min() + 1) * (xs.max() - xs.min() + 1))
+    tissue_pixels = int(np.count_nonzero(tissue))
+    features = AgenticRouteFeatures(
+        change_ratio_image=changed_pixels / int(change.size),
+        change_ratio_tissue=(
+            changed_pixels / tissue_pixels if tissue_pixels else 0.0
+        ),
+        component_count=int(component_count),
+        largest_component_fraction=largest_component / changed_pixels,
+        bbox_fraction=bbox_pixels / int(change.size),
+        transition_count=0,
+        changed_tissue_ids_from=(),
+        changed_tissue_ids_to=(),
+    )
+    candidates = (
+        ("inpaint", "cross")
+        if route.mode == "inpaint"
+        else ("cross", "inpaint")
+    )
+    thresholds = config or JointGeneratorRoutingConfig()
+    confidence = (
+        0.55
+        if thresholds.inpaint_max_joint_fraction
+        < route.joint_fraction
+        < thresholds.cross_min_joint_fraction
+        else 0.90
+    )
+    return AgenticRoutingDecision(
+        primary_mode=route.mode,
+        candidate_modes=candidates,
+        confidence=confidence,
+        reason=f"approved joint handoff: {route.reason}",
+        features=features,
+    )
 
 
 def build_frozen_generator_inputs(

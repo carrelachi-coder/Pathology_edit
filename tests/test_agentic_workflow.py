@@ -18,7 +18,11 @@ from controlnet_train.inference.agentic import (
     run_agentic_workflow,
     verify_mask_fidelity,
 )
-from controlnet_train.inference.router import route_agentic_edit_request
+from controlnet_train.inference.router import (
+    AgenticRouteFeatures,
+    AgenticRoutingDecision,
+    route_agentic_edit_request,
+)
 from scripts.run_agentic_edit_workflow import (
     _generation_backend_mode,
     _load_and_validate_inputs,
@@ -696,6 +700,50 @@ class AgenticRoutingTests(unittest.TestCase):
 
 
 class AgenticWorkflowTests(unittest.TestCase):
+    def test_authoritative_joint_route_prevents_cell_only_noop(self):
+        tissue = np.ones((16, 16), dtype=np.uint8)
+        modes = []
+        route = AgenticRoutingDecision(
+            primary_mode="inpaint",
+            candidate_modes=("inpaint", "cross"),
+            confidence=0.90,
+            reason="approved joint handoff",
+            features=AgenticRouteFeatures(
+                change_ratio_image=0.02,
+                change_ratio_tissue=0.02,
+                component_count=2,
+                largest_component_fraction=0.5,
+                bbox_fraction=0.1,
+                transition_count=0,
+                changed_tissue_ids_from=(),
+                changed_tissue_ids_to=(),
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            def generate(mode: str, attempt_dir: Path) -> GenerationArtifact:
+                modes.append(mode)
+                image_path = attempt_dir / "generated.png"
+                Image.new("RGB", (16, 16), "white").save(image_path)
+                return GenerationArtifact(mode=mode, image_path=image_path)
+
+            result = run_agentic_workflow(
+                reference_tissue_mask=tissue,
+                target_tissue_mask=tissue,
+                output_dir=tmp,
+                generate=generate,
+                verify=lambda _artifact: VerificationResult(
+                    passed=True,
+                    score=0.82,
+                    metrics={},
+                    scientific_status="validated",
+                ),
+                routing_decision=route,
+            )
+
+        self.assertEqual(result.status, "validated_first_pass")
+        self.assertEqual(modes, ["inpaint"])
+
     def test_first_candidate_passes_without_running_alternate_backend(self):
         reference = np.ones((16, 16), dtype=np.uint8)
         target = reference.copy()
