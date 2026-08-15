@@ -394,8 +394,7 @@ def _auxiliary_inventory(
         source = source_authority_by_case[case_id]
         for structure_id in PROFILE_OWNED_AUXILIARY_STRUCTURES.get(profile_id, ()):
             output = (
-                root
-                / "phase3_joint_edit_refine"
+                Path("phase3_joint_edit_refine")
                 / "resources"
                 / "p1_glas_panda_profile_auxiliary_v1"
                 / case_id
