@@ -1,9 +1,9 @@
 {
   "primitive_id": "invasive-tumor-footprint-decrease-v1",
-  "version": "1.1.1-draft",
+  "version": "1.1.2-draft",
   "review_status": "draft",
   "scope": "tissue_and_cell",
-  "summary": "Decrease an authorized invasive-tumor footprint through a broad, shallow external retreat while preserving a measurable residual tumor floor and prohibiting deep excavation-like bulbs.",
+  "summary": "Decrease an authorized invasive-tumor footprint through one long, shallow, organically irregular external retreat while preserving a measurable residual tumor floor and prohibiting deep excavation-like bulbs.",
   "tissue_action": "required",
   "budget_mode": "joint_area_with_tissue_floor",
   "allowed_baseline_modes": ["regenerate_target_population"],

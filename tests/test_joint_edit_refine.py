@@ -8939,6 +8939,54 @@ class StructuralHierarchyTests(unittest.TestCase):
             front.maximum_selected_anchor_fraction,
         )
 
+    def test_footprint_front_requires_one_long_shallow_anchor_sector(self):
+        front = JointSkillRepository().mechanisms[
+            "breast-post-treatment-invasive-regression"
+        ].tissue_program.front
+
+        self.assertEqual(front.minimum_selected_anchor_count, 3)
+        self.assertLessEqual(front.maximum_depth_span_ratio, 0.65)
+
+    def test_anchor_selection_follows_interface_path_not_opposing_cleft_bank(self):
+        shape = (80, 48)
+        interface_mask = np.zeros(shape, dtype=bool)
+        interface_mask[8:70, 20] = True
+        interface_mask[69, 20:25] = True
+        interface_mask[8:70, 24] = True
+        anchors = {}
+        for anchor_id, row_slice, col in (
+            ("left:1", slice(8, 20), 20),
+            ("left:2", slice(20, 32), 20),
+            ("left:3", slice(32, 44), 20),
+            ("right:1", slice(8, 20), 24),
+        ):
+            mask = np.zeros(shape, dtype=bool)
+            mask[row_slice, col] = True
+            anchors[anchor_id] = mask
+        interface = SimpleNamespace(
+            interface_id="interface:u",
+            source_component_id="source:1",
+            anchor_segment_ids=tuple(anchors),
+        )
+        scene = SimpleNamespace(
+            component_masks={"source:1": np.ones(shape, dtype=bool)},
+            prohibited_region_masks={},
+            interface_masks={"interface:u": interface_mask},
+            anchor_masks=anchors,
+            graph=SimpleNamespace(anchor_segments=()),
+        )
+
+        selected = _select_executable_anchor_ids(
+            scene,
+            interface=interface,
+            required_pixels=1,
+            maximum_depth_px=48,
+            minimum_selected_anchor_count=3,
+            preferred_anchor_ids=("left:1",),
+        )
+
+        self.assertEqual(selected, ("left:1", "left:2", "left:3"))
+
     def test_pattern3_skill_forbids_selected_gland_component_merge(self):
         schema = MaskProfileSchema.from_reference_profile("PANDA")
         source = np.full((24, 32), 2, dtype=np.uint8)

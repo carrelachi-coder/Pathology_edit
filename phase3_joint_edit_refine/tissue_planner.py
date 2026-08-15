@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -1174,6 +1175,9 @@ class MultiInterfaceResearchTissuePlanner:
                     minimum_unselected_anchor_count=(
                         front_contract.minimum_unselected_anchor_count
                     ),
+                    minimum_selected_anchor_count=(
+                        front_contract.minimum_selected_anchor_count
+                    ),
                     preferred_anchor_ids=preferred_anchor_ids,
                     expand_to_selection_limit=area_underfill_replan,
                 )
@@ -1511,6 +1515,7 @@ def _select_executable_anchor_ids(
     allowed_anchor_ids: tuple[str, ...] = (),
     maximum_selected_anchor_fraction: float = 1.0,
     minimum_unselected_anchor_count: int = 0,
+    minimum_selected_anchor_count: int = 1,
     preferred_anchor_ids: tuple[str, ...] = (),
     expand_to_selection_limit: bool = False,
 ) -> tuple[str, ...]:
@@ -1562,7 +1567,8 @@ def _select_executable_anchor_ids(
         maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
         minimum_unselected_anchor_count=minimum_unselected_anchor_count,
     )
-    if selection_limit < 1:
+    required_anchor_count = max(1, int(minimum_selected_anchor_count))
+    if selection_limit < required_anchor_count:
         return ()
     preferred = set(preferred_anchor_ids)
     records.sort(
@@ -1590,15 +1596,24 @@ def _select_executable_anchor_ids(
             )
         )
         if (
-            not expand_to_selection_limit
+            len(selected) >= required_anchor_count
+            and not expand_to_selection_limit
             and capacity >= required_pixels
             and contact >= preferred_minimum_span
         ):
             break
+        path_distance = _interface_geodesic_distance(
+            scene.interface_masks[interface.interface_id],
+            union,
+        )
         selected_centroids = np.asarray([item[3] for item in selected], dtype=float)
         next_index = min(
             range(len(records)),
             key=lambda index: (
+                _minimum_mask_distance(
+                    path_distance,
+                    scene.anchor_masks[records[index][0]],
+                ),
                 float(
                     np.min(
                         np.linalg.norm(
@@ -1614,6 +1629,59 @@ def _select_executable_anchor_ids(
         )
         selected.append(records.pop(next_index))
     return tuple(sorted(item[0] for item in selected))
+
+
+def _interface_geodesic_distance(
+    interface_mask: np.ndarray,
+    seed_mask: np.ndarray,
+) -> np.ndarray:
+    """Return 8-connected path steps along one directed interface raster.
+
+    Euclidean centroid distance can jump across a thin stromal cleft and pick
+    the opposing tumor bank even though it is far away along the biological
+    interface.  Restricting the expansion path to the interface keeps a broad
+    retreat on one continuous boundary sector.
+    """
+
+    interface = np.asarray(interface_mask, dtype=bool)
+    seeds = interface & np.asarray(seed_mask, dtype=bool)
+    distance = np.full(interface.shape, np.inf, dtype=float)
+    queue: deque[tuple[int, int]] = deque()
+    for row, col in np.argwhere(seeds):
+        distance[int(row), int(col)] = 0.0
+        queue.append((int(row), int(col)))
+    offsets = (
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+    )
+    height, width = interface.shape
+    while queue:
+        row, col = queue.popleft()
+        next_distance = distance[row, col] + 1.0
+        for row_offset, col_offset in offsets:
+            next_row, next_col = row + row_offset, col + col_offset
+            if not (
+                0 <= next_row < height
+                and 0 <= next_col < width
+                and interface[next_row, next_col]
+                and not np.isfinite(distance[next_row, next_col])
+            ):
+                continue
+            distance[next_row, next_col] = next_distance
+            queue.append((next_row, next_col))
+    return distance
+
+
+def _minimum_mask_distance(distance: np.ndarray, mask: np.ndarray) -> float:
+    values = np.asarray(distance, dtype=float)[np.asarray(mask, dtype=bool)]
+    finite = values[np.isfinite(values)]
+    return float(np.min(finite)) if finite.size else float("inf")
 
 
 def _directional_sector_selection_limit(

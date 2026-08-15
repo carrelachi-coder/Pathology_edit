@@ -108,6 +108,7 @@ class TissueFrontContract:
     directional_sector_required: bool
     maximum_selected_anchor_fraction: float
     minimum_unselected_anchor_count: int
+    minimum_selected_anchor_count: int = 1
 
 
 @dataclass(frozen=True)
@@ -1183,6 +1184,9 @@ def _tissue_front_contract(
     minimum_unselected_anchor_count = int(
         payload.get("minimum_unselected_anchor_count", 0)
     )
+    minimum_selected_anchor_count = int(
+        payload.get("minimum_selected_anchor_count", 1)
+    )
     if not 0.0 <= edge <= 1.0:
         raise JointContractError("tissue front edge_depth_ratio must lie in [0,1]")
     if not 0.0 <= taper <= 0.5:
@@ -1209,6 +1213,10 @@ def _tissue_front_contract(
         raise JointContractError(
             "tissue front minimum_unselected_anchor_count must be non-negative"
         )
+    if not 1 <= minimum_selected_anchor_count <= 32:
+        raise JointContractError(
+            "tissue front minimum_selected_anchor_count must lie in [1,32]"
+        )
     if directional_sector_required and (
         maximum_selected_anchor_fraction >= 1.0
         or minimum_unselected_anchor_count < 1
@@ -1232,6 +1240,7 @@ def _tissue_front_contract(
         directional_sector_required=directional_sector_required,
         maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
         minimum_unselected_anchor_count=minimum_unselected_anchor_count,
+        minimum_selected_anchor_count=minimum_selected_anchor_count,
     )
 
 

@@ -807,26 +807,26 @@ def _natural_external_retreat_priority(
     anchor_depth = ndimage.distance_transform_edt(~anchor)
     source_area = max(int(np.count_nonzero(source)), 1)
     correlation = float(np.clip(np.sqrt(source_area) / 7.5, 24.0, 96.0))
-    organic = smooth_noise(
+    organic = _low_frequency_organic_field(
         source.shape,
+        support=source & legal,
         seed=_component_seed(source, salt=11),
-        amplitude=1.0,
         correlation_px=correlation,
     )
-    organic_scale = 5.0 + 0.20 * interface_depth
+    organic_scale = 7.0 + 0.10 * interface_depth
     legacy = np.asarray(default_priority, dtype=float)
     lateral_offset = np.sqrt(
         np.maximum(anchor_depth * anchor_depth - interface_depth * interface_depth, 0.0)
     )
-    # Whole-interface depth remains the dominant term, but the original
-    # Planner profile retains enough authority to taper both ends of the
-    # selected anchor sector before its Voronoi ownership boundary.  Without
-    # this term a shallow fill ends exactly on that boundary and becomes a
-    # conspicuous rectangle.  Lateral offset and stronger low-frequency noise
-    # remove the residual straight cutoff without reopening deep lobes.
+    # Whole-interface depth remains dominant so the requested area is spread
+    # as a shallow retreat rather than spent in one deep crater.  The Planner
+    # profile still tapers the two outer ends of the geodesically contiguous
+    # anchor sector.  Normalized low-frequency noise now has an actual
+    # multi-pixel effect; the former blurred, unnormalized field was nearly
+    # zero and left conspicuously straight block edges.
     priority = (
-        0.38 * interface_depth
-        + 0.62 * legacy
+        0.55 * interface_depth
+        + 0.45 * legacy
         + 0.10 * lateral_offset
         + organic_scale * organic
     )
