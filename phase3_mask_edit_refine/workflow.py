@@ -118,6 +118,7 @@ class MaskEditRefineWorkflow:
         self.escalation_planner = escalation_planner
         self.escalation_critic = escalation_critic or critic
         self.skills = skill_repository or SkillRepository()
+        self.skills.require_official_execution_catalog()
         self.gates = gate_registry or GateRegistry()
         self.escalation_budget = escalation_budget or EscalationBudget()
         self.config = config or WorkflowConfig()
@@ -163,6 +164,8 @@ class MaskEditRefineWorkflow:
                 bundle,
                 case_provenance=case.provenance,
                 require_live_binding=True,
+                case=case,
+                scene=scene,
             )
             audit.write_inputs(
                 case=case,

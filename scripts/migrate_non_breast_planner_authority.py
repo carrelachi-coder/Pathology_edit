@@ -513,6 +513,39 @@ def migrate(root: Path, *, check: bool) -> list[Path]:
         changed.append(matrix_path)
         if not check:
             matrix_path.write_text(matrix_text, encoding="utf-8")
+    import sys
+
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from phase3_mask_edit_refine.skills.catalog_manifest import (
+        build_catalog_manifest,
+    )
+
+    manifest_path = (
+        root
+        / "phase3_mask_edit_refine"
+        / "skills"
+        / "catalog_manifest_v1.json"
+    )
+    manifest_text = (
+        json.dumps(
+            build_catalog_manifest(
+                root / "phase3_mask_edit_refine" / "skills" / "catalog"
+            ),
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+    existing_manifest = (
+        manifest_path.read_text(encoding="utf-8")
+        if manifest_path.exists()
+        else ""
+    )
+    if manifest_text != existing_manifest:
+        changed.append(manifest_path)
+        if not check:
+            manifest_path.write_text(manifest_text, encoding="utf-8")
     return changed
 
 

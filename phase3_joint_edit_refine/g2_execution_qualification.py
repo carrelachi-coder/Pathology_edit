@@ -324,13 +324,15 @@ def _qualify_tissue_case(
     tissue_bundle = bind_active_bundle_to_case(
         tissue_bundle,
         case=case,
-        scene=scene,
+        scene=scene.tissue,
         semantic_primitive_id=case.primitive_id,
     )
     validate_active_bundle_authority(
         tissue_bundle,
         case_provenance=case.provenance,
         require_live_binding=True,
+        case=case,
+        scene=scene.tissue,
     )
     preflight = build_joint_nuclei_preflight(
         case=case,

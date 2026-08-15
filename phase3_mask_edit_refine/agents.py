@@ -130,6 +130,13 @@ class HeuristicInterfacePlanner:
         image_paths: Sequence[str | Path],
     ) -> tuple[EditPlan, dict[str, Any]]:
         del image_paths
+        validate_active_bundle_authority(
+            bundle,
+            case_provenance=case.provenance,
+            require_live_binding=_is_non_breast_execution_case(case),
+            case=case,
+            scene=scene,
+        )
         contract = bundle.edit_contract
         legal = scene.interfaces_for(
             source_labels=contract.source_label_options,

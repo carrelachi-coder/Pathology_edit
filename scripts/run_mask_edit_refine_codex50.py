@@ -233,6 +233,8 @@ def _prepare_one(task: tuple[dict[str, Any], str, int, int]) -> dict[str, Any]:
         bundle,
         case_provenance=case.provenance,
         require_live_binding=True,
+        case=case,
+        scene=scene,
     )
     _write_json(case_dir / "case_context.json", case.to_metadata())
     _write_json(case_dir / "scene_graph.json", scene.graph.to_metadata())

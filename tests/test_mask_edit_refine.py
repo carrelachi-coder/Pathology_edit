@@ -81,6 +81,12 @@ from phase3_mask_edit_refine.skills import (
     bind_active_bundle_to_case,
     validate_active_bundle_authority,
 )
+from phase3_mask_edit_refine.skills.catalog_manifest import (
+    OFFICIAL_CATALOG_ROOT,
+    file_sha256,
+    load_verified_official_catalog_manifest,
+)
+from phase3_mask_edit_refine.skills.repository import _rule_applies, _seal_bundle
 from phase3_mask_edit_refine.skills.schema import KnowledgeRule, ObservationAuthority
 from phase3_mask_edit_refine.workflow import (
     EscalationBudget,
@@ -2361,8 +2367,130 @@ class WorkflowTests(unittest.TestCase):
                 escalation_planner=None,
             )
 
+    def test_non_breast_workflow_rejects_custom_repository_before_planning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = root / "custom_catalog"
+            shutil.copytree(OFFICIAL_CATALOG_ROOT, catalog)
+            repository = SkillRepository(catalog)
+            with self.assertRaisesRegex(
+                RefineContractError, "committed official mask-skill catalog"
+            ):
+                MaskEditRefineWorkflow(
+                    planner=HeuristicInterfacePlanner(),
+                    critic=_PassingCritic(),
+                    skill_repository=repository,
+                    config=WorkflowConfig(production=False),
+                )
+
 
 class AgentContractTests(unittest.TestCase):
+    def test_official_catalog_manifest_binds_all_rules_contracts_and_packages(self):
+        manifest, manifest_sha256 = load_verified_official_catalog_manifest()
+        repository = SkillRepository()
+        self.assertEqual(manifest["package_count"], 19)
+        self.assertEqual(len(manifest["packages"]), 19)
+        self.assertEqual(
+            repository.official_catalog_manifest_sha256,
+            manifest_sha256,
+        )
+        for entry in manifest["packages"]:
+            with self.subTest(skill_id=entry["skill_id"]):
+                rules_path = OFFICIAL_CATALOG_ROOT / entry["rules_path"]
+                contract_path = OFFICIAL_CATALOG_ROOT / entry["mask_contract_path"]
+                self.assertEqual(file_sha256(rules_path), entry["rules_sha256"])
+                self.assertEqual(
+                    file_sha256(contract_path), entry["mask_contract_sha256"]
+                )
+                self.assertEqual(
+                    repository.get(entry["skill_id"]).package_digest_sha256,
+                    entry["package_digest_sha256"],
+                )
+
+    def test_custom_catalog_cannot_mint_execution_after_rule_or_constraint_deletion(self):
+        source_catalog = OFFICIAL_CATALOG_ROOT
+        mutations = ("hard_rule", "constraint")
+        for mutation in mutations:
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                catalog = Path(directory) / "catalog"
+                shutil.copytree(source_catalog, catalog)
+                if mutation == "hard_rule":
+                    path = (
+                        catalog
+                        / "annotation-profile"
+                        / "glas-gland-v1"
+                        / "references"
+                        / "rules.json"
+                    )
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    payload["rules"] = [
+                        item
+                        for item in payload["rules"]
+                        if item["rule_id"]
+                        != "glas.require_instance_and_field_grade_provenance"
+                    ]
+                else:
+                    path = (
+                        catalog
+                        / "annotation-profile"
+                        / "glas-gland-v1"
+                        / "references"
+                        / "mask_contract.json"
+                    )
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    payload["constraints"] = payload["constraints"][1:]
+                path.write_text(
+                    json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+                repository = SkillRepository(catalog)
+                with self.assertRaisesRegex(
+                    RefineContractError, "committed official mask-skill catalog"
+                ):
+                    repository.compose(
+                        pathology_domain_id="colorectal-adenocarcinoma-v1",
+                        annotation_profile_id="glas-gland-v1",
+                        primitive_id="tumor-burden-increase-v1",
+                        production=False,
+                        available_checker_ids=GateRegistry().available_checker_ids,
+                    )
+
+    def test_direct_resign_cannot_hide_deleted_rule_constraint_or_checker(self):
+        repository = SkillRepository()
+        case = _case(primitive="tumor-burden-increase-v1", area=0.04)
+        bundle = repository.compose(
+            pathology_domain_id=case.pathology_domain_id,
+            annotation_profile_id=case.annotation_profile_id,
+            primitive_id=case.primitive_id,
+            production=False,
+            available_checker_ids=GateRegistry().available_checker_ids,
+            case_provenance=case.provenance,
+        )
+        weakened = _seal_bundle(
+            replace(
+                bundle,
+                active_rules=bundle.active_rules[1:],
+                active_mask_constraints=bundle.active_mask_constraints[1:],
+                edit_contract=replace(
+                    bundle.edit_contract,
+                    required_check_ids=tuple(
+                        item
+                        for item in bundle.edit_contract.required_check_ids
+                        if item
+                        not in {"profile_required_provenance", "background_seed_protection"}
+                    ),
+                ),
+                authority_binding_sha256="",
+            )
+        )
+        with self.assertRaisesRegex(
+            RefineContractError, "detached from the committed official skill catalog"
+        ):
+            validate_active_bundle_authority(
+                weakened,
+                case_provenance=case.provenance,
+            )
+
     def test_non_breast_repository_startup_rejects_rule_without_typed_authority(self):
         source_catalog = (
             Path(__file__).resolve().parents[1]
@@ -2396,33 +2524,20 @@ class AgentContractTests(unittest.TestCase):
             ):
                 SkillRepository(catalog)
 
-    def test_compose_rejects_unbound_structure_even_with_generic_mask_checker(self):
+    def test_compose_rejects_runtime_skills_hard_rule_deletion(self):
         repository = SkillRepository()
-        pathology = repository.get("colorectal-adenocarcinoma-v1")
-        template = pathology.rules[0]
-        injected = replace(
-            template,
-            rule_id="adversarial.identify_keratin_pearl",
-            scope="planner_and_critic",
-            applies_when={"structure": "keratin_pearl"},
-            severity="hard",
-            deterministic_check_id="edited_label_topology",
-            critic_requirement=None,
-            execution_role="deterministic_mask_invariant",
-            observation_authority=(
-                ObservationAuthority("tissue_mask", "source_mask_sha256"),
-                ObservationAuthority("scene_graph", "compiler_scene_graph"),
-                ObservationAuthority(
-                    "deterministic_metric", "checker:edited_label_topology"
-                ),
+        profile = repository.get("glas-gland-v1")
+        repository._skills[profile.skill_id] = replace(
+            profile,
+            rules=tuple(
+                item
+                for item in profile.rules
+                if item.rule_id
+                != "glas.require_instance_and_field_grade_provenance"
             ),
-            preference_rule_id=None,
-        )
-        repository._skills[pathology.skill_id] = replace(
-            pathology, rules=(*pathology.rules, injected)
         )
         with self.assertRaisesRegex(
-            RefineContractError, "structure without a typed profile-auxiliary"
+            RefineContractError, "modified after official catalog load"
         ):
             repository.compose(
                 pathology_domain_id="colorectal-adenocarcinoma-v1",
@@ -2434,25 +2549,22 @@ class AgentContractTests(unittest.TestCase):
 
     def test_compose_applies_when_filters_mismatched_rules(self):
         repository = SkillRepository()
-        pathology = repository.get("colorectal-adenocarcinoma-v1")
         source = repository.get("glas-gland-v1").rules[1]
         injected = replace(
             source,
             rule_id="adversarial.only_tumor_decrease",
             applies_when={"primitive": "tumor-burden-decrease-v1"},
         )
-        repository._skills[pathology.skill_id] = replace(
-            pathology, rules=(*pathology.rules, injected)
-        )
-        bundle = repository.compose(
-            pathology_domain_id="colorectal-adenocarcinoma-v1",
-            annotation_profile_id="glas-gland-v1",
-            primitive_id="tumor-burden-increase-v1",
-            production=False,
-            available_checker_ids=GateRegistry().available_checker_ids,
-        )
-        self.assertNotIn(
-            injected.rule_id, {item.rule_id for item in bundle.active_rules}
+        self.assertFalse(
+            _rule_applies(
+                injected.applies_when,
+                pathology_domain_id="colorectal-adenocarcinoma-v1",
+                annotation_profile_id="glas-gland-v1",
+                primitive_id="tumor-burden-increase-v1",
+                annotation=repository.get("glas-gland-v1"),
+                relevant_labels={"Tumor", "Stroma"},
+                case_provenance=None,
+            )
         )
 
     def test_reader_only_rules_and_freeform_pathology_never_enter_execution_prompts(self):
@@ -2554,22 +2666,16 @@ class AgentContractTests(unittest.TestCase):
             source,
             applies_when={"annotation_quality": ["sparse"]},
         )
-        repository._skills[profile.skill_id] = replace(
-            profile,
-            rules=tuple(
-                dynamic if item.rule_id == rule_id else item
-                for item in profile.rules
-            ),
-        )
         with self.assertRaisesRegex(
             RefineContractError, "unbound observation axes: annotation_quality"
         ):
-            repository.compose(
+            _rule_applies(
+                dynamic.applies_when,
                 pathology_domain_id="prostate-adenocarcinoma-v1",
                 annotation_profile_id="panda-gleason-v1",
                 primitive_id="tumor-burden-increase-v1",
-                production=False,
-                available_checker_ids=GateRegistry().available_checker_ids,
+                annotation=profile,
+                relevant_labels={"Tumor", "Stroma"},
                 case_provenance={
                     **base_provenance,
                     "annotation_quality": "sparse",
@@ -2650,7 +2756,7 @@ class AgentContractTests(unittest.TestCase):
             rules=(forged, *bundle.pathology_domain.rules[1:]),
         )
         with self.assertRaisesRegex(
-            RefineContractError, "preference metric is detached from authority"
+            RefineContractError, "modified after official catalog load"
         ):
             repository.compose(
                 pathology_domain_id=case.pathology_domain_id,
@@ -2658,6 +2764,20 @@ class AgentContractTests(unittest.TestCase):
                 primitive_id=case.primitive_id,
                 production=False,
                 available_checker_ids=GateRegistry().available_checker_ids,
+                case_provenance=case.provenance,
+            )
+        resigned_bundle = _seal_bundle(
+            replace(
+                bundle,
+                active_rules=(forged, *bundle.active_rules[1:]),
+                authority_binding_sha256="",
+            )
+        )
+        with self.assertRaisesRegex(
+            RefineContractError, "detached from the committed official skill catalog"
+        ):
+            validate_active_bundle_authority(
+                resigned_bundle,
                 case_provenance=case.provenance,
             )
         forged_bundle = replace(
@@ -2715,6 +2835,8 @@ class AgentContractTests(unittest.TestCase):
                 bound,
                 case_provenance=case.provenance,
                 require_live_binding=True,
+                case=case,
+                scene=scene,
             )
             self.assertEqual(bound.live_authority["status"], "bound")
             self.assertEqual(
@@ -2734,6 +2856,8 @@ class AgentContractTests(unittest.TestCase):
                     tampered,
                     case_provenance=case.provenance,
                     require_live_binding=True,
+                    case=case,
+                    scene=scene,
                 )
             changed = np.array(mask, copy=True)
             changed[0, 0] = 12

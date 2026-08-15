@@ -397,6 +397,7 @@ class ActiveKnowledgeBundle:
     warnings: tuple[str, ...]
     checker_catalog_ids: tuple[str, ...]
     preference_catalog_sha256: str
+    catalog_manifest_sha256: str | None
     live_authority: dict[str, Any]
     online_selection_scope: str
     candidate_portfolio_sha256: str | None
@@ -464,6 +465,7 @@ class ActiveKnowledgeBundle:
             ),
             "checker_catalog_ids": list(self.checker_catalog_ids),
             "preference_catalog_sha256": self.preference_catalog_sha256,
+            "catalog_manifest_sha256": self.catalog_manifest_sha256,
             "live_authority": dict(self.live_authority),
             "online_selection_scope": self.online_selection_scope,
             "candidate_portfolio_sha256": self.candidate_portfolio_sha256,

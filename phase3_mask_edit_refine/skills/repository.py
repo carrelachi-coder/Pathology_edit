@@ -14,6 +14,11 @@ from pathlib import Path
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import RefineContractError
 
+from .catalog_manifest import (
+    OFFICIAL_CATALOG_ROOT,
+    canonical_json_sha256,
+    load_verified_official_catalog_manifest,
+)
 from .schema import (
     EXECUTION_PREFERENCE_CATALOG_SHA256,
     EXECUTION_PREFERENCE_REGISTRY,
@@ -37,8 +42,68 @@ class SkillRepository:
     """Load application-owned skill packages without installing global skills."""
 
     def __init__(self, root: str | Path | None = None) -> None:
-        self.root = Path(root) if root is not None else Path(__file__).parent / "catalog"
+        self.root = (
+            Path(root).resolve()
+            if root is not None
+            else OFFICIAL_CATALOG_ROOT.resolve()
+        )
+        manifest, manifest_sha256 = load_verified_official_catalog_manifest()
+        self.official_catalog_manifest_sha256 = (
+            manifest_sha256
+            if self.root == OFFICIAL_CATALOG_ROOT.resolve()
+            else None
+        )
         self._skills = self._load_all()
+        if self.official_catalog_manifest_sha256 is not None:
+            self._validate_packages_against_official_manifest(manifest)
+        self._loaded_skill_state_sha256 = _skill_state_sha256(self._skills)
+
+    def _validate_packages_against_official_manifest(
+        self, manifest: Mapping[str, object]
+    ) -> None:
+        raw_packages = manifest.get("packages")
+        if not isinstance(raw_packages, list):
+            raise RefineContractError("official catalog manifest packages must be a list")
+        entries = {
+            str(item.get("skill_id")): item
+            for item in raw_packages
+            if isinstance(item, dict)
+        }
+        if set(entries) != set(self._skills):
+            raise RefineContractError(
+                "official catalog package set is detached from committed manifest"
+            )
+        for skill_id, package in self._skills.items():
+            entry = entries[skill_id]
+            if (
+                entry.get("skill_kind") != package.skill_kind
+                or entry.get("version") != package.version
+                or entry.get("package_digest_sha256")
+                != package.package_digest_sha256
+            ):
+                raise RefineContractError(
+                    f"official catalog package {skill_id} is detached from manifest"
+                )
+
+    def require_official_execution_catalog(self) -> None:
+        """Reject caller roots and any mutation of the loaded official packages."""
+
+        _manifest, current_manifest_sha256 = (
+            load_verified_official_catalog_manifest()
+        )
+        if (
+            type(self) is not SkillRepository
+            or self.root != OFFICIAL_CATALOG_ROOT.resolve()
+            or self.official_catalog_manifest_sha256
+            != current_manifest_sha256
+        ):
+            raise RefineContractError(
+                "execution requires the committed official mask-skill catalog"
+            )
+        if _skill_state_sha256(self._skills) != self._loaded_skill_state_sha256:
+            raise RefineContractError(
+                "loaded mask-skill packages were modified after official catalog load"
+            )
 
     def _load_all(self) -> dict[str, SkillPackage]:
         packages: dict[str, SkillPackage] = {}
@@ -154,6 +219,12 @@ class SkillRepository:
         case_provenance: dict[str, object] | None = None,
         available_auxiliary_authority_digests: Mapping[str, str] | None = None,
     ) -> ActiveKnowledgeBundle:
+        non_breast_execution = bool(
+            pathology_domain_id != "breast-invasive-carcinoma-v1"
+            or annotation_profile_id != "bcss-semantic-v1"
+        )
+        if non_breast_execution:
+            self.require_official_execution_catalog()
         checker_catalog_ids = tuple(sorted(set(available_checker_ids)))
         pathology = self.get(pathology_domain_id, expected_kind="pathology_domain")
         annotation = self.get(annotation_profile_id, expected_kind="annotation_profile")
@@ -196,10 +267,6 @@ class SkillRepository:
 
         auxiliary_authority_digests = dict(
             available_auxiliary_authority_digests or {}
-        )
-        non_breast_execution = bool(
-            pathology_domain_id != "breast-invasive-carcinoma-v1"
-            or annotation_profile_id != "bcss-semantic-v1"
         )
         active_rules_list = []
         for package in packages:
@@ -282,6 +349,7 @@ class SkillRepository:
             warnings=tuple(warnings),
             checker_catalog_ids=checker_catalog_ids,
             preference_catalog_sha256=EXECUTION_PREFERENCE_CATALOG_SHA256,
+            catalog_manifest_sha256=self.official_catalog_manifest_sha256,
             live_authority={"status": "unbound"},
             online_selection_scope=(
                 "disabled_non_breast_legacy_online"
@@ -409,6 +477,8 @@ def validate_active_bundle_authority(
     case_provenance: dict[str, object],
     available_auxiliary_authority_digests: Mapping[str, str] | None = None,
     require_live_binding: bool = False,
+    case: object | None = None,
+    scene: object | None = None,
 ) -> None:
     """Revalidate a non-Breast bundle at every direct agent entry point."""
 
@@ -419,6 +489,11 @@ def validate_active_bundle_authority(
     )
     if not non_breast_execution:
         return
+    _manifest, official_manifest_sha256 = load_verified_official_catalog_manifest()
+    if bundle.catalog_manifest_sha256 != official_manifest_sha256:
+        raise RefineContractError(
+            "execution bundle is not rooted in the committed official skill catalog"
+        )
     if bundle.online_selection_scope != "disabled_non_breast_legacy_online":
         raise RefineContractError(
             "non-Breast bundle illegally enables the legacy online selection scope"
@@ -455,6 +530,16 @@ def validate_active_bundle_authority(
             raise RefineContractError(
                 "disabled non-Breast legacy online scope cannot carry a candidate portfolio"
             )
+    _validate_bundle_against_official_catalog(
+        bundle,
+        case_provenance=case_provenance,
+        available_auxiliary_authority_digests=dict(
+            available_auxiliary_authority_digests or {}
+        ),
+        require_live_binding=require_live_binding,
+        case=case,
+        scene=scene,
+    )
     _validate_composed_rule_authority(
         rules=bundle.active_rules,
         annotation=bundle.annotation_profile,
@@ -464,6 +549,47 @@ def validate_active_bundle_authority(
         ),
         require_materialized_provenance=True,
     )
+
+
+def _validate_bundle_against_official_catalog(
+    bundle: ActiveKnowledgeBundle,
+    *,
+    case_provenance: dict[str, object],
+    available_auxiliary_authority_digests: dict[str, str],
+    require_live_binding: bool,
+    case: object | None,
+    scene: object | None,
+) -> None:
+    """Recompose from committed assets so a runtime signer cannot weaken policy."""
+
+    official_repository = SkillRepository()
+    expected = official_repository.compose(
+        pathology_domain_id=bundle.pathology_domain.skill_id,
+        annotation_profile_id=bundle.annotation_profile.skill_id,
+        primitive_id=bundle.edit_primitive.skill_id,
+        production=False,
+        available_checker_ids=bundle.checker_catalog_ids,
+        case_provenance=case_provenance,
+        available_auxiliary_authority_digests=(
+            available_auxiliary_authority_digests
+        ),
+    )
+    if require_live_binding:
+        if case is None or scene is None:
+            raise RefineContractError(
+                "official live bundle validation requires current case and scene"
+            )
+        expected = bind_active_bundle_to_case(
+            expected,
+            case=case,
+            scene=scene,
+            semantic_primitive_id=str(getattr(case, "primitive_id", "")),
+        )
+    if _bundle_authority_payload(bundle) != _bundle_authority_payload(expected):
+        raise RefineContractError(
+            "execution bundle rules, constraints, or bindings are detached from "
+            "the committed official skill catalog"
+        )
 
 
 def _validate_composed_rule_authority(
@@ -851,6 +977,12 @@ def _canonical_sha256(payload: object) -> str:
     ).hexdigest()
 
 
+def _skill_state_sha256(skills: Mapping[str, SkillPackage]) -> str:
+    return canonical_json_sha256(
+        [asdict(skills[skill_id]) for skill_id in sorted(skills)]
+    )
+
+
 def _bundle_authority_payload(bundle: ActiveKnowledgeBundle) -> dict[str, object]:
     return {
         "packages": [
@@ -875,6 +1007,7 @@ def _bundle_authority_payload(bundle: ActiveKnowledgeBundle) -> dict[str, object
         "warnings": list(bundle.warnings),
         "checker_catalog_ids": list(bundle.checker_catalog_ids),
         "preference_catalog_sha256": bundle.preference_catalog_sha256,
+        "catalog_manifest_sha256": bundle.catalog_manifest_sha256,
         "live_authority": bundle.live_authority,
         "online_selection_scope": bundle.online_selection_scope,
         "candidate_portfolio_sha256": bundle.candidate_portfolio_sha256,

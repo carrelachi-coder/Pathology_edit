@@ -290,6 +290,7 @@ class JointPathologyEditWorkflow:
         self.joint_planner = joint_planner
         self.critic = critic
         self.mask_skills = mask_skills or MaskSkillRepository()
+        self.mask_skills.require_official_execution_catalog()
         self.joint_skills = joint_skills or JointSkillRepository()
         self.tissue_gates = tissue_gates or GateRegistry()
         self.joint_gates = joint_gates or JointGateRegistry()
@@ -2037,13 +2038,15 @@ class JointPathologyEditWorkflow:
                         tissue_bundle = bind_active_bundle_to_case(
                             tissue_bundle,
                             case=candidate_case,
-                            scene=scene,
+                            scene=scene.tissue,
                             semantic_primitive_id=primitive_id,
                         )
                         validate_active_bundle_authority(
                             tissue_bundle,
                             case_provenance=candidate_case.provenance,
                             require_live_binding=True,
+                            case=candidate_case,
+                            scene=scene.tissue,
                         )
                         nuclei_preflight = build_joint_nuclei_preflight(
                             case=candidate_case,
