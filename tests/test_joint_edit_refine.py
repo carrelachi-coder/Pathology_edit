@@ -3976,15 +3976,75 @@ class JointSkillTests(unittest.TestCase):
         change = np.zeros((20, 20), dtype=bool)
         change[2:4, 2:4] = True
         change[14:16, 14:16] = True
+        support = change.copy()
+        support.flat[:20] = True
         agentic = build_agentic_joint_route(
             manifest,
             joint_change_mask=change,
+            generation_support_mask=support,
             reference_tissue_mask=np.ones((20, 20), dtype=np.uint8),
         )
         self.assertEqual(agentic.primary_mode, "inpaint")
         self.assertEqual(agentic.candidate_modes, ("inpaint", "cross"))
         self.assertEqual(agentic.features.transition_count, 0)
-        self.assertEqual(agentic.features.component_count, 2)
+        self.assertEqual(agentic.features.component_count, 3)
+
+    def test_joint_router_forces_cross_for_large_generation_support(self):
+        manifest = {
+            "ledger": {
+                "tissue_fraction": 0.0,
+                "cell_fraction": 0.04,
+                "joint_fraction": 0.04,
+                "generation_support_fraction": 0.65,
+            }
+        }
+        route = route_joint_handoff(manifest)
+        self.assertEqual(route.mode, "cross")
+        self.assertTrue(route.force_cross)
+
+        change = np.zeros((20, 20), dtype=bool)
+        change[2:4, 2:4] = True
+        change[14:16, 14:16] = True
+        support = np.zeros((20, 20), dtype=bool)
+        support.flat[:260] = True
+        support |= change
+        manifest["ledger"]["generation_support_fraction"] = float(
+            np.mean(support)
+        )
+        agentic = build_agentic_joint_route(
+            manifest,
+            joint_change_mask=change,
+            generation_support_mask=support,
+            reference_tissue_mask=np.ones((20, 20), dtype=np.uint8),
+        )
+        self.assertEqual(agentic.primary_mode, "cross")
+        self.assertEqual(agentic.candidate_modes, ("cross",))
+        self.assertAlmostEqual(
+            agentic.features.change_ratio_image,
+            float(np.mean(support)),
+        )
+
+    def test_joint_router_rejects_generation_support_ledger_drift(self):
+        manifest = {
+            "ledger": {
+                "joint_fraction": 0.01,
+                "generation_support_fraction": 0.10,
+            }
+        }
+        change = np.zeros((20, 20), dtype=bool)
+        change[0:2, 0:2] = True
+        support = np.zeros((20, 20), dtype=bool)
+        support[0:10, :] = True
+        with self.assertRaisesRegex(
+            JointContractError,
+            "does not match the approved handoff ledger",
+        ):
+            build_agentic_joint_route(
+                manifest,
+                joint_change_mask=change,
+                generation_support_mask=support,
+                reference_tissue_mask=np.ones((20, 20), dtype=np.uint8),
+            )
 
     def test_melanoma_scatter_is_cell_only_and_does_not_borrow_tissue_floor(self):
         repository = JointSkillRepository()

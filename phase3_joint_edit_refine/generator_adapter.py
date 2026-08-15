@@ -11,14 +11,14 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
-from controlnet_train.inference.router import (
-    AgenticRouteFeatures,
-    AgenticRoutingDecision,
-)
 from controlnet_train.inference.pipeline import (
     EditPipelineInputs,
     resolve_prompt,
     run_edit_pipeline,
+)
+from controlnet_train.inference.router import (
+    AgenticRouteFeatures,
+    AgenticRoutingDecision,
 )
 
 from .models import JointContractError
@@ -26,8 +26,8 @@ from .models import JointContractError
 
 @dataclass(frozen=True)
 class JointGeneratorRoutingConfig:
-    inpaint_max_joint_fraction: float = 0.12
-    cross_min_joint_fraction: float = 0.30
+    inpaint_max_generation_support_fraction: float = 0.12
+    force_cross_min_generation_support_fraction: float = 0.30
 
 
 @dataclass(frozen=True)
@@ -35,11 +35,21 @@ class JointGeneratorRoute:
     mode: str
     joint_fraction: float
     generation_support_fraction: float
+    force_cross: bool
     reason: str
 
 
 def route_joint_handoff(manifest: dict[str, Any], *, config: JointGeneratorRoutingConfig | None = None) -> JointGeneratorRoute:
     config = config or JointGeneratorRoutingConfig()
+    if not (
+        0.0
+        <= config.inpaint_max_generation_support_fraction
+        <= config.force_cross_min_generation_support_fraction
+        <= 1.0
+    ):
+        raise JointContractError(
+            "generation-support routing thresholds must satisfy 0 <= inpaint <= cross <= 1"
+        )
     ledger = manifest.get("ledger")
     if not isinstance(ledger, dict):
         raise JointContractError("joint handoff has no ledger")
@@ -47,70 +57,106 @@ def route_joint_handoff(manifest: dict[str, Any], *, config: JointGeneratorRouti
     support = float(ledger.get("generation_support_fraction", 0.0))
     if joint <= 0:
         raise JointContractError("zero-joint-change handoff is a noop and cannot be generated")
-    if joint <= config.inpaint_max_joint_fraction:
-        mode, reason = "inpaint", "small joint support favors local preservation"
-    elif joint >= config.cross_min_joint_fraction:
-        mode, reason = "cross", "large joint structural change requires cross generation"
+    if not joint <= support <= 1.0:
+        raise JointContractError(
+            "generation support fraction must contain the joint change and be at most one"
+        )
+    if support <= config.inpaint_max_generation_support_fraction:
+        mode, force_cross, reason = (
+            "inpaint",
+            False,
+            "small generation support favors local preservation",
+        )
+    elif support >= config.force_cross_min_generation_support_fraction:
+        mode, force_cross, reason = (
+            "cross",
+            True,
+            "large generation support requires cross generation",
+        )
     else:
-        mode, reason = "inpaint", "gray-zone joint edit starts with preservation-oriented inpaint"
-    return JointGeneratorRoute(mode, joint, support, reason)
+        mode, force_cross, reason = (
+            "inpaint",
+            False,
+            "gray-zone generation support starts with preservation-oriented inpaint",
+        )
+    return JointGeneratorRoute(mode, joint, support, force_cross, reason)
 
 
 def build_agentic_joint_route(
     manifest: dict[str, Any],
     *,
     joint_change_mask: np.ndarray,
+    generation_support_mask: np.ndarray,
     reference_tissue_mask: np.ndarray,
     config: JointGeneratorRoutingConfig | None = None,
 ) -> AgenticRoutingDecision:
     """Translate an approved joint handoff into the online agent route.
 
-    The production agent historically routes only on tissue-label deltas.  A
+    The production agent historically routes only on tissue-label deltas. A
     nuclei-only joint edit therefore looks like a no-op unless the approved
-    joint-change support is made authoritative.  This adapter preserves the
-    frozen joint routing thresholds while retaining the standard alternate
-    backend candidate used by the online evaluator/recovery loop.
+    generation support is made authoritative. Large generation supports are
+    Cross-only; smaller supports retain the standard alternate backend used by
+    the online evaluator/recovery loop.
     """
 
     route = route_joint_handoff(manifest, config=config)
-    change = np.asarray(joint_change_mask, dtype=bool)
+    joint_change = np.asarray(joint_change_mask, dtype=bool)
+    generation_support = np.asarray(generation_support_mask, dtype=bool)
     tissue = np.asarray(reference_tissue_mask)
-    if change.ndim != 2 or tissue.shape != change.shape:
+    if (
+        joint_change.ndim != 2
+        or generation_support.shape != joint_change.shape
+        or tissue.shape != joint_change.shape
+    ):
         raise JointContractError(
-            "joint change and reference tissue mask must be aligned 2D arrays"
+            "joint change, generation support, and reference tissue mask must be aligned 2D arrays"
         )
-    changed_pixels = int(np.count_nonzero(change))
+    if np.any(joint_change & ~generation_support):
+        raise JointContractError("generation support must contain the joint change")
+    measured_support_fraction = float(np.mean(generation_support))
+    fraction_tolerance = 1.0 / generation_support.size
+    if not np.isclose(
+        measured_support_fraction,
+        route.generation_support_fraction,
+        rtol=0.0,
+        atol=fraction_tolerance,
+    ):
+        raise JointContractError(
+            "generation support mask fraction does not match the approved handoff ledger"
+        )
+    changed_pixels = int(np.count_nonzero(generation_support))
     if changed_pixels <= 0:
-        raise JointContractError("approved joint handoff has an empty joint mask")
-    components, component_count = ndimage.label(change)
+        raise JointContractError("approved joint handoff has an empty generation support mask")
+    components, component_count = ndimage.label(generation_support)
     sizes = np.bincount(components.ravel())[1:]
     largest_component = int(sizes.max()) if sizes.size else 0
-    ys, xs = np.where(change)
+    ys, xs = np.where(generation_support)
     bbox_pixels = int((ys.max() - ys.min() + 1) * (xs.max() - xs.min() + 1))
     tissue_pixels = int(np.count_nonzero(tissue))
     features = AgenticRouteFeatures(
-        change_ratio_image=changed_pixels / int(change.size),
+        change_ratio_image=changed_pixels / int(generation_support.size),
         change_ratio_tissue=(
             changed_pixels / tissue_pixels if tissue_pixels else 0.0
         ),
         component_count=int(component_count),
         largest_component_fraction=largest_component / changed_pixels,
-        bbox_fraction=bbox_pixels / int(change.size),
+        bbox_fraction=bbox_pixels / int(generation_support.size),
         transition_count=0,
         changed_tissue_ids_from=(),
         changed_tissue_ids_to=(),
     )
-    candidates = (
-        ("inpaint", "cross")
-        if route.mode == "inpaint"
-        else ("cross", "inpaint")
-    )
+    if route.force_cross:
+        candidates = ("cross",)
+    elif route.mode == "inpaint":
+        candidates = ("inpaint", "cross")
+    else:
+        candidates = ("cross", "inpaint")
     thresholds = config or JointGeneratorRoutingConfig()
     confidence = (
         0.55
-        if thresholds.inpaint_max_joint_fraction
-        < route.joint_fraction
-        < thresholds.cross_min_joint_fraction
+        if thresholds.inpaint_max_generation_support_fraction
+        < route.generation_support_fraction
+        < thresholds.force_cross_min_generation_support_fraction
         else 0.90
     )
     return AgenticRoutingDecision(
@@ -173,7 +219,8 @@ def build_frozen_generator_inputs(
         raise JointContractError("joint handoff executable contract ID drift")
     # The current frozen pipeline already accepts target tissue+nuclei and a
     # separate erase/regeneration support mask. We force only the route because
-    # its legacy router measures tissue diff rather than J.
+    # its legacy router measures tissue diff rather than the actual generator
+    # support G.
     route = route_joint_handoff(manifest, config=routing_config)
     compiled_prompt = compile_joint_render_prompt(
         manifest,
@@ -269,13 +316,14 @@ def run_frozen_joint_generator(
         thresholds=post_generation_thresholds,
     )
     audit = {
-        "schema_version": "joint-frozen-generator-route-v1",
+        "schema_version": "joint-frozen-generator-route-v2",
         "case_id": manifest["case_id"],
         "candidate_id": manifest["candidate_id"],
         "route": asdict(route),
         "legacy_pipeline_selected_mode": result.selected_mode,
         "semantic_change_ratio_reported_by_legacy": result.change_ratio,
-        "joint_change_is_authoritative_for_routing": True,
+        "generation_support_is_authoritative_for_routing": True,
+        "large_generation_support_is_cross_only": route.force_cross,
         "compiled_render_prompt": result.prompt,
         "render_expectations": list(manifest.get("render_expectations", ())),
         "render_vetoes": list(manifest.get("render_vetoes", ())),

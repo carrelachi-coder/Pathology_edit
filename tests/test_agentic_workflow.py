@@ -700,6 +700,54 @@ class AgenticRoutingTests(unittest.TestCase):
 
 
 class AgenticWorkflowTests(unittest.TestCase):
+    def test_cross_only_route_cannot_fallback_to_inpaint(self):
+        tissue = np.ones((16, 16), dtype=np.uint8)
+        modes = []
+        route = AgenticRoutingDecision(
+            primary_mode="cross",
+            candidate_modes=("cross",),
+            confidence=0.90,
+            reason="large generation support requires cross generation",
+            features=AgenticRouteFeatures(
+                change_ratio_image=0.65,
+                change_ratio_tissue=0.65,
+                component_count=1,
+                largest_component_fraction=1.0,
+                bbox_fraction=0.70,
+                transition_count=0,
+                changed_tissue_ids_from=(),
+                changed_tissue_ids_to=(),
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            def generate(mode: str, attempt_dir: Path) -> GenerationArtifact:
+                modes.append(mode)
+                image_path = attempt_dir / "generated.png"
+                Image.new("RGB", (16, 16), "white").save(image_path)
+                return GenerationArtifact(mode=mode, image_path=image_path)
+
+            result = run_agentic_workflow(
+                reference_tissue_mask=tissue,
+                target_tissue_mask=tissue,
+                output_dir=tmp,
+                generate=generate,
+                verify=lambda _artifact: VerificationResult(
+                    passed=False,
+                    score=0.40,
+                    quality_score=0.40,
+                    evidence_coverage=0.20,
+                    metrics={},
+                    failed_checks=("evidence_coverage",),
+                    scientific_status="evaluator_uncertain",
+                ),
+                routing_decision=route,
+            )
+
+        self.assertEqual(result.status, "evaluator_uncertain")
+        self.assertEqual(modes, ["cross-v1-no-ip-pix2pix-v2"])
+        self.assertEqual(result.selected_attempt.requested_mode, modes[0])
+
     def test_authoritative_joint_route_prevents_cell_only_noop(self):
         tissue = np.ones((16, 16), dtype=np.uint8)
         modes = []

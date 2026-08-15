@@ -108,8 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Approved joint-generation-handoff-v2/v3 manifest. When supplied, "
-            "its hash-locked joint change is authoritative for routing and its "
-            "generation support is preserved without legacy context truncation."
+            "its hash-locked generation support is authoritative for routing "
+            "and is preserved without legacy context truncation."
         ),
     )
     parser.add_argument(
@@ -165,8 +165,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--guidance-scale", type=float, default=3.5)
     parser.add_argument("--controlnet-conditioning-scale", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--t-inpaint", type=float, default=0.12)
-    parser.add_argument("--t-cross", type=float, default=0.30)
+    parser.add_argument(
+        "--t-inpaint",
+        type=float,
+        default=0.12,
+        help=(
+            "Maximum generation-support fraction for high-confidence Inpaint "
+            "routing on an approved joint handoff."
+        ),
+    )
+    parser.add_argument(
+        "--t-cross",
+        type=float,
+        default=0.30,
+        help=(
+            "Generation-support fraction at or above which Cross is mandatory "
+            "on an approved joint handoff."
+        ),
+    )
     parser.add_argument("--max-attempts", type=int, default=2)
     parser.add_argument(
         "--reuse-existing-generation",
@@ -1706,8 +1722,8 @@ def _validate_joint_generation_handoff(
         prompt=args.prompt,
         dataset=args.profile,
         routing_config=JointGeneratorRoutingConfig(
-            inpaint_max_joint_fraction=args.t_inpaint,
-            cross_min_joint_fraction=args.t_cross,
+            inpaint_max_generation_support_fraction=args.t_inpaint,
+            force_cross_min_generation_support_fraction=args.t_cross,
         ),
     )
     expected_paths = {
@@ -1755,12 +1771,13 @@ def _validate_joint_generation_handoff(
         )
 
     routing_config = JointGeneratorRoutingConfig(
-        inpaint_max_joint_fraction=args.t_inpaint,
-        cross_min_joint_fraction=args.t_cross,
+        inpaint_max_generation_support_fraction=args.t_inpaint,
+        force_cross_min_generation_support_fraction=args.t_cross,
     )
     routing_decision: AgenticRoutingDecision = build_agentic_joint_route(
         manifest,
         joint_change_mask=inputs["semantic_change_region"],
+        generation_support_mask=inputs["generation_change_region"],
         reference_tissue_mask=inputs["reference_tissue"],
         config=routing_config,
     )
@@ -1774,8 +1791,9 @@ def _validate_joint_generation_handoff(
             "case_id": manifest["case_id"],
             "candidate_id": manifest["candidate_id"],
             "executable_contract_id": manifest["executable_contract_id"],
-            "routing_authority": "joint_change",
+            "routing_authority": "generation_support",
             "generation_support_authority": "hash_locked_handoff",
+            "large_support_selection_policy": "cross_only",
             "compiled_render_prompt": frozen_inputs.prompt,
         },
     }
