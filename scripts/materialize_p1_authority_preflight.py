@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Build/check P1 GLaS/PANDA authority and deterministic-preflight ledgers."""
 
 from __future__ import annotations
