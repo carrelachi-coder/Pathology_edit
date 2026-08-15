@@ -1557,13 +1557,29 @@ def _select_executable_anchor_ids(
                 & (distance <= local_depth)
             )
         )
+        neighborhood_radius = float(
+            np.clip(np.sqrt(contact) * 2.5, 18.0, 48.0)
+        )
+        neighborhood = distance <= neighborhood_radius
+        source_enclosure_fraction = float(
+            np.count_nonzero(source_component & neighborhood)
+            / max(1, np.count_nonzero(neighborhood))
+        )
         metadata = anchor_metadata.get(anchor_id)
         centroid = (
             metadata.centroid_xy
             if metadata is not None
             else tuple(reversed(ndimage.center_of_mass(anchor)))
         )
-        records.append((anchor_id, capacity, contact, centroid))
+        records.append(
+            (
+                anchor_id,
+                capacity,
+                contact,
+                centroid,
+                source_enclosure_fraction,
+            )
+        )
     if not records:
         return ()
     selection_limit = _directional_sector_selection_limit(
@@ -1578,14 +1594,20 @@ def _select_executable_anchor_ids(
     preferred = set(preferred_anchor_ids)
     records.sort(
         key=lambda item: (
-            item[0] not in preferred,
             (
-                item[1] / max(item[2], 1)
-                if prefer_shallow_front
-                else -item[1]
-            ),
-            -item[2],
-            item[0],
+                item[4],
+                item[1] / max(item[2], 1),
+                item[0] not in preferred,
+                -item[2],
+                item[0],
+            )
+            if prefer_shallow_front
+            else (
+                item[0] not in preferred,
+                -item[1],
+                -item[2],
+                item[0],
+            )
         )
     )
     selected = [records.pop(0)]
@@ -1624,11 +1646,13 @@ def _select_executable_anchor_ids(
                     path_distance,
                     scene.anchor_masks[records[index][0]],
                 ),
+                records[index][4] if prefer_shallow_front else 0.0,
                 (
                     records[index][1] / max(records[index][2], 1)
                     if prefer_shallow_front
                     else -records[index][1]
                 ),
+                records[index][0] not in preferred,
                 float(
                     np.min(
                         np.linalg.norm(

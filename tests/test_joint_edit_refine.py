@@ -9034,6 +9034,7 @@ class StructuralHierarchyTests(unittest.TestCase):
             required_pixels=1,
             maximum_depth_px=48,
             prefer_shallow_front=True,
+            preferred_anchor_ids=("internal",),
         )
 
         self.assertEqual(selected, ("external",))
