@@ -113,6 +113,18 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         ):
             self.assertFalse(summary[field])
 
+    def test_generated_authority_is_workspace_location_independent(self):
+        artifacts = self._build()
+        root_bytes = str(ROOT).encode("utf-8")
+        self.assertTrue(all(root_bytes not in payload for payload in artifacts.values()))
+        auxiliary = json.loads(artifacts[OUTPUT_FILENAMES["auxiliary"]])
+        self.assertTrue(
+            all(
+                not Path(item["output_path"]).is_absolute()
+                for item in auxiliary["entries"]
+            )
+        )
+
     def test_changed_or_unlocked_frozen_binding_is_rejected(self):
         selection = json.loads(SELECTION.read_text(encoding="utf-8"))
         mutations = (
