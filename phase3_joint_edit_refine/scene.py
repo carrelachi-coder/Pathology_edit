@@ -156,7 +156,29 @@ def build_joint_scene_analysis(
                 tissue_fine_id=int(tissue[row, col]),
                 touches_border=touches_border(component),
                 source=(
-                    "instance_json"
+                    (
+                        "instance_json_cellvit_seed"
+                        if instance_id.startswith("native-raster-cellvit-")
+                        else (
+                            "instance_json_semantic_unseeded"
+                            if instance_id.startswith(
+                                "native-raster-semantic-unseeded-"
+                            )
+                            else (
+                                "instance_json_semantic_seeded_residual"
+                                if instance_id.startswith(
+                                    "native-raster-semantic-residual-"
+                                )
+                                else (
+                                    "instance_json_semantic_fallback"
+                                    if instance_id.startswith(
+                                        "native-raster-semantic-fallback-"
+                                    )
+                                    else "instance_json"
+                                )
+                            )
+                        )
+                    )
                     if native_instances is not None
                     else "semantic_distance_watershed"
                 ),
@@ -561,12 +583,23 @@ def _shape_metrics(component: np.ndarray) -> dict[str, float | None]:
 def _mark_instance_quality(
     instances: list[NucleusInstance],
 ) -> list[NucleusInstance]:
-    areas_by_class: dict[int, list[float]] = {}
+    all_areas_by_class: dict[int, list[float]] = {}
+    seed_areas_by_class: dict[int, list[float]] = {}
     for item in instances:
         if not item.touches_border:
-            areas_by_class.setdefault(item.class_id, []).append(float(item.area_px))
+            all_areas_by_class.setdefault(item.class_id, []).append(
+                float(item.area_px)
+            )
+            if item.source == "instance_json_cellvit_seed":
+                seed_areas_by_class.setdefault(item.class_id, []).append(
+                    float(item.area_px)
+                )
     limits: dict[int, float] = {}
-    for class_id, values in areas_by_class.items():
+    for class_id, all_values in all_areas_by_class.items():
+        # Exact semantic coverage can leave many tiny pieces around a clipped
+        # CellViT seed. Those pieces are provenance records, not an independent
+        # morphology population, and must not make every true seed look merged.
+        values = seed_areas_by_class.get(class_id) or all_values
         array = np.asarray(values, dtype=float)
         if array.size < 4:
             limits[class_id] = float(np.median(array) * 3.0) if array.size else np.inf
@@ -627,7 +660,14 @@ def _build_population_graph(
     observation_quality: str,
     shape: tuple[int, int],
 ) -> tuple[PopulationGraph, dict[str, np.ndarray]]:
-    complete_areas = [
+    native_seed_areas = [
+        item.area_px
+        for item in instances
+        if item.source == "instance_json_cellvit_seed"
+        and not item.touches_border
+        and "merged_suspect" not in item.quality_flags
+    ]
+    complete_areas = native_seed_areas or [
         item.area_px
         for item in instances
         if not item.touches_border and "merged_suspect" not in item.quality_flags

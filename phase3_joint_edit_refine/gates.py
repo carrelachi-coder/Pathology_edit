@@ -44,6 +44,9 @@ from .spatial_contracts import (
     BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS,
     BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
     BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+    CELL_EFFECT_MAXIMUM_FOCUS_DIAMETER_DIAMETERS,
+    CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS,
+    CELL_EFFECT_WITHIN_FOCUS_LINK_DIAMETERS,
     SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS,
     SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE,
@@ -54,6 +57,7 @@ from .spatial_contracts import (
     breast_small_cluster_within_focus_link_px,
     small_cluster_maximum_focus_diameter_px,
     small_cluster_maximum_hotspot_span_px,
+    small_cluster_within_focus_link_px,
 )
 from .tissue_tools import (
     JOINT_TOOL_FAMILY_TO_EXECUTOR,
@@ -1010,7 +1014,7 @@ def _small_cluster_cardinality(c):
     within_focus_link = (
         breast_small_cluster_within_focus_link_px(nominal) / nominal
         if strict_breast_cluster
-        else SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+        else small_cluster_within_focus_link_px(nominal) / nominal
     )
     minimum_focus_size = (
         BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
@@ -1082,7 +1086,7 @@ def _small_cluster_focus_compactness(c):
     within_focus_link = (
         breast_small_cluster_within_focus_link_px(nominal) / nominal
         if strict_breast_cluster
-        else SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+        else small_cluster_within_focus_link_px(nominal) / nominal
     )
     minimum_focus_size = (
         BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE
@@ -2882,14 +2886,51 @@ def _local_population_density(c):
         )
         composition = {"applicable": False}
         if c.case.primitive_id.startswith("cellularity-"):
-            population_region = np.asarray(
-                c.executable_contract.cell_program.population_target_region,
-                dtype=bool,
-            )
-            source_by_class = _instance_class_counts_in_region(
-                c.source_nuclei, population_region
-            )
-            expected = _largest_remainder_counts(source_by_class, delta)
+            program = c.executable_contract.cell_program
+            if (
+                c.plan.cell_plan.mechanism_quota_role == "explicit_decrement"
+                and program.depletion_population_instance_ids
+            ):
+                metadata = {
+                    item.instance_id: item for item in c.scene.cells.instances
+                }
+                source_by_class: dict[int, int] = {}
+                for instance_id in program.depletion_population_instance_ids:
+                    item = metadata.get(instance_id)
+                    if item is not None:
+                        source_by_class[item.class_id] = (
+                            source_by_class.get(item.class_id, 0) + 1
+                        )
+                composition_authority = "depletion_population_instance_ids"
+            else:
+                population_region = np.asarray(
+                    program.population_target_region,
+                    dtype=bool,
+                )
+                source_by_class = _instance_class_counts_in_region(
+                    c.source_nuclei, population_region
+                )
+                composition_authority = "population_raster_largest_remainder"
+            if c.plan.cell_plan.mechanism_quota_role == "explicit_increment":
+                packing = c.executable_contract.packing_certificate or {}
+                certified = packing.get("class_requested_counts", {})
+                expected = (
+                    {
+                        int(key): int(value)
+                        for key, value in certified.items()
+                    }
+                    if packing.get("passed") is True
+                    and isinstance(certified, dict)
+                    else _largest_remainder_counts(source_by_class, delta)
+                )
+                composition_authority = (
+                    "packing_certificate_class_requested_counts"
+                    if packing.get("passed") is True
+                    and isinstance(certified, dict)
+                    else "population_raster_largest_remainder_fallback"
+                )
+            else:
+                expected = _largest_remainder_counts(source_by_class, delta)
             realized_raw = c.candidate.tool_trace.get(
                 "class_removed_counts"
                 if c.plan.cell_plan.mechanism_quota_role == "explicit_decrement"
@@ -2919,6 +2960,7 @@ def _local_population_density(c):
             composition = {
                 "applicable": True,
                 "source_class_counts": source_by_class,
+                "composition_authority": composition_authority,
                 "expected_delta_by_class": expected,
                 "realized_delta_by_class": realized,
                 "absolute_count_error": absolute_error,
@@ -3129,10 +3171,15 @@ def _cellularity_depletion_gradient(c):
     maximum_gap = None
     gap_ok = False
     baseline_nnd = float(c.scene.cells.mean_nearest_neighbor_px or 0.0)
+    # A bounded density reduction may double the source spacing when roughly
+    # half of a local population is removed. Compare against that observed
+    # raster spacing as well as the skill's nucleus-diameter limit; the global
+    # mean times 1.25 incorrectly rejected every valid 45--55% thinning field.
+    baseline_thinning_gap = 2.0 * baseline_nnd
     maximum_allowed_gap = max(
         skill.maximum_new_gap_cell_diameters
         * program.nominal_nucleus_diameter_px,
-        1.25 * baseline_nnd,
+        baseline_thinning_gap,
     )
     if removed_points and retained_points:
         distances, _ = cKDTree(np.asarray(retained_points)).query(
@@ -3207,6 +3254,7 @@ def _cellularity_depletion_gradient(c):
             "removed_centers_inside_core_or_transition": centers_inside,
             "maximum_removed_to_retained_center_distance_px": maximum_gap,
             "baseline_mean_nnd_px": baseline_nnd,
+            "baseline_thinning_gap_px": baseline_thinning_gap,
             "maximum_allowed_gap_px": maximum_allowed_gap,
             "finite_raster_gap_tolerance_px": 0.5,
             "gap_ok": gap_ok,
@@ -4752,11 +4800,25 @@ def _cell_effect_geometry(c) -> dict[str, object]:
             )
         )
         change_direction = "remove"
+    focus_contract = {}
+    if c.case.primitive_id == "peritumoral-small-cluster-increase-v1":
+        focus_contract = {
+            "within_focus_link_diameters": (
+                SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS
+            ),
+            "maximum_focus_diameter_diameters": (
+                SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS
+            ),
+            "minimum_inter_focus_separation_diameters": (
+                SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+            ),
+        }
     return audit_cell_effect_foci(
         centers_xy=centers,
         nominal_nucleus_diameter_px=nominal,
         complete_instance_ledger_valid=ledger_complete,
         change_direction=change_direction,
+        **focus_contract,
     )
 
 
@@ -4766,9 +4828,13 @@ def audit_cell_effect_foci(
     nominal_nucleus_diameter_px: float,
     complete_instance_ledger_valid: bool = True,
     change_direction: str = "add",
-    within_focus_link_diameters: float = 1.5,
-    maximum_focus_diameter_diameters: float = 2.5,
-    minimum_inter_focus_separation_diameters: float = 3.0,
+    within_focus_link_diameters: float = CELL_EFFECT_WITHIN_FOCUS_LINK_DIAMETERS,
+    maximum_focus_diameter_diameters: float = (
+        CELL_EFFECT_MAXIMUM_FOCUS_DIAMETER_DIAMETERS
+    ),
+    minimum_inter_focus_separation_diameters: float = (
+        CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS
+    ),
 ) -> dict[str, object]:
     """Cluster final changed-instance centers with no-chain/no-bridge rules.
 

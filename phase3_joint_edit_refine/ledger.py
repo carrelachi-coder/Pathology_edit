@@ -90,16 +90,16 @@ def analyze_joint_change(
         removed |= component
         removed_ids.append(instance_id)
 
-    added = np.zeros(shape, dtype=bool)
+    # Cell generation owns only pixels whose target class differs from the
+    # source.  Do not promote an entire semantic target component to "added":
+    # a newly placed nucleus can become 8-connected to a retained same-class
+    # nucleus (especially in dense semantic masks), and the target connected
+    # component may then span far beyond the executable generation support.
+    added = (target_nuclei != source_nuclei) & (target_nuclei != 0)
     added_ids: list[str] = []
     for instance_id, class_id, component in iter_instances(target_nuclei):
-        # A target component is retained only when every pixel belongs to a
-        # bitwise-preserved source component of the same class. Any extension,
-        # bridge, or new component is an added complete target footprint.
-        if np.all(retained[component]) and np.all(source_nuclei[component] == class_id):
-            continue
-        added |= component
-        added_ids.append("target-" + instance_id)
+        if np.any(component & added):
+            added_ids.append("target-" + instance_id)
 
     cell_change = removed | added
     joint_change = tissue_change | cell_change
@@ -109,9 +109,18 @@ def analyze_joint_change(
             raise JointContractError(
                 "generation support contract must match mask shape"
             )
-        if np.any(joint_change & ~generation_support):
+        outside_support = joint_change & ~generation_support
+        if np.any(outside_support):
+            rows, cols = np.nonzero(outside_support)
+            bbox = [
+                int(cols.min()),
+                int(rows.min()),
+                int(cols.max()) + 1,
+                int(rows.max()) + 1,
+            ]
             raise JointContractError(
-                "joint change extends outside executable generation support"
+                "joint change extends outside executable generation support: "
+                f"pixels={len(rows)}, bbox_xyxy={bbox}"
             )
     elif generation_halo_px and np.any(joint_change):
         structure = ndimage.generate_binary_structure(2, 1)

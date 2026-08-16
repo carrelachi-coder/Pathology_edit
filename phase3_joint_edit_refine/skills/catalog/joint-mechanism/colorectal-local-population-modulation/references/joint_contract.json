@@ -193,7 +193,7 @@
     "layout_program_by_primitive": {
       "cell-type-abundance-increase-v1": "small_cluster",
       "cell-type-abundance-decrease-v1": "localized_density_gradient",
-      "cellularity-increase-v1": "single",
+      "cellularity-increase-v1": "small_cluster",
       "cellularity-decrease-v1": "localized_density_gradient",
       "neoplastic-cell-abundance-increase-v1": "small_cluster",
       "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient"
