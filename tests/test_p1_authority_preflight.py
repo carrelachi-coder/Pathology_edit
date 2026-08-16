@@ -17,6 +17,7 @@ from phase3_joint_edit_refine.p1_authority_preflight import (
     _compile_live_preflight,
     _effective_source_row,
     _external_auxiliary_authority,
+    _materialize_glas_gland_instance_authorities,
     _profile_required_provenance,
     _runtime_authority,
     _source_authority,
@@ -243,7 +244,7 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         self.assertEqual(summary["status_counts"], {"eligible": 0, "reject": 120, "abstain": 0})
         self.assertEqual(len(authority), 120)
         self.assertEqual(len(preflight), 120)
-        self.assertEqual(len(auxiliary["entries"]), 20)
+        self.assertEqual(len(auxiliary["entries"]), 25)
         self.assertTrue(all(item["fixed_case_no_replacement"] for item in authority))
         self.assertTrue(
             all(
@@ -270,7 +271,7 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         )
         self.assertEqual(
             counts["binding_external_auxiliary_missing"],
-            {"before": 15, "after": 15},
+            {"before": 5, "after": 5},
         )
         self.assertEqual(
             counts["binding_local_clearance_roi_missing"],
@@ -438,6 +439,79 @@ class P1AuthorityPreflightTests(unittest.TestCase):
                     mask_repository=MaskSkillRepository(),
                     joint_repository=JointSkillRepository(),
                 )
+
+    def test_glas_profile_owned_instance_map_closes_derived_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_row, tissue = self._write_live_assets(
+                root, profile_id="glas-gland-v1"
+            )
+            source_row.pop("source_gland_instance_mask")
+            source_row.pop("source_gland_instance_mask_sha256")
+            metadata_path = Path(str(source_row["source_profile_metadata"]))
+            metadata_path.write_text(
+                json.dumps(
+                    {
+                        "preprocessing_revision": (
+                            "synthetic-profile-authority-v1"
+                        )
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            source_row["source_profile_metadata_sha256"] = sha256_file(
+                metadata_path
+            )
+            initial = _source_authority(source_row)
+            rows, authorities = _materialize_glas_gland_instance_authorities(
+                glas_case_ids=(source_row["case_id"],),
+                source_rows={source_row["case_id"]: source_row},
+                source_authority_by_case={source_row["case_id"]: initial},
+                output_dir=root / "profile-auxiliary",
+            )
+            effective_row = rows[source_row["case_id"]]
+            authority = authorities[source_row["case_id"]]
+            validation = authority[
+                "glas_gland_instance_annotation_validation"
+            ]
+            self.assertTrue(validation["authority_verified"])
+            self.assertTrue(
+                validation["deterministic_connectivity_replay_verified"]
+            )
+            self.assertEqual(
+                validation["replayed_patch_grade"],
+                "moderately_differentiated",
+            )
+            with Image.open(
+                effective_row["source_gland_instance_mask"]
+            ) as instance_image:
+                self.assertIn(instance_image.mode, {"I", "I;16"})
+            instance_map = load_id_mask(
+                effective_row["source_gland_instance_mask"]
+            )
+            self.assertEqual(set(np.unique(instance_map)), {0, 1})
+            np.testing.assert_array_equal(instance_map > 0, tissue == 12)
+
+            profile_authority = _profile_required_provenance(
+                repository=MaskSkillRepository(),
+                profile_id="glas-gland-v1",
+                erratum_binding={
+                    "entry_sha256": "e" * 64,
+                    "profile_provenance": {
+                        "preprocessing_revision": (
+                            "synthetic-profile-authority-v1"
+                        )
+                    },
+                },
+                source_row=effective_row,
+                source_authority=authority,
+            )
+            self.assertTrue(profile_authority["authority_verified"])
+            self.assertEqual(
+                set(profile_authority["deterministically_derived_fields"]),
+                {"original_instance_mask_digest", "patch_grade"},
+            )
 
     def test_live_panda_materializes_aux_and_reaches_tissue_portfolio(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -932,6 +1006,39 @@ class P1AuthorityPreflightTests(unittest.TestCase):
                 code_commit=CODE_COMMIT,
             )
 
+    def test_runtime_authority_allows_explicit_optional_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            selection_runtime, runtime_input = self._write_runtime_inputs(
+                Path(directory)
+            )
+            optional = {
+                "frozen_probnet_spatial_ranker_checkpoint",
+                "later_he_generator_checkpoint",
+            }
+            for asset in runtime_input["assets"]:
+                if asset["asset_id"] in optional:
+                    asset["path"] = None
+                    asset["sha256"] = None
+                    asset["required_for_preflight"] = False
+            selection_runtime["frozen_spatial_ranker_sha256"] = None
+            selection_runtime["generator_checkpoint_sha256"] = None
+            runtime = _runtime_authority(
+                root=ROOT,
+                selection_runtime=selection_runtime,
+                runtime_input=runtime_input,
+                runtime_input_sha256="d" * 64,
+                code_commit=CODE_COMMIT,
+            )
+            self.assertTrue(runtime["all_required_runtime_assets_verified"])
+            self.assertEqual(
+                runtime["required_runtime_digest_fields"],
+                [
+                    "instance_library_sha256",
+                    "mature_probnet_checkpoint_sha256",
+                ],
+            )
+            self.assertEqual(runtime["unverified_external_asset_ids"], [])
+
     def test_glas_nuclei_digest_and_unknown_grade_cannot_fill_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
             row, _ = self._write_live_assets(
@@ -1094,7 +1201,7 @@ class P1AuthorityPreflightTests(unittest.TestCase):
     def test_external_auxiliary_cannot_be_self_materialized(self):
         artifacts = dict(self._build())
         auxiliary = json.loads(artifacts[OUTPUT_FILENAMES["auxiliary"]])
-        auxiliary["entries"][0]["structure_id"] = "native_gland_instance_map"
+        auxiliary["entries"][0]["structure_id"] = "local_clearance_roi"
         auxiliary = self._reseal_manifest(auxiliary)
         payload = canonical_json_bytes(auxiliary, indent=2)
         artifacts[OUTPUT_FILENAMES["auxiliary"]] = payload

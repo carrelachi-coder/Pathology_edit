@@ -58,18 +58,21 @@ AUTHORITY_ERRATUM_SCHEMA = "p1-glas-panda-authority-erratum-v1"
 RUNTIME_INPUT_SCHEMA = "p1-glas-panda-runtime-authority-v1"
 
 PROFILE_OWNED_AUXILIARY_STRUCTURES = {
-    "glas-gland-v1": ("gland_or_lumen_support",),
+    "glas-gland-v1": (
+        "gland_or_lumen_support",
+        "native_gland_instance_map",
+    ),
     "panda-gleason-v1": (
         "native_pattern_and_lumen_map",
         "native_pattern_map",
         "gland_lumen_map",
     ),
 }
-EXTERNAL_ONLY_AUXILIARY_STRUCTURES = frozenset(
-    {"native_gland_instance_map", "local_clearance_roi"}
-)
+EXTERNAL_ONLY_AUXILIARY_STRUCTURES = frozenset({"local_clearance_roi"})
 GLAS_PATCH_GRADE_VALUES = frozenset(
     {
+        "normal",
+        "adenomatous",
         "benign",
         "malignant",
         "well_differentiated",
@@ -78,6 +81,12 @@ GLAS_PATCH_GRADE_VALUES = frozenset(
     }
 )
 GLAS_GLAND_FINE_IDS = frozenset({5, 11, 12, 13})
+GLAS_PATCH_GRADE_BY_FINE_ID = {
+    5: "normal",
+    11: "adenomatous",
+    12: "moderately_differentiated",
+    13: "poorly_differentiated",
+}
 RUNTIME_DIGEST_FIELDS = (
     "mature_probnet_checkpoint_sha256",
     "frozen_spatial_ranker_sha256",
@@ -356,6 +365,11 @@ def _glas_gland_instance_annotation_validation(
     disconnected_instance_ids: list[int] = []
     outside_gland_support_px = 0
     gland_support_coverage_fraction = 0.0
+    deterministic_connectivity_replay_verified = False
+    deterministic_connectivity_instance_count = 0
+    patch_grade_replay_verified = False
+    replayed_patch_grade = None
+    replayed_patch_grade_fine_ids: list[int] = []
     if not gland_authority.get("authority_verified"):
         failures.append("gland_instance_asset_not_verified")
     if not tissue_authority.get("authority_verified"):
@@ -421,6 +435,26 @@ def _glas_gland_instance_annotation_validation(
                 elif gland_support_coverage_fraction < 0.95:
                     failures.append("gland_instance_support_coverage_below_0_95")
                 connectivity = np.ones((3, 3), dtype=np.uint8)
+                deterministic_instances, deterministic_count = ndimage.label(
+                    gland_support,
+                    structure=connectivity,
+                )
+                deterministic_connectivity_instance_count = int(
+                    deterministic_count
+                )
+                deterministic_connectivity_replay_verified = bool(
+                    np.array_equal(gland, deterministic_instances)
+                )
+                replayed_patch_grade_fine_ids = sorted(
+                    int(value)
+                    for value in np.unique(tissue)
+                    if int(value) in GLAS_PATCH_GRADE_BY_FINE_ID
+                )
+                if len(replayed_patch_grade_fine_ids) == 1:
+                    replayed_patch_grade = GLAS_PATCH_GRADE_BY_FINE_ID[
+                        replayed_patch_grade_fine_ids[0]
+                    ]
+                    patch_grade_replay_verified = True
                 for instance_id in instance_ids:
                     _, component_count = ndimage.label(
                         gland == instance_id,
@@ -445,6 +479,15 @@ def _glas_gland_instance_annotation_validation(
         "disconnected_instance_ids": disconnected_instance_ids[:32],
         "outside_gland_support_px": outside_gland_support_px,
         "gland_support_coverage_fraction": gland_support_coverage_fraction,
+        "deterministic_connectivity_replay_verified": (
+            deterministic_connectivity_replay_verified
+        ),
+        "deterministic_connectivity_instance_count": (
+            deterministic_connectivity_instance_count
+        ),
+        "patch_grade_replay_verified": patch_grade_replay_verified,
+        "replayed_patch_grade": replayed_patch_grade,
+        "replayed_patch_grade_fine_ids": replayed_patch_grade_fine_ids,
         "failure_codes": sorted(set(failures)),
     }
     return {
@@ -720,10 +763,34 @@ def _runtime_authority(
             )
         ),
     }
+    required_digest_fields = {
+        "mature_probnet_checkpoint_sha256": bool(
+            assets_by_id["mature_probnet_checkpoint"][
+                "required_for_preflight"
+            ]
+        ),
+        "frozen_spatial_ranker_sha256": bool(
+            assets_by_id["frozen_probnet_spatial_ranker_checkpoint"][
+                "required_for_preflight"
+            ]
+        ),
+        "instance_library_sha256": any(
+            assets_by_id[asset_id]["required_for_preflight"]
+            for asset_id in (
+                "glas_nucleus_instance_library",
+                "panda_nucleus_instance_library",
+            )
+        ),
+        "generator_checkpoint_sha256": bool(
+            assets_by_id["later_he_generator_checkpoint"][
+                "required_for_preflight"
+            ]
+        ),
+    }
     effective_missing_fields = [
         field
         for field, digest in effective_runtime_digests.items()
-        if not _is_sha256(digest)
+        if required_digest_fields[field] and not _is_sha256(digest)
     ]
     missing_selection_fields = [
         field for field in RUNTIME_DIGEST_FIELDS if not _is_sha256(selection_runtime.get(field))
@@ -736,6 +803,9 @@ def _runtime_authority(
         "selection_runtime_authority": dict(selection_runtime),
         "selection_runtime_digest_fields_missing": missing_selection_fields,
         "effective_runtime_digest_fields": effective_runtime_digests,
+        "required_runtime_digest_fields": sorted(
+            field for field, required in required_digest_fields.items() if required
+        ),
         "effective_runtime_digest_fields_missing": effective_missing_fields,
         "selection_runtime_binding_mismatches": sorted(selection_mismatches),
         "instance_library_set_sha256": library_set_digest,
@@ -835,6 +905,85 @@ def _source_authority(row: Mapping[str, Any]) -> dict[str, Any]:
     return {**payload, "source_authority_sha256": canonical_metadata_sha256(payload)}
 
 
+def _materialize_glas_gland_instance_authorities(
+    *,
+    glas_case_ids: tuple[str, ...],
+    source_rows: Mapping[str, Mapping[str, Any]],
+    source_authority_by_case: Mapping[str, Mapping[str, Any]],
+    output_dir: Path,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Derive missing GLaS instance authority before profile provenance replay."""
+
+    effective_rows = {
+        case_id: dict(row) for case_id, row in source_rows.items()
+    }
+    effective_authority = {
+        case_id: dict(authority)
+        for case_id, authority in source_authority_by_case.items()
+    }
+    for case_id in glas_case_ids:
+        row = effective_rows[case_id]
+        authority = effective_authority[case_id]
+        if authority["glas_gland_instance_annotation_validation"].get(
+            "authority_verified"
+        ):
+            continue
+        if not authority["source_tissue_mask"].get("authority_verified"):
+            continue
+        context = JointCaseContext(
+            case_id=case_id,
+            instruction="Materialize deterministic GLaS gland instances.",
+            source_image_uri=str(row["source_image"]),
+            source_tissue_mask_uri=str(row["source_tissue_mask"]),
+            source_nuclei_mask_uri=str(row["source_nuclei_mask"]),
+            pathology_domain_id="colorectal-adenocarcinoma-v1",
+            annotation_profile_id="glas-gland-v1",
+            cell_observation_profile_id="cellvit-five-class-v1",
+            cell_population_profile_id="colorectal-cellvit-source-first-v1",
+            primitive_id="neoplastic-cell-abundance-increase-v1",
+            joint_area_budget=None,
+            seed=int(row.get("organic_seed", 0)),
+            provenance={
+                "source_image_sha256": row.get("source_image_sha256"),
+                "source_tissue_mask_sha256": row.get(
+                    "source_tissue_mask_sha256"
+                ),
+                "source_nuclei_mask_sha256": row.get(
+                    "source_nuclei_mask_sha256"
+                ),
+            },
+        )
+        _, produced = materialize_profile_auxiliaries(
+            context,
+            source_tissue=load_id_mask(row["source_tissue_mask"]),
+            output_dir=output_dir / case_id,
+        )
+        gland_instance = next(
+            (
+                item
+                for item in produced
+                if item.structure_id == "native_gland_instance_map"
+            ),
+            None,
+        )
+        if gland_instance is None:
+            raise ValueError("GLaS gland instance materializer produced no map")
+        row.update(
+            {
+                "source_gland_instance_mask": gland_instance.path,
+                "source_gland_instance_mask_sha256": gland_instance.sha256,
+            }
+        )
+        refreshed = _source_authority(row)
+        validation = refreshed["glas_gland_instance_annotation_validation"]
+        if not validation.get("deterministic_connectivity_replay_verified"):
+            raise ValueError(
+                "GLaS gland instance materialization failed deterministic replay"
+            )
+        effective_authority[case_id] = refreshed
+    return effective_rows, effective_authority
+
+
 def _profile_required_provenance(
     *, repository: MaskSkillRepository,
     profile_id: str,
@@ -855,6 +1004,27 @@ def _profile_required_provenance(
         if supplied_mapping.get(field) not in (None, "")
     }
     invalid: dict[str, str] = {}
+    derived_fields: dict[str, Any] = {}
+    gland_validation = source_authority.get(
+        "glas_gland_instance_annotation_validation"
+    ) or {}
+    if profile_id == "glas-gland-v1":
+        gland_authority = source_authority.get(
+            "source_gland_instance_mask"
+        ) or {}
+        if gland_validation.get(
+            "deterministic_connectivity_replay_verified"
+        ):
+            derived_fields["original_instance_mask_digest"] = (
+                gland_authority.get("observed_file_sha256")
+            )
+        if gland_validation.get("patch_grade_replay_verified"):
+            derived_fields["patch_grade"] = gland_validation.get(
+                "replayed_patch_grade"
+            )
+        for field, value in derived_fields.items():
+            if field in required and field not in bound and value not in (None, ""):
+                bound[field] = value
     metadata: Mapping[str, Any] = {}
     metadata_authority = source_authority.get("source_profile_metadata") or {}
     if metadata_authority.get("authority_verified"):
@@ -886,23 +1056,51 @@ def _profile_required_provenance(
         gland_authority = source_authority.get(
             "source_gland_instance_mask"
         ) or {}
-        gland_validation = source_authority.get(
-            "glas_gland_instance_annotation_validation"
-        ) or {}
+        deterministic_instance_binding = bool(
+            gland_validation.get(
+                "deterministic_connectivity_replay_verified"
+            )
+            and bound.get("original_instance_mask_digest")
+            == gland_authority.get("observed_file_sha256")
+        )
+        metadata_instance_digest = metadata.get(
+            "original_instance_mask_digest"
+        )
         if "original_instance_mask_digest" in bound and (
             not gland_authority.get("authority_verified")
             or not gland_validation.get("authority_verified")
             or bound.get("original_instance_mask_digest")
             != gland_authority.get("observed_file_sha256")
-            or bound.get("original_instance_mask_digest")
-            != metadata.get("original_instance_mask_digest")
+            or (
+                metadata_instance_digest not in (None, "")
+                and bound.get("original_instance_mask_digest")
+                != metadata_instance_digest
+            )
+            or (
+                not deterministic_instance_binding
+                and bound.get("original_instance_mask_digest")
+                != metadata_instance_digest
+            )
         ):
             invalid["original_instance_mask_digest"] = (
                 "must_bind_live_native_gland_instance_annotation"
             )
+        deterministic_grade_binding = bool(
+            gland_validation.get("patch_grade_replay_verified")
+            and bound.get("patch_grade")
+            == gland_validation.get("replayed_patch_grade")
+        )
+        metadata_patch_grade = metadata.get("patch_grade")
         if "patch_grade" in bound and (
             bound.get("patch_grade") not in GLAS_PATCH_GRADE_VALUES
-            or bound.get("patch_grade") != metadata.get("patch_grade")
+            or (
+                metadata_patch_grade not in (None, "")
+                and bound.get("patch_grade") != metadata_patch_grade
+            )
+            or (
+                not deterministic_grade_binding
+                and bound.get("patch_grade") != metadata_patch_grade
+            )
         ):
             invalid["patch_grade"] = "must_bind_frozen_field_grade_metadata"
     elif profile_id == "panda-gleason-v1":
@@ -926,6 +1124,11 @@ def _profile_required_provenance(
     payload = {
         "required_fields": list(required),
         "bound_fields": bound,
+        "deterministically_derived_fields": {
+            field: value
+            for field, value in derived_fields.items()
+            if bound.get(field) == value
+        },
         "missing_fields": missing,
         "invalid_fields": invalid,
         "authority_verified": not missing and not invalid,
@@ -1483,6 +1686,8 @@ def _validate_live_compile_authority(
     ):
         raise ValueError("live compiler requires sealed verified runtime authority")
     for asset in runtime.get("external_assets", ()):
+        if asset.get("required_for_preflight") is not True:
+            continue
         path = Path(str(asset.get("canonical_path"))).resolve(strict=False)
         if (
             asset.get("verified") is not True
@@ -1798,15 +2003,29 @@ def build_artifacts(
 
     repository = MaskSkillRepository()
     joint_repository = JointSkillRepository()
-    source_authority_by_case = {
-        case_id: _source_authority(row)
-        for case_id, row in sorted(source_rows.items())
-    }
     profile_by_case = {
         (str(evaluation["annotation_profile_id"]), str(item["case_id"]))
         for evaluation in evaluations
         for item in evaluation["selected_cases"]
     }
+    source_authority_by_case = {
+        case_id: _source_authority(row)
+        for case_id, row in sorted(source_rows.items())
+    }
+    source_rows, source_authority_by_case = (
+        _materialize_glas_gland_instance_authorities(
+            glas_case_ids=tuple(
+                sorted(
+                    case_id
+                    for profile_id, case_id in profile_by_case
+                    if profile_id == "glas-gland-v1"
+                )
+            ),
+            source_rows=source_rows,
+            source_authority_by_case=source_authority_by_case,
+            output_dir=auxiliary_output_dir,
+        )
+    )
     profile_provenance_by_case = {
         (profile_id, case_id): _profile_required_provenance(
             repository=repository,

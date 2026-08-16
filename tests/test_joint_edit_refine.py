@@ -6518,7 +6518,7 @@ class JointWorkflowTests(unittest.TestCase):
                 result.abstain_reasons[0],
             )
 
-    def test_glas_periglandular_scatter_requires_native_gland_instance_authority(self):
+    def test_glas_periglandular_scatter_materializes_native_gland_instances(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = _write_synthetic_case(root)
@@ -6538,10 +6538,22 @@ class JointWorkflowTests(unittest.TestCase):
                 joint_planner=HeuristicJointPlanner(),
                 critic=_ApprovingJointCritic(),
             ).run(case, output_root=root / "cell-only")
-            self.assertEqual(result.status, "abstained")
-            self.assertIn(
-                "native_gland_instance_map",
-                result.abstain_reasons[0],
+            self.assertEqual(
+                result.status, "selected_research", result.abstain_reasons
+            )
+            producer_report = json.loads(
+                Path(
+                    result.artifact_paths["auxiliary_producer_report.json"]
+                ).read_text(encoding="utf-8")
+            )
+            instance_record = next(
+                item
+                for item in producer_report
+                if item["structure_id"] == "native_gland_instance_map"
+            )
+            self.assertEqual(instance_record["provenance"]["connectivity"], 8)
+            self.assertGreater(
+                instance_record["provenance"]["instance_count"], 0
             )
 
     def test_glas_periglandular_primitives_execute_from_native_instance_authority(self):
@@ -9284,8 +9296,17 @@ class StructuralHierarchyTests(unittest.TestCase):
             )
             self.assertEqual(
                 [item.structure_id for item in produced],
-                ["gland_or_lumen_support"],
+                ["gland_or_lumen_support", "native_gland_instance_map"],
             )
+            with Image.open(
+                effective.auxiliary_structure_uris[
+                    "native_gland_instance_map"
+                ]
+            ) as instance_image:
+                self.assertIn(instance_image.mode, {"I", "I;16"})
+                instance_map = np.asarray(instance_image)
+            self.assertEqual(set(np.unique(instance_map)), {0, 1})
+            np.testing.assert_array_equal(instance_map > 0, tissue == 12)
             producer = effective.provenance[
                 "auxiliary_structure_provenance"
             ]["gland_or_lumen_support"]
