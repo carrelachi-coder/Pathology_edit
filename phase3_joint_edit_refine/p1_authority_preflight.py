@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 from phase3_mask_edit_refine.evidence import load_id_mask, sha256_file
 from phase3_mask_edit_refine.gates import GateRegistry
@@ -76,6 +77,7 @@ GLAS_PATCH_GRADE_VALUES = frozenset(
         "poorly_differentiated",
     }
 )
+GLAS_GLAND_FINE_IDS = frozenset({5, 11, 12, 13})
 RUNTIME_DIGEST_FIELDS = (
     "mature_probnet_checkpoint_sha256",
     "frozen_spatial_ranker_sha256",
@@ -308,6 +310,148 @@ def _inspect_json_authority_asset(
     record["failure_codes"] = failures
     record["authority_verified"] = not failures
     return record
+
+
+def _glas_gland_instance_annotation_validation(
+    *,
+    gland_authority: Mapping[str, Any],
+    tissue_authority: Mapping[str, Any],
+    nuclei_authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a native GLaS gland-instance raster as a distinct typed asset.
+
+    A digest match only proves which bytes were read; it does not prove that a
+    nuclei or tissue raster was not registered under the gland-instance role.
+    This validator therefore rejects cross-role aliases and checks only
+    annotation-level facts that are deterministic from the two masks: shape,
+    positive instance IDs, one connected object per ID, and support within the
+    transformed GLaS gland fine labels.  It never consults H&E.
+    """
+
+    failures: list[str] = []
+    alias_roles: list[str] = []
+    for role, other in (
+        ("source_tissue_mask", tissue_authority),
+        ("source_nuclei_mask", nuclei_authority),
+    ):
+        aliases = []
+        for field in (
+            "canonical_path",
+            "observed_file_sha256",
+            "decoded_array_sha256",
+        ):
+            left = gland_authority.get(field)
+            right = other.get(field)
+            if left not in (None, "") and left == right:
+                aliases.append(field)
+        if aliases:
+            alias_roles.append(role)
+            failures.extend(
+                f"gland_instance_{field}_aliases_{role}" for field in aliases
+            )
+
+    shape_aligned = False
+    positive_instance_count = 0
+    positive_pixel_count = 0
+    disconnected_instance_ids: list[int] = []
+    outside_gland_support_px = 0
+    gland_support_coverage_fraction = 0.0
+    if not gland_authority.get("authority_verified"):
+        failures.append("gland_instance_asset_not_verified")
+    if not tissue_authority.get("authority_verified"):
+        failures.append("gland_instance_source_tissue_not_verified")
+    if gland_authority.get("authority_verified") and tissue_authority.get(
+        "authority_verified"
+    ):
+        try:
+            gland_path = Path(str(gland_authority["canonical_path"]))
+            tissue_path = Path(str(tissue_authority["canonical_path"]))
+            gland = load_id_mask(gland_path)
+            tissue = load_id_mask(tissue_path)
+            if sha256_file(gland_path) != gland_authority.get(
+                "observed_file_sha256"
+            ):
+                failures.append(
+                    "gland_instance_file_changed_during_validation"
+                )
+            if array_sha256(gland) != gland_authority.get(
+                "decoded_array_sha256"
+            ):
+                failures.append(
+                    "gland_instance_array_changed_during_validation"
+                )
+            if sha256_file(tissue_path) != tissue_authority.get(
+                "observed_file_sha256"
+            ):
+                failures.append(
+                    "gland_instance_source_tissue_changed_during_validation"
+                )
+            if array_sha256(tissue) != tissue_authority.get(
+                "decoded_array_sha256"
+            ):
+                failures.append(
+                    "gland_instance_source_tissue_array_changed_during_validation"
+                )
+            shape_aligned = gland.shape == tissue.shape
+            if not shape_aligned:
+                failures.append("gland_instance_shape_mismatch")
+            else:
+                if np.any(gland < 0):
+                    failures.append("gland_instance_negative_id")
+                positive = gland > 0
+                positive_pixel_count = int(np.count_nonzero(positive))
+                instance_ids = sorted(
+                    int(value) for value in np.unique(gland) if int(value) > 0
+                )
+                positive_instance_count = len(instance_ids)
+                if not instance_ids:
+                    failures.append("gland_instance_positive_ids_missing")
+                gland_support = np.isin(tissue, tuple(GLAS_GLAND_FINE_IDS))
+                outside_gland_support_px = int(
+                    np.count_nonzero(positive & ~gland_support)
+                )
+                if outside_gland_support_px:
+                    failures.append("gland_instance_outside_glas_gland_support")
+                support_pixels = int(np.count_nonzero(gland_support))
+                gland_support_coverage_fraction = float(
+                    np.count_nonzero(positive & gland_support)
+                ) / max(1, support_pixels)
+                if support_pixels < 1:
+                    failures.append("glas_gland_support_missing")
+                elif gland_support_coverage_fraction < 0.95:
+                    failures.append("gland_instance_support_coverage_below_0_95")
+                connectivity = np.ones((3, 3), dtype=np.uint8)
+                for instance_id in instance_ids:
+                    _, component_count = ndimage.label(
+                        gland == instance_id,
+                        structure=connectivity,
+                    )
+                    if int(component_count) != 1:
+                        disconnected_instance_ids.append(instance_id)
+                if disconnected_instance_ids:
+                    failures.append("gland_instance_id_is_disconnected")
+        except Exception as exc:  # noqa: BLE001 - auditable typed failure
+            failures.append(
+                f"gland_instance_annotation_decode_failed:{type(exc).__name__}"
+            )
+
+    payload = {
+        "validator_id": "glas-native-gland-instance-annotation-v1",
+        "observation_scope": "typed_source_masks_only_no_he",
+        "role_aliases": sorted(set(alias_roles)),
+        "shape_aligned_to_tissue": shape_aligned,
+        "positive_instance_count": positive_instance_count,
+        "positive_pixel_count": positive_pixel_count,
+        "disconnected_instance_ids": disconnected_instance_ids[:32],
+        "outside_gland_support_px": outside_gland_support_px,
+        "gland_support_coverage_fraction": gland_support_coverage_fraction,
+        "failure_codes": sorted(set(failures)),
+    }
+    return {
+        **payload,
+        "authority_verified": not failures,
+        "validation_sha256": canonical_metadata_sha256(payload),
+    }
 
 
 def _load_authority_inputs(
@@ -654,6 +798,11 @@ def _source_authority(row: Mapping[str, Any]) -> dict[str, Any]:
         declared_sha256=row.get("source_profile_metadata_sha256"),
         role="execution_profile_dataset_metadata_authority",
     )
+    gland_instance_validation = _glas_gland_instance_annotation_validation(
+        gland_authority=gland_instances,
+        tissue_authority=tissue,
+        nuclei_authority=nuclei,
+    )
     required = (image, tissue, nuclei)
     failure_codes = sorted(
         {
@@ -676,6 +825,9 @@ def _source_authority(row: Mapping[str, Any]) -> dict[str, Any]:
         "source_nuclei_instances": instances,
         "source_gland_instance_mask": gland_instances,
         "source_profile_metadata": profile_metadata,
+        "glas_gland_instance_annotation_validation": (
+            gland_instance_validation
+        ),
         "tissue_nuclei_shape_aligned": shape_aligned,
         "required_source_authority_verified": not failure_codes,
         "failure_codes": sorted(set(failure_codes)),
@@ -706,13 +858,26 @@ def _profile_required_provenance(
     metadata: Mapping[str, Any] = {}
     metadata_authority = source_authority.get("source_profile_metadata") or {}
     if metadata_authority.get("authority_verified"):
+        metadata_path = Path(str(metadata_authority["canonical_path"]))
         decoded = json.loads(
-            Path(str(metadata_authority["canonical_path"])).read_text(
-                encoding="utf-8"
-            )
+            metadata_path.read_text(encoding="utf-8")
         )
         if isinstance(decoded, Mapping):
-            metadata = decoded
+            if (
+                sha256_file(metadata_path)
+                == metadata_authority.get("observed_file_sha256")
+                and canonical_metadata_sha256(decoded)
+                == metadata_authority.get("decoded_record_sha256")
+            ):
+                metadata = decoded
+            else:
+                invalid["source_profile_metadata"] = (
+                    "live_metadata_record_changed_after_digest_verification"
+                )
+    else:
+        invalid["source_profile_metadata"] = (
+            "verified_profile_metadata_authority_required"
+        )
     if "preprocessing_revision" in bound and bound.get(
         "preprocessing_revision"
     ) != metadata.get("preprocessing_revision"):
@@ -721,8 +886,12 @@ def _profile_required_provenance(
         gland_authority = source_authority.get(
             "source_gland_instance_mask"
         ) or {}
+        gland_validation = source_authority.get(
+            "glas_gland_instance_annotation_validation"
+        ) or {}
         if "original_instance_mask_digest" in bound and (
             not gland_authority.get("authority_verified")
+            or not gland_validation.get("authority_verified")
             or bound.get("original_instance_mask_digest")
             != gland_authority.get("observed_file_sha256")
             or bound.get("original_instance_mask_digest")
@@ -754,7 +923,7 @@ def _profile_required_provenance(
                 "must_bind_live_source_tissue_label_map"
             )
     missing = sorted(set(required) - set(bound))
-    return {
+    payload = {
         "required_fields": list(required),
         "bound_fields": bound,
         "missing_fields": missing,
@@ -767,6 +936,12 @@ def _profile_required_provenance(
         "authority_erratum_entry_sha256": erratum_binding.get("entry_sha256"),
         "source_case_record_sha256": source_row.get("case_record_sha256"),
         "inferred_from_he_or_untyped_metadata": False,
+    }
+    return {
+        **payload,
+        "profile_provenance_authority_sha256": canonical_metadata_sha256(
+            payload
+        ),
     }
 
 
@@ -1057,10 +1232,34 @@ def _build_live_case(
     external_auxiliary_paths: Mapping[str, str],
     runtime_configuration: Mapping[str, Any],
     joint_repository: JointSkillRepository,
+    mask_repository: MaskSkillRepository | None = None,
 ) -> JointCaseContext:
     if profile_provenance.get("authority_verified") is not True:
         raise ValueError("live case requires verified profile provenance authority")
     profile_id = str(evaluation["annotation_profile_id"])
+    recomputed_profile_provenance = _profile_required_provenance(
+        repository=mask_repository or MaskSkillRepository(),
+        profile_id=profile_id,
+        erratum_binding={
+            "entry_sha256": profile_provenance.get(
+                "authority_erratum_entry_sha256"
+            ),
+            "profile_provenance": profile_provenance.get("bound_fields", {}),
+        },
+        source_row=source_row,
+        source_authority=source_authority,
+    )
+    if (
+        not recomputed_profile_provenance["authority_verified"]
+        or recomputed_profile_provenance[
+            "profile_provenance_authority_sha256"
+        ]
+        != profile_provenance.get("profile_provenance_authority_sha256")
+    ):
+        raise ValueError(
+            "live case profile provenance authority replay mismatch"
+        )
+    profile_provenance = recomputed_profile_provenance
     population_by_profile = {
         "glas-gland-v1": "colorectal-cellvit-source-first-v1",
         "panda-gleason-v1": "prostate-cellvit-source-first-v1",
@@ -1112,6 +1311,18 @@ def _build_live_case(
         "source_nuclei_mask_sha256": source_authority["source_nuclei_mask"][
             "observed_file_sha256"
         ],
+        "source_authority_sha256": source_authority[
+            "source_authority_sha256"
+        ],
+        "source_case_record_sha256": profile_provenance[
+            "source_case_record_sha256"
+        ],
+        "authority_erratum_entry_sha256": profile_provenance[
+            "authority_erratum_entry_sha256"
+        ],
+        "profile_provenance_authority_sha256": profile_provenance[
+            "profile_provenance_authority_sha256"
+        ],
         **dict(profile_provenance["bound_fields"]),
         "joint_mechanism_id": str(evaluation["mechanism_id"]),
         "joint_primitive_id": primitive_id,
@@ -1159,14 +1370,111 @@ def _build_live_case(
     return case
 
 
+def _source_row_for_live_replay(
+    source_authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reconstruct only the typed asset declarations needed for live replay."""
+
+    role_to_fields = {
+        "source_image": ("source_image", "source_image_sha256"),
+        "source_tissue_mask": (
+            "source_tissue_mask",
+            "source_tissue_mask_sha256",
+        ),
+        "source_nuclei_mask": (
+            "source_nuclei_mask",
+            "source_nuclei_mask_sha256",
+        ),
+        "source_nuclei_instances": (
+            "source_nuclei_instances",
+            "source_nuclei_instances_sha256",
+        ),
+        "source_gland_instance_mask": (
+            "source_gland_instance_mask",
+            "source_gland_instance_mask_sha256",
+        ),
+        "source_profile_metadata": (
+            "source_profile_metadata",
+            "source_profile_metadata_sha256",
+        ),
+    }
+    row: dict[str, Any] = {}
+    for role, (path_field, digest_field) in role_to_fields.items():
+        record = source_authority.get(role) or {}
+        row[path_field] = record.get("declared_path")
+        row[digest_field] = record.get("declared_file_sha256")
+    return row
+
+
 def _validate_live_compile_authority(
     *,
     case: JointCaseContext,
     source_authority: Mapping[str, Any],
     runtime: Mapping[str, Any],
-) -> None:
+    mask_repository: MaskSkillRepository,
+) -> Mapping[str, Any]:
     if not source_authority.get("required_source_authority_verified"):
         raise ValueError("live compiler requires verified source authority")
+    unsigned_source_authority = dict(source_authority)
+    declared_source_authority_sha = unsigned_source_authority.pop(
+        "source_authority_sha256", None
+    )
+    if (
+        declared_source_authority_sha
+        != canonical_metadata_sha256(unsigned_source_authority)
+        or declared_source_authority_sha
+        != case.provenance.get("source_authority_sha256")
+    ):
+        raise ValueError("live compiler source authority seal mismatch")
+    fresh_source_authority = _source_authority(
+        _source_row_for_live_replay(source_authority)
+    )
+    if (
+        not fresh_source_authority["required_source_authority_verified"]
+        or fresh_source_authority["source_authority_sha256"]
+        != declared_source_authority_sha
+    ):
+        raise ValueError("live compiler source authority replay mismatch")
+
+    package = mask_repository.get(
+        case.annotation_profile_id,
+        expected_kind="annotation_profile",
+    )
+    required_profile_fields = tuple(
+        str(value)
+        for value in package.capabilities.get(
+            "required_provenance_fields", ()
+        )
+    )
+    replayed_profile_provenance = _profile_required_provenance(
+        repository=mask_repository,
+        profile_id=case.annotation_profile_id,
+        erratum_binding={
+            "entry_sha256": case.provenance.get(
+                "authority_erratum_entry_sha256"
+            ),
+            "profile_provenance": {
+                field: case.provenance.get(field)
+                for field in required_profile_fields
+                if case.provenance.get(field) not in (None, "")
+            },
+        },
+        source_row={
+            "case_record_sha256": case.provenance.get(
+                "source_case_record_sha256"
+            )
+        },
+        source_authority=fresh_source_authority,
+    )
+    if (
+        not replayed_profile_provenance["authority_verified"]
+        or replayed_profile_provenance[
+            "profile_provenance_authority_sha256"
+        ]
+        != case.provenance.get("profile_provenance_authority_sha256")
+    ):
+        raise ValueError("live compiler profile provenance replay mismatch")
+
     unsigned_runtime = dict(runtime)
     declared_runtime_sha = unsigned_runtime.pop("runtime_authority_sha256", None)
     if (
@@ -1196,7 +1504,7 @@ def _validate_live_compile_authority(
         decoder="nuclei",
     )
     for role, fresh in (("source_tissue_mask", tissue), ("source_nuclei_mask", nuclei)):
-        supplied = source_authority.get(role) or {}
+        supplied = fresh_source_authority.get(role) or {}
         if (
             not fresh["authority_verified"]
             or fresh["observed_file_sha256"]
@@ -1228,6 +1536,7 @@ def _validate_live_compile_authority(
                 "live compiler auxiliary authority replay mismatch: "
                 + structure_id
             )
+    return fresh_source_authority
 
 
 def _compile_live_preflight(
@@ -1240,10 +1549,11 @@ def _compile_live_preflight(
     joint_repository: JointSkillRepository,
     skill_audit_sink: dict[str, Any] | None = None,
 ) -> tuple[JointCaseContext, dict[str, Any], dict[str, Any]]:
-    _validate_live_compile_authority(
+    live_source_authority = _validate_live_compile_authority(
         case=case,
         source_authority=source_authority,
         runtime=runtime,
+        mask_repository=mask_repository,
     )
     source_tissue = load_id_mask(case.source_tissue_mask_uri)
     source_nuclei = load_nuclei_mask(case.source_nuclei_mask_uri)
@@ -1279,10 +1589,10 @@ def _compile_live_preflight(
         "mask_bundle": None,
         "mask_bundle_sha256": None,
         "scene_graph_sha256": canonical_metadata_sha256(scene_metadata),
-        "source_tissue_array_sha256": source_authority["source_tissue_mask"][
+        "source_tissue_array_sha256": live_source_authority["source_tissue_mask"][
             "decoded_array_sha256"
         ],
-        "source_nuclei_array_sha256": source_authority["source_nuclei_mask"][
+        "source_nuclei_array_sha256": live_source_authority["source_nuclei_mask"][
             "decoded_array_sha256"
         ],
         "runtime_authority_sha256": runtime["runtime_authority_sha256"],
@@ -1673,6 +1983,7 @@ def build_artifacts(
                             "preflight_configuration"
                         ],
                         joint_repository=joint_repository,
+                        mask_repository=repository,
                     )
                     (
                         compiled_case,

@@ -127,6 +127,20 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         return row, tissue
 
     @staticmethod
+    def _bind_glas_metadata_to_instance_asset(
+        row: dict[str, object],
+        *,
+        instance_digest: str,
+    ) -> None:
+        metadata_path = Path(str(row["source_profile_metadata"]))
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["original_instance_mask_digest"] = instance_digest
+        metadata_path.write_text(
+            json.dumps(metadata, sort_keys=True), encoding="utf-8"
+        )
+        row["source_profile_metadata_sha256"] = sha256_file(metadata_path)
+
+    @staticmethod
     def _write_runtime_inputs(root: Path, *, budget_target: float = 0.08):
         root.mkdir(parents=True, exist_ok=True)
         assets = []
@@ -362,6 +376,53 @@ class P1AuthorityPreflightTests(unittest.TestCase):
             self.assertGreater(portfolio["survivor_count"], 0)
             self.assertFalse(portfolio["pixels_persisted"])
             self.assertFalse(portfolio["external_planner_called"])
+
+            metadata_path = Path(str(source_row["source_profile_metadata"]))
+            original_metadata = metadata_path.read_bytes()
+            metadata_path.write_text(
+                json.dumps(
+                    {
+                        "preprocessing_revision": "tampered-after-stage-01",
+                        "original_instance_mask_digest": source_row[
+                            "source_gland_instance_mask_sha256"
+                        ],
+                        "patch_grade": "moderately_differentiated",
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError, "source authority replay mismatch"
+            ):
+                _compile_live_preflight(
+                    case=case,
+                    mechanism_id=evaluation["mechanism_id"],
+                    source_authority=source_authority,
+                    runtime=runtime,
+                    mask_repository=MaskSkillRepository(),
+                    joint_repository=JointSkillRepository(),
+                )
+            metadata_path.write_bytes(original_metadata)
+
+            gland_path = Path(str(source_row["source_gland_instance_mask"]))
+            original_gland = gland_path.read_bytes()
+            Image.fromarray(np.zeros_like(load_id_mask(gland_path))).save(
+                gland_path
+            )
+            with self.assertRaisesRegex(
+                ValueError, "source authority replay mismatch"
+            ):
+                _compile_live_preflight(
+                    case=case,
+                    mechanism_id=evaluation["mechanism_id"],
+                    source_authority=source_authority,
+                    runtime=runtime,
+                    mask_repository=MaskSkillRepository(),
+                    joint_repository=JointSkillRepository(),
+                )
+            gland_path.write_bytes(original_gland)
+
             runtime_asset = Path(
                 runtime["external_assets"][0]["canonical_path"]
             )
@@ -899,6 +960,96 @@ class P1AuthorityPreflightTests(unittest.TestCase):
                 set(authority["invalid_fields"]),
                 {"original_instance_mask_digest", "patch_grade"},
             )
+
+    def test_glas_gland_instance_asset_cannot_alias_nuclei_or_tissue(self):
+        for source_role in ("source_nuclei_mask", "source_tissue_mask"):
+            with self.subTest(source_role=source_role), tempfile.TemporaryDirectory() as directory:
+                row, _ = self._write_live_assets(
+                    Path(directory), profile_id="glas-gland-v1"
+                )
+                digest_field = source_role + "_sha256"
+                row["source_gland_instance_mask"] = row[source_role]
+                row["source_gland_instance_mask_sha256"] = row[digest_field]
+                self._bind_glas_metadata_to_instance_asset(
+                    row,
+                    instance_digest=str(row[digest_field]),
+                )
+                source_authority = _source_authority(row)
+                validation = source_authority[
+                    "glas_gland_instance_annotation_validation"
+                ]
+                self.assertFalse(validation["authority_verified"])
+                self.assertIn(source_role, validation["role_aliases"])
+                authority = _profile_required_provenance(
+                    repository=MaskSkillRepository(),
+                    profile_id="glas-gland-v1",
+                    erratum_binding={
+                        "entry_sha256": "e" * 64,
+                        "profile_provenance": {
+                            "preprocessing_revision": (
+                                "synthetic-profile-authority-v1"
+                            ),
+                            "original_instance_mask_digest": row[
+                                digest_field
+                            ],
+                            "patch_grade": "moderately_differentiated",
+                        },
+                    },
+                    source_row=row,
+                    source_authority=source_authority,
+                )
+                self.assertFalse(authority["authority_verified"])
+                self.assertEqual(
+                    authority["invalid_fields"][
+                        "original_instance_mask_digest"
+                    ],
+                    "must_bind_live_native_gland_instance_annotation",
+                )
+
+    def test_glas_gland_instance_requires_shape_ids_topology_and_support(self):
+        mutations = {
+            "shape": (
+                lambda tissue: np.ones((64, 64), dtype=np.uint16),
+                "gland_instance_shape_mismatch",
+            ),
+            "positive_ids": (
+                lambda tissue: np.zeros_like(tissue, dtype=np.uint16),
+                "gland_instance_positive_ids_missing",
+            ),
+            "topology": (
+                lambda tissue: np.pad(
+                    np.ones((8, 8), dtype=np.uint16),
+                    ((70, tissue.shape[0] - 78), (70, tissue.shape[1] - 78)),
+                )
+                + np.pad(
+                    np.ones((8, 8), dtype=np.uint16),
+                    ((170, tissue.shape[0] - 178), (170, tissue.shape[1] - 178)),
+                ),
+                "gland_instance_id_is_disconnected",
+            ),
+            "support": (
+                lambda tissue: np.ones_like(tissue, dtype=np.uint16),
+                "gland_instance_outside_glas_gland_support",
+            ),
+        }
+        for name, (build_mask, expected_failure) in mutations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                row, tissue = self._write_live_assets(
+                    Path(directory), profile_id="glas-gland-v1"
+                )
+                gland_path = Path(str(row["source_gland_instance_mask"]))
+                Image.fromarray(build_mask(tissue)).save(gland_path)
+                gland_digest = sha256_file(gland_path)
+                row["source_gland_instance_mask_sha256"] = gland_digest
+                self._bind_glas_metadata_to_instance_asset(
+                    row,
+                    instance_digest=gland_digest,
+                )
+                validation = _source_authority(row)[
+                    "glas_gland_instance_annotation_validation"
+                ]
+                self.assertFalse(validation["authority_verified"])
+                self.assertIn(expected_failure, validation["failure_codes"])
 
     def test_changed_or_unlocked_frozen_binding_is_rejected(self):
         selection = json.loads(SELECTION.read_text(encoding="utf-8"))
