@@ -80,9 +80,33 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         image_path = root / "image.png"
         tissue_path = root / "tissue.png"
         nuclei_path = root / "nuclei.png"
+        gland_instance_path = root / "gland_instances.png"
+        profile_metadata_path = root / "profile_metadata.json"
         Image.fromarray(image).save(image_path)
         Image.fromarray(tissue).save(tissue_path)
         Image.fromarray(nuclei).save(nuclei_path)
+        gland_instances = np.zeros_like(tissue, dtype=np.uint16)
+        gland_instances[tumor] = 1
+        Image.fromarray(gland_instances).save(gland_instance_path)
+        tissue_sha = sha256_file(tissue_path)
+        gland_instance_sha = sha256_file(gland_instance_path)
+        profile_metadata = {
+            "preprocessing_revision": "synthetic-profile-authority-v1",
+            **(
+                {
+                    "original_instance_mask_digest": gland_instance_sha,
+                    "patch_grade": "moderately_differentiated",
+                }
+                if profile_id == "glas-gland-v1"
+                else {
+                    "original_label_map_digest": tissue_sha,
+                    "provider": "PANDA",
+                }
+            ),
+        }
+        profile_metadata_path.write_text(
+            json.dumps(profile_metadata, sort_keys=True), encoding="utf-8"
+        )
         row = {
             "case_id": "synthetic-live-" + profile_id,
             "case_record_sha256": "c" * 64,
@@ -90,14 +114,21 @@ class P1AuthorityPreflightTests(unittest.TestCase):
             "source_image": str(image_path),
             "source_image_sha256": sha256_file(image_path),
             "source_tissue_mask": str(tissue_path),
-            "source_tissue_mask_sha256": sha256_file(tissue_path),
+            "source_tissue_mask_sha256": tissue_sha,
             "source_nuclei_mask": str(nuclei_path),
             "source_nuclei_mask_sha256": sha256_file(nuclei_path),
+            "source_gland_instance_mask": str(gland_instance_path),
+            "source_gland_instance_mask_sha256": gland_instance_sha,
+            "source_profile_metadata": str(profile_metadata_path),
+            "source_profile_metadata_sha256": sha256_file(
+                profile_metadata_path
+            ),
         }
         return row, tissue
 
     @staticmethod
-    def _live_runtime(root: Path, *, budget_target: float = 0.08):
+    def _write_runtime_inputs(root: Path, *, budget_target: float = 0.08):
+        root.mkdir(parents=True, exist_ok=True)
         assets = []
         for asset_id in (
             "mature_probnet_checkpoint",
@@ -162,6 +193,13 @@ class P1AuthorityPreflightTests(unittest.TestCase):
                 "later_he_generator_checkpoint"
             ]["sha256"],
         }
+        return selection_runtime, runtime_input
+
+    @classmethod
+    def _live_runtime(cls, root: Path, *, budget_target: float = 0.08):
+        selection_runtime, runtime_input = cls._write_runtime_inputs(
+            root, budget_target=budget_target
+        )
         runtime = _runtime_authority(
             root=ROOT,
             selection_runtime=selection_runtime,
@@ -230,7 +268,7 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         )
         self.assertEqual(
             counts["bindings_missing_profile_provenance"],
-            {"before": 120, "after": 24},
+            {"before": 120, "after": 120},
         )
         self.assertEqual(
             counts["profile_owned_auxiliary_outputs_materialized"],
@@ -280,21 +318,30 @@ class P1AuthorityPreflightTests(unittest.TestCase):
                 "mechanism_id": "colorectal-local-population-modulation",
                 "instruction": "Increase neoplastic cells in the selected region.",
             }
+            profile_fields = {
+                "preprocessing_revision": "synthetic-profile-authority-v1",
+                "original_instance_mask_digest": source_row[
+                    "source_gland_instance_mask_sha256"
+                ],
+                "patch_grade": "moderately_differentiated",
+            }
+            profile_authority = _profile_required_provenance(
+                repository=MaskSkillRepository(),
+                profile_id="glas-gland-v1",
+                erratum_binding={
+                    "entry_sha256": "e" * 64,
+                    "profile_provenance": profile_fields,
+                },
+                source_row=source_row,
+                source_authority=source_authority,
+            )
+            self.assertTrue(profile_authority["authority_verified"])
             case = _build_live_case(
                 evaluation=evaluation,
                 selected_case={"case_id": source_row["case_id"], "seed": 17},
                 source_row=source_row,
                 source_authority=source_authority,
-                profile_provenance={
-                    "bound_fields": {
-                        "preprocessing_revision": "synthetic-glas-v1",
-                        "original_instance_mask_digest": source_row[
-                            "source_nuclei_mask_sha256"
-                        ],
-                        "patch_grade": "unknown_not_recorded",
-                    },
-                    "missing_fields": [],
-                },
+                profile_provenance=profile_authority,
                 profile_auxiliary_records=[],
                 profile_auxiliary_paths={},
                 external_auxiliary_records=[],
@@ -339,11 +386,11 @@ class P1AuthorityPreflightTests(unittest.TestCase):
             )
             source_authority = _source_authority(source_row)
             profile_fields = {
-                "preprocessing_revision": "synthetic-panda-v1",
+                "preprocessing_revision": "synthetic-profile-authority-v1",
                 "original_label_map_digest": source_row[
                     "source_tissue_mask_sha256"
                 ],
-                "provider": "synthetic-fixture",
+                "provider": "PANDA",
             }
             auxiliary_case = JointCaseContext(
                 case_id=source_row["case_id"],
@@ -392,15 +439,23 @@ class P1AuthorityPreflightTests(unittest.TestCase):
                 "mechanism_id": "prostate-pattern-4-growth",
                 "instruction": "Increase tumor burden.",
             }
+            profile_authority = _profile_required_provenance(
+                repository=MaskSkillRepository(),
+                profile_id="panda-gleason-v1",
+                erratum_binding={
+                    "entry_sha256": "e" * 64,
+                    "profile_provenance": profile_fields,
+                },
+                source_row=source_row,
+                source_authority=source_authority,
+            )
+            self.assertTrue(profile_authority["authority_verified"])
             case = _build_live_case(
                 evaluation=evaluation,
                 selected_case={"case_id": source_row["case_id"], "seed": 17},
                 source_row=source_row,
                 source_authority=source_authority,
-                profile_provenance={
-                    "bound_fields": profile_fields,
-                    "missing_fields": [],
-                },
+                profile_provenance=profile_authority,
                 profile_auxiliary_records=[profile_record],
                 profile_auxiliary_paths={native.structure_id: native.path},
                 external_auxiliary_records=[],
@@ -480,6 +535,260 @@ class P1AuthorityPreflightTests(unittest.TestCase):
             )
             self.assertTrue(records[0]["authority_verified"])
 
+    def test_full_build_reaches_real_glas_and_panda_compilers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = {}
+            for profile_id in ("glas-gland-v1", "panda-gleason-v1"):
+                profile_root = root / profile_id
+                profile_root.mkdir()
+                assets[profile_id] = self._write_live_assets(
+                    profile_root, profile_id=profile_id
+                )[0]
+
+            source_rows = []
+            rows_by_profile = {}
+            for profile_id, organ, dataset, prefix in (
+                ("glas-gland-v1", "colorectal", "GLAS", "glas"),
+                ("panda-gleason-v1", "prostate", "PANDA", "panda"),
+            ):
+                profile_rows = []
+                for index in range(5):
+                    base = assets[profile_id]
+                    row = {
+                        "auxiliary_structure_uris": {},
+                        "case_id": f"synthetic-{prefix}-{index + 1}",
+                        "dataset": dataset,
+                        "organ": organ,
+                        "organic_seed": 17 + index,
+                        "sample_id": f"synthetic-{prefix}-{index + 1}",
+                        **{
+                            field: base[field]
+                            for field in (
+                                "source_image",
+                                "source_image_sha256",
+                                "source_tissue_mask",
+                                "source_tissue_mask_sha256",
+                                "source_nuclei_mask",
+                                "source_nuclei_mask_sha256",
+                                "source_gland_instance_mask",
+                                "source_gland_instance_mask_sha256",
+                                "source_profile_metadata",
+                                "source_profile_metadata_sha256",
+                            )
+                        },
+                    }
+                    row["case_record_sha256"] = canonical_metadata_sha256(row)
+                    profile_rows.append(row)
+                    source_rows.append(row)
+                rows_by_profile[profile_id] = profile_rows
+
+            source_payload = {
+                "schema_version": "p1-glas-panda-source-case-pool-v1",
+                "cases": source_rows,
+            }
+            source_path = root / "source.json"
+            source_path.write_text(
+                json.dumps(source_payload, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            selection = json.loads(SELECTION.read_text(encoding="utf-8"))
+            selection_runtime, runtime_input = self._write_runtime_inputs(
+                root / "runtime"
+            )
+            selection["runtime_authority"].update(selection_runtime)
+            selection["runtime_authority"]["all_required_digests_bound"] = True
+            selection["source_manifest"] = "authority-input://source.json"
+            selection["source_manifest_sha256"] = sha256_file(source_path)
+            for evaluation in selection["evaluations"]:
+                profile_id = evaluation["annotation_profile_id"]
+                rewritten = []
+                for template, source_row in zip(
+                    evaluation["selected_cases"], rows_by_profile[profile_id]
+                ):
+                    item = dict(template)
+                    item.update(
+                        {
+                            "case_id": source_row["case_id"],
+                            "source_image": source_row["source_image"],
+                            "source_image_sha256": source_row[
+                                "source_image_sha256"
+                            ],
+                            "source_tissue_mask": source_row[
+                                "source_tissue_mask"
+                            ],
+                            "source_tissue_mask_sha256": source_row[
+                                "source_tissue_mask_sha256"
+                            ],
+                            "source_nuclei_mask": source_row[
+                                "source_nuclei_mask"
+                            ],
+                            "source_nuclei_mask_sha256": source_row[
+                                "source_nuclei_mask_sha256"
+                            ],
+                            "source_case_record_sha256": source_row[
+                                "case_record_sha256"
+                            ],
+                            "seed": source_row["organic_seed"],
+                            "available_auxiliary_structures": [],
+                            "missing_source_asset_digests": [],
+                            "execution_allowed": False,
+                            "fixed_case_no_replacement": True,
+                        }
+                    )
+                    rewritten.append(item)
+                evaluation["selected_cases"] = rewritten
+            selection_path = root / "selection.json"
+            selection_path.write_text(
+                json.dumps(selection, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            selection_sha = sha256_file(selection_path)
+
+            runtime_input.update(
+                {
+                    "schema_version": "p1-glas-panda-runtime-authority-v1",
+                    "production_status": "shadow_only",
+                    "selection_manifest_sha256": selection_sha,
+                }
+            )
+            runtime_path = root / "runtime.json"
+            runtime_path.write_text(
+                json.dumps(runtime_input, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            erratum_entries = []
+            for profile_id, profile_rows in rows_by_profile.items():
+                for index, source_row in enumerate(profile_rows):
+                    metadata = json.loads(
+                        Path(source_row["source_profile_metadata"]).read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                    erratum_entries.append(
+                        {
+                            "case_id": source_row["case_id"],
+                            "source_case_record_sha256": source_row[
+                                "case_record_sha256"
+                            ],
+                            "profile_provenance": metadata if index == 0 else {},
+                            "source_asset_authority": {},
+                        }
+                    )
+
+            roi = np.zeros((256, 256), dtype=np.uint8)
+            roi[35:220, 35:220] = 255
+            roi_path = root / "local_clearance_roi.png"
+            Image.fromarray(roi).save(roi_path)
+            roi_file_sha = sha256_file(roi_path)
+            roi_array_sha = array_sha256(load_id_mask(roi_path))
+            external_entries = []
+            first_by_profile = {
+                profile_id: rows[0]
+                for profile_id, rows in rows_by_profile.items()
+            }
+            for evaluation in selection["evaluations"]:
+                external_ids = set(
+                    evaluation.get("required_auxiliary_structures") or ()
+                ) & {"native_gland_instance_map", "local_clearance_roi"}
+                if not external_ids:
+                    continue
+                source_row = first_by_profile[
+                    evaluation["annotation_profile_id"]
+                ]
+                for structure_id in sorted(external_ids):
+                    if structure_id == "native_gland_instance_map":
+                        path = Path(source_row["source_gland_instance_mask"])
+                        file_sha = sha256_file(path)
+                        decoded_sha = array_sha256(load_id_mask(path))
+                        authority_type = "native_gland_instance_annotation"
+                    else:
+                        path = roi_path
+                        file_sha = roi_file_sha
+                        decoded_sha = roi_array_sha
+                        authority_type = "digest_bound_user_local_roi"
+                    external_entries.append(
+                        {
+                            "binding_id": (
+                                evaluation["evaluation_id"]
+                                + "::"
+                                + source_row["case_id"]
+                            ),
+                            "structure_id": structure_id,
+                            "path": str(path),
+                            "file_sha256": file_sha,
+                            "decoded_array_sha256": decoded_sha,
+                            "provenance": {
+                                "producer_id": "synthetic-typed-authority",
+                                "producer_version": "v1",
+                                "authority_type": authority_type,
+                                "source_tissue_mask_sha256": source_row[
+                                    "source_tissue_mask_sha256"
+                                ],
+                                "output_sha256": file_sha,
+                                "decoded_array_sha256": decoded_sha,
+                            },
+                        }
+                    )
+            erratum = {
+                "schema_version": "p1-glas-panda-authority-erratum-v1",
+                "production_status": "shadow_only",
+                "selection_manifest_sha256": selection_sha,
+                "source_manifest_sha256": sha256_file(source_path),
+                "source_case_authority": erratum_entries,
+                "external_auxiliary_authority": external_entries,
+            }
+            erratum_path = root / "erratum.json"
+            erratum_path.write_text(
+                json.dumps(erratum, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            artifacts = build_artifacts(
+                root=ROOT,
+                selection_path=selection_path,
+                source_manifest_path=source_path,
+                code_commit=CODE_COMMIT,
+                authority_erratum_path=erratum_path,
+                runtime_authority_path=runtime_path,
+                auxiliary_output_dir=root / "profile-auxiliary",
+            )
+            authority = [
+                json.loads(line)
+                for line in artifacts[OUTPUT_FILENAMES["authority"]].splitlines()
+            ]
+            preflight = [
+                json.loads(line)
+                for line in artifacts[OUTPUT_FILENAMES["preflight"]].splitlines()
+            ]
+            by_id = {item["binding_id"]: item for item in preflight}
+            glas_live = [
+                item
+                for item in authority
+                if item["annotation_profile_id"] == "glas-gland-v1"
+                and item["case_id"] == "synthetic-glas-1"
+                and by_id[item["binding_id"]]["candidate_portfolio"]["status"]
+                == "compiled"
+            ]
+            panda_live = [
+                item
+                for item in authority
+                if item["annotation_profile_id"] == "panda-gleason-v1"
+                and item["case_id"] == "synthetic-panda-1"
+                and by_id[item["binding_id"]]["candidate_portfolio"]["status"]
+                == "compiled"
+            ]
+            self.assertTrue(glas_live)
+            self.assertTrue(panda_live)
+            self.assertTrue(
+                all(
+                    item["required_profile_provenance"]["authority_verified"]
+                    for item in (*glas_live, *panda_live)
+                )
+            )
+
     def test_source_erratum_cannot_contradict_frozen_case_record(self):
         row = json.loads(SOURCE.read_text(encoding="utf-8"))["cases"][0]
         with self.assertRaisesRegex(ValueError, "contradicts frozen digest"):
@@ -499,26 +808,32 @@ class P1AuthorityPreflightTests(unittest.TestCase):
             )
 
     def test_profile_provenance_is_bound_to_source_mask_digest(self):
-        row = json.loads(SOURCE.read_text(encoding="utf-8"))["cases"][5]
-        binding = {
-            "entry_sha256": "e" * 64,
-            "profile_provenance": {
-                "provider": "PANDA",
-                "preprocessing_revision": "g2-v2-frozen-source-assets-v1",
-                "original_label_map_digest": "f" * 64,
-            },
-        }
-        authority = _profile_required_provenance(
-            repository=MaskSkillRepository(),
-            profile_id="panda-gleason-v1",
-            erratum_binding=binding,
-            source_row=row,
-        )
-        self.assertFalse(authority["authority_verified"])
-        self.assertEqual(
-            authority["invalid_fields"]["original_label_map_digest"],
-            "must_equal_frozen_source_tissue_mask_digest",
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            row, _ = self._write_live_assets(
+                Path(directory), profile_id="panda-gleason-v1"
+            )
+            binding = {
+                "entry_sha256": "e" * 64,
+                "profile_provenance": {
+                    "provider": "PANDA",
+                    "preprocessing_revision": (
+                        "synthetic-profile-authority-v1"
+                    ),
+                    "original_label_map_digest": "f" * 64,
+                },
+            }
+            authority = _profile_required_provenance(
+                repository=MaskSkillRepository(),
+                profile_id="panda-gleason-v1",
+                erratum_binding=binding,
+                source_row=row,
+                source_authority=_source_authority(row),
+            )
+            self.assertFalse(authority["authority_verified"])
+            self.assertEqual(
+                authority["invalid_fields"]["original_label_map_digest"],
+                "must_bind_live_source_tissue_label_map",
+            )
 
     def test_runtime_authority_rejects_incomplete_asset_catalog(self):
         with self.assertRaisesRegex(ValueError, "exact asset catalog"):
@@ -554,6 +869,35 @@ class P1AuthorityPreflightTests(unittest.TestCase):
                 },
                 runtime_input_sha256="d" * 64,
                 code_commit=CODE_COMMIT,
+            )
+
+    def test_glas_nuclei_digest_and_unknown_grade_cannot_fill_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            row, _ = self._write_live_assets(
+                Path(directory), profile_id="glas-gland-v1"
+            )
+            authority = _profile_required_provenance(
+                repository=MaskSkillRepository(),
+                profile_id="glas-gland-v1",
+                erratum_binding={
+                    "entry_sha256": "e" * 64,
+                    "profile_provenance": {
+                        "preprocessing_revision": (
+                            "synthetic-profile-authority-v1"
+                        ),
+                        "original_instance_mask_digest": row[
+                            "source_nuclei_mask_sha256"
+                        ],
+                        "patch_grade": "unknown_not_recorded",
+                    },
+                },
+                source_row=row,
+                source_authority=_source_authority(row),
+            )
+            self.assertFalse(authority["authority_verified"])
+            self.assertEqual(
+                set(authority["invalid_fields"]),
+                {"original_instance_mask_digest", "patch_grade"},
             )
 
     def test_changed_or_unlocked_frozen_binding_is_rejected(self):

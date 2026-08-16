@@ -67,6 +67,15 @@ PROFILE_OWNED_AUXILIARY_STRUCTURES = {
 EXTERNAL_ONLY_AUXILIARY_STRUCTURES = frozenset(
     {"native_gland_instance_map", "local_clearance_roi"}
 )
+GLAS_PATCH_GRADE_VALUES = frozenset(
+    {
+        "benign",
+        "malignant",
+        "well_differentiated",
+        "moderately_differentiated",
+        "poorly_differentiated",
+    }
+)
 RUNTIME_DIGEST_FIELDS = (
     "mature_probnet_checkpoint_sha256",
     "frozen_spatial_ranker_sha256",
@@ -137,6 +146,14 @@ def _resolved_path(uri: Any) -> str | None:
     if not isinstance(uri, str) or not uri.strip() or "://" in uri:
         return None
     return str(Path(uri).expanduser().resolve(strict=False))
+
+
+def _portable_input_path(path: Path, *, root: Path) -> str:
+    resolved = path.resolve(strict=False)
+    root_resolved = root.resolve(strict=False)
+    if resolved.is_relative_to(root_resolved):
+        return str(resolved.relative_to(root_resolved))
+    return "authority-input://" + path.name
 
 
 def _inspect_raster_asset(
@@ -244,6 +261,55 @@ def _inspect_instance_asset(*, uri: Any, declared_sha256: Any) -> dict[str, Any]
     return record
 
 
+def _inspect_json_authority_asset(
+    *, uri: Any, declared_sha256: Any, role: str
+) -> dict[str, Any]:
+    canonical_path = _resolved_path(uri)
+    record = {
+        "role": role,
+        "declared_path": str(uri) if isinstance(uri, str) and uri else None,
+        "canonical_path": canonical_path,
+        "declared_file_sha256": (
+            str(declared_sha256) if _is_sha256(declared_sha256) else None
+        ),
+        "observed_file_sha256": None,
+        "decoded_record_sha256": None,
+        "available": False,
+        "authority_verified": False,
+        "required_for_all_primitives": False,
+        "failure_codes": [],
+    }
+    if uri is None and declared_sha256 is None:
+        return {**record, "failure_codes": ["profile_metadata_asset_not_declared"]}
+    failures: list[str] = []
+    if canonical_path is None or not Path(canonical_path).is_file():
+        failures.append("profile_metadata_asset_unavailable")
+    elif not _is_sha256(declared_sha256):
+        failures.append("profile_metadata_digest_not_frozen")
+    else:
+        path = Path(canonical_path)
+        observed = sha256_file(path)
+        record["available"] = True
+        record["observed_file_sha256"] = observed
+        if observed != declared_sha256:
+            failures.append("profile_metadata_digest_mismatch")
+        else:
+            try:
+                decoded = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(decoded, Mapping):
+                    raise TypeError("profile metadata must be an object")
+                record["decoded_record_sha256"] = canonical_metadata_sha256(
+                    decoded
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                failures.append(
+                    f"profile_metadata_decode_failed:{type(exc).__name__}"
+                )
+    record["failure_codes"] = failures
+    record["authority_verified"] = not failures
+    return record
+
+
 def _load_authority_inputs(
     *,
     erratum_path: Path,
@@ -313,6 +379,8 @@ def _effective_source_row(
         "source_tissue_mask": "source_tissue_mask_sha256",
         "source_nuclei_mask": "source_nuclei_mask_sha256",
         "source_nuclei_instances": "source_nuclei_instances_sha256",
+        "source_gland_instance_mask": "source_gland_instance_mask_sha256",
+        "source_profile_metadata": "source_profile_metadata_sha256",
     }
     if set(supplements) - set(allowed):
         raise ValueError("P1 source authority supplement names an unknown asset role")
@@ -575,6 +643,17 @@ def _source_authority(row: Mapping[str, Any]) -> dict[str, Any]:
         uri=instance_uri,
         declared_sha256=row.get("source_nuclei_instances_sha256"),
     )
+    gland_instances = _inspect_raster_asset(
+        uri=row.get("source_gland_instance_mask"),
+        declared_sha256=row.get("source_gland_instance_mask_sha256"),
+        role="execution_optional_native_gland_instance_authority",
+        decoder="tissue",
+    )
+    profile_metadata = _inspect_json_authority_asset(
+        uri=row.get("source_profile_metadata"),
+        declared_sha256=row.get("source_profile_metadata_sha256"),
+        role="execution_profile_dataset_metadata_authority",
+    )
     required = (image, tissue, nuclei)
     failure_codes = sorted(
         {
@@ -595,6 +674,8 @@ def _source_authority(row: Mapping[str, Any]) -> dict[str, Any]:
         "source_tissue_mask": tissue,
         "source_nuclei_mask": nuclei,
         "source_nuclei_instances": instances,
+        "source_gland_instance_mask": gland_instances,
+        "source_profile_metadata": profile_metadata,
         "tissue_nuclei_shape_aligned": shape_aligned,
         "required_source_authority_verified": not failure_codes,
         "failure_codes": sorted(set(failure_codes)),
@@ -607,6 +688,7 @@ def _profile_required_provenance(
     profile_id: str,
     erratum_binding: Mapping[str, Any],
     source_row: Mapping[str, Any],
+    source_authority: Mapping[str, Any],
 ) -> dict[str, Any]:
     package = repository.get(profile_id, expected_kind="annotation_profile")
     required = tuple(
@@ -621,25 +703,55 @@ def _profile_required_provenance(
         if supplied_mapping.get(field) not in (None, "")
     }
     invalid: dict[str, str] = {}
-    if bound.get("preprocessing_revision") != "g2-v2-frozen-source-assets-v1":
-        invalid["preprocessing_revision"] = "unsupported_or_unbound_revision"
+    metadata: Mapping[str, Any] = {}
+    metadata_authority = source_authority.get("source_profile_metadata") or {}
+    if metadata_authority.get("authority_verified"):
+        decoded = json.loads(
+            Path(str(metadata_authority["canonical_path"])).read_text(
+                encoding="utf-8"
+            )
+        )
+        if isinstance(decoded, Mapping):
+            metadata = decoded
+    if "preprocessing_revision" in bound and bound.get(
+        "preprocessing_revision"
+    ) != metadata.get("preprocessing_revision"):
+        invalid["preprocessing_revision"] = "dataset_metadata_binding_mismatch"
     if profile_id == "glas-gland-v1":
-        if bound.get("original_instance_mask_digest") != source_row.get(
-            "source_nuclei_mask_sha256"
+        gland_authority = source_authority.get(
+            "source_gland_instance_mask"
+        ) or {}
+        if "original_instance_mask_digest" in bound and (
+            not gland_authority.get("authority_verified")
+            or bound.get("original_instance_mask_digest")
+            != gland_authority.get("observed_file_sha256")
+            or bound.get("original_instance_mask_digest")
+            != metadata.get("original_instance_mask_digest")
         ):
             invalid["original_instance_mask_digest"] = (
-                "must_equal_frozen_source_nuclei_mask_digest"
+                "must_bind_live_native_gland_instance_annotation"
             )
-        if bound.get("patch_grade") != "unknown_not_recorded":
-            invalid["patch_grade"] = "unverified_grade_claim"
+        if "patch_grade" in bound and (
+            bound.get("patch_grade") not in GLAS_PATCH_GRADE_VALUES
+            or bound.get("patch_grade") != metadata.get("patch_grade")
+        ):
+            invalid["patch_grade"] = "must_bind_frozen_field_grade_metadata"
     elif profile_id == "panda-gleason-v1":
-        if bound.get("provider") != "PANDA":
+        if "provider" in bound and (
+            bound.get("provider") != "PANDA"
+            or bound.get("provider") != metadata.get("provider")
+        ):
             invalid["provider"] = "unsupported_provider_contract"
-        if bound.get("original_label_map_digest") != source_row.get(
-            "source_tissue_mask_sha256"
+        if "original_label_map_digest" in bound and (
+            bound.get("original_label_map_digest")
+            != source_authority.get("source_tissue_mask", {}).get(
+                "observed_file_sha256"
+            )
+            or bound.get("original_label_map_digest")
+            != metadata.get("original_label_map_digest")
         ):
             invalid["original_label_map_digest"] = (
-                "must_equal_frozen_source_tissue_mask_digest"
+                "must_bind_live_source_tissue_label_map"
             )
     missing = sorted(set(required) - set(bound))
     return {
@@ -649,7 +761,11 @@ def _profile_required_provenance(
         "invalid_fields": invalid,
         "authority_verified": not missing and not invalid,
         "provenance_source": "digest_bound_authority_erratum",
+        "source_profile_metadata_authority_sha256": canonical_metadata_sha256(
+            metadata_authority
+        ),
         "authority_erratum_entry_sha256": erratum_binding.get("entry_sha256"),
+        "source_case_record_sha256": source_row.get("case_record_sha256"),
         "inferred_from_he_or_untyped_metadata": False,
     }
 
@@ -942,6 +1058,8 @@ def _build_live_case(
     runtime_configuration: Mapping[str, Any],
     joint_repository: JointSkillRepository,
 ) -> JointCaseContext:
+    if profile_provenance.get("authority_verified") is not True:
+        raise ValueError("live case requires verified profile provenance authority")
     profile_id = str(evaluation["annotation_profile_id"])
     population_by_profile = {
         "glas-gland-v1": "colorectal-cellvit-source-first-v1",
@@ -1385,6 +1503,7 @@ def build_artifacts(
             profile_id=profile_id,
             erratum_binding=source_erratum_by_case[case_id],
             source_row=source_rows[case_id],
+            source_authority=source_authority_by_case[case_id],
         )
         for profile_id, case_id in sorted(profile_by_case)
     }
@@ -1882,15 +2001,19 @@ def build_artifacts(
         "production_status": "shadow_only",
         "execution_status": "blocked_pending_authority_and_surviving_certificates",
         "authority_materializer_code_commit": code_commit,
-        "selection_manifest": str(selection_path.relative_to(root)),
+        "selection_manifest": _portable_input_path(selection_path, root=root),
         "selection_manifest_sha256": selection_sha,
-        "source_manifest": str(source_manifest_path.relative_to(root)),
+        "source_manifest": _portable_input_path(
+            source_manifest_path, root=root
+        ),
         "source_manifest_sha256": source_sha,
-        "authority_erratum_manifest": str(
-            authority_erratum_path.relative_to(root)
+        "authority_erratum_manifest": _portable_input_path(
+            authority_erratum_path, root=root
         ),
         "authority_erratum_manifest_sha256": authority_erratum_sha,
-        "runtime_input_manifest": str(runtime_authority_path.relative_to(root)),
+        "runtime_input_manifest": _portable_input_path(
+            runtime_authority_path, root=root
+        ),
         "runtime_input_manifest_sha256": runtime_input_sha,
         "frozen_binding_count": 120,
         "evaluation_count": 24,
