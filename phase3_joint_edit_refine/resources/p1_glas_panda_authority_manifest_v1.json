@@ -2,11 +2,13 @@
   "all_candidate_portfolios_compiled": false,
   "all_required_authority_bound": false,
   "api_used": false,
-  "authority_materializer_code_commit": "df36bbc4667ee2bc58c9462afb311e1352d1ecb4",
+  "authority_erratum_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_authority_erratum_v1.json",
+  "authority_erratum_manifest_sha256": "e51ead01eb55819686b5b173aadde3df57bf40ce19ba7b07752bfa4cb57a4419",
+  "authority_materializer_code_commit": "9be1bb7e2184141a40758c6f91e67cfd85e92014",
   "authority_records": "p1_glas_panda_authority_records_v1.jsonl",
-  "authority_records_sha256": "440cc1b6e095a23c2736a6d98ae130fd00cb1dbeb63091139bddfa403a5d5da7",
+  "authority_records_sha256": "bf24815d30f43cbaa6d021d0aac47bb0a12bde6858a1ccef1c77e3027f3ed865",
   "auxiliary_materialization_manifest": "p1_glas_panda_auxiliary_materialization_v1.json",
-  "auxiliary_materialization_manifest_sha256": "1721fad3fde0522097cce405c14fb459aa58f6239eaf3e9560247ae85e283eec",
+  "auxiliary_materialization_manifest_sha256": "1b6b632d1f2584d5aa2a138f935ad8164e47d1af66f5408acc1128ab969cb79e",
   "before_after_counts": {
     "binding_external_auxiliary_missing": {
       "after": 15,
@@ -15,6 +17,10 @@
     "binding_local_clearance_roi_missing": {
       "after": 5,
       "before": 5
+    },
+    "bindings_missing_profile_provenance": {
+      "after": 24,
+      "before": 120
     },
     "bindings_with_missing_source_digest": {
       "after": 40,
@@ -34,7 +40,7 @@
     }
   },
   "candidate_preflight_records": "p1_glas_panda_candidate_preflight_v1.jsonl",
-  "candidate_preflight_records_sha256": "e6b14044637d19ca07f57f8bbeaf91162d1e763a283d6b9146b1c388b047da46",
+  "candidate_preflight_records_sha256": "d8092e751061f1bcedefae59e1da1ca30f556e4f435c728b3a3a9a85ab9d1c36",
   "eligible_for_later_visualization_count": 0,
   "evaluation_count": 24,
   "execution_status": "blocked_pending_authority_and_surviving_certificates",
@@ -44,14 +50,14 @@
   "frozen_case_replacement_allowed": false,
   "frozen_cases_changed": false,
   "full_case_status_table": "p1_glas_panda_preflight_status_v1.tsv",
-  "full_case_status_table_sha256": "05dc692b2ec6ef778aff556ee46ff1673eb748ccf30c5efc7e0e3a1573ca1239",
+  "full_case_status_table_sha256": "23b4ec20fbf7167ebc3e176d139a3549e5250b2de9f2eca29727df48a993ecab",
   "generated_he_run": false,
-  "manifest_content_sha256": "064181fb2d427106a8d130d0e3873fb5e1b3b1090c8d30feaafb3ae2aaa6c8de",
+  "manifest_content_sha256": "53018f379a45e7853c78b8be7d5e7f11331fec785cc1460269c2f99ec3ae840d",
   "planner_called": false,
   "production_status": "shadow_only",
   "runtime_authority": {
     "all_required_runtime_assets_verified": false,
-    "authority_materializer_code_commit": "df36bbc4667ee2bc58c9462afb311e1352d1ecb4",
+    "authority_materializer_code_commit": "9be1bb7e2184141a40758c6f91e67cfd85e92014",
     "code_assets": [
       {
         "file_sha256": "250b54fe9cbc9fc8ff8423c482e67d9d5f49f953c06349f008f478f44ee5f8fa",
@@ -94,52 +100,113 @@
         "path": "inpaint_cells/nuclei_library/library.py"
       }
     ],
+    "effective_runtime_digest_fields": {
+      "frozen_spatial_ranker_sha256": null,
+      "generator_checkpoint_sha256": null,
+      "instance_library_sha256": null,
+      "mature_probnet_checkpoint_sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8"
+    },
+    "effective_runtime_digest_fields_missing": [
+      "frozen_spatial_ranker_sha256",
+      "instance_library_sha256",
+      "generator_checkpoint_sha256"
+    ],
     "external_assets": [
       {
         "asset_id": "mature_probnet_checkpoint",
+        "asset_kind": "file",
         "canonical_path": null,
+        "declared_path": null,
         "declared_sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8",
-        "failure_code": "runtime_asset_path_unbound",
+        "failure_codes": [
+          "runtime_asset_path_unbound"
+        ],
         "observed_sha256": null,
+        "reader_side_only": false,
+        "required_for_preflight": true,
+        "used_during_this_stage": false,
         "verified": false
       },
       {
         "asset_id": "frozen_probnet_spatial_ranker_checkpoint",
+        "asset_kind": "file",
         "canonical_path": null,
+        "declared_path": null,
         "declared_sha256": null,
-        "failure_code": "runtime_asset_digest_and_path_unbound",
+        "failure_codes": [
+          "runtime_asset_path_unbound"
+        ],
         "observed_sha256": null,
+        "reader_side_only": false,
+        "required_for_preflight": true,
+        "used_during_this_stage": false,
         "verified": false
       },
       {
         "asset_id": "glas_nucleus_instance_library",
+        "asset_kind": "file_or_directory",
         "canonical_path": null,
+        "declared_path": null,
         "declared_sha256": null,
-        "failure_code": "runtime_asset_digest_and_path_unbound",
+        "failure_codes": [
+          "runtime_asset_path_unbound"
+        ],
         "observed_sha256": null,
+        "reader_side_only": false,
+        "required_for_preflight": true,
+        "used_during_this_stage": false,
         "verified": false
       },
       {
         "asset_id": "panda_nucleus_instance_library",
+        "asset_kind": "file_or_directory",
         "canonical_path": null,
+        "declared_path": null,
         "declared_sha256": null,
-        "failure_code": "runtime_asset_digest_and_path_unbound",
+        "failure_codes": [
+          "runtime_asset_path_unbound"
+        ],
         "observed_sha256": null,
+        "reader_side_only": false,
+        "required_for_preflight": true,
+        "used_during_this_stage": false,
         "verified": false
       },
       {
         "asset_id": "later_he_generator_checkpoint",
+        "asset_kind": "file",
         "canonical_path": null,
+        "declared_path": null,
         "declared_sha256": null,
-        "failure_code": "runtime_asset_digest_and_path_unbound",
+        "failure_codes": [
+          "runtime_asset_path_unbound"
+        ],
         "observed_sha256": null,
         "reader_side_only": true,
+        "required_for_preflight": true,
         "used_during_this_stage": false,
         "verified": false
       }
     ],
-    "runtime_authority_sha256": "93635c3a4bbeac380170d7419ad6fdf73c1162601330448c6e5a4c690b2bd37b",
+    "instance_library_set_sha256": null,
+    "preflight_configuration": {
+      "cell_budget_policy_id": "scene-calibrated-local-population-budget-v1",
+      "joint_area_budget": {
+        "basis": "whole_patch",
+        "capacity_floor_policy": "lower_to_proven_max_safe",
+        "fallback_policy": "max_feasible_below_target",
+        "max_fraction": 0.24,
+        "min_fraction": 0.14,
+        "minimum_effective_fraction": 0.14,
+        "relative_tolerance": 0.02,
+        "target_fraction": 0.19,
+        "tissue_min_fraction": 0.14
+      },
+      "maximum_tissue_candidates": 4
+    },
+    "runtime_authority_sha256": "ab77554b902239a7f4577ccf43305a1ce1f26dd451b8f8c9e22e86cc053f5faf",
     "runtime_code_set_sha256": "5d1d0f6e82d26a14ed386586a2fa7875fb348ea092f3f8951d34dfeac53bf417",
+    "runtime_input_manifest_sha256": "0e391ece64bc9b61ac0b2e7559ab49819fb1b84071be2f893f49632e4d30df13",
     "schema_version": "p1-runtime-authority-materialization-v1",
     "selection_runtime_authority": {
       "all_required_digests_bound": false,
@@ -149,6 +216,7 @@
       "mature_probnet_checkpoint_sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8",
       "selection_generator_sha256": "77e1553d587f344871a50fd7d9c39e670cb687bcca5d7076999dfbae372ff418"
     },
+    "selection_runtime_binding_mismatches": [],
     "selection_runtime_digest_fields_missing": [
       "frozen_spatial_ranker_sha256",
       "instance_library_sha256",
@@ -162,6 +230,8 @@
       "later_he_generator_checkpoint"
     ]
   },
+  "runtime_input_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_runtime_authority_v1.json",
+  "runtime_input_manifest_sha256": "0e391ece64bc9b61ac0b2e7559ab49819fb1b84071be2f893f49632e4d30df13",
   "schema_version": "p1-glas-panda-authority-manifest-v1",
   "selection_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_meta_eval_selection_v1.json",
   "selection_manifest_sha256": "df4cbf3d1af5ba407a260ea2f490ca2b26aafb14f171a83d516836b280978d59",
