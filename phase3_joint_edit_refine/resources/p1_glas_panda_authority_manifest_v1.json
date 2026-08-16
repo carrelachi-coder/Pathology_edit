@@ -3,10 +3,10 @@
   "all_required_authority_bound": false,
   "api_used": false,
   "authority_erratum_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_authority_erratum_v1.json",
-  "authority_erratum_manifest_sha256": "e51ead01eb55819686b5b173aadde3df57bf40ce19ba7b07752bfa4cb57a4419",
-  "authority_materializer_code_commit": "9be1bb7e2184141a40758c6f91e67cfd85e92014",
+  "authority_erratum_manifest_sha256": "1d20c0e49ae36cc82a8d3808a46ad5d88ae0d28e1f2e4ac0f50ded8359f2b9c8",
+  "authority_materializer_code_commit": "9c1b4c9ad23a4e3d1f162bea2d2cc7c6199a0d58",
   "authority_records": "p1_glas_panda_authority_records_v1.jsonl",
-  "authority_records_sha256": "bf24815d30f43cbaa6d021d0aac47bb0a12bde6858a1ccef1c77e3027f3ed865",
+  "authority_records_sha256": "91431dad35dd35d7b405a20679624938504769055f4f14dc16b13dd5c0bda7f8",
   "auxiliary_materialization_manifest": "p1_glas_panda_auxiliary_materialization_v1.json",
   "auxiliary_materialization_manifest_sha256": "1b6b632d1f2584d5aa2a138f935ad8164e47d1af66f5408acc1128ab969cb79e",
   "before_after_counts": {
@@ -19,7 +19,7 @@
       "before": 5
     },
     "bindings_missing_profile_provenance": {
-      "after": 24,
+      "after": 120,
       "before": 120
     },
     "bindings_with_missing_source_digest": {
@@ -40,7 +40,7 @@
     }
   },
   "candidate_preflight_records": "p1_glas_panda_candidate_preflight_v1.jsonl",
-  "candidate_preflight_records_sha256": "d8092e751061f1bcedefae59e1da1ca30f556e4f435c728b3a3a9a85ab9d1c36",
+  "candidate_preflight_records_sha256": "52bc50c30f48c7cefe0b709a3fb0d23b5cb27fd4e19e8adedab146c3683a67f6",
   "eligible_for_later_visualization_count": 0,
   "evaluation_count": 24,
   "execution_status": "blocked_pending_authority_and_surviving_certificates",
@@ -52,12 +52,12 @@
   "full_case_status_table": "p1_glas_panda_preflight_status_v1.tsv",
   "full_case_status_table_sha256": "23b4ec20fbf7167ebc3e176d139a3549e5250b2de9f2eca29727df48a993ecab",
   "generated_he_run": false,
-  "manifest_content_sha256": "53018f379a45e7853c78b8be7d5e7f11331fec785cc1460269c2f99ec3ae840d",
+  "manifest_content_sha256": "966003836f3feaeb03bca09f8f1ee4469179eb96cb6ee2e5459aa63a18d0b6e6",
   "planner_called": false,
   "production_status": "shadow_only",
   "runtime_authority": {
     "all_required_runtime_assets_verified": false,
-    "authority_materializer_code_commit": "9be1bb7e2184141a40758c6f91e67cfd85e92014",
+    "authority_materializer_code_commit": "9c1b4c9ad23a4e3d1f162bea2d2cc7c6199a0d58",
     "code_assets": [
       {
         "file_sha256": "250b54fe9cbc9fc8ff8423c482e67d9d5f49f953c06349f008f478f44ee5f8fa",
@@ -204,7 +204,7 @@
       },
       "maximum_tissue_candidates": 4
     },
-    "runtime_authority_sha256": "ab77554b902239a7f4577ccf43305a1ce1f26dd451b8f8c9e22e86cc053f5faf",
+    "runtime_authority_sha256": "24140adaa3944c5297b9582b2873fdcaf01fc51f37565560e521faa3a95254b6",
     "runtime_code_set_sha256": "5d1d0f6e82d26a14ed386586a2fa7875fb348ea092f3f8951d34dfeac53bf417",
     "runtime_input_manifest_sha256": "0e391ece64bc9b61ac0b2e7559ab49819fb1b84071be2f893f49632e4d30df13",
     "schema_version": "p1-runtime-authority-materialization-v1",
