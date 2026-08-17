@@ -1245,7 +1245,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             compiler_attempt_index = attempt_index + int(args.seed_offset)
             native = None
             native_error = None
-            if evaluation.primitive_id in NATIVE_REQUIRED_PRIMITIVES:
+            if not args.no_cellvit and evaluation.primitive_id in NATIVE_REQUIRED_PRIMITIVES:
                 try:
                     native = _native_authority(
                         row,
@@ -1356,11 +1356,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cross-meta-eval", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--probnet-checkpoint", type=Path, required=True)
-    parser.add_argument("--nuclei-instance-library", type=Path, required=True)
-    parser.add_argument("--cellvit-model", type=Path, required=True)
-    parser.add_argument("--cellvit-root", type=Path, required=True)
-    parser.add_argument("--cellvit-python", type=Path, required=True)
+    parser.add_argument("--probnet-checkpoint", type=Path)
+    parser.add_argument("--nuclei-instance-library", type=Path)
+    parser.add_argument("--cellvit-model", type=Path)
+    parser.add_argument("--cellvit-root", type=Path)
+    parser.add_argument("--cellvit-python", type=Path)
+    parser.add_argument(
+        "--no-cellvit",
+        action="store_true",
+        help="skip CellViT inference; use semantic watershed instances from cross-meta nuclei mask",
+    )
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument(
         "--primitive",
