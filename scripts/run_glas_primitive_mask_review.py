@@ -63,28 +63,28 @@ NATIVE_REQUIRED_PRIMITIVES = {
 
 MASK_REVIEW_CELL_BUDGETS = {
     "cell-type-abundance-increase-v1": CellCountExtentBudget(
-        12, 12, 16, 256, 0, 48, 0, 0
+        20, 12, 28, 384, 0, 48, 0, 0
     ),
     "cell-type-abundance-decrease-v1": CellCountExtentBudget(
-        12, 12, 16, 256, 0, 48, 0, 0
+        20, 12, 28, 384, 0, 48, 0, 0
     ),
     "cellularity-increase-v1": CellCountExtentBudget(
-        12, 12, 16, 256, 0, 48, 0, 0
+        20, 12, 28, 384, 0, 48, 0, 0
     ),
     "cellularity-decrease-v1": CellCountExtentBudget(
-        12, 12, 16, 256, 0, 48, 0, 0
+        16, 12, 24, 384, 0, 48, 0, 0
     ),
     "neoplastic-cell-abundance-increase-v1": CellCountExtentBudget(
-        12, 12, 16, 256, 0, 48, 0, 0
+        20, 12, 28, 384, 0, 48, 0, 0
     ),
     "neoplastic-cell-abundance-decrease-v1": CellCountExtentBudget(
-        12, 12, 16, 256, 0, 48, 0, 0
+        20, 12, 28, 384, 0, 48, 0, 0
     ),
     "peritumoral-neoplastic-scatter-increase-v1": CellCountExtentBudget(
-        6, 4, 8, 96, 4, 48, 20, 3
+        10, 4, 14, 144, 4, 48, 32, 4
     ),
     "peritumoral-small-cluster-increase-v1": CellCountExtentBudget(
-        6, 6, 8, 96, 4, 48, 20, 2
+        12, 6, 20, 160, 4, 48, 32, 3
     ),
 }
 
