@@ -3031,9 +3031,38 @@ class JointSkillTests(unittest.TestCase):
             ),
             18.0,
         )
+        # cellularity-increase-v1 has a strict spatial_focus_contract in
+        # its _joint_area gate, so preflight certifies 3-diameter inter-focus
+        # separation to match audit_cell_effect_foci.
+        self.assertEqual(
+            independent_focus_minimum_center_separation_px(
+                "cellularity-increase-v1",
+                diameter,
+            ),
+            24.0,
+        )
+        # Other increase primitives (cell-type-abundance, neoplastic-cell-abundance)
+        # use raw_spatial_component_count in their gate, not the strict focus
+        # contract, so they do not need a preflight focus separation witness.
+        self.assertEqual(
+            independent_focus_minimum_center_separation_px(
+                "cell-type-abundance-increase-v1",
+                diameter,
+            ),
+            0.0,
+        )
         self.assertEqual(
             independent_focus_minimum_center_separation_px(
                 "neoplastic-cell-abundance-increase-v1",
+                diameter,
+            ),
+            0.0,
+        )
+        # Decrease primitives remain 0.0 — they remove whole instances and
+        # do not need a focus packing witness.
+        self.assertEqual(
+            independent_focus_minimum_center_separation_px(
+                "neoplastic-cell-abundance-decrease-v1",
                 diameter,
             ),
             0.0,

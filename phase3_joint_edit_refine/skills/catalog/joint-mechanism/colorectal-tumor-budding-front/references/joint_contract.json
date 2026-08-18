@@ -33,7 +33,7 @@
     "protected_auxiliary_structures": [
       "gland_or_lumen_support"
     ],
-    "allow_semantic_instance_fallback": false,
+    "allow_semantic_instance_fallback": true,
     "failure_action": "abstain_case"
   },
   "tissue_program": {

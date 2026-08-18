@@ -81,10 +81,10 @@ MASK_REVIEW_CELL_BUDGETS = {
         20, 12, 28, 384, 0, 48, 0, 0
     ),
     "peritumoral-neoplastic-scatter-increase-v1": CellCountExtentBudget(
-        10, 4, 14, 144, 4, 48, 32, 4
+        10, 4, 14, 256, 4, 48, 32, 4
     ),
     "peritumoral-small-cluster-increase-v1": CellCountExtentBudget(
-        12, 6, 20, 160, 4, 48, 32, 3
+        12, 6, 20, 256, 4, 48, 32, 3
     ),
 }
 

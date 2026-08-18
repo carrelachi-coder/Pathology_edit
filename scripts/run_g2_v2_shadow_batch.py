@@ -105,6 +105,7 @@ def main() -> int:
             dataset,
             "--device",
             args.device,
+            "--meta-eval",
         ]
         started = time.monotonic()
         timed_out = False

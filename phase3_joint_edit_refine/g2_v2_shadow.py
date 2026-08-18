@@ -226,7 +226,10 @@ def _materialize_joint_context(
         "preprocessing_revision": "g2-v2-frozen-source-assets-v1",
         "original_label_map_digest": source_digests["tissue_mask_sha256"],
         "original_instance_mask_digest": source_digests["nuclei_mask_sha256"],
-        "instance_authority_source": "cellvit_semantic_mask_shared_watershed_v1",
+        "instance_authority_source": str(
+            row.get("instance_authority_source")
+            or "cellvit_semantic_mask_shared_watershed_v1"
+        ),
         "patch_grade": metadata.get("patch_grade", "unknown_not_recorded"),
         "provider": provider,
         "source_site": source_site,
@@ -280,6 +283,32 @@ def _materialize_joint_context(
         provenance["source_nuclei_instances_sha256"] = source_digests[
             "nuclei_instances_sha256"
         ]
+    auxiliary_uris = row.get("auxiliary_structure_uris") or {}
+    auxiliary_digests = row.get("auxiliary_structure_sha256") or {}
+    auxiliary_provenance = row.get("auxiliary_structure_provenance") or {}
+    if auxiliary_uris:
+        if not isinstance(auxiliary_uris, dict):
+            raise ValueError("auxiliary_structure_uris must be an object")
+        if (
+            not isinstance(auxiliary_digests, dict)
+            or set(auxiliary_uris) != set(auxiliary_digests)
+            or not isinstance(auxiliary_provenance, dict)
+            or set(auxiliary_uris) != set(auxiliary_provenance)
+        ):
+            raise ValueError("frozen auxiliary authority is incomplete")
+        for structure_id, uri in auxiliary_uris.items():
+            path = Path(str(uri))
+            if not path.is_file() or _sha256(path) != auxiliary_digests[structure_id]:
+                raise ValueError(
+                    "frozen auxiliary asset is missing or drifted: "
+                    f"{row['case_id']} {structure_id}"
+                )
+        context["auxiliary_structure_uris"] = dict(auxiliary_uris)
+        provenance["auxiliary_structure_sha256"] = dict(auxiliary_digests)
+        provenance["auxiliary_structure_provenance"] = dict(
+            auxiliary_provenance
+        )
+        provenance["available_auxiliary_structures"] = sorted(auxiliary_uris)
     return context
 
 

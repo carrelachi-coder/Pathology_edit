@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from itertools import combinations
@@ -39,6 +40,7 @@ from .budget import JointFeasibilitySolver
 from .candidate_feasibility import CandidateFeasibilityCompiler
 from .cell_layouts import (
     SpatialRanker,
+    _prioritize_local_references,
     build_reference_shape_library,
     generate_cell_layouts,
 )
@@ -61,7 +63,11 @@ from .feasibility import (
     build_joint_nuclei_preflight,
     certify_compiled_cell_program_feasibility,
 )
-from .gates import JointGateContext, JointGateRegistry
+from .gates import (
+    JointGateContext,
+    JointGateRegistry,
+    audit_cell_effect_foci,
+)
 from .handoff import write_generation_handoff
 from .instance_authority import authority_trace, build_scene_instance_authority
 from .ledger import build_joint_candidate
@@ -106,6 +112,15 @@ from .tissue_execution import execute_gate_aware_tissue_candidates
 from .tissue_tools import (
     bind_tissue_plan_tool_program,
     compile_tissue_tool_program,
+)
+
+
+INFILTRATION_BUDGET_PRIMITIVES = frozenset(
+    {
+        "neoplastic-microinfiltration-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+    }
 )
 
 
@@ -1902,12 +1917,21 @@ class JointPathologyEditWorkflow:
                 and primitive_contract.scope == "cell_only"
                 and candidate_case.cell_count_extent_budget is None
             ):
-                if primitive_id in {
-                    "neoplastic-microinfiltration-increase-v1",
-                    "peritumoral-neoplastic-scatter-increase-v1",
-                    "peritumoral-small-cluster-increase-v1",
-                }:
-                    budget, budget_metadata = _derive_infiltration_budget(scene)
+                if primitive_id in INFILTRATION_BUDGET_PRIMITIVES:
+                    budget, budget_metadata = _derive_infiltration_budget(
+                        scene,
+                        minimum_effect_delta_count=(
+                            primitive_contract.minimum_effect_delta_count_for(
+                                candidate_case.pathology_domain_id
+                            )
+                        ),
+                        minimum_effect_span_cell_diameters=(
+                            primitive_contract.minimum_effect_span_cell_diameters
+                        ),
+                        minimum_effect_foci=(
+                            primitive_contract.minimum_effect_foci
+                        ),
+                    )
                 else:
                     budget, budget_metadata = _derive_local_population_budget(
                         scene,
@@ -1915,7 +1939,9 @@ class JointPathologyEditWorkflow:
                         semantic_intent=candidate_case.semantic_intent,
                         host_tissue_labels=primitive_contract.host_tissue_labels,
                         minimum_effect_delta_count=(
-                            primitive_contract.minimum_effect_delta_count
+                            primitive_contract.minimum_effect_delta_count_for(
+                                candidate_case.pathology_domain_id
+                            )
                         ),
                         minimum_effect_span_cell_diameters=(
                             primitive_contract.minimum_effect_span_cell_diameters
@@ -2945,6 +2971,7 @@ class JointPathologyEditWorkflow:
         source_nuclei,
         scene,
         bundle,
+        plan,
         tissue_candidate,
         executable_contract,
     ):
@@ -3057,12 +3084,22 @@ class JointPathologyEditWorkflow:
                 class_id=int(class_id),
                 allow_calibrated_fallback=True,
             )
+            references = _prioritize_local_references(
+                references,
+                scene=scene,
+                interface_ids=plan.cell_plan.interface_ids,
+                core_zone=plan.cell_plan.core_zone,
+            )
             if references:
                 references_by_class[int(class_id)] = tuple(references)
         minimum_acceptable_count = (
             max(
                 int(budget.min_delta_count),
-                int(bundle.primitive.minimum_effect_delta_count),
+                int(
+                    bundle.primitive.minimum_effect_delta_count_for(
+                        case.pathology_domain_id
+                    )
+                ),
             )
             if budget is not None
             and "add" in bundle.mechanism.cell_program.actions
@@ -3082,6 +3119,12 @@ class JointPathologyEditWorkflow:
                 "cell-only exact packing preflight failed before execution: "
                 + ", ".join(certified.reasons)
             )
+        # NOTE: Premature witness spatial audit (effect_span / effect_foci)
+        # was here but was removed.  The packing certificate's distance-based
+        # witness placements do not reflect the score-based ordering used by
+        # actual execution, so auditing them here produced false negatives.
+        # Spatial validity is properly verified by post-execution gates such
+        # as joint_area and mechanism_postcondition.
         return certified
 
     def _compile_cell_only_candidate_portfolio(
@@ -3164,6 +3207,72 @@ class JointPathologyEditWorkflow:
                     eligible_touching.sort(
                         key=lambda item: (-item.contact_pixels, item.interface_id)
                     )
+                    # The scene graph may split one biological component-pair
+                    # interface into several deterministic interface records.
+                    # A density field is allowed to bind that one component
+                    # pair broadly, but must not combine unrelated neighbours.
+                    # Certifying this union prevents graph segmentation from
+                    # artificially shrinking the three-band field below its
+                    # area/count contract.
+                    interfaces_by_neighbor: dict[
+                        str, list[Any]
+                    ] = defaultdict(list)
+                    for interface in eligible_touching:
+                        neighbor_component_id = (
+                            interface.target_component_id
+                            if interface.source_component_id
+                            == zone.tissue_component_id
+                            else interface.source_component_id
+                        )
+                        interfaces_by_neighbor[
+                            str(neighbor_component_id)
+                        ].append(interface)
+                    for grouped_interfaces in interfaces_by_neighbor.values():
+                        if len(grouped_interfaces) < 2:
+                            continue
+                        grouped_interfaces.sort(
+                            key=lambda item: (
+                                -item.contact_pixels,
+                                item.interface_id,
+                            )
+                        )
+                        grouped_interface_ids = tuple(
+                            item.interface_id for item in grouped_interfaces
+                        )
+                        grouped_anchor_ids = tuple(
+                            item.anchor_segment_id
+                            for item in sorted(
+                                (
+                                    anchor_records[anchor_id]
+                                    for interface in grouped_interfaces
+                                    for anchor_id in interface.anchor_segment_ids
+                                    if anchor_id in anchor_records
+                                ),
+                                key=lambda item: (
+                                    -item.contact_pixels,
+                                    item.display_index,
+                                    item.anchor_segment_id,
+                                ),
+                            )
+                        )
+                        if grouped_anchor_ids:
+                            variants.append(
+                                {
+                                    **provenance,
+                                    "cellularity_depletion_anchor": {
+                                        "type": "interface",
+                                        "interface_ids": list(
+                                            grouped_interface_ids
+                                        ),
+                                        "anchor_ids": list(grouped_anchor_ids),
+                                        "observation": (
+                                            "deterministic same-component-pair "
+                                            "interface union"
+                                        ),
+                                        "confidence": 1.0,
+                                    },
+                                }
+                            )
                     for interface in eligible_touching:
                         if not interface.anchor_segment_ids:
                             continue
@@ -3241,12 +3350,16 @@ class JointPathologyEditWorkflow:
                     )["external_tumor_stroma_boundary"]
                 ]
             compatible.sort(key=lambda item: (-item.contact_pixels, item.interface_id))
-            for interface in compatible[:4]:
+            exhaustive_scatter = (
+                bundle.mechanism.mechanism_id
+                == "prostate-pattern-5-peripheral-scatter"
+            )
+            interfaces_to_consider = (
+                compatible if exhaustive_scatter else compatible[:4]
+            )
+            for interface in interfaces_to_consider:
                 anchors = interface.anchor_segment_ids or ()
-                if (
-                    bundle.mechanism.mechanism_id
-                    == "prostate-pattern-5-peripheral-scatter"
-                ):
+                if exhaustive_scatter:
                     anchors = tuple(
                         anchor_id
                         for anchor_id in anchors
@@ -3272,11 +3385,16 @@ class JointPathologyEditWorkflow:
                             & (np.asarray(source_tissue) == 2)
                         )
                     )
-                for anchor_id in anchors[:2]:
+                anchor_groups = (
+                    [anchors, *((anchor_id,) for anchor_id in anchors)]
+                    if exhaustive_scatter and anchors
+                    else [(anchor_id,) for anchor_id in anchors[:2]]
+                )
+                for anchor_ids in dict.fromkeys(anchor_groups):
                     variants.append(
                         {
                             "joint_interface_ids": [interface.interface_id],
-                            "joint_anchor_ids": [anchor_id],
+                            "joint_anchor_ids": list(anchor_ids),
                         }
                     )
         if not variants:
@@ -3368,6 +3486,7 @@ class JointPathologyEditWorkflow:
                     source_nuclei=source_nuclei,
                     scene=scene,
                     bundle=bundle,
+                    plan=plan,
                     tissue_candidate=preserved,
                     executable_contract=contract,
                 )
@@ -3539,15 +3658,24 @@ class JointPathologyEditWorkflow:
                 choice_payloads.append((candidate_payload, contract, preflight))
             except (JointContractError, RefineContractError, ValueError) as exc:
                 error = f"{type(exc).__name__}: {exc}"
+                depletion_anchor = provenance_update.get(
+                    "cellularity_depletion_anchor"
+                )
+                if not isinstance(depletion_anchor, Mapping):
+                    depletion_anchor = {}
                 interface_ids = tuple(
                     str(value)
                     for value in provenance_update.get(
-                        "joint_interface_ids", ()
+                        "joint_interface_ids",
+                        depletion_anchor.get("interface_ids", ()),
                     )
                 )
                 anchor_ids = tuple(
                     str(value)
-                    for value in provenance_update.get("joint_anchor_ids", ())
+                    for value in provenance_update.get(
+                        "joint_anchor_ids",
+                        depletion_anchor.get("anchor_ids", ()),
+                    )
                 )
                 zone_id = provenance_update.get("joint_population_zone_id")
                 veto_payload = {
@@ -3580,7 +3708,12 @@ class JointPathologyEditWorkflow:
             raise JointContractError(
                 "cell-only pre-LLM portfolio has no exact-capacity survivor: "
                 + "; ".join(
-                    reason
+                    (
+                        f"[{item.candidate_id} zone={item.bound_zone_id} "
+                        f"interfaces={','.join(item.bound_interface_ids) or '-'} "
+                        f"anchors={','.join(item.bound_anchor_ids) or '-'}] "
+                        f"{reason}"
+                    )
                     for item in vetoes
                     for reason in item.veto_reasons
                 )
@@ -4002,6 +4135,10 @@ def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext
 
 def _derive_infiltration_budget(
     scene,
+    *,
+    minimum_effect_delta_count: int = 0,
+    minimum_effect_span_cell_diameters: float = 0.0,
+    minimum_effect_foci: int = 0,
 ) -> tuple[CellCountExtentBudget, dict[str, Any]]:
     """Derive a scale-aware cell budget for a contextual tumor interpretation.
 
@@ -4043,10 +4180,35 @@ def _derive_infiltration_budget(
     estimated_slots = int(
         np.ceil(interface_pixels / max(1.0, 6.0 * diameter_px))
     )
-    target = int(np.clip(estimated_slots, 4, 24))
-    minimum = max(1, int(np.floor(target * 0.5)))
+    target = max(
+        int(minimum_effect_delta_count),
+        int(np.clip(estimated_slots, 4, 24)),
+    )
+    minimum = max(
+        1,
+        int(np.floor(target * 0.5)),
+        int(minimum_effect_delta_count),
+    )
     maximum = max(target, min(32, int(np.ceil(target * 1.5))))
-    maximum_extent = int(np.clip(round(5.0 * diameter_px), 24, 64))
+    minimum_effect_span = int(
+        np.floor(float(minimum_effect_span_cell_diameters) * diameter_px)
+    )
+    patch_support_limit = max(
+        48,
+        int(np.floor(0.40 * min(np.asarray(scene.source_nuclei).shape))),
+    )
+    if minimum_effect_span > patch_support_limit:
+        raise JointContractError(
+            "source-calibrated infiltration span exceeds the patch-relative "
+            "bounded-support limit"
+        )
+    maximum_extent = min(
+        patch_support_limit,
+        max(
+            minimum_effect_span,
+            int(np.clip(round(5.0 * diameter_px), 24, 96)),
+        ),
+    )
     budget = CellCountExtentBudget(
         target_delta_count=target,
         min_delta_count=minimum,
@@ -4054,6 +4216,8 @@ def _derive_infiltration_budget(
         maximum_extent_px=maximum_extent,
         interface_min_px=2,
         interface_max_px=maximum_extent,
+        minimum_effect_span_px=minimum_effect_span,
+        minimum_effect_foci=int(minimum_effect_foci),
     )
     return budget, {
         "policy_id": "contextual-infiltration-budget-v1",
@@ -4062,6 +4226,13 @@ def _derive_infiltration_budget(
         "median_complete_nucleus_area_px": median_area,
         "estimated_nucleus_diameter_px": diameter_px,
         "unique_tumor_interface_pixels": interface_pixels,
+        "skill_minimum_effect_delta_count": int(
+            minimum_effect_delta_count
+        ),
+        "skill_minimum_effect_span_cell_diameters": float(
+            minimum_effect_span_cell_diameters
+        ),
+        "skill_minimum_effect_foci": int(minimum_effect_foci),
         "budget": budget.__dict__,
     }
 

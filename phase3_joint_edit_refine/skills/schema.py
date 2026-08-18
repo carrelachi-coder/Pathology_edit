@@ -545,10 +545,22 @@ class JointPrimitiveSkill:
     required_source_clearance_classes: tuple[int, ...]
     minimum_source_clearance_instances: int
     minimum_effect_delta_count: int
+    minimum_effect_delta_count_by_pathology_domain: dict[str, int]
     minimum_effect_span_cell_diameters: float
     minimum_effect_foci: int
     required_checker_ids: tuple[str, ...]
     source_path: str
+
+    def minimum_effect_delta_count_for(
+        self, pathology_domain_id: str
+    ) -> int:
+        """Return the reviewed domain-specific count floor, if declared."""
+
+        return int(
+            self.minimum_effect_delta_count_by_pathology_domain.get(
+                pathology_domain_id, self.minimum_effect_delta_count
+            )
+        )
 
     @classmethod
     def from_mapping(
@@ -645,6 +657,17 @@ class JointPrimitiveSkill:
                 "joint primitive cell_effect_contract must be a mapping"
             )
         minimum_effect_delta = int(effect.get("minimum_delta_count", 0))
+        raw_domain_minimums = effect.get(
+            "minimum_delta_count_by_pathology_domain", {}
+        )
+        if not isinstance(raw_domain_minimums, Mapping):
+            raise JointContractError(
+                "cell effect pathology-domain minimums must be a mapping"
+            )
+        domain_minimums = {
+            str(key): int(value)
+            for key, value in raw_domain_minimums.items()
+        }
         minimum_effect_span = float(
             effect.get("minimum_span_cell_diameters", 0.0)
         )
@@ -677,6 +700,12 @@ class JointPrimitiveSkill:
             or minimum_effect_span < 0
             or minimum_effect_foci < 0
             or minimum_effect_foci > minimum_effect_delta
+            or any(
+                not key
+                or value < 1
+                or value > minimum_effect_delta
+                for key, value in domain_minimums.items()
+            )
         ):
             raise JointContractError(
                 "primitive source retention, clearance and cell-effect bounds are invalid"
@@ -733,6 +762,7 @@ class JointPrimitiveSkill:
             ),
             minimum_source_clearance_instances=minimum_clearance,
             minimum_effect_delta_count=minimum_effect_delta,
+            minimum_effect_delta_count_by_pathology_domain=domain_minimums,
             minimum_effect_span_cell_diameters=minimum_effect_span,
             minimum_effect_foci=minimum_effect_foci,
             required_checker_ids=_strings(payload, "required_checker_ids"),

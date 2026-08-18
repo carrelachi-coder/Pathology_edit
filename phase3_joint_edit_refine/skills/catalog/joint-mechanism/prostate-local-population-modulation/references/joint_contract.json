@@ -153,6 +153,7 @@
         "interface"
       ],
       "allowed_neighbor_labels": [
+        "Tumor",
         "Stroma",
         "Necrosis"
       ],
