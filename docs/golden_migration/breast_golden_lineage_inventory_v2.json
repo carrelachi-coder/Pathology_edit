@@ -1,0 +1,179 @@
+{
+  "schema_version": "breast-golden-lineage-inventory-v2",
+  "generated_date": "2026-08-19",
+  "repository": "carrelachi-coder/Pathology_edit",
+  "proposed_integration_branch": "integration/breast-golden-glas-panda-20260819",
+  "proposed_release_branch": "release/breast-bcss-glas-panda-v1",
+  "artifact_summary": {
+    "unique_manifest_groups": 5,
+    "unique_review_panels": 85,
+    "edit_categories": 17,
+    "status_counts": {
+      "validated_first_pass": 47,
+      "recovered": 8,
+      "validated": 3,
+      "evaluator_uncertain": 22,
+      "needs_review": 5
+    },
+    "note": "Status labels are preserved from the source manifests. evaluator_uncertain and needs_review are not silently promoted to automatic validation."
+  },
+  "recommended_integration_shape": {
+    "clean_history_root": "071c3422dcbb4c3ce86b5e6a787b3415587df00f",
+    "current_tree_source": {
+      "branch": "fix/glas-authority-v2-20260818-183006",
+      "head": "883a5e324bfd936502f98ad3bdd53500318d501c",
+      "use": "squash-import a cleaned tree containing current GLaS/PANDA and latest shared runtime",
+      "exclude": [
+        ".glas_*_backup_*/",
+        ".joint_*_backup_*/",
+        "glas_*_applied.json",
+        "joint_*_applied.json"
+      ]
+    },
+    "reason": "The current GLaS/PANDA line is much broader than the five-edit side branch. However, 20e860 is now a mandatory artifact-backed donor, not an optional candidate."
+  },
+  "golden_source_lines": [
+    {
+      "group_id": "five-cell-and-immune-edits",
+      "source_branch": "codex/fix-cellularity-ledger-20260813",
+      "source_branch_head": "20e8600910adb935f58333c3a4235179199331fe",
+      "case_count": 25,
+      "edits": [
+        "generic_immune_increase",
+        "generic_immune_decrease",
+        "cell_type_abundance_increase",
+        "cell_type_abundance_decrease",
+        "cellularity_increase"
+      ],
+      "generation_status": {
+        "validated_first_pass": 24,
+        "recovered": 1
+      },
+      "mask_commits": {
+        "06f951075b411d03ac54decc99ace5a7c9c9b944": 12,
+        "723fba41fad6b67fff17a6a7b117cd46992c21b6": 8,
+        "af8f4edcf3343af2c3aa4e6b7cc2dc36d5dd2dc7": 5
+      },
+      "hard_gate_passed_cases": 25,
+      "outside_support_source_exact_cases": 25,
+      "routing_behavior": {
+        "generic_immune_increase": "inpaint x5",
+        "generic_immune_decrease": "cross x5",
+        "cell_type_abundance_increase": "inpaint x4, cross x1",
+        "cell_type_abundance_decrease": "cross x5",
+        "cellularity_increase": "inpaint x5"
+      },
+      "integration_priority": 1,
+      "integration_action": "Mandatory golden donor. Port direction-specific mask/generation routing, outside-support preservation, and evaluator-ledger behavior before changing shared quota gates."
+    },
+    {
+      "group_id": "cord-and-detached-nest",
+      "source_branch": "codex/retire-tumor-burden-primitive",
+      "source_branch_head": "2a7feaae2ebc7bd27a1941460f7f0b1d69efad60",
+      "case_count": 10,
+      "primitives": [
+        "invasive-cord-formation-v1",
+        "peritumoral-tumor-nest-formation-v1"
+      ],
+      "primitive_commits": {
+        "invasive-cord-formation-v1": "c4e02f18d021f8fcbc06ea01905f0e6911bd411d",
+        "peritumoral-tumor-nest-formation-v1": "95c4bfcd05e319a89cef34521d5b3ef4ab5926e5"
+      },
+      "generation_status": {
+        "validated_first_pass": 10
+      },
+      "integration_priority": 2,
+      "integration_action": "Restore visible architecture scale and generator context. Do not lower the cord to the current two-cell execution and do not alias detached Nest to cell-only small cluster."
+    },
+    {
+      "group_id": "four-treatment-necrosis-edits",
+      "source_branch": "codex/four-edit-distinct-20260814",
+      "source_branch_head": "c2510b65058627bb783506ef2acc0fa11a5b4610",
+      "case_count": 20,
+      "primitives": [
+        "stroma-increase-v1",
+        "local-invasive-clearance-v1",
+        "necrosis-appearance-v1",
+        "necrosis-resolution-v1"
+      ],
+      "generation_status": {
+        "validated_first_pass": 13,
+        "recovered": 7
+      },
+      "integration_priority": 3,
+      "integration_action": "Port capability-specific mask, context, routing, and fixed-case contracts; do not merge the whole branch over shared runtime."
+    },
+    {
+      "group_id": "scatter-cluster-neoplastic-increase",
+      "source_commit": "8405ebe0a7ebbf78c17962af08e65fbe9ad0149a",
+      "case_count": 15,
+      "primitives": [
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+        "neoplastic-cell-abundance-increase-v1"
+      ],
+      "generation_status": {
+        "evaluator_uncertain": 15
+      },
+      "integration_priority": 4,
+      "integration_action": "Already on the current-line ancestry. Preserve mask/handoff behavior and record explicit user visual acceptance separately from automatic evaluator status."
+    },
+    {
+      "group_id": "three-post-treatment-edits",
+      "mask_generation_commit": "d7de2e0173b492bfdbe31fe74559b51487a01074",
+      "image_generation_commits": [
+        "d7de2e0173b492bfdbe31fe74559b51487a01074",
+        "25e34c63cea7c9e0277b44d399c833ae3da4e0cc"
+      ],
+      "routing_policy_commit": "071c3422dcbb4c3ce86b5e6a787b3415587df00f",
+      "case_count": 15,
+      "primitives": [
+        "invasive-tumor-footprint-decrease-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "residual-tumor-fragmentation-v1"
+      ],
+      "generation_status": {
+        "validated": 3,
+        "evaluator_uncertain": 7,
+        "needs_review": 5
+      },
+      "integration_priority": 5,
+      "integration_action": "Already on the current-line ancestry. Preserve frozen J/G routing and retain review status without automatic promotion."
+    }
+  ],
+  "artifact_backed_current_ids": [
+    "peritumoral-neoplastic-scatter-increase-v1",
+    "peritumoral-small-cluster-increase-v1",
+    "neoplastic-cell-abundance-increase-v1",
+    "invasive-tumor-footprint-decrease-v1",
+    "neoplastic-cell-abundance-decrease-v1",
+    "residual-tumor-fragmentation-v1",
+    "stroma-increase-v1",
+    "necrosis-appearance-v1",
+    "necrosis-resolution-v1",
+    "generic-immune-infiltrate-increase-v1",
+    "generic-immune-infiltrate-decrease-v1",
+    "cell-type-abundance-increase-v1",
+    "cell-type-abundance-decrease-v1",
+    "cellularity-increase-v1"
+  ],
+  "artifact_backed_parallel_or_legacy_ids": [
+    "local-invasive-clearance-v1",
+    "invasive-cord-formation-v1",
+    "peritumoral-tumor-nest-formation-v1"
+  ],
+  "current_ids_without_uploaded_manifest_proof": [
+    "tumor-burden-increase-v1",
+    "cohesive-boundary-expansion-v1",
+    "infiltrative-nest-cord-extension-v1",
+    "cellularity-decrease-v1"
+  ],
+  "critical_revision_from_v1": "codex/fix-cellularity-ledger-20260813 is no longer classified as candidate-only. The newly uploaded 25-case manifest makes it a mandatory golden source line.",
+  "prohibited_shortcuts": [
+    "Do not apply the continuity-quota v8 patch that lowers the cord certificate to the current two-cell execution.",
+    "Do not merge source branches wholesale over cell_layouts.py, feasibility.py, gates.py, tissue_planner.py, workflow.py, or generator routing.",
+    "Do not collapse invasive-cord-formation-v1 into infiltrative-nest-cord-extension-v1 without fixed-case equivalence evidence.",
+    "Do not collapse peritumoral-tumor-nest-formation-v1 into peritumoral-small-cluster-increase-v1.",
+    "Do not treat evaluator_uncertain or needs_review as automatically validated."
+  ]
+}

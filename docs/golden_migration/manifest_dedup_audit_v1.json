@@ -1,0 +1,146 @@
+{
+  "schema_version": "breast-panel-manifest-dedup-audit-v1",
+  "generated_date": "2026-08-19",
+  "input_file_count": 10,
+  "unique_manifest_count": 5,
+  "unique_panel_count": 85,
+  "normalized_status_counts": {
+    "validated_first_pass": 47,
+    "evaluator_uncertain": 22,
+    "validated": 3,
+    "needs_review": 5,
+    "recovered": 8
+  },
+  "groups": [
+    {
+      "sha256": "33032590e8a09c320d2a9c3b5a6eed786241e290c0cec3a448da801e0bffa9a7",
+      "files": [
+        "panel_manifest(3).json",
+        "panel_manifest(8).json"
+      ],
+      "schema_version": "online-generation-review-panels-v1",
+      "schema_id": null,
+      "created_for_generation_commit": null,
+      "code_commit": null,
+      "case_count": 10,
+      "successful_case_count": null,
+      "status_counts": {
+        "validated_first_pass": 10
+      },
+      "edit_counts_derived": {
+        "cord": 5,
+        "nest": 5
+      }
+    },
+    {
+      "sha256": "941502cb637d69ab0fde0d86eadeb6da70ed761de6fba4dee30fa0fdb1817903",
+      "files": [
+        "panel_manifest(2).json",
+        "panel_manifest(7).json"
+      ],
+      "schema_version": 2,
+      "schema_id": "g2-style-online-generation-review-v1",
+      "created_for_generation_commit": null,
+      "code_commit": "8405ebe0a7ebbf78c17962af08e65fbe9ad0149a",
+      "case_count": 15,
+      "successful_case_count": null,
+      "status_counts": {
+        "evaluator_uncertain": 15
+      },
+      "edit_counts_derived": {
+        "Scatter": 5,
+        "Cluster": 5,
+        "Abundance": 5
+      }
+    },
+    {
+      "sha256": "d7c5919f2d5efcb5d88ab8b59f844a773815d8bc679f5917923dddc28087044c",
+      "files": [
+        "panel_manifest(4).json",
+        "panel_manifest(9).json"
+      ],
+      "schema_version": 3,
+      "schema_id": "three-edits-g2-style-online-generation-review-v1",
+      "created_for_generation_commit": null,
+      "code_commit": null,
+      "case_count": 15,
+      "successful_case_count": null,
+      "status_counts": {
+        "evaluator_uncertain": 7,
+        "validated": 3,
+        "needs_review": 5
+      },
+      "edit_counts_derived": {
+        "Invasive footprint decrease": 5,
+        "Neoplastic abundance decrease": 5,
+        "Residual fragmentation": 5
+      }
+    },
+    {
+      "sha256": "29f5b338b03f5266a4a5349bfc428988e33f9ee4139fb72ff4df4731fbfcf099",
+      "files": [
+        "panel_manifest(1).json",
+        "panel_manifest(6).json",
+        "panel_manifest.json"
+      ],
+      "schema_version": "four-edits-g2-review-panel-manifest-v1",
+      "schema_id": null,
+      "created_for_generation_commit": "c2510b65058627bb783506ef2acc0fa11a5b4610",
+      "code_commit": null,
+      "case_count": 20,
+      "successful_case_count": 20,
+      "status_counts": {
+        "recovered": 7,
+        "validated_first_pass": 13
+      },
+      "edit_counts_derived": {
+        "stroma_increase": 5,
+        "local_invasive_clearance": 5,
+        "necrosis_appearance": 5,
+        "necrosis_resolution": 5
+      }
+    },
+    {
+      "sha256": "04aa999c028350ca5798d0126a531445312fa2261ca4e9ddfd9711047d1283a0",
+      "files": [
+        "panel_manifest(5).json"
+      ],
+      "schema_version": "five-edits-g2-review-panel-manifest-v1",
+      "schema_id": null,
+      "created_for_generation_commit": "20e8600910adb935f58333c3a4235179199331fe",
+      "code_commit": null,
+      "case_count": 25,
+      "successful_case_count": 25,
+      "status_counts": {
+        "validated_first_pass": 24,
+        "recovered": 1
+      },
+      "edit_counts_derived": {
+        "generic_immune_increase": 5,
+        "generic_immune_decrease": 5,
+        "cell_type_abundance_increase": 5,
+        "cell_type_abundance_decrease": 5,
+        "cellularity_increase": 5
+      }
+    }
+  ],
+  "newly_identified_unique_manifest": {
+    "file": "panel_manifest(5).json",
+    "sha256": "04aa999c028350ca5798d0126a531445312fa2261ca4e9ddfd9711047d1283a0",
+    "case_count": 25,
+    "generation_commit": "20e8600910adb935f58333c3a4235179199331fe",
+    "edits": [
+      "generic_immune_increase",
+      "generic_immune_decrease",
+      "cell_type_abundance_increase",
+      "cell_type_abundance_decrease",
+      "cellularity_increase"
+    ],
+    "status_counts": {
+      "validated_first_pass": 24,
+      "recovered": 1
+    },
+    "mask_hard_gate_passed_count": 25,
+    "outside_support_source_exact_count": 25
+  }
+}
