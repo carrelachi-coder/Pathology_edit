@@ -24,6 +24,7 @@
       "claim_scope": [
         "cell_program",
         "coupling_contract",
+        "gland_authority_contract",
         "joint_gate_ids",
         "planner_policy",
         "tissue_program"

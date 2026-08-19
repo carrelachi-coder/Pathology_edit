@@ -41,6 +41,7 @@ from phase3_joint_edit_refine.cell_layouts import (
     _effect_first_anchors,
     _multisite_population_anchor_order,
     _place_layout,
+    _prioritize_local_references,
     _probnet_hard_core_anchor_order,
     _reference_sampling_order,
     _reference_shape_digest,
@@ -51,9 +52,11 @@ from phase3_joint_edit_refine.cell_layouts import (
     independent_focus_minimum_center_separation_px,
 )
 from phase3_joint_edit_refine.cell_programs import (
+    CellToolProgramCompiler,
     _cap_density_field_quotas,
     _depletion_band_edges,
     _enforce_density_field_gradient_quotas,
+    _select_density_field_removals_preserving_coverage,
     depletion_field_area_is_sufficient,
 )
 from phase3_joint_edit_refine.critic import DeterministicJointResearchCritic
@@ -102,7 +105,7 @@ from phase3_joint_edit_refine.models import (
     JointGateCheck,
     JointGateReport,
 )
-from phase3_joint_edit_refine.nuclei import iter_instances
+from phase3_joint_edit_refine.nuclei import iter_instances, load_native_instances
 from phase3_joint_edit_refine.packing import certify_complete_footprint_packing
 from phase3_joint_edit_refine.planner import (
     CellPlanSelectionHandle,
@@ -167,12 +170,14 @@ from phase3_joint_edit_refine.tissue_tools import (
     validate_tissue_plan_tool_binding,
 )
 from phase3_joint_edit_refine.workflow import (
+    INFILTRATION_BUDGET_PRIMITIVES,
     JointPathologyEditWorkflow,
     JointWorkflowConfig,
     _as_tissue_case,
     _candidate_preserving_closure_pixels,
     _CertifiedCellExecutionChoice,
     _CertifiedCellExecutionPortfolio,
+    _derive_infiltration_budget,
     _joint_area_feedback_candidate_ids,
     _localized_focus_capacity_metrics,
     _maximum_safe_below_target_joint_pixels,
@@ -199,6 +204,57 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_infiltration_budget_primitives_cover_all_peripheral_additions(self):
+        self.assertEqual(
+            INFILTRATION_BUDGET_PRIMITIVES,
+            {
+                "neoplastic-microinfiltration-increase-v1",
+                "peritumoral-neoplastic-scatter-increase-v1",
+                "peritumoral-small-cluster-increase-v1",
+            },
+        )
+
+    def test_infiltration_budget_respects_primitive_span_count_and_foci(self):
+        scene = SimpleNamespace(
+            source_nuclei=np.zeros((512, 512), dtype=np.uint8),
+            cells=SimpleNamespace(
+                instances=(
+                    SimpleNamespace(
+                        area_px=314,
+                        completeness_status="complete",
+                        class_id=1,
+                    ),
+                )
+            ),
+            tissue=SimpleNamespace(
+                graph=SimpleNamespace(
+                    interfaces=(
+                        SimpleNamespace(
+                            source_label="Tumor",
+                            target_label="Stroma",
+                            source_component_id="tumor-1",
+                            target_component_id="stroma-1",
+                            contact_pixels=500,
+                        ),
+                    )
+                )
+            ),
+        )
+        budget, metadata = _derive_infiltration_budget(
+            scene,
+            minimum_effect_delta_count=4,
+            minimum_effect_span_cell_diameters=4.0,
+            minimum_effect_foci=3,
+        )
+
+        self.assertGreaterEqual(budget.min_delta_count, 4)
+        self.assertGreaterEqual(
+            budget.maximum_extent_px, budget.minimum_effect_span_px
+        )
+        self.assertGreaterEqual(budget.minimum_effect_span_px, 79)
+        self.assertEqual(budget.minimum_effect_foci, 3)
+        self.assertEqual(metadata["skill_minimum_effect_delta_count"], 4)
+
     def test_depletion_field_area_preflight_matches_gate_tolerance(self):
         core = np.ones((8, 8), dtype=bool)
         transition = np.ones((8, 8), dtype=bool)
@@ -1794,6 +1850,21 @@ class JointSkillTests(unittest.TestCase):
                 )
                 if primitive_id == "cellularity-increase-v1":
                     self.assertGreaterEqual(primitive.minimum_effect_foci, 4)
+        abundance_decrease = repository.primitives[
+            "cell-type-abundance-decrease-v1"
+        ]
+        self.assertEqual(
+            abundance_decrease.minimum_effect_delta_count_for(
+                "breast-invasive-carcinoma-v1"
+            ),
+            12,
+        )
+        self.assertEqual(
+            abundance_decrease.minimum_effect_delta_count_for(
+                "prostate-adenocarcinoma-v1"
+            ),
+            6,
+        )
 
     def test_density_gradient_quota_can_fill_transition_shortfall(self):
         repaired = _enforce_density_field_gradient_quotas(
@@ -1880,6 +1951,51 @@ class JointSkillTests(unittest.TestCase):
         self.assertGreaterEqual(
             float(np.sqrt(np.max(np.sum(distances**2, axis=2)))), 40.0
         )
+        effect_geometry = audit_cell_effect_foci(
+            centers_xy=(item["center_xy"] for item in trace),
+            nominal_nucleus_diameter_px=8.0,
+        )
+        self.assertGreaterEqual(
+            effect_geometry["raw_spatial_component_count"], 4
+        )
+        self.assertTrue(effect_geometry["spatial_focus_contract_passed"])
+
+    def test_small_cluster_count_uses_enough_bounded_groups(self):
+        shape = np.ones((1, 1), dtype=bool)
+        legal = np.zeros((96, 96), dtype=bool)
+        legal[4:-4, 4:-4] = True
+        score = np.zeros_like(legal, dtype=float)
+
+        _target, placed, trace = _place_layout(
+            base=np.zeros_like(legal, dtype=np.uint8),
+            references=(
+                ReferenceNucleusShape("ref", 1, shape, "test", 1),
+            ),
+            class_id=1,
+            legal_zone=legal,
+            valid_footprint_region=legal,
+            halo=legal,
+            score=score,
+            requested_count=12,
+            layout_program="small_cluster",
+            cluster_size_range=(1, 4),
+            nominal_nucleus_diameter_px=2.0,
+            orientation_mask=np.zeros_like(legal),
+            continuity_region=np.zeros_like(legal),
+            continuity_anchor_mask=np.zeros_like(legal),
+            continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
+            minimum_effect_span_px=18,
+            minimum_effect_foci=2,
+            enforce_small_cluster_group_separation=False,
+            seed=1,
+        )
+
+        self.assertEqual(placed, 12)
+        group_sizes = Counter(item["cluster_id"] for item in trace)
+        self.assertGreaterEqual(len(group_sizes), 3)
+        self.assertLessEqual(max(group_sizes.values()), 4)
 
     def test_effect_span_uses_exact_legal_center_diameter(self):
         # From this ranked first point, two farthest-point sweeps reach only
@@ -1930,6 +2046,7 @@ class JointSkillTests(unittest.TestCase):
                 minimum_span_px=126,
             )
         )
+
         self.assertFalse(
             _centers_satisfy_minimum_span(
                 ((44, 375), (90, 429)),
@@ -1957,6 +2074,303 @@ class JointSkillTests(unittest.TestCase):
                 nominal_centers,
                 minimum_span_px=126,
             )
+        )
+
+    def test_colorectal_cellularity_increase_uses_clustered_foci(self):
+        mechanism = JointSkillRepository().mechanisms[
+            "colorectal-local-population-modulation"
+        ]
+        self.assertEqual(
+            mechanism.cell_program.layout_for("cellularity-increase-v1"),
+            "small_cluster",
+        )
+
+    def test_raster_native_instance_authority_exactly_partitions_semantics(self):
+        semantic = np.zeros((12, 12), dtype=np.uint8)
+        semantic[2:5, 2:5] = 1
+        semantic[7:10, 7:11] = 2
+        labels = np.zeros_like(semantic, dtype=np.int32)
+        labels[2:5, 2:5] = 1
+        labels[7:10, 7:11] = 2
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            label_map = root / "instances.npy"
+            np.save(label_map, labels, allow_pickle=False)
+            manifest = root / "instances.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "raster_instance_authority": {
+                            "label_map_uri": label_map.name,
+                            "label_map_sha256": hashlib.sha256(
+                                label_map.read_bytes()
+                            ).hexdigest(),
+                            "instances": [
+                                {
+                                    "label_id": 1,
+                                    "type": 1,
+                                    "seed_source": "cellvit",
+                                },
+                                {
+                                    "label_id": 2,
+                                    "type": 2,
+                                    "seed_source": "semantic_fallback",
+                                },
+                            ],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            instances = load_native_instances(
+                manifest,
+                shape=semantic.shape,
+                semantic_mask=semantic,
+            )
+
+        self.assertEqual(len(instances), 2)
+        self.assertEqual(
+            {item[0] for item in instances},
+            {
+                "native-raster-cellvit-00001",
+                "native-raster-semantic-fallback-00002",
+            },
+        )
+        reconstructed = np.zeros_like(semantic)
+        for _instance_id, class_id, component in instances:
+            reconstructed[component] = class_id
+        np.testing.assert_array_equal(reconstructed, semantic)
+
+    def test_semantic_fallback_is_not_a_reference_shape_authority(self):
+        semantic = np.zeros((24, 24), dtype=np.uint8)
+        semantic[4:9, 4:9] = 1
+        semantic[16, 16] = 1
+        labels = np.zeros_like(semantic, dtype=np.int32)
+        labels[4:9, 4:9] = 1
+        labels[16, 16] = 2
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            label_map = root / "instances.npy"
+            np.save(label_map, labels, allow_pickle=False)
+            manifest = root / "instances.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "raster_instance_authority": {
+                            "label_map_uri": label_map.name,
+                            "label_map_sha256": hashlib.sha256(
+                                label_map.read_bytes()
+                            ).hexdigest(),
+                            "instances": [
+                                {
+                                    "label_id": 1,
+                                    "type": 1,
+                                    "seed_source": "cellvit",
+                                },
+                                {
+                                    "label_id": 2,
+                                    "type": 1,
+                                    "seed_source": "semantic_fallback",
+                                },
+                            ],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            scene = build_joint_scene_analysis(
+                np.full_like(semantic, 2),
+                semantic,
+                schema=MaskProfileSchema.from_reference_profile("GLaS"),
+                pixel_size_um=None,
+                nuclei_instances_path=str(manifest),
+            )
+            references, rejected = build_reference_shape_library(
+                scene,
+                class_id=1,
+            )
+
+        self.assertEqual(
+            [item.instance_id for item in references],
+            ["native-raster-cellvit-00001"],
+        )
+        self.assertEqual(
+            rejected["native-raster-semantic-fallback-00002"],
+            "semantic_fallback_not_morphology_authority",
+        )
+        selected = CellToolProgramCompiler._select_removal_instances(
+            scene=scene,
+            center_region=np.ones_like(semantic, dtype=bool),
+            cell_classes=(1,),
+            protected_instance_ids=(),
+            target_count=2,
+            minimum_count=1,
+            preserve_class_composition=False,
+        )
+        self.assertEqual(selected, ("native-raster-cellvit-00001",))
+
+    def test_native_partition_distinguishes_unseeded_from_seeded_residual(self):
+        from scripts.run_glas_primitive_mask_review import (
+            _semantic_partition_from_native_seeds,
+        )
+
+        semantic = np.zeros((24, 24), dtype=np.uint8)
+        semantic[3:9, 3:9] = 1
+        semantic[14:20, 14:20] = 1
+        seed = np.zeros_like(semantic, dtype=bool)
+        seed[4:8, 4:8] = True
+
+        labels, records, native_count = _semantic_partition_from_native_seeds(
+            semantic,
+            [(1, seed)],
+        )
+
+        self.assertEqual(native_count, 1)
+        self.assertEqual(
+            {item["seed_source"] for item in records},
+            {
+                "cellvit",
+                "semantic_seeded_residual",
+                "semantic_unseeded",
+            },
+        )
+        np.testing.assert_array_equal(labels > 0, semantic > 0)
+
+    def test_glas_immune_decrease_screen_defers_native_count_to_compiler(self):
+        from scripts.run_glas_primitive_mask_review import _eligible_and_score
+
+        eligible, _score = _eligible_and_score(
+            "cell-type-abundance-decrease-v1",
+            {
+                "complete_instance_counts": {"2": 1},
+                "malignant_gland_instance_counts": {},
+                "class_spans_px": {"2": 24.0},
+                "class_local_count_radius_6d_max": {"2": 1},
+            },
+        )
+
+        self.assertTrue(eligible)
+
+    def test_glas_review_parser_separates_rank_and_seed_offsets(self):
+        from scripts.run_glas_primitive_mask_review import build_parser
+
+        parser = build_parser()
+        seed_action = next(
+            action for action in parser._actions if action.dest == "seed_offset"
+        )
+
+        self.assertEqual(seed_action.default, 0)
+        self.assertNotEqual(seed_action.dest, "attempt_offset")
+
+        portfolio_action = next(
+            action
+            for action in parser._actions
+            if action.dest == "portfolio_index"
+        )
+        self.assertEqual(portfolio_action.default, 0)
+
+        removal_action = next(
+            action
+            for action in parser._actions
+            if action.dest == "removal_variant"
+        )
+        self.assertEqual(removal_action.default, 0)
+
+    def test_depletion_removal_variant_changes_complete_instance_choice(self):
+        items = [
+            SimpleNamespace(
+                instance_id=f"cell-{index}",
+                centroid_xy=(float(col), float(row)),
+            )
+            for index, (row, col) in enumerate(
+                ((2, 2), (2, 18), (10, 10), (18, 2), (18, 18))
+            )
+        ]
+        default = _select_density_field_removals_preserving_coverage(
+            [items],
+            removal_quotas=[2],
+            fixed_retained=[],
+            selection_variant=0,
+        )
+        variant = _select_density_field_removals_preserving_coverage(
+            [items],
+            removal_quotas=[2],
+            fixed_retained=[],
+            selection_variant=1,
+        )
+
+        self.assertEqual(len(default), 2)
+        self.assertEqual(len(variant), 2)
+        self.assertNotEqual(
+            {item.instance_id for item in default},
+            {item.instance_id for item in variant},
+        )
+
+    def test_native_seed_scale_ignores_tiny_semantic_residual_records(self):
+        semantic = np.zeros((64, 64), dtype=np.uint8)
+        labels = np.zeros_like(semantic, dtype=np.int32)
+        records = []
+        label_id = 0
+        for row, col in ((8, 8), (8, 32), (32, 8), (32, 32)):
+            label_id += 1
+            semantic[row : row + 5, col : col + 5] = 2
+            labels[row : row + 5, col : col + 5] = label_id
+            records.append(
+                {"label_id": label_id, "type": 2, "seed_source": "cellvit"}
+            )
+        for index in range(12):
+            row = 52 + index // 6
+            col = 4 + 8 * (index % 6)
+            label_id += 1
+            semantic[row, col] = 2
+            labels[row, col] = label_id
+            records.append(
+                {
+                    "label_id": label_id,
+                    "type": 2,
+                    "seed_source": "semantic_seeded_residual",
+                }
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            label_map = root / "instances.npy"
+            np.save(label_map, labels, allow_pickle=False)
+            manifest = root / "instances.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "raster_instance_authority": {
+                            "label_map_uri": label_map.name,
+                            "label_map_sha256": hashlib.sha256(
+                                label_map.read_bytes()
+                            ).hexdigest(),
+                            "instances": records,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            scene = build_joint_scene_analysis(
+                np.full_like(semantic, 2),
+                semantic,
+                schema=MaskProfileSchema.from_reference_profile("GLaS"),
+                pixel_size_um=None,
+                nuclei_instances_path=str(manifest),
+            )
+            references, _rejected = build_reference_shape_library(
+                scene,
+                class_id=2,
+            )
+
+        self.assertEqual(len(references), 1)
+        self.assertTrue(
+            all("merged_suspect" not in item.quality_flags for item in scene.cells.instances[:4])
+        )
+        self.assertAlmostEqual(
+            scene.population.nominal_nucleus_diameter_px,
+            2.0 * np.sqrt(25.0 / np.pi),
         )
 
     def test_layout_tries_another_eligible_shape_at_same_center(self):
@@ -2617,9 +3031,38 @@ class JointSkillTests(unittest.TestCase):
             ),
             18.0,
         )
+        # cellularity-increase-v1 has a strict spatial_focus_contract in
+        # its _joint_area gate, so preflight certifies 3-diameter inter-focus
+        # separation to match audit_cell_effect_foci.
+        self.assertEqual(
+            independent_focus_minimum_center_separation_px(
+                "cellularity-increase-v1",
+                diameter,
+            ),
+            24.0,
+        )
+        # Other increase primitives (cell-type-abundance, neoplastic-cell-abundance)
+        # use raw_spatial_component_count in their gate, not the strict focus
+        # contract, so they do not need a preflight focus separation witness.
+        self.assertEqual(
+            independent_focus_minimum_center_separation_px(
+                "cell-type-abundance-increase-v1",
+                diameter,
+            ),
+            0.0,
+        )
         self.assertEqual(
             independent_focus_minimum_center_separation_px(
                 "neoplastic-cell-abundance-increase-v1",
+                diameter,
+            ),
+            0.0,
+        )
+        # Decrease primitives remain 0.0 — they remove whole instances and
+        # do not need a focus packing witness.
+        self.assertEqual(
+            independent_focus_minimum_center_separation_px(
+                "neoplastic-cell-abundance-decrease-v1",
                 diameter,
             ),
             0.0,
@@ -4393,6 +4836,79 @@ class JointLedgerTests(unittest.TestCase):
         )
         self.assertFalse(result.whole_instance_changes)
         self.assertTrue(result.partial_source_instance_ids)
+
+    def test_added_pixels_do_not_expand_across_retained_semantic_component(self):
+        tissue = np.ones((24, 24), dtype=np.uint8)
+        source = np.zeros_like(tissue)
+        source[2:22, 2:8] = 2
+        target = source.copy()
+        target[10:14, 8:11] = 2
+        support = np.zeros_like(tissue, dtype=bool)
+        support[10:14, 8:11] = True
+
+        result = analyze_joint_change(
+            source_tissue=tissue,
+            target_tissue=tissue,
+            source_nuclei=source,
+            target_nuclei=target,
+            generation_halo_px=0,
+            generation_support_contract=support,
+        )
+
+        self.assertTrue(np.array_equal(result.cell_change, support))
+        self.assertEqual(result.ledger.added_nucleus_pixels, 12)
+        self.assertEqual(len(result.ledger.added_instance_ids), 1)
+
+    def test_local_population_reference_priority_excludes_distant_native_shapes(self):
+        local = ReferenceNucleusShape(
+            instance_id="local-1",
+            class_id=2,
+            mask=np.ones((3, 3), dtype=bool),
+            source="native_instance_json",
+            area_px=9,
+        )
+        distant = ReferenceNucleusShape(
+            instance_id="distant-1",
+            class_id=2,
+            mask=np.ones((2, 2), dtype=bool),
+            source="native_instance_json",
+            area_px=4,
+        )
+        calibrated = ReferenceNucleusShape(
+            instance_id="calibrated-1",
+            class_id=2,
+            mask=np.ones((4, 4), dtype=bool),
+            source="calibrated_dataset_instance_library",
+            area_px=16,
+        )
+        scene = SimpleNamespace(
+            cells=SimpleNamespace(
+                instances=(
+                    SimpleNamespace(
+                        instance_id="local-1",
+                        tissue_component_id="component-7",
+                        nearest_interface_id=None,
+                    ),
+                    SimpleNamespace(
+                        instance_id="distant-1",
+                        tissue_component_id="component-9",
+                        nearest_interface_id=None,
+                    ),
+                )
+            )
+        )
+
+        selected = _prioritize_local_references(
+            (distant, local, calibrated),
+            scene=scene,
+            interface_ids=(),
+            core_zone="pop:component:component-7",
+        )
+
+        self.assertEqual(
+            tuple(item.instance_id for item in selected),
+            ("local-1", "calibrated-1"),
+        )
 
     def test_reference_library_rejects_all_patch_border_shapes(self):
         tissue = np.full((32, 32), 2, dtype=np.uint8)
@@ -6388,7 +6904,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v15"
+                program["compiler_version"], "joint-cell-tool-compiler-v17"
             )
             self.assertEqual(
                 program["policies"]["P"],
@@ -6518,7 +7034,7 @@ class JointWorkflowTests(unittest.TestCase):
                 result.abstain_reasons[0],
             )
 
-    def test_glas_periglandular_scatter_requires_native_gland_instance_authority(self):
+    def test_glas_periglandular_scatter_materializes_native_gland_instances(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = _write_synthetic_case(root)
@@ -6538,10 +7054,22 @@ class JointWorkflowTests(unittest.TestCase):
                 joint_planner=HeuristicJointPlanner(),
                 critic=_ApprovingJointCritic(),
             ).run(case, output_root=root / "cell-only")
-            self.assertEqual(result.status, "abstained")
-            self.assertIn(
-                "native_gland_instance_map",
-                result.abstain_reasons[0],
+            self.assertEqual(
+                result.status, "selected_research", result.abstain_reasons
+            )
+            producer_report = json.loads(
+                Path(
+                    result.artifact_paths["auxiliary_producer_report.json"]
+                ).read_text(encoding="utf-8")
+            )
+            instance_record = next(
+                item
+                for item in producer_report
+                if item["structure_id"] == "native_gland_instance_map"
+            )
+            self.assertEqual(instance_record["provenance"]["connectivity"], 8)
+            self.assertGreater(
+                instance_record["provenance"]["instance_count"], 0
             )
 
     def test_glas_periglandular_primitives_execute_from_native_instance_authority(self):
@@ -6612,8 +7140,48 @@ class JointWorkflowTests(unittest.TestCase):
                     result.status, "selected_research", result.abstain_reasons
                 )
                 self.assertEqual(result.condition.ledger.tissue_pixels, 0)
+                self.assertGreater(
+                    result.condition.ledger.added_nucleus_pixels, 0
+                )
+                candidate_manifest = json.loads(
+                    Path(result.artifact_paths["candidates.json"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                selected_candidate = next(
+                    item
+                    for item in candidate_manifest
+                    if item["candidate_id"] == result.selected_candidate_id
+                )
+                trace = selected_candidate["tool_trace"]
+                placements = trace.get("placements", [])
+                placed_count = int(trace.get("placed_count", len(placements)))
+                self.assertEqual(placed_count, len(placements))
                 self.assertGreaterEqual(
-                    result.condition.ledger.added_nucleus_pixels, 54
+                    placed_count,
+                    case.cell_count_extent_budget.min_delta_count,
+                )
+                realized_area = sum(
+                    int(item["area_px"]) for item in placements
+                )
+                self.assertEqual(
+                    result.condition.ledger.added_nucleus_pixels,
+                    realized_area,
+                )
+                centers = np.asarray(
+                    [item["center_xy"] for item in placements],
+                    dtype=float,
+                )
+                if len(centers) >= 2:
+                    pairwise = centers[:, None, :] - centers[None, :, :]
+                    observed_span = float(
+                        np.sqrt(np.max(np.sum(pairwise**2, axis=2)))
+                    )
+                else:
+                    observed_span = 0.0
+                self.assertGreaterEqual(
+                    observed_span,
+                    case.cell_count_extent_budget.minimum_effect_span_px,
                 )
                 reports = json.loads(
                     Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
@@ -9284,8 +9852,17 @@ class StructuralHierarchyTests(unittest.TestCase):
             )
             self.assertEqual(
                 [item.structure_id for item in produced],
-                ["gland_or_lumen_support"],
+                ["gland_or_lumen_support", "native_gland_instance_map"],
             )
+            with Image.open(
+                effective.auxiliary_structure_uris[
+                    "native_gland_instance_map"
+                ]
+            ) as instance_image:
+                self.assertIn(instance_image.mode, {"I", "I;16"})
+                instance_map = np.asarray(instance_image)
+            self.assertEqual(set(np.unique(instance_map)), {0, 1})
+            np.testing.assert_array_equal(instance_map > 0, tissue == 12)
             producer = effective.provenance[
                 "auxiliary_structure_provenance"
             ]["gland_or_lumen_support"]

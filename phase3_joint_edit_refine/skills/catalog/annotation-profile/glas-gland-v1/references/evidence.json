@@ -27,13 +27,14 @@
       "evidence_id": "glas-gland-v1.execution",
       "authority_category": "engineering_proxy",
       "claim_scope": [
-        "required_provenance_fields",
-        "required_checker_ids",
-        "protected_fine_ids",
-        "operational_stroma_fine_ids",
-        "operational_stroma_policy",
+        "gland_instance_authority_policy",
         "mechanism_editable_source_fine_ids",
         "mechanism_editable_target_fine_ids",
+        "operational_stroma_fine_ids",
+        "operational_stroma_policy",
+        "protected_fine_ids",
+        "required_checker_ids",
+        "required_provenance_fields",
         "visual_veto_requirements"
       ],
       "source_ids": [

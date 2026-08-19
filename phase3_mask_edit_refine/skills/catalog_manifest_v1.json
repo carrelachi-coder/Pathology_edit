@@ -1,0 +1,197 @@
+{
+  "schema_version": "mask-skill-catalog-manifest-v1",
+  "catalog_content_sha256": "55a6776c54e5244e772416f8e10e430e72e3beb288f8c3dc536a3ba031652f38",
+  "package_count": 19,
+  "packages": [
+    {
+      "skill_id": "bcss-semantic-v1",
+      "skill_kind": "annotation_profile",
+      "version": "1.1.0-draft",
+      "rules_path": "annotation-profile/bcss-semantic-v1/references/rules.json",
+      "rules_sha256": "b2be2347d95e8af2238ac277f871831cf4656b4da191c51c85211fc00ccf087d",
+      "mask_contract_path": "annotation-profile/bcss-semantic-v1/references/mask_contract.json",
+      "mask_contract_sha256": "632f4c079e9dd3637f7e68e667fe229e717ff5e4750fe9c295c1c27fc492d6f8",
+      "package_digest_sha256": "58d97db24eabc4c9c7f039af1fb0421956c7cee5edc3aaf02907b9dbb2f576c9"
+    },
+    {
+      "skill_id": "glas-gland-v1",
+      "skill_kind": "annotation_profile",
+      "version": "1.1.0-draft",
+      "rules_path": "annotation-profile/glas-gland-v1/references/rules.json",
+      "rules_sha256": "1c1678c6c1966efd260e104c4874e7cee8599f39789330a91a0c8aa92bc97af9",
+      "mask_contract_path": "annotation-profile/glas-gland-v1/references/mask_contract.json",
+      "mask_contract_sha256": "c01462d90470a9d3f24ddc2f4fd0f15a9d35c91776b00f31bd8dfecf4c7480e0",
+      "package_digest_sha256": "f884d9a48a76cfb9cf44d3226c9bad2b7a5de67546f31531a25764f95af75f11"
+    },
+    {
+      "skill_id": "ignite-semantic-v1",
+      "skill_kind": "annotation_profile",
+      "version": "1.1.0-draft",
+      "rules_path": "annotation-profile/ignite-semantic-v1/references/rules.json",
+      "rules_sha256": "f93e8c105e496fa1c50f4d70865764972fd19cbf2f6d2c5e7c2f655d6de60ff8",
+      "mask_contract_path": "annotation-profile/ignite-semantic-v1/references/mask_contract.json",
+      "mask_contract_sha256": "eb4f7417e884734f6da230779d5ddd5f72dc2ddb91f17a106b6558515a583836",
+      "package_digest_sha256": "e1c59fbb27a35250191d8b25619e10cf12d1f4b6c6c9d8ea09419d60d1ec180f"
+    },
+    {
+      "skill_id": "orca-semantic-v1",
+      "skill_kind": "annotation_profile",
+      "version": "1.1.0-draft",
+      "rules_path": "annotation-profile/orca-semantic-v1/references/rules.json",
+      "rules_sha256": "78238e2aaeec24260c472d4047fdfde84b47d1f9f7f3151bdca56bf330684d32",
+      "mask_contract_path": "annotation-profile/orca-semantic-v1/references/mask_contract.json",
+      "mask_contract_sha256": "09a7ad1ce06a3dd3a49719ca5028b866a501d1f8f8a25a60259c8bb9c8aa1535",
+      "package_digest_sha256": "f27de9839e444c8b27fd0b8325195f06559b6722658b216b451c5cbdefb918e3"
+    },
+    {
+      "skill_id": "panda-gleason-v1",
+      "skill_kind": "annotation_profile",
+      "version": "1.1.0-draft",
+      "rules_path": "annotation-profile/panda-gleason-v1/references/rules.json",
+      "rules_sha256": "7e9fbf2e8d3181a42354314143b8cc3b981a84070bb18a8bcf782b8267b2e897",
+      "mask_contract_path": "annotation-profile/panda-gleason-v1/references/mask_contract.json",
+      "mask_contract_sha256": "99bdde674ca79d1fbcf4acb6274d3298a32f9bc66c39c401364516d7d9f2204c",
+      "package_digest_sha256": "bbd6c5556c05260189cb101f76b1b1f405b451d74a27f901f261f2889390a14a"
+    },
+    {
+      "skill_id": "puma-semantic-v1",
+      "skill_kind": "annotation_profile",
+      "version": "1.1.0-draft",
+      "rules_path": "annotation-profile/puma-semantic-v1/references/rules.json",
+      "rules_sha256": "b2d39b958b8d3af633f821bc7d7eac53d9f08cc57808302e6bd46a5c34ead91c",
+      "mask_contract_path": "annotation-profile/puma-semantic-v1/references/mask_contract.json",
+      "mask_contract_sha256": "1d3f13c2c38a11b62b0d4ca6c10d63623de73545a97343974e706f6b8f1a2f3d",
+      "package_digest_sha256": "aeb86fbbb375949a82ec72c89fc1e23d01e6796994857f69866c52bda114b137"
+    },
+    {
+      "skill_id": "generic-immune-infiltrate-decrease-v1",
+      "skill_kind": "edit_primitive",
+      "version": "1.0.0-draft",
+      "rules_path": "edit-primitive/generic-immune-infiltrate-decrease-v1/references/rules.json",
+      "rules_sha256": "f73ad29f16e02181de8547f31376d35d1148c67c245597e3a0a0b0beec0a5059",
+      "mask_contract_path": "edit-primitive/generic-immune-infiltrate-decrease-v1/references/mask_contract.json",
+      "mask_contract_sha256": "7e55dc32cde6cae8ea8a57f1a550bb326c4a5b0ccab7a1fbc8aae007e52e0386",
+      "package_digest_sha256": "447b494cba373d0013209d2452bf5c756b9841a953a5ead38f565619878d558f"
+    },
+    {
+      "skill_id": "generic-immune-infiltrate-increase-v1",
+      "skill_kind": "edit_primitive",
+      "version": "1.0.0-draft",
+      "rules_path": "edit-primitive/generic-immune-infiltrate-increase-v1/references/rules.json",
+      "rules_sha256": "09a6eef3085ecc5ee2ab9bfac7405dd167e9f4ebd593ac20e00b6ed40a05c02b",
+      "mask_contract_path": "edit-primitive/generic-immune-infiltrate-increase-v1/references/mask_contract.json",
+      "mask_contract_sha256": "71e2418c28a5bfc71a7171831076b037062773ed569eefe8d7429540737764b1",
+      "package_digest_sha256": "0c8f63c6c9e4dbccf251ca4ccbda5b29ec0ab4061fca818e4c42329942d416a4"
+    },
+    {
+      "skill_id": "necrosis-appearance-v1",
+      "skill_kind": "edit_primitive",
+      "version": "1.0.0-draft",
+      "rules_path": "edit-primitive/necrosis-appearance-v1/references/rules.json",
+      "rules_sha256": "a524f50db507930dff64dbfc435da57768cd7afa0346ad54e4f224483bbe1373",
+      "mask_contract_path": "edit-primitive/necrosis-appearance-v1/references/mask_contract.json",
+      "mask_contract_sha256": "7765d8246864217f7b99744aa6d640878871ee9633b7e0256b53d94d2ae1615f",
+      "package_digest_sha256": "42822cf2275ee7f8ad4d025120f67153017f1cb859b665ccb09c378e072b398e"
+    },
+    {
+      "skill_id": "necrosis-resolution-v1",
+      "skill_kind": "edit_primitive",
+      "version": "1.0.0-draft",
+      "rules_path": "edit-primitive/necrosis-resolution-v1/references/rules.json",
+      "rules_sha256": "42b2531a175adfe07ce1428d7849174b9e2f1df952d8c99bbba303973beb8351",
+      "mask_contract_path": "edit-primitive/necrosis-resolution-v1/references/mask_contract.json",
+      "mask_contract_sha256": "eedefc529292013925894cef7310953f4b840da7cd0b771eea6232afea92fce5",
+      "package_digest_sha256": "99e8a41af56710819966a16f778b61c899924458e04f739c905a3855b1ba562d"
+    },
+    {
+      "skill_id": "stroma-increase-v1",
+      "skill_kind": "edit_primitive",
+      "version": "1.0.0-draft",
+      "rules_path": "edit-primitive/stroma-increase-v1/references/rules.json",
+      "rules_sha256": "6e9bb5e3435a20755200b4943c2a6e1c5910ce3bfcab3e853b664ed4046c1325",
+      "mask_contract_path": "edit-primitive/stroma-increase-v1/references/mask_contract.json",
+      "mask_contract_sha256": "44460ec3c800b850afc41d454ab6cc2d2c1f018736a55210da029e8d5abf974d",
+      "package_digest_sha256": "16caa3e6214924a3727b32641eec8cf7d4d725d12399410c0b80cae930750613"
+    },
+    {
+      "skill_id": "tumor-burden-decrease-v1",
+      "skill_kind": "edit_primitive",
+      "version": "1.0.0-draft",
+      "rules_path": "edit-primitive/tumor-burden-decrease-v1/references/rules.json",
+      "rules_sha256": "d642516914e82e85416fdc80cb90079b76c2a398b09d032b081ca5ac18200cd7",
+      "mask_contract_path": "edit-primitive/tumor-burden-decrease-v1/references/mask_contract.json",
+      "mask_contract_sha256": "b90dd8ff8eab43b481ee7e66e6cde358f5d725bb552337a0f68c534e9d0e74c3",
+      "package_digest_sha256": "caaa0d80309233e96a473bfcd2abf73840627f7c6195668216db6d546d35b1e3"
+    },
+    {
+      "skill_id": "tumor-burden-increase-v1",
+      "skill_kind": "edit_primitive",
+      "version": "1.0.0-draft",
+      "rules_path": "edit-primitive/tumor-burden-increase-v1/references/rules.json",
+      "rules_sha256": "e17166e56ecf5034a39482294cf5cab2f7531f97dbaa4266b5849c4d41e26bbd",
+      "mask_contract_path": "edit-primitive/tumor-burden-increase-v1/references/mask_contract.json",
+      "mask_contract_sha256": "d57227b831f1144e70fef6edc20efd747851b8583d4a781fcb697b910f6fae6a",
+      "package_digest_sha256": "45dbe5c7bd1ab29f6e6dad8fa14d62572d29d7f7a86a7050d9ce9118956ea757"
+    },
+    {
+      "skill_id": "breast-invasive-carcinoma-v1",
+      "skill_kind": "pathology_domain",
+      "version": "1.1.0-draft",
+      "rules_path": "pathology-domain/breast-invasive-carcinoma-v1/references/rules.json",
+      "rules_sha256": "1188dd69c39d3d45afbc6876053c71fabc4f6809070119e16e2cb7f7b27ca954",
+      "mask_contract_path": "pathology-domain/breast-invasive-carcinoma-v1/references/mask_contract.json",
+      "mask_contract_sha256": "13c560eb64e656908aec085ac6c229bec8cd2a08d262b13230122b177aaa6a25",
+      "package_digest_sha256": "278e7df5be96c2152edbbe965ff188897b71dbba04c23940093eefabbe1e3fe6"
+    },
+    {
+      "skill_id": "colorectal-adenocarcinoma-v1",
+      "skill_kind": "pathology_domain",
+      "version": "1.1.0-draft",
+      "rules_path": "pathology-domain/colorectal-adenocarcinoma-v1/references/rules.json",
+      "rules_sha256": "c235f45e8ab587922e7273916235e09be4a8ec7368a6b80c74e787a5222d1718",
+      "mask_contract_path": "pathology-domain/colorectal-adenocarcinoma-v1/references/mask_contract.json",
+      "mask_contract_sha256": "88c6ce0596915659ef7f1a612b2ccbf8bf699f01dd208a9ad89984dd97b0ebf2",
+      "package_digest_sha256": "618d7dd65ba9dd1ae2ed3de83c544a8e15551f3fdcea6058da429a2dd51a73fc"
+    },
+    {
+      "skill_id": "lung-carcinoma-v1",
+      "skill_kind": "pathology_domain",
+      "version": "1.1.0-draft",
+      "rules_path": "pathology-domain/lung-carcinoma-v1/references/rules.json",
+      "rules_sha256": "a4e3d08b737cb5973d781a2c767c126d87a60c1e6be07643f2f4b49309c26d6b",
+      "mask_contract_path": "pathology-domain/lung-carcinoma-v1/references/mask_contract.json",
+      "mask_contract_sha256": "ec158c9a817d587d5d251038a6862b0a5ddcfc739f83d304142ba4e1d76b3ca9",
+      "package_digest_sha256": "388388849cf717fe2ad93a115c335279be0f0d86c626214ea5da4ccd3fc3b37e"
+    },
+    {
+      "skill_id": "melanoma-v1",
+      "skill_kind": "pathology_domain",
+      "version": "1.1.0-draft",
+      "rules_path": "pathology-domain/melanoma-v1/references/rules.json",
+      "rules_sha256": "643b887022f0108a0c66e4ffa34a7fd40544909583fe0b7059520f3e6ca3052c",
+      "mask_contract_path": "pathology-domain/melanoma-v1/references/mask_contract.json",
+      "mask_contract_sha256": "5540089e2c02ee99fe20a5f568709e8f46b37ebfcb940b2eac2b3a70e51683ed",
+      "package_digest_sha256": "f9939fe9b97a39874ecce6d126150b70043c3d07eba2eacc91e69267706464a0"
+    },
+    {
+      "skill_id": "oral-squamous-cell-carcinoma-v1",
+      "skill_kind": "pathology_domain",
+      "version": "1.1.0-draft",
+      "rules_path": "pathology-domain/oral-squamous-cell-carcinoma-v1/references/rules.json",
+      "rules_sha256": "8515b2193136e20c1c1e460d59c28fdebb36158fe496b79606e6de641a55cd6f",
+      "mask_contract_path": "pathology-domain/oral-squamous-cell-carcinoma-v1/references/mask_contract.json",
+      "mask_contract_sha256": "f4ea1cb60fd1e72cadfb938dfbffd9a091a6068af68d9960953c18efdb9d3fa6",
+      "package_digest_sha256": "c30bdd058d22b43094919e476e8cb5f2cbc2d4f2019141eb504e46953d357a4f"
+    },
+    {
+      "skill_id": "prostate-adenocarcinoma-v1",
+      "skill_kind": "pathology_domain",
+      "version": "1.1.0-draft",
+      "rules_path": "pathology-domain/prostate-adenocarcinoma-v1/references/rules.json",
+      "rules_sha256": "612bc3591666fab5968ff01d3189bcc7051b8bb02bf93d8ad0cab3b7a571b784",
+      "mask_contract_path": "pathology-domain/prostate-adenocarcinoma-v1/references/mask_contract.json",
+      "mask_contract_sha256": "4c94efb2e061132a07bf584c27144c36f85425e46a7f4b2be1c09add266285cc",
+      "package_digest_sha256": "67499f722c39839693bfd39cb3c36d03d0303f4d654f09b96cc3f1116a57b4cd"
+    }
+  ]
+}

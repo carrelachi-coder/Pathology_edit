@@ -9,7 +9,7 @@
     "neoplastic-cell-abundance-increase-v1",
     "neoplastic-cell-abundance-decrease-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
   "summary": "Change a bounded colorectal cell population without changing gland, crypt, lumen, mucin, necrosis or muscle geometry.",
   "recognition_contract": {
@@ -149,7 +149,7 @@
     "halo_policy": "no_change_outside_compiled_population_extent",
     "halo_distance_px": [
       0,
-      48
+      64
     ],
     "cluster_size_range": [
       1,
@@ -193,7 +193,7 @@
     "layout_program_by_primitive": {
       "cell-type-abundance-increase-v1": "small_cluster",
       "cell-type-abundance-decrease-v1": "localized_density_gradient",
-      "cellularity-increase-v1": "single",
+      "cellularity-increase-v1": "small_cluster",
       "cellularity-decrease-v1": "localized_density_gradient",
       "neoplastic-cell-abundance-increase-v1": "small_cluster",
       "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient"

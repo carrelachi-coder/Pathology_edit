@@ -5,18 +5,19 @@
     "peritumoral-neoplastic-scatter-increase-v1",
     "peritumoral-small-cluster-increase-v1"
   ],
-  "version": "1.0.0-draft",
+  "version": "1.3.0-draft",
   "review_status": "draft",
-  "summary": "Add non-diagnostic periglandular class-1 scatter or multiple one-to-four-cell synthetic foci inside a native malignant-gland exterior annulus without changing tissue labels.",
+  "summary": "Add non-diagnostic periglandular class-1 scatter or multiple compact two-to-four-cell foci from semantic tissue/nuclei masks inside a certified GLaS gland-exterior annulus without changing tissue labels.",
   "recognition_contract": {
     "required_observations": [
-      "native malignant-gland instance map and its exterior boundary",
-      "compiler-certified operational non-gland receiving annulus excluding every lumen and hole contour",
-      "complete class-1 references with sufficient exact packing capacity"
+      "one digest-bound GLaS gland exterior authority typed as dataset-native instance or semantic connected-component proxy",
+      "compiler-certified operational non-gland receiving annulus excluding every gland-support pixel, lumen and hole contour",
+      "complete same-patch class-1 shapes reconstructed from the aligned source nuclei mask; optional native instances may refine identity but are not required"
     ],
     "contraindications": [
-      "missing or digest-detached native gland-instance authority",
-      "uncertain inflammatory cells",
+      "missing, unresolved or digest-detached gland exterior authority",
+      "semantic gland-component proxy presented as original GLaS instance identity",
+      "no complete class-1 source-mask shape fits the certified receiving annulus",
       "remote operational non-gland tissue without the selected gland interface"
     ],
     "minimum_confidence": 0.9
@@ -33,7 +34,7 @@
     "protected_auxiliary_structures": [
       "gland_or_lumen_support"
     ],
-    "allow_semantic_instance_fallback": false,
+    "allow_semantic_instance_fallback": true,
     "failure_action": "abstain_case"
   },
   "tissue_program": {
@@ -93,7 +94,7 @@
     "halo_policy": "add_complete_class1_in_native_gland_exterior_annulus",
     "halo_distance_px": [
       4,
-      48
+      64
     ],
     "cluster_size_range": [
       1,
@@ -149,7 +150,7 @@
   ],
   "render_contract": {
     "required_findings": [
-      "synthetic periglandular scatter or one-to-four-cell foci remain inside the certified exterior annulus"
+      "synthetic periglandular scatter or compact one-to-four-cell foci remain inside the selected typed gland-authority exterior annulus"
     ],
     "veto_findings": [
       "solid tumor bridge",
@@ -159,8 +160,9 @@
     ],
     "mask_guarantees": [
       "tissue mask remains pixel-exact",
-      "complete one-to-four-cell target templates",
-      "no detached tissue tumor island or solid class-1 bridge"
+      "complete source-mask-derived class-1 templates are added as certified units",
+      "no detached tissue tumor island or solid class-1 bridge",
+      "semantic gland-component proxy is never reported as original GLaS instance identity"
     ],
     "render_only_claims": [
       "diagnostic tumor budding, ITBCC count, score, or grade",
@@ -173,7 +175,9 @@
   "counterexamples": [
     "convex hull around multiple buds",
     "broad tumor fill into stroma",
-    "bud placed in mucin or lumen"
+    "bud placed in mucin or lumen",
+    "writing a semantic connected-component proxy digest into original_instance_mask_digest",
+    "overwriting a nucleus-instance JSON digest with a gland-instance raster digest"
   ],
   "planner_policy": {
     "allowed_observation_sources": [
@@ -218,5 +222,19 @@
       "abstain"
     ],
     "requires_explicit_primitive_intent": true
+  },
+  "gland_authority_contract": {
+    "accepted_authority_kinds": [
+      "dataset_native_instance",
+      "semantic_connected_component_proxy"
+    ],
+    "dataset_native_guarantee": "original gland-instance identity and exterior topology",
+    "semantic_proxy_guarantee": "semantic gland-support component exterior topology only",
+    "proxy_must_not_bind_original_instance_mask_digest": true,
+    "raw_he_may_upgrade_authority": false,
+    "nucleus_instance_digest_field": "original_instance_mask_digest",
+    "dataset_native_gland_digest_field": "original_gland_instance_mask_digest",
+    "semantic_proxy_digest_field": "derived_gland_component_map_sha256",
+    "gland_digest_must_not_overwrite_nucleus_digest": true
   }
 }

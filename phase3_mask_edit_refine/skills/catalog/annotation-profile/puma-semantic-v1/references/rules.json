@@ -84,7 +84,7 @@
           "binding": "checker:profile_required_provenance"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "puma.white_background_is_immutable",
@@ -127,7 +127,7 @@
           "binding": "checker:background_seed_protection"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "puma.normal_epithelium_means_epidermis",
@@ -167,7 +167,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "puma.immune_is_not_a_tissue_region_label",
@@ -210,7 +210,7 @@
           "binding": "checker:semantic_capability_guard"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "puma.preserve_tissue_component_topology",
@@ -257,7 +257,7 @@
           "binding": "checker:edited_label_topology"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

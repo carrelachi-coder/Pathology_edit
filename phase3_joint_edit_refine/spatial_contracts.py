@@ -24,6 +24,9 @@ BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS = (
     + 0.10
 )
 SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS = 2.25
+CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS = 3.0
+CELL_EFFECT_WITHIN_FOCUS_LINK_DIAMETERS = 1.5
+CELL_EFFECT_MAXIMUM_FOCUS_DIAMETER_DIAMETERS = 2.5
 
 # The edit is a localized invasive-front hotspot, not a second scatter field.
 # Use both a scale-relative and patch-scale ceiling: semantic nuclei can have
@@ -103,4 +106,39 @@ def breast_small_cluster_within_focus_link_px(
     return max(
         BREAST_SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS * nominal,
         raster_member_spacing + sqrt(0.5),
+    )
+
+
+def small_cluster_member_spacing_px(
+    nominal_nucleus_diameter_px: float,
+) -> float:
+    """Mirror the generic small-cluster template's raster spacing floor."""
+
+    nominal = max(1.0, float(nominal_nucleus_diameter_px))
+    return float(
+        max(4, round(nominal * SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS))
+    )
+
+
+def small_cluster_within_focus_link_px(
+    nominal_nucleus_diameter_px: float,
+) -> float:
+    """Keep the focus graph reachable when the four-pixel floor is active."""
+
+    nominal = max(1.0, float(nominal_nucleus_diameter_px))
+    return max(
+        SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS * nominal,
+        small_cluster_member_spacing_px(nominal) + sqrt(0.5),
+    )
+
+
+def small_cluster_minimum_anchor_separation_px(
+    nominal_nucleus_diameter_px: float,
+) -> float:
+    """Separate two complete raster-ring foci without graph bridging."""
+
+    nominal = max(1.0, float(nominal_nucleus_diameter_px))
+    return (
+        2.0 * small_cluster_member_spacing_px(nominal)
+        + small_cluster_within_focus_link_px(nominal)
     )

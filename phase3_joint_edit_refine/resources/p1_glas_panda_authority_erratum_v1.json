@@ -1,0 +1,69 @@
+{
+  "schema_version": "p1-glas-panda-authority-erratum-v1",
+  "production_status": "shadow_only",
+  "selection_manifest_sha256": "df4cbf3d1af5ba407a260ea2f490ca2b26aafb14f171a83d516836b280978d59",
+  "source_manifest_sha256": "5ce6d9bbb84bae82db576b38a1f15328d2bd620b844daf3cac47572c9ded3223",
+  "source_case_authority": [
+    {
+      "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+      "source_case_record_sha256": "70111228ffb70f14678c042e0bccc7eb37996a29ef338ea0c80f88987d710e70",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+      "source_case_record_sha256": "e31e6b44623865c3b5b0eed0604b96b767d7d179cc5000efc0e0954814affa37",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+      "source_case_record_sha256": "35bb632fe0faf701697099c5ab05c8334e756b938bc512085f33ffdd60e405f8",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+      "source_case_record_sha256": "6273c47be24d5dae25480eed420298bd0631744f1b114886c478bd3ffb33570f",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+      "source_case_record_sha256": "0ac00918579cbf61bda5772beb4a580a04fdbeebd0ff1887699e2b0d18859f57",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
+      "source_case_record_sha256": "8dcb272a010a7dd9bddfa004a883a7476067471affebb4d632bb5c6b0e59dedc",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
+      "source_case_record_sha256": "cf5e03fd23fe092b379952da04af1dbdef1110e3b7c60146091d3b00204ac1fc",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
+      "source_case_record_sha256": "848c2d080f3dc379ba7667b4f0077fe78f56472db8db53835eed4b002b456242",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
+      "source_case_record_sha256": "cb5c753d0802a26e4ce3643b38ec1441a7daf10a0a0fbfe2ccd19ffda8380a08",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    },
+    {
+      "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
+      "source_case_record_sha256": "0ecd69db0698a81f679771a509b25ef8c5b964aca459527c56af3bf6fa37ebba",
+      "profile_provenance": {},
+      "source_asset_authority": {}
+    }
+  ],
+  "external_auxiliary_authority": []
+}

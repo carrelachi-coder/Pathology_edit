@@ -17,8 +17,11 @@ from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v15"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v17"
 DEPLETION_FIELD_AREA_RASTER_TOLERANCE = 0.05
+QUALIFIED_RESIDUAL_MINIMUM_AREA_RATIO = 0.05
+IMMUNE_RESIDUAL_MINIMUM_AREA_RATIO = 0.10
+QUALIFIED_RESIDUAL_MINIMUM_AREA_PX = 4
 
 
 def _instance_center_is_in_region(item, region: np.ndarray) -> bool:
@@ -30,6 +33,65 @@ def _instance_center_is_in_region(item, region: np.ndarray) -> bool:
         0 <= row < region.shape[0]
         and 0 <= col < region.shape[1]
         and region[row, col]
+    )
+
+
+def _is_biological_instance(
+    item,
+    *,
+    residual_area_floor_px: float | None = None,
+) -> bool:
+    """Keep native objects and only explicitly qualified residual objects."""
+
+    if item.source == "instance_json_semantic_seeded_residual":
+        return False
+    if item.source not in {
+        "instance_json_semantic_fallback",
+        "instance_json_semantic_unseeded",
+    }:
+        return True
+    return bool(
+        residual_area_floor_px is not None
+        and float(item.area_px) >= float(residual_area_floor_px)
+    )
+
+
+def _qualified_residual_area_floor(
+    scene: JointSceneAnalysis,
+    cell_classes: tuple[int, ...],
+) -> float:
+    """Derive a conservative residual-object floor from trusted morphology."""
+
+    allowed = set(cell_classes)
+    trusted_areas = [
+        float(item.area_px)
+        for item in scene.cells.instances
+        if item.source == "instance_json_cellvit_seed"
+        and item.class_id in allowed
+        and item.completeness_status == "complete"
+        and not item.touches_border
+        and not item.quality_flags
+        and item.area_px > 0
+    ]
+    if not trusted_areas and scene.reference_shape_authority is not None:
+        trusted_areas = [
+            float(shape.area_px)
+            for class_id in allowed
+            for shape in scene.reference_shape_authority.shapes_by_class.get(
+                class_id, ()
+            )
+            if shape.area_px > 0
+        ]
+    if not trusted_areas:
+        return float("inf")
+    ratio = (
+        IMMUNE_RESIDUAL_MINIMUM_AREA_RATIO
+        if allowed == {2}
+        else QUALIFIED_RESIDUAL_MINIMUM_AREA_RATIO
+    )
+    return max(
+        float(QUALIFIED_RESIDUAL_MINIMUM_AREA_PX),
+        ratio * float(np.median(trusted_areas)),
     )
 
 
@@ -208,22 +270,10 @@ class CellToolProgramCompiler:
         source_diameter = float(
             scene.population.nominal_nucleus_diameter_px or 8.0
         )
-        calibrated_diameter = (
-            scene.reference_shape_authority.nominal_diameter_px(
-                tuple(sorted(effect_classes))
-            )
-            if primitive.scope == "cell_only"
-            and scene.reference_shape_authority is not None
-            else None
-        )
-        # Source watershed instances own counts, density and occupancy.  When
-        # native contours are absent, the digest-bound dataset library owns
-        # the reusable footprint size ruler instead of a possibly confluent
-        # semantic component.
-        diameter = float(calibrated_diameter or source_diameter)
         complete_areas = [
             float(item.area_px)
             for item in scene.cells.instances
+            if _is_biological_instance(item)
             if item.completeness_status == "complete"
             and not item.touches_border
             and not item.quality_flags
@@ -232,6 +282,30 @@ class CellToolProgramCompiler:
                 not effect_classes or item.class_id in effect_classes
             )
         ]
+        native_seed_areas = [
+            float(item.area_px)
+            for item in scene.cells.instances
+            if item.source == "instance_json_cellvit_seed"
+            and item.completeness_status == "complete"
+            and not item.touches_border
+            and not item.quality_flags
+            and item.area_px > 0
+            and (not effect_classes or item.class_id in effect_classes)
+        ]
+        calibrated_diameter = (
+            scene.reference_shape_authority.nominal_diameter_px(
+                tuple(sorted(effect_classes))
+            )
+            if primitive.scope == "cell_only"
+            and scene.reference_shape_authority is not None
+            and not native_seed_areas
+            else None
+        )
+        # Native seeds own biological scale when present. If a native raster
+        # has only provenance-only residuals for the target class, use the
+        # digest-bound dataset library instead of those tiny partitions.
+        diameter = float(calibrated_diameter or source_diameter)
+        scale_areas = native_seed_areas or complete_areas
         effect_diameter = (
             diameter
             if calibrated_diameter is not None
@@ -239,12 +313,17 @@ class CellToolProgramCompiler:
                 max(
                     3.0,
                     2.0
-                    * np.sqrt(float(np.median(complete_areas)) / np.pi),
+                    * np.sqrt(float(np.median(scale_areas)) / np.pi),
                 )
-                if complete_areas
+                if scale_areas
                 else diameter
             )
         )
+        # The same native-derived ruler must own spans, radial fields, support
+        # margins and whole-instance closure. Using the raw residual-partition
+        # diameter for the latter stages collapsed valid GLaS depletion fields
+        # even though preflight had already applied the finite-raster floor.
+        diameter = float(effect_diameter)
         skill_minimum_effect_span_px = int(
             np.floor(
                 primitive.minimum_effect_span_cell_diameters
@@ -587,7 +666,8 @@ class CellToolProgramCompiler:
                     dtype=bool,
                 )
                 if (
-                    item.class_id not in source_classes
+                    not _is_biological_instance(item)
+                    or item.class_id not in source_classes
                     or item.instance_id in protected_ids
                     or item.touches_border
                     or item.completeness_status != "complete"
@@ -632,6 +712,11 @@ class CellToolProgramCompiler:
                         ),
                         nominal_nucleus_diameter_px=diameter,
                         contract=depletion,
+                        selection_variant=int(
+                            case.provenance.get(
+                                "depletion_removal_selection_variant", 0
+                            )
+                        ),
                     )
                 )
                 depletion_population_instance_ids = (
@@ -682,7 +767,8 @@ class CellToolProgramCompiler:
             erasure = np.zeros_like(tissue_change)
             for item in scene.cells.instances:
                 if (
-                    item.instance_id in protected_ids
+                    not _is_biological_instance(item)
+                    or item.instance_id in protected_ids
                     or item.touches_border
                     or item.completeness_status != "complete"
                     or item.quality_flags
@@ -918,6 +1004,7 @@ class CellToolProgramCompiler:
         maximum_count: int,
         nominal_nucleus_diameter_px: float,
         contract,
+        selection_variant: int = 0,
     ) -> tuple[tuple[str, ...], DepletionInstanceAuthority]:
         """Select complete nuclei with a stronger core than transition thinning."""
 
@@ -942,6 +1029,9 @@ class CellToolProgramCompiler:
 
         protected = set(protected_instance_ids)
         allowed = set(cell_classes)
+        residual_area_floor = _qualified_residual_area_floor(
+            scene, cell_classes
+        )
         population = []
         by_band: dict[str, list] = {
             "core": [],
@@ -952,7 +1042,11 @@ class CellToolProgramCompiler:
             x, y = item.centroid_xy
             row, col = round(y), round(x)
             if not (
-                item.class_id in allowed
+                _is_biological_instance(
+                    item,
+                    residual_area_floor_px=residual_area_floor,
+                )
+                and item.class_id in allowed
                 and 0 <= row < population_region.shape[0]
                 and 0 <= col < population_region.shape[1]
                 and population_region[row, col]
@@ -1069,6 +1163,7 @@ class CellToolProgramCompiler:
                 contract=contract,
                 effective_core_end_px=effective_core_end,
                 effective_transition_width_px=effective_transition_width,
+                selection_variant=selection_variant,
             )
             return selected, authority
         band_availability = {
@@ -1186,6 +1281,7 @@ class CellToolProgramCompiler:
         contract,
         effective_core_end_px: float,
         effective_transition_width_px: float,
+        selection_variant: int = 0,
     ) -> tuple[str, ...]:
         """Resolve deletion count from a radial density field, not a count target."""
 
@@ -1329,6 +1425,7 @@ class CellToolProgramCompiler:
                     class_bands,
                     removal_quotas=class_removal_quotas,
                     fixed_retained=fixed_retained,
+                    selection_variant=selection_variant,
                 )
             )
         if len(selected) != resolved:
@@ -1400,8 +1497,17 @@ class CellToolProgramCompiler:
         if not np.any(zone):
             raise JointContractError("selected population zone is empty")
         centers = []
+        residual_area_floor = _qualified_residual_area_floor(
+            scene, cell_classes
+        )
         for item in scene.cells.instances:
-            if item.class_id not in cell_classes:
+            if (
+                not _is_biological_instance(
+                    item,
+                    residual_area_floor_px=residual_area_floor,
+                )
+                or item.class_id not in cell_classes
+            ):
                 continue
             x, y = item.centroid_xy
             row, col = round(y), round(x)
@@ -1457,10 +1563,17 @@ class CellToolProgramCompiler:
         preserve_class_composition: bool,
     ) -> tuple[str, ...]:
         protected = set(protected_instance_ids)
+        residual_area_floor = _qualified_residual_area_floor(
+            scene, cell_classes
+        )
         candidates = []
         for item in scene.cells.instances:
             if (
-                item.instance_id in protected
+                not _is_biological_instance(
+                    item,
+                    residual_area_floor_px=residual_area_floor,
+                )
+                or item.instance_id in protected
                 or item.class_id not in cell_classes
                 or item.touches_border
                 or item.completeness_status != "complete"
@@ -1924,6 +2037,7 @@ def _select_density_field_removals_preserving_coverage(
     *,
     removal_quotas: list[int],
     fixed_retained: list,
+    selection_variant: int = 0,
 ) -> list:
     """Remove radial quotas while leaving one global spatial coverage net.
 
@@ -1963,7 +2077,7 @@ def _select_density_field_removals_preserving_coverage(
             if retain_needed[band_index] > 0
             for item in band
         ]
-        first_band, first_item = min(
+        ordered_first = sorted(
             eligible,
             key=lambda pair: (
                 float(np.sum((point(pair[1]) - centroid) ** 2)),
@@ -1971,6 +2085,9 @@ def _select_density_field_removals_preserving_coverage(
                 pair[1].instance_id,
             ),
         )
+        first_band, first_item = ordered_first[
+            int(selection_variant) % len(ordered_first)
+        ]
         retained_ids.add(first_item.instance_id)
         retained_points.append(point(first_item))
         retain_needed[first_band] -= 1
@@ -2069,6 +2186,33 @@ def _select_density_field_removals_preserving_coverage(
             improvements,
             key=lambda item: item[:3],
         )
+    if selection_variant:
+        alternatives = []
+        for band in bands:
+            retained_band = [
+                item for item in band if item.instance_id in retained_ids
+            ]
+            removed_band = [
+                item for item in band if item.instance_id not in retained_ids
+            ]
+            for retained_item in retained_band:
+                for removed_item in removed_band:
+                    trial = set(retained_ids)
+                    trial.remove(retained_item.instance_id)
+                    trial.add(removed_item.instance_id)
+                    alternatives.append(
+                        (
+                            maximum_coverage_gap(trial),
+                            retained_item.instance_id,
+                            removed_item.instance_id,
+                            trial,
+                        )
+                    )
+        if alternatives:
+            ordered = sorted(alternatives, key=lambda item: item[:3])
+            retained_ids = ordered[
+                (int(selection_variant) - 1) % len(ordered)
+            ][-1]
     return [item for item in all_items if item.instance_id not in retained_ids]
 
 

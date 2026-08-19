@@ -45,7 +45,11 @@ from phase3_mask_edit_refine.models import (
     PlannedInterface,
 )
 from phase3_mask_edit_refine.scene import build_scene_analysis
-from phase3_mask_edit_refine.skills import SkillRepository
+from phase3_mask_edit_refine.skills import (
+    SkillRepository,
+    bind_active_bundle_to_case,
+    validate_active_bundle_authority,
+)
 from phase3_mask_edit_refine.visualization import (
     id_mask_to_rgb,
     save_critic_contact_sheet,
@@ -224,6 +228,14 @@ def _prepare_one(task: tuple[dict[str, Any], str, int, int]) -> dict[str, Any]:
         case_provenance=case.provenance,
     )
     scene = build_scene_analysis(mask, schema=schema, pixel_size_um=case.pixel_size_um)
+    bundle = bind_active_bundle_to_case(bundle, case=case, scene=scene)
+    validate_active_bundle_authority(
+        bundle,
+        case_provenance=case.provenance,
+        require_live_binding=True,
+        case=case,
+        scene=scene,
+    )
     _write_json(case_dir / "case_context.json", case.to_metadata())
     _write_json(case_dir / "scene_graph.json", scene.graph.to_metadata())
     _write_json(case_dir / "active_skills.json", bundle.to_metadata())

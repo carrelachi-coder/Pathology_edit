@@ -1,6 +1,6 @@
 {
   "annotation_profile_id": "glas-gland-v1",
-  "version": "1.1.0-draft",
+  "version": "1.3.0-draft",
   "review_status": "draft",
   "prohibited_fine_ids": [
     0
@@ -15,7 +15,8 @@
     "preprocessing_revision",
     "original_label_map_digest",
     "gland_fine_label_signature",
-    "auxiliary_structure_provenance"
+    "auxiliary_structure_provenance",
+    "gland_instance_authority_kind"
   ],
   "unavailable_mechanisms": [
     "breast-intratumoral-necrosis-turnover",
@@ -44,5 +45,31 @@
   "fibrosis_claim_authorized": false,
   "mechanism_editable_source_fine_ids": {},
   "mechanism_editable_target_fine_ids": {},
-  "visual_veto_requirements": []
+  "visual_veto_requirements": [],
+  "gland_instance_authority_policy": {
+    "accepted_authority_kinds": [
+      "dataset_native_instance",
+      "semantic_connected_component_proxy"
+    ],
+    "dataset_native_claims": [
+      "original GLaS gland-instance identity",
+      "dataset-native instance-specific exterior topology"
+    ],
+    "semantic_proxy_claims": [
+      "digest-bound semantic gland-support component exterior topology",
+      "selected-component exterior annulus"
+    ],
+    "semantic_proxy_prohibited_claims": [
+      "original GLaS instance identity",
+      "original_instance_mask_digest",
+      "diagnostic tumor budding or invasive-front identity"
+    ],
+    "raw_he_may_upgrade_authority": false,
+    "nucleus_instance_digest_field": "original_instance_mask_digest",
+    "dataset_native_gland_digest_field": "original_gland_instance_mask_digest",
+    "semantic_proxy_digest_field": "derived_gland_component_map_sha256",
+    "active_gland_authority_digest_field": "gland_instance_authority_sha256",
+    "digest_namespaces_are_independent": true,
+    "legacy_native_instance_scope_is_gland_authority_only_inside_named_gland_auxiliary": true
+  }
 }

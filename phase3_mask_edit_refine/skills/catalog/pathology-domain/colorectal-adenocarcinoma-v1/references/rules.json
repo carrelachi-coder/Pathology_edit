@@ -65,7 +65,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "colorectal.gland_boundary_and_lumen_continuity",
@@ -109,7 +109,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "colorectal.cribriform_units_preserve_internal_spaces",
@@ -147,7 +147,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "colorectal.mucin_and_dirty_necrosis_are_not_stroma",
@@ -190,7 +190,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "colorectal.budding_and_discohesive_cells_are_not_bulk_tumor",
@@ -229,7 +229,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "colorectal.desmoplastic_interface_requires_true_stromal_support",
@@ -273,7 +273,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "colorectal.bowel_wall_compartments_are_not_interchangeable_stroma",
@@ -311,7 +311,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

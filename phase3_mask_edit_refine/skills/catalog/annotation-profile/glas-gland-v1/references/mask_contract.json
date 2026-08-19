@@ -1,13 +1,13 @@
 {
   "skill_id": "glas-gland-v1",
-  "version": "1.2.0-draft",
+  "version": "1.4.0-draft",
   "review_status": "draft",
-  "purpose": "Executable transformed-GLaS mask contract with conditional native gland-instance enforcement.",
+  "purpose": "Executable transformed-GLaS mask contract with explicit two-level gland authority and hybrid nucleus authority boundaries.",
   "constraints": [
     {
       "constraint_id": "glas.mask.require_instance_grade_and_preprocessing_provenance",
       "applies_when": {},
-      "mask_statement": "Require preprocessing revision, original gland-instance-mask digest, and patch grade before interpreting transformed fine IDs.",
+      "mask_statement": "Require preprocessing revision, transformed label-map digest, patch grade, and explicit gland_instance_authority_kind. Keep nucleus-instance original_instance_mask_digest independent from the dedicated original_gland_instance_mask_digest; a semantic gland proxy binds only derived_gland_component_map_sha256.",
       "observability": [
         "provenance"
       ],
@@ -22,12 +22,14 @@
       ],
       "critic_requirement": null,
       "required_inputs": [
-        "GLaS transformation provenance"
+        "GLaS transformation provenance",
+        "typed gland authority provenance",
+        "separately digested nucleus-instance authority when supplied"
       ],
       "failure_action": "abstain_case",
       "generation_handoff": [],
       "known_limitations": [
-        "A digest does not make the native instance mask available to the current scene graph by itself."
+        "A semantic connected-component map is an exterior-topology proxy, not the original GLaS instance annotation."
       ]
     },
     {
@@ -60,7 +62,7 @@
     {
       "constraint_id": "glas.mask.native_gland_instance_topology_is_conditional_hard_input",
       "applies_when": {},
-      "mask_statement": "When the native instance mask is mounted, reject any edit that splits, merges, deletes, bridges, or fills an individual gland/lumen; without it, do not claim gland-instance guarantees and abstain on ambiguous gland cuts.",
+      "mask_statement": "A dataset-native gland raster binds original_gland_instance_mask_digest and may preserve original gland IDs. A semantic connected-component proxy binds derived_gland_component_map_sha256 and certifies exterior topology only. Neither field may overwrite the nucleus-instance original_instance_mask_digest.",
       "observability": [
         "native_annotation"
       ],
@@ -76,15 +78,17 @@
       ],
       "critic_requirement": null,
       "required_inputs": [
-        "native gland-instance mask for deterministic object guarantees",
-        "digest-bound native/auxiliary structure map"
+        "dataset-native GLaS instance mask for original instance guarantees, or",
+        "digest-bound semantic gland-component proxy for exterior-only guarantees"
       ],
       "failure_action": "abstain_case",
       "generation_handoff": [
         "Render continuous gland epithelium and lumina; instance-safe mask geometry does not guarantee microscopic gland quality."
       ],
       "known_limitations": [
-        "Current semantic scene components are not a substitute for native instances."
+        "Touching original glands may remain one semantic proxy component.",
+        "The proxy cannot certify original gland-instance identity.",
+        "Nucleus-instance and gland-instance digests are independent namespaces."
       ]
     },
     {

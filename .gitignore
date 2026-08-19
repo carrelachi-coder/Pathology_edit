@@ -114,3 +114,8 @@ tests/test_cross_v3_ref_mismatch_diagnostic.py
 tests/test_cross_v3_z_ref_reconstruction_diagnostic.py
 tests/test_phase5_cross_eval.py
 tests/test_phase5_cross_v1_diagnostics.py
+# Local migration and patch artifacts
+.glas_*_backup_*/
+.joint_*_backup_*/
+glas_*_applied.json
+joint_*_applied.json

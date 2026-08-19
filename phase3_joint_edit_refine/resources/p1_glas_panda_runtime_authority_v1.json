@@ -1,0 +1,59 @@
+{
+  "schema_version": "p1-glas-panda-runtime-authority-v1",
+  "production_status": "shadow_only",
+  "selection_manifest_sha256": "df4cbf3d1af5ba407a260ea2f490ca2b26aafb14f171a83d516836b280978d59",
+  "preflight_configuration": {
+    "cell_budget_policy_id": "scene-calibrated-local-population-budget-v1",
+    "joint_area_budget": {
+      "basis": "whole_patch",
+      "capacity_floor_policy": "lower_to_proven_max_safe",
+      "fallback_policy": "max_feasible_below_target",
+      "max_fraction": 0.24,
+      "min_fraction": 0.14,
+      "minimum_effective_fraction": 0.14,
+      "relative_tolerance": 0.02,
+      "target_fraction": 0.19,
+      "tissue_min_fraction": 0.14
+    },
+    "maximum_tissue_candidates": 4
+  },
+  "assets": [
+    {
+      "asset_id": "mature_probnet_checkpoint",
+      "asset_kind": "file",
+      "path": null,
+      "sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8",
+      "required_for_preflight": true
+    },
+    {
+      "asset_id": "frozen_probnet_spatial_ranker_checkpoint",
+      "asset_kind": "file",
+      "path": null,
+      "sha256": null,
+      "required_for_preflight": true
+    },
+    {
+      "asset_id": "glas_nucleus_instance_library",
+      "asset_kind": "file_or_directory",
+      "path": null,
+      "sha256": null,
+      "required_for_preflight": true
+    },
+    {
+      "asset_id": "panda_nucleus_instance_library",
+      "asset_kind": "file_or_directory",
+      "path": null,
+      "sha256": null,
+      "required_for_preflight": true
+    },
+    {
+      "asset_id": "later_he_generator_checkpoint",
+      "asset_kind": "file",
+      "path": null,
+      "reader_side_only": true,
+      "sha256": null,
+      "used_during_this_stage": false,
+      "required_for_preflight": true
+    }
+  ]
+}

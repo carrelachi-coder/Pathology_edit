@@ -1435,7 +1435,7 @@ def _validate_image_generation_contract(
         "t_inpaint": args.t_inpaint,
         "t_cross": args.t_cross,
         "joint_force_cross_min_generation_support_fraction": (
-            args.force_cross_generation_support_fraction
+            getattr(args, "force_cross_generation_support_fraction", 0.50)
         ),
         "max_generation_attempts": args.max_attempts,
     }
@@ -1745,7 +1745,7 @@ def _validate_joint_generation_handoff(
         routing_config=JointGeneratorRoutingConfig(
             inpaint_max_generation_support_fraction=args.t_inpaint,
             force_cross_min_generation_support_fraction=(
-                args.force_cross_generation_support_fraction
+                getattr(args, "force_cross_generation_support_fraction", 0.50)
             ),
         ),
     )
@@ -1796,7 +1796,7 @@ def _validate_joint_generation_handoff(
     routing_config = JointGeneratorRoutingConfig(
         inpaint_max_generation_support_fraction=args.t_inpaint,
         force_cross_min_generation_support_fraction=(
-            args.force_cross_generation_support_fraction
+            getattr(args, "force_cross_generation_support_fraction", 0.50)
         ),
     )
     routing_decision: AgenticRoutingDecision = build_agentic_joint_route(

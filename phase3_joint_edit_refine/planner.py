@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from phase3_mask_edit_refine.models import EditPlan
 
+from .authority import validate_mechanism_nucleus_authority
 from .clarification import PlannerClarificationRequired
 from .models import (
     CellEditPlan,
@@ -631,19 +632,29 @@ class HeuristicJointPlanner:
     ) -> tuple[JointEditPlan, dict[str, Any]]:
         del image_paths, artifact_registry
         if candidate_portfolio:
-            selected = next(iter(candidate_portfolio))
+            candidates = tuple(candidate_portfolio)
+            selected_index = int(
+                case.provenance.get("cell_portfolio_candidate_index", 0)
+            )
+            if not 0 <= selected_index < len(candidates):
+                raise JointContractError(
+                    "requested cell portfolio candidate index is out of range: "
+                    f"index={selected_index}, candidates={len(candidates)}"
+                )
+            selected = candidates[selected_index]
             tool_program_id = selected.allowed_tool_program_ids[0]
             return selected.plan, {
                 "provider": self.name,
                 "supports_pathology_vision": False,
-                "planning_mode": "first_pre_llm_certified_cell_candidate",
+                "planning_mode": "indexed_pre_llm_certified_cell_candidate",
+                "selected_candidate_index": selected_index,
                 "selected_candidate_id": selected.candidate_id,
                 "selected_tool_program_id": tool_program_id,
                 "selection_handle": CellPlanSelectionHandle.from_candidate(
                     selected,
                     selected_tool_program_id=tool_program_id,
                 ).to_metadata(),
-                "portfolio_candidate_count": len(tuple(candidate_portfolio)),
+                "portfolio_candidate_count": len(candidates),
                 "input_tokens": 0,
                 "output_tokens": 0,
             }
@@ -681,12 +692,21 @@ class HeuristicJointPlanner:
                     "joint mechanism lacks required auxiliary observations: "
                     + ", ".join(missing)
                 )
-        if (
-            not mechanism.representability.allow_semantic_instance_fallback
-            and scene.cells.observation_quality != "native_instance"
-        ):
+        nucleus_authority = validate_mechanism_nucleus_authority(
+            scene.cells.instances,
+            allow_semantic_instance_fallback=(
+                mechanism.representability.allow_semantic_instance_fallback
+            ),
+            required_cell_classes=(
+                mechanism.representability.required_cell_classes
+                or bundle.primitive.target_cell_classes
+            ),
+            actions=mechanism.cell_program.actions,
+        )
+        if not nucleus_authority["passed"]:
             raise JointContractError(
-                "mechanism requires native nucleus instances; semantic fallback is forbidden"
+                "mechanism nucleus authority is insufficient: "
+                + ", ".join(nucleus_authority["reasons"])
             )
         protected = tuple(
             item.instance_id for item in scene.cells.instances if item.touches_border

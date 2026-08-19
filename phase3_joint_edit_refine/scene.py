@@ -14,6 +14,11 @@ from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_mask_edit_refine.scene import SceneAnalysis, build_scene_analysis
 
+from .authority import (
+    NUCLEUS_AUTHORITY_HYBRID,
+    NUCLEUS_AUTHORITY_SEMANTIC_RASTER,
+    summarize_nucleus_instance_authority,
+)
 from .models import (
     CellGraphEdge,
     CellSceneGraph,
@@ -63,6 +68,9 @@ class JointSceneAnalysis:
             "tissue": self.tissue.graph.to_metadata(),
             "cells": self.cells.to_metadata(),
             "population": self.population.to_metadata(),
+            "nucleus_instance_authority": (
+                summarize_nucleus_instance_authority(self.cells.instances)
+            ),
             "auxiliary_structures": {
                 key: {"pixels": int(np.count_nonzero(value))}
                 for key, value in sorted(self.auxiliary_structure_masks.items())
@@ -105,10 +113,10 @@ def build_joint_scene_analysis(
             )
         values = np.asarray(current)
         if structure_id == "native_gland_instance_map":
-            # Native GLaS gland IDs are execution authority.  Keeping only a
-            # boolean foreground would merge distinct glands that share a
-            # raster edge and would erase the deterministic instance boundary
-            # supplied by the dataset/preprocessor.
+            # Preserve integer IDs supplied by the bound gland authority.
+            # They may be dataset-native IDs or deterministic semantic
+            # component-proxy IDs; provenance, not this loader, owns that
+            # distinction.
             region = values.copy()
         else:
             region = values != 0
@@ -156,7 +164,29 @@ def build_joint_scene_analysis(
                 tissue_fine_id=int(tissue[row, col]),
                 touches_border=touches_border(component),
                 source=(
-                    "instance_json"
+                    (
+                        "instance_json_cellvit_seed"
+                        if instance_id.startswith("native-raster-cellvit-")
+                        else (
+                            "instance_json_semantic_unseeded"
+                            if instance_id.startswith(
+                                "native-raster-semantic-unseeded-"
+                            )
+                            else (
+                                "instance_json_semantic_seeded_residual"
+                                if instance_id.startswith(
+                                    "native-raster-semantic-residual-"
+                                )
+                                else (
+                                    "instance_json_semantic_fallback"
+                                    if instance_id.startswith(
+                                        "native-raster-semantic-fallback-"
+                                    )
+                                    else "instance_json"
+                                )
+                            )
+                        )
+                    )
                     if native_instances is not None
                     else "semantic_distance_watershed"
                 ),
@@ -181,6 +211,7 @@ def build_joint_scene_analysis(
         centers.append((cy, cx))
         counts[class_id] += 1
     instances = _mark_instance_quality(instances)
+    nucleus_authority = summarize_nucleus_instance_authority(instances)
     mean_nnd: float | None = None
     if len(centers) >= 2:
         distances, _ = cKDTree(np.asarray(centers, dtype=float)).query(
@@ -188,7 +219,20 @@ def build_joint_scene_analysis(
         )
         mean_nnd = float(np.mean(distances[:, 1]))
     warnings: list[str] = []
-    if native_instances is None:
+    if nucleus_authority["observation_quality"] == NUCLEUS_AUTHORITY_HYBRID:
+        warnings.append(
+            "CellViT-native seeds are combined with semantic residual "
+            "coverage; residuals are not morphology authority"
+        )
+    elif (
+        nucleus_authority["observation_quality"]
+        == NUCLEUS_AUTHORITY_SEMANTIC_RASTER
+    ):
+        warnings.append(
+            "raster instance partition is semantic coverage without "
+            "native morphology authority"
+        )
+    elif native_instances is None:
         warnings.append(
             "instance identity reconstructed by per-class distance watershed"
         )
@@ -201,10 +245,8 @@ def build_joint_scene_analysis(
         instances=tuple(instances),
         class_counts=counts,
         mean_nearest_neighbor_px=mean_nnd,
-        observation_quality=(
-            "native_instance"
-            if native_instances is not None
-            else "semantic_distance_watershed"
+        observation_quality=str(
+            nucleus_authority["observation_quality"]
         ),
         warnings=tuple(warnings),
         edges=edges,
@@ -561,12 +603,23 @@ def _shape_metrics(component: np.ndarray) -> dict[str, float | None]:
 def _mark_instance_quality(
     instances: list[NucleusInstance],
 ) -> list[NucleusInstance]:
-    areas_by_class: dict[int, list[float]] = {}
+    all_areas_by_class: dict[int, list[float]] = {}
+    seed_areas_by_class: dict[int, list[float]] = {}
     for item in instances:
         if not item.touches_border:
-            areas_by_class.setdefault(item.class_id, []).append(float(item.area_px))
+            all_areas_by_class.setdefault(item.class_id, []).append(
+                float(item.area_px)
+            )
+            if item.source == "instance_json_cellvit_seed":
+                seed_areas_by_class.setdefault(item.class_id, []).append(
+                    float(item.area_px)
+                )
     limits: dict[int, float] = {}
-    for class_id, values in areas_by_class.items():
+    for class_id, all_values in all_areas_by_class.items():
+        # Exact semantic coverage can leave many tiny pieces around a clipped
+        # CellViT seed. Those pieces are provenance records, not an independent
+        # morphology population, and must not make every true seed look merged.
+        values = seed_areas_by_class.get(class_id) or all_values
         array = np.asarray(values, dtype=float)
         if array.size < 4:
             limits[class_id] = float(np.median(array) * 3.0) if array.size else np.inf
@@ -627,7 +680,14 @@ def _build_population_graph(
     observation_quality: str,
     shape: tuple[int, int],
 ) -> tuple[PopulationGraph, dict[str, np.ndarray]]:
-    complete_areas = [
+    native_seed_areas = [
+        item.area_px
+        for item in instances
+        if item.source == "instance_json_cellvit_seed"
+        and not item.touches_border
+        and "merged_suspect" not in item.quality_flags
+    ]
+    complete_areas = native_seed_areas or [
         item.area_px
         for item in instances
         if not item.touches_border and "merged_suspect" not in item.quality_flags

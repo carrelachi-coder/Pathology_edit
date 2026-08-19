@@ -19,9 +19,13 @@ from scipy import ndimage
 
 from phase3_mask_edit_refine.evidence import sha256_file
 
+from .authority import (
+    bind_gland_instance_authority_provenance,
+    semantic_gland_component_authority_metadata,
+)
 from .models import JointCaseContext, JointContractError
 
-AUXILIARY_PRODUCER_VERSION = "joint-semantic-topology-auxiliary-v1"
+AUXILIARY_PRODUCER_VERSION = "joint-semantic-topology-auxiliary-v2"
 
 
 @dataclass(frozen=True)
@@ -83,6 +87,13 @@ def materialize_profile_auxiliaries(
         if item.structure_id not in case.auxiliary_structure_uris
     ]
     if not missing:
+        if case.annotation_profile_id == "glas-gland-v1":
+            case = replace(
+                case,
+                provenance=bind_gland_instance_authority_provenance(
+                    case.provenance
+                ),
+            )
         _validate_bound_auxiliary_provenance(case)
         return case, ()
 
@@ -110,12 +121,22 @@ def materialize_profile_auxiliaries(
                 fine_ids=specification.fine_ids,
             )
             protection_semantics = "explicit_profile_structure"
+        elif specification.producer_kind == "connected_gland_instances":
+            mask, details = _connected_gland_instances(
+                source_tissue,
+                gland_fine_ids=specification.fine_ids,
+            )
+            protection_semantics = "semantic_gland_component_exterior_proxy"
         else:
             raise JointContractError(
                 f"unknown auxiliary producer kind: {specification.producer_kind}"
             )
         path = root / f"{structure_id}.png"
-        Image.fromarray(mask.astype(np.uint8) * 255).save(path)
+        if specification.producer_kind == "connected_gland_instances":
+            output = mask.astype(np.uint16, copy=False)
+        else:
+            output = mask.astype(np.uint8) * 255
+        Image.fromarray(output).save(path)
         digest = sha256_file(path)
         current_provenance = {
             "producer_id": AUXILIARY_PRODUCER_VERSION,
@@ -124,9 +145,17 @@ def materialize_profile_auxiliaries(
             "protection_semantics": protection_semantics,
             "source_tissue_mask_sha256": source_digest,
             "output_sha256": digest,
+            "output_dtype": str(output.dtype),
             "pattern_fine_ids": list(specification.fine_ids),
             **details,
         }
+        if structure_id == "native_gland_instance_map":
+            current_provenance.update(
+                semantic_gland_component_authority_metadata(
+                    source_tissue_mask_sha256=source_digest,
+                    output_sha256=digest,
+                )
+            )
         uris[structure_id] = str(path)
         digests[structure_id] = digest
         provenance_by_id[structure_id] = current_provenance
@@ -144,6 +173,10 @@ def materialize_profile_auxiliaries(
         "auxiliary_structure_provenance": provenance_by_id,
         "available_auxiliary_structures": sorted(uris),
     }
+    if case.annotation_profile_id == "glas-gland-v1":
+        effective_provenance = bind_gland_instance_authority_provenance(
+            effective_provenance
+        )
     effective = replace(
         case,
         auxiliary_structure_uris=uris,
@@ -163,6 +196,11 @@ def _profile_specifications(
             _AuxiliarySpecification(
                 "gland_or_lumen_support",
                 "enclosed_pattern_spaces",
+                (5, 11, 12, 13),
+            ),
+            _AuxiliarySpecification(
+                "native_gland_instance_map",
+                "connected_gland_instances",
                 (5, 11, 12, 13),
             ),
         )
@@ -199,6 +237,66 @@ def _profile_specifications(
             ),
         )
     return ()
+
+
+def _connected_gland_instances(
+    tissue: np.ndarray,
+    *,
+    gland_fine_ids: tuple[int, ...],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Label semantic gland-support components without claiming native IDs."""
+
+    values = np.asarray(tissue)
+    if values.ndim != 2:
+        raise JointContractError("auxiliary producers require one 2-D tissue mask")
+    support = np.isin(values, gland_fine_ids)
+    labeled, count = ndimage.label(
+        support,
+        structure=np.ones((3, 3), dtype=bool),
+    )
+    if int(count) > np.iinfo(np.uint16).max:
+        raise JointContractError("GLaS gland instance count exceeds uint16 capacity")
+
+    units = []
+    for instance_id in range(1, int(count) + 1):
+        component = labeled == instance_id
+        rows, cols = np.nonzero(component)
+        if not len(rows):
+            continue
+        packed = np.packbits(component.astype(np.uint8), axis=None)
+        units.append(
+            {
+                "unit_id": f"gland-instance:{instance_id:05d}",
+                "unit_type": "deterministic_semantic_gland_support_component",
+                "instance_id": instance_id,
+                "member_fine_ids": sorted(
+                    int(value) for value in np.unique(values[component])
+                ),
+                "area_px": len(rows),
+                "bbox_xyxy": [
+                    int(cols.min()),
+                    int(rows.min()),
+                    int(cols.max()) + 1,
+                    int(rows.max()) + 1,
+                ],
+                "component_sha256": hashlib.sha256(packed.tobytes()).hexdigest(),
+            }
+        )
+
+    return labeled.astype(np.uint16), {
+        "connectivity": 8,
+        "component_order": "scipy_ndimage_label_row_major",
+        "touching_gland_policy": "retain_as_one_compound_component",
+        "instance_count": int(count),
+        "positive_pixel_count": int(np.count_nonzero(support)),
+        "empty_map_is_valid_observation": False,
+        "structural_hierarchy_schema": "semantic-gland-components-v2",
+        "component_identity_scope": "semantic_connectivity_only",
+        "dataset_native_instance_identity_preserved": False,
+        "instance_records": units,
+        "structure_units": [],
+        "hierarchy_relations": [],
+    }
 
 
 def _enclosed_pattern_spaces(

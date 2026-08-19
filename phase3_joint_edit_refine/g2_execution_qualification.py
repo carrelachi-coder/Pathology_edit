@@ -20,25 +20,29 @@ import numpy as np
 
 from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_mask_edit_refine.gates import GateRegistry
-from phase3_mask_edit_refine.models import CandidateMask
-from phase3_mask_edit_refine.skills import SkillRepository as MaskSkillRepository
+from phase3_mask_edit_refine.skills import (
+    SkillRepository as MaskSkillRepository,
+)
+from phase3_mask_edit_refine.skills import (
+    bind_active_bundle_to_case,
+    validate_active_bundle_authority,
+)
 
 from .auxiliary import materialize_profile_auxiliaries
 from .budget import JointFeasibilitySolver
 from .candidate_feasibility import CandidateFeasibilityCompiler
-from .cell_layouts import build_reference_shape_library
-from .cell_programs import CellToolProgramCompiler
 from .feasibility import build_joint_nuclei_preflight
 from .g2_v2_shadow import _materialize_joint_context
 from .models import JointCaseContext, JointContractError
 from .nuclei import load_nuclei_mask
-from .packing import certify_complete_footprint_packing
 from .planner import HeuristicJointPlanner
 from .scene import build_joint_scene_analysis
 from .semantic_parser import PreboundSemanticParser, bind_semantic_intent
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillRepository
 from .workflow import (
+    INFILTRATION_BUDGET_PRIMITIVES,
+    JointPathologyEditWorkflow,
     _as_tissue_case,
     _derive_infiltration_budget,
     _derive_local_population_budget,
@@ -132,15 +136,27 @@ def qualify_g2_v2_execution(
 _WORKER_MASK_SKILLS: MaskSkillRepository | None = None
 _WORKER_JOINT_SKILLS: JointSkillRepository | None = None
 _WORKER_BUDGET_SOLVER: JointFeasibilitySolver | None = None
+_WORKER_PORTFOLIO_WORKFLOW: JointPathologyEditWorkflow | None = None
 
 
 def _initialize_worker() -> None:
     global _WORKER_MASK_SKILLS
     global _WORKER_JOINT_SKILLS
     global _WORKER_BUDGET_SOLVER
+    global _WORKER_PORTFOLIO_WORKFLOW
     _WORKER_MASK_SKILLS = MaskSkillRepository()
     _WORKER_JOINT_SKILLS = JointSkillRepository()
     _WORKER_BUDGET_SOLVER = JointFeasibilitySolver()
+    # Qualification must use the exact production pre-LLM portfolio compiler.
+    # The three runtime agents are not consulted by that private compilation
+    # stage; deterministic placeholders are therefore sufficient here.
+    _WORKER_PORTFOLIO_WORKFLOW = JointPathologyEditWorkflow(
+        tissue_planner=None,
+        joint_planner=HeuristicJointPlanner(),
+        critic=None,
+        mask_skills=_WORKER_MASK_SKILLS,
+        joint_skills=_WORKER_JOINT_SKILLS,
+    )
 
 
 def _qualify_case_worker(
@@ -151,6 +167,7 @@ def _qualify_case_worker(
         _WORKER_MASK_SKILLS is None
         or _WORKER_JOINT_SKILLS is None
         or _WORKER_BUDGET_SOLVER is None
+        or _WORKER_PORTFOLIO_WORKFLOW is None
     ):
         raise RuntimeError("execution qualification worker was not initialized")
     return _qualify_case(
@@ -160,6 +177,7 @@ def _qualify_case_worker(
         mask_skills=_WORKER_MASK_SKILLS,
         joint_skills=_WORKER_JOINT_SKILLS,
         budget_solver=_WORKER_BUDGET_SOLVER,
+        portfolio_workflow=_WORKER_PORTFOLIO_WORKFLOW,
     )
 
 
@@ -171,6 +189,7 @@ def _qualify_case(
     mask_skills: MaskSkillRepository,
     joint_skills: JointSkillRepository,
     budget_solver: JointFeasibilitySolver,
+    portfolio_workflow: JointPathologyEditWorkflow,
 ) -> dict[str, Any]:
     case_id = str(row["case_id"])
     base = {
@@ -213,7 +232,15 @@ def _qualify_case(
             raw,
             PreboundSemanticParser(raw["prebound_semantic_intent"]),
         )
-        if semantic.primitive_id != row["primitive_id"]:
+        frozen_selection = raw["prebound_semantic_intent"].get(
+            "selected_primitive_id"
+        )
+        semantic_binding = (
+            str(frozen_selection)
+            if frozen_selection is not None
+            else semantic.primitive_id
+        )
+        if semantic_binding != row["primitive_id"]:
             raise JointContractError(
                 "Codex semantic primitive differs from reviewed G2 primitive"
             )
@@ -266,6 +293,7 @@ def _qualify_case(
                 schema=schema,
                 scene=scene,
                 bundle=bundle,
+                portfolio_workflow=portfolio_workflow,
             )
         metrics["source_auxiliary_producer_ids"] = [
             str(item.provenance.get("producer_id")) for item in produced
@@ -315,21 +343,19 @@ def _qualify_tissue_case(
         available_checker_ids=set(GateRegistry().available_checker_ids),
         case_provenance=case.provenance,
     )
-    if tool_primitive_id != case.primitive_id:
-        tissue_bundle = replace(
-            tissue_bundle,
-            edit_contract=replace(
-                tissue_bundle.edit_contract,
-                primitive_id=case.primitive_id,
-            ),
-            warnings=(
-                *tissue_bundle.warnings,
-                (
-                    "read-only execution adapter: "
-                    f"{case.primitive_id} -> {tool_primitive_id}"
-                ),
-            ),
-        )
+    tissue_bundle = bind_active_bundle_to_case(
+        tissue_bundle,
+        case=case,
+        scene=scene.tissue,
+        semantic_primitive_id=case.primitive_id,
+    )
+    validate_active_bundle_authority(
+        tissue_bundle,
+        case_provenance=case.provenance,
+        require_live_binding=True,
+        case=case,
+        scene=scene.tissue,
+    )
     preflight = build_joint_nuclei_preflight(
         case=case,
         source_tissue=source_tissue,
@@ -414,6 +440,7 @@ def _qualify_cell_only_case(
     schema,
     scene,
     bundle,
+    portfolio_workflow: JointPathologyEditWorkflow,
 ) -> tuple[dict[str, Any], list[str]]:
     budget = case.cell_count_extent_budget
     if budget is None:
@@ -425,110 +452,29 @@ def _qualify_cell_only_case(
             case.primitive_id, {}
         )
     )
-    plan, _usage = HeuristicJointPlanner().create_plan(
+    portfolio = portfolio_workflow._compile_cell_only_candidate_portfolio(
         case=case,
-        scene=scene,
-        bundle=bundle,
-        tissue_plan=None,
-        image_paths=(),
-    )
-    preserved = CandidateMask(
-        candidate_id="read-only-preserved-tissue",
-        interface_id=(
-            plan.cell_plan.interface_ids[0]
-            if plan.cell_plan.interface_ids
-            else plan.cell_plan.core_zone
-        ),
-        tool_name="read_only_preserve_tissue",
-        target_mask=np.asarray(source_tissue),
-        change_region=np.zeros_like(source_tissue, dtype=bool),
-        tool_trace={"read_only": True},
-    )
-    program = CellToolProgramCompiler().compile(
-        case=case,
+        source_tissue=source_tissue,
+        source_nuclei=source_nuclei,
         schema=schema,
         scene=scene,
-        plan=plan,
         bundle=bundle,
-        tissue_candidate=preserved,
     )
-    failures: list[str] = []
-    packing_metadata: dict[str, Any] | None = None
-    removed_ids = []
-    if "remove_whole" in plan.cell_plan.actions:
-        for item in scene.cells.instances:
-            instance = np.asarray(scene.instance_masks[item.instance_id], dtype=bool)
-            if np.any(instance & program.erasure_region):
-                removed_ids.append(item.instance_id)
-        instance_by_id = {item.instance_id: item for item in scene.cells.instances}
-        center_points = np.asarray(
-            [
-                (
-                    instance_by_id[instance_id].centroid_xy[1],
-                    instance_by_id[instance_id].centroid_xy[0],
-                )
-                for instance_id in removed_ids
-            ],
-            dtype=float,
-        )
-    else:
-        center_points = np.argwhere(program.placement_center_region)
-    executable_effect_span = _certified_center_span(center_points)
-    if executable_effect_span < budget.minimum_effect_span_px:
-        failures.append("meaningful_cell_extent_not_executable")
-    if "add" in bundle.mechanism.cell_program.actions:
-        metadata = {item.instance_id: item for item in scene.cells.instances}
-        references_by_class = {}
-        component_id = (
-            plan.cell_plan.core_zone.removeprefix("pop:component:")
-            if plan.cell_plan.core_zone.startswith("pop:component:")
-            else None
-        )
-        for class_id in plan.cell_plan.allowed_cell_classes:
-            references, _rejected = build_reference_shape_library(
-                scene, class_id=class_id
-            )
-            if component_id is not None:
-                references = tuple(
-                    item
-                    for item in references
-                    if metadata[item.instance_id].tissue_component_id
-                    == component_id
-                )
-            if references:
-                references_by_class[class_id] = references
-        requested = int(program.target_delta_count or 0)
-        packing = certify_complete_footprint_packing(
-            source_nuclei=source_nuclei,
-            erased_footprint=program.erasure_region,
-            center_region=program.placement_center_region,
-            valid_footprint_region=program.valid_footprint_region,
-            references_by_class=references_by_class,
-            requested_count=requested,
-            allow_finite_count_fallback=False,
-        )
-        packing_metadata = packing.to_metadata()
-        if not packing.passed:
-            failures.extend(packing.failure_reasons)
-        if packing.placed_count < budget.min_delta_count:
-            failures.append("meaningful_cell_count_not_executable")
-        if packing.placed_count < budget.minimum_effect_foci:
-            failures.append("meaningful_cell_foci_not_executable")
-    else:
-        if len(removed_ids) < budget.min_delta_count:
-            failures.append("meaningful_cell_count_not_executable")
-        if len(removed_ids) < budget.minimum_effect_foci:
-            failures.append("meaningful_cell_foci_not_executable")
+    survivor_preflights = [
+        item.preflight.to_metadata() for item in portfolio.choices
+    ]
     return (
         {
             "cell_budget": budget.__dict__,
             "cell_budget_derivation": budget_metadata,
-            "cell_program": program.to_metadata(),
-            "maximum_executable_effect_span_px": executable_effect_span,
-            "exact_removal_witness_instance_ids": removed_ids,
-            "exact_packing_certificate": packing_metadata,
+            "production_pre_llm_portfolio": portfolio.certificates.to_metadata(),
+            "production_pre_llm_survivor_count": len(portfolio.choices),
+            "production_pre_llm_veto_count": len(
+                portfolio.certificates.vetoed
+            ),
+            "survivor_exact_capacity_reports": survivor_preflights,
         },
-        failures,
+        [],
     )
 
 
@@ -557,15 +503,30 @@ def _with_scene_calibrated_cell_budget(
         return case
     if case.cell_count_extent_budget is not None:
         return case
-    if case.primitive_id == "neoplastic-microinfiltration-increase-v1":
-        budget, budget_metadata = _derive_infiltration_budget(scene)
+    if case.primitive_id in INFILTRATION_BUDGET_PRIMITIVES:
+        budget, budget_metadata = _derive_infiltration_budget(
+            scene,
+            minimum_effect_delta_count=(
+                primitive.minimum_effect_delta_count_for(
+                    case.pathology_domain_id
+                )
+            ),
+            minimum_effect_span_cell_diameters=(
+                primitive.minimum_effect_span_cell_diameters
+            ),
+            minimum_effect_foci=primitive.minimum_effect_foci,
+        )
     else:
         budget, budget_metadata = _derive_local_population_budget(
             scene,
             primitive_id=case.primitive_id,
             semantic_intent=case.semantic_intent,
             host_tissue_labels=primitive.host_tissue_labels,
-            minimum_effect_delta_count=primitive.minimum_effect_delta_count,
+            minimum_effect_delta_count=(
+                primitive.minimum_effect_delta_count_for(
+                    case.pathology_domain_id
+                )
+            ),
             minimum_effect_span_cell_diameters=(
                 primitive.minimum_effect_span_cell_diameters
             ),

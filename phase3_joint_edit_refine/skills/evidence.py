@@ -39,6 +39,7 @@ _MECHANISM_FIELDS = {
     "summary": "pathology_fact",
     "recognition_contract": "pathology_fact",
     "planner_policy": "engineering_proxy",
+    "gland_authority_contract": "engineering_proxy",
     "representability_contract": "model_representability",
     "tissue_program": "engineering_proxy",
     "cell_program": "engineering_proxy",
@@ -78,6 +79,7 @@ _PROFILE_FIELDS = {
     "prohibit_cell_placement_fine_ids": "dataset_fact",
     "prohibit_generation_support_fine_ids": "dataset_fact",
     "required_provenance_fields": "engineering_proxy",
+    "gland_instance_authority_policy": "engineering_proxy",
     "unavailable_mechanisms": "dataset_fact",
     "conditional_mechanisms": "dataset_fact",
     "required_checker_ids": "engineering_proxy",
@@ -294,6 +296,8 @@ class EvidenceGovernance:
         # Optional primitive fields are still classified but may be absent.
         optional = {
             "planner_policy",
+            "gland_authority_contract",
+            "gland_instance_authority_policy",
             "tissue_topology_contract",
             "required_source_clearance_classes",
             "minimum_source_clearance_instances",

@@ -276,6 +276,9 @@ def build_joint_nuclei_preflight(
         current, current_rejected = build_reference_shape_library(
             scene,
             class_id=class_id,
+            allow_calibrated_fallback=(
+                joint_bundle.primitive.scope == "cell_only"
+            ),
         )
         references_by_class[class_id] = tuple(current)
         eligible_ids.update(item.instance_id for item in current)
@@ -1415,7 +1418,10 @@ def certify_compiled_cell_program_feasibility(
         source_nuclei=scene.source_nuclei,
         erased_footprint=program.erasure_region,
         center_region=program.placement_center_region,
-        valid_footprint_region=program.valid_footprint_region,
+        valid_footprint_region=(
+            np.asarray(program.valid_footprint_region, dtype=bool)
+            & np.asarray(program.support_context_region, dtype=bool)
+        ),
         references_by_class=references_by_class,
         requested_count=report.required_add_count,
         class_request_weights=preflight.target_density_by_class,

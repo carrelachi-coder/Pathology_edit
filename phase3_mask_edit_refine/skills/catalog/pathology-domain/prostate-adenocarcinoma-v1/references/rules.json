@@ -62,7 +62,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "prostate.pattern3_remains_separate_well_formed_glands",
@@ -100,7 +100,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "prostate.pattern4_matches_fused_poorly_formed_cribriform_or_glomeruloid_architecture",
@@ -142,7 +142,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "prostate.pattern5_is_not_forced_to_form_glands",
@@ -180,7 +180,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "prostate.no_implicit_gleason_transition",
@@ -224,7 +224,7 @@
           "binding": "checker:label_transition"
         }
       ],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "prostate.lumina_and_intraglandular_contents_are_not_stroma",
@@ -266,7 +266,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     },
     {
       "rule_id": "prostate.prefer_broad_same_pattern_tumor_stroma_front",
@@ -308,7 +308,7 @@
       ],
       "execution_role": null,
       "observation_authority": [],
-      "selection_preference": null
+      "preference_rule_id": null
     }
   ]
 }

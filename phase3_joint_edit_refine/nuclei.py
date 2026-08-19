@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -159,6 +160,14 @@ def load_native_instances(
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise JointContractError("native nucleus instance JSON root must be an object")
+    raster_authority = payload.get("raster_instance_authority")
+    if isinstance(raster_authority, dict):
+        return _load_raster_instance_authority(
+            Path(path),
+            raster_authority,
+            shape=shape,
+            semantic_mask=semantic_mask,
+        )
     raw_items = []
     if isinstance(payload.get("nuc"), dict):
         raw_items = [(str(key), value) for key, value in payload["nuc"].items()]
@@ -202,6 +211,72 @@ def load_native_instances(
     if not result:
         raise JointContractError("native nucleus JSON has no representable complete instances")
     result.sort(key=lambda item: (item[1], instance_centroid(item[2])[1], instance_centroid(item[2])[0], item[0]))
+    return tuple(result)
+
+
+def _load_raster_instance_authority(
+    manifest_path: Path,
+    authority: dict,
+    *,
+    shape: tuple[int, int],
+    semantic_mask: np.ndarray,
+) -> tuple[tuple[str, int, np.ndarray], ...]:
+    label_map_uri = authority.get("label_map_uri")
+    expected_sha256 = str(authority.get("label_map_sha256") or "")
+    records = authority.get("instances")
+    if not label_map_uri or not expected_sha256 or not isinstance(records, list):
+        raise JointContractError("raster instance authority is incomplete")
+    label_map_path = Path(str(label_map_uri))
+    if not label_map_path.is_absolute():
+        label_map_path = manifest_path.parent / label_map_path
+    if not label_map_path.is_file():
+        raise JointContractError("raster instance label map does not exist")
+    digest = hashlib.sha256(label_map_path.read_bytes()).hexdigest()
+    if digest != expected_sha256:
+        raise JointContractError("raster instance label map digest mismatch")
+    labels = np.load(label_map_path, allow_pickle=False)
+    if labels.shape != shape or labels.ndim != 2:
+        raise JointContractError("raster instance label map shape mismatch")
+    labels = np.asarray(labels, dtype=np.int64)
+    semantic = normalize_nuclei_mask(semantic_mask)
+    result = []
+    seen_labels = set()
+    for item in records:
+        if not isinstance(item, dict):
+            raise JointContractError("raster instance ledger entry must be an object")
+        label_id = int(item.get("label_id", 0))
+        class_id = int(item.get("type", 0))
+        if label_id <= 0 or label_id in seen_labels or class_id not in range(1, 6):
+            raise JointContractError("raster instance ledger identity is invalid")
+        component = labels == label_id
+        if not np.any(component) or not np.all(semantic[component] == class_id):
+            raise JointContractError("raster instance disagrees with semantic nuclei mask")
+        seen_labels.add(label_id)
+        seed_source = str(item.get("seed_source") or "").strip().lower()
+        if seed_source == "cellvit":
+            instance_id = f"native-raster-cellvit-{label_id:05d}"
+        elif seed_source == "semantic_unseeded":
+            instance_id = f"native-raster-semantic-unseeded-{label_id:05d}"
+        elif seed_source == "semantic_seeded_residual":
+            instance_id = f"native-raster-semantic-residual-{label_id:05d}"
+        elif seed_source == "semantic_fallback":
+            instance_id = f"native-raster-semantic-fallback-{label_id:05d}"
+        else:
+            instance_id = f"native-raster-{label_id:05d}"
+        result.append((instance_id, class_id, component))
+    positive_labels = {int(value) for value in np.unique(labels) if int(value) > 0}
+    if positive_labels != seen_labels:
+        raise JointContractError("raster instance ledger does not cover its label map")
+    if not np.array_equal(labels > 0, semantic > 0):
+        raise JointContractError("raster instance authority does not cover semantic foreground")
+    result.sort(
+        key=lambda item: (
+            item[1],
+            instance_centroid(item[2])[1],
+            instance_centroid(item[2])[0],
+            item[0],
+        )
+    )
     return tuple(result)
 
 

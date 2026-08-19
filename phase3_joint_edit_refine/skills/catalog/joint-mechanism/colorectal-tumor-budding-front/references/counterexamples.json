@@ -1,1 +1,9 @@
-{"counterexamples":["more-than-four-cell bud","remote scatter","bulk bridge","mucin/lumen seed"]}
+{
+  "counterexamples": [
+    "more-than-four-cell bud",
+    "remote scatter",
+    "bulk bridge",
+    "mucin/lumen seed",
+    "semantic gland-component proxy presented as original GLaS instance authority"
+  ]
+}

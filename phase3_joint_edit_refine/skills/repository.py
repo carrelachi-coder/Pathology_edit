@@ -737,11 +737,16 @@ class JointSkillRepository:
         if primitive_contract.scope == "cell_only":
             budget = case.cell_count_extent_budget
             assert budget is not None
+            minimum_effect_delta_count = (
+                primitive_contract.minimum_effect_delta_count_for(
+                    case.pathology_domain_id
+                )
+            )
             if (
                 budget.min_delta_count
-                < primitive_contract.minimum_effect_delta_count
+                < minimum_effect_delta_count
                 or budget.max_delta_count
-                < primitive_contract.minimum_effect_delta_count
+                < minimum_effect_delta_count
             ):
                 raise JointContractError(
                     "cell-only budget is below the skill-owned minimum effect count"
