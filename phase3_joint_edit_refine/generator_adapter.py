@@ -28,6 +28,9 @@ from .models import JointContractError
 class JointGeneratorRoutingConfig:
     inpaint_max_generation_support_fraction: float = 0.12
     force_cross_min_generation_support_fraction: float = 0.50
+    cell_only_decrease_cross_first: bool = True
+    cell_only_increase_inpaint_first: bool = True
+    generic_immune_decrease_cross_first: bool = True
 
 
 @dataclass(frozen=True)
@@ -61,17 +64,48 @@ def route_joint_handoff(manifest: dict[str, Any], *, config: JointGeneratorRouti
         raise JointContractError(
             "generation support fraction must contain the joint change and be at most one"
         )
-    if support <= config.inpaint_max_generation_support_fraction:
-        mode, force_cross, reason = (
-            "inpaint",
-            False,
-            "small generation support favors local preservation",
-        )
-    elif support >= config.force_cross_min_generation_support_fraction:
+    tissue = float(ledger.get("tissue_fraction", 0.0))
+    cell = float(ledger.get("cell_fraction", 0.0))
+    cell_only = tissue == 0.0 and cell > 0.0
+    primitive_id = str(manifest.get("primitive_id", ""))
+    cell_only_decrease = cell_only and "decrease" in primitive_id
+    cell_only_increase = cell_only and "increase" in primitive_id
+    if support >= config.force_cross_min_generation_support_fraction:
         mode, force_cross, reason = (
             "cross",
             True,
             "large generation support requires cross generation",
+        )
+    elif (
+        primitive_id == "generic-immune-infiltrate-decrease-v1"
+        and config.generic_immune_decrease_cross_first
+    ):
+        mode, force_cross, reason = (
+            "cross",
+            False,
+            "generic immune-infiltrate decrease starts with Cross-v1 "
+            "to avoid localized inpaint blur and false cell-like texture; "
+            "inpaint remains the agentic fallback",
+        )
+    elif cell_only_decrease and config.cell_only_decrease_cross_first:
+        mode, force_cross, reason = (
+            "cross",
+            False,
+            "cell-only decrease starts with Cross-v1; "
+            "inpaint remains the agentic fallback",
+        )
+    elif cell_only_increase and config.cell_only_increase_inpaint_first:
+        mode, force_cross, reason = (
+            "inpaint",
+            False,
+            "cell-only increase starts with preservation-oriented inpaint; "
+            "Cross-v1 remains the agentic fallback",
+        )
+    elif support <= config.inpaint_max_generation_support_fraction:
+        mode, force_cross, reason = (
+            "inpaint",
+            False,
+            "small generation support favors local preservation",
         )
     else:
         mode, force_cross, reason = (
