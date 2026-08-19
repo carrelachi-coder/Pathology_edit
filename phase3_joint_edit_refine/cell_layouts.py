@@ -46,7 +46,7 @@ from .spatial_contracts import (
     small_cluster_minimum_anchor_separation_px,
 )
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v20"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v21"
 
 _REFERENCE_SAMPLING_POLICY = (
     "same_class_source_without_replacement_then_calibrated_library_or_"
@@ -529,16 +529,20 @@ def generate_cell_layouts(
         if packing_certificate.get("passed") is True
         else 0
     )
-    if bundle.primitive.scope == "cell_only" and certified_requested_count > 0:
-        if certified_requested_count != executable_desired_count:
+    if certified_requested_count > 0:
+        if (
+            bundle.primitive.scope == "cell_only"
+            and certified_requested_count != executable_desired_count
+        ):
             raise JointContractError(
                 "cell-only executable count differs from its packing certificate"
             )
-        # The exact certificate has already tested concrete complete shapes,
-        # retained nuclei, V and one-pixel collision clearance.  A rough
-        # area/(2*median-area) estimate is only a diagnostic and must not cap
-        # the immutable executable count after that stronger proof passes.
+        # A passing exact certificate has already tested concrete complete
+        # shapes, retained nuclei, P/V and one-pixel collision clearance.
+        # Do not let a rough density estimate or greedy ordering lower it.
         requested_count = certified_requested_count
+        if bundle.primitive.scope == "tissue_and_cell":
+            biological_desired_count = certified_requested_count
     else:
         requested_count = min(executable_desired_count, capacity_bound)
     references = _calibrated_reference_variants(
@@ -707,6 +711,37 @@ def generate_cell_layouts(
         )
         placed = core_placed + halo_placed
         placements = [*core_placements, *halo_placements]
+        # paired_packing_witness_replay_v2
+        packing_witness_fallback_used = False
+        packing_requested = int(
+            packing_certificate.get("requested_count", 0)
+            if packing_certificate.get("passed") is True
+            else 0
+        )
+        if packing_requested > 0 and placed < packing_requested:
+            target, placements = _materialize_contract_packing_witness(
+                base=base,
+                references_by_class={target_class: references},
+                executable_contract=executable_contract,
+            )
+            placed = len(placements)
+            core_placed = sum(
+                bool(
+                    legal_core[
+                        int(item["placement_anchor_xy"][1]),
+                        int(item["placement_anchor_xy"][0]),
+                    ]
+                )
+                for item in placements
+            )
+            halo_placed = placed - core_placed
+            replacement_count = core_placed
+            reserve_count = halo_placed
+            requested_count = placed
+            biological_replacement_count = core_placed
+            biological_reserve_count = halo_placed
+            biological_desired_count = placed
+            packing_witness_fallback_used = True
         scatter_metrics = (
             _scatter_placement_metrics(placements)
             if bundle.primitive.primitive_id
@@ -790,6 +825,9 @@ def generate_cell_layouts(
                     "placement_capacity_exhausted": placed
                     < (replacement_count + reserve_count),
                     "cell_capacity_fallback_used": placed < biological_desired_count,
+                    "packing_witness_fallback_used": (
+                        packing_witness_fallback_used
+                    ),
                     "continuity_mode": compiled_program.continuity_mode,
                     "continuity_width_px": (
                         compiled_program.continuity_width_px
@@ -1342,6 +1380,159 @@ def _largest_remainder_class_quotas(
         quotas[key] += 1
     return quotas
 
+
+
+def _materialize_contract_packing_witness(
+    *,
+    base: np.ndarray,
+    references_by_class: dict[int, tuple[ReferenceNucleusShape, ...]],
+    executable_contract: ExecutableJointContract,
+) -> tuple[np.ndarray, list[dict[str, Any]]]:
+    """Replay the exact complete-footprint witness owned by the compiler.
+
+    Every center and reference ID comes from the digest-bound executable
+    contract. The executor rechecks P, V, support context, retained nuclei and
+    one-pixel separation before writing any pixel.
+    """
+
+    certificate = executable_contract.packing_certificate or {}
+    requested = int(certificate.get("requested_count", 0))
+    witness = certificate.get("placements") or ()
+    if (
+        certificate.get("passed") is not True
+        or requested <= 0
+        or len(witness) != requested
+    ):
+        raise JointContractError(
+            "cell layout underfilled without a complete passing packing witness"
+        )
+
+    references = {
+        item.instance_id: item
+        for items in references_by_class.values()
+        for item in items
+    }
+    program = executable_contract.cell_program
+    legal = np.asarray(program.placement_center_region, dtype=bool)
+    valid = np.asarray(program.valid_footprint_region, dtype=bool) & np.asarray(
+        program.support_context_region,
+        dtype=bool,
+    )
+    continuity = np.asarray(program.continuity_region, dtype=bool)
+    target = np.asarray(base).copy()
+    occupied = target > 0
+    used_reference_digests: set[str] = set()
+    fallback_ids = set(certificate_capacity_reference_ids(certificate))
+    placements: list[dict[str, Any]] = []
+
+    for index, raw in enumerate(witness, start=1):
+        try:
+            row = int(raw["row"])
+            col = int(raw["col"])
+            class_id = int(raw["class_id"])
+            reference_id = str(raw["reference_instance_id"])
+            recorded_area = int(raw["area_px"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise JointContractError(
+                "packing witness placement is malformed"
+            ) from exc
+
+        reference = references.get(reference_id)
+        if (
+            reference is None
+            or reference.class_id != class_id
+            or reference.area_px != recorded_area
+            or not (0 <= row < target.shape[0] and 0 <= col < target.shape[1])
+            or not legal[row, col]
+        ):
+            raise JointContractError(
+                "packing witness is detached from legal reference authority"
+            )
+
+        shape = np.asarray(reference.mask, dtype=bool)
+        window = _placement_window(
+            shape,
+            center_y=row,
+            center_x=col,
+            canvas_shape=target.shape,
+        )
+        if window is None:
+            raise JointContractError("packing witness footprint leaves the raster")
+        y0, y1, x0, x1 = window
+        if not np.all(valid[y0:y1, x0:x1][shape]):
+            raise JointContractError(
+                "packing witness footprint leaves executable V/support context"
+            )
+
+        gy0, gy1 = max(0, y0 - 1), min(target.shape[0], y1 + 1)
+        gx0, gx1 = max(0, x0 - 1), min(target.shape[1], x1 + 1)
+        local = np.zeros((gy1 - gy0, gx1 - gx0), dtype=bool)
+        local[y0 - gy0 : y1 - gy0, x0 - gx0 : x1 - gx0] = shape
+        guard = ndimage.binary_dilation(
+            local,
+            structure=np.ones((3, 3), dtype=bool),
+            iterations=1,
+        )
+        if np.any(guard & occupied[gy0:gy1, gx0:gx1]):
+            raise JointContractError(
+                "packing witness no longer satisfies complete-instance separation"
+            )
+
+        reference_digest = _reference_shape_digest(reference)
+        recorded_digest = str(raw.get("reference_shape_sha256", ""))
+        if recorded_digest and recorded_digest != reference_digest:
+            raise JointContractError(
+                "packing witness reference digest is detached from execution"
+            )
+        reused = reference_digest in used_reference_digests
+
+        target[y0:y1, x0:x1][shape] = class_id
+        occupied[y0:y1, x0:x1] |= shape
+        accepted_x, accepted_y = _nearest_footprint_pixel(
+            shape,
+            y0=y0,
+            x0=x0,
+            requested_y=row,
+            requested_x=col,
+        )
+        in_continuity = bool(continuity[row, col])
+        placements.append(
+            {
+                "center_xy": [accepted_x, accepted_y],
+                "placement_anchor_xy": [col, row],
+                "cell_class": class_id,
+                "area_px": recorded_area,
+                "in_cell_only_halo": False,
+                "in_interface_seam": bool(
+                    raw.get("required_seam", in_continuity)
+                ),
+                "in_interface_continuity_region": in_continuity,
+                "reference_instance_id": reference_id,
+                "reference_source": reference.source,
+                "reference_shape_sha256": reference_digest,
+                "reference_parent_instance_id": getattr(
+                    reference, "parent_instance_id", None
+                ),
+                "reference_scale_factor": float(
+                    getattr(reference, "scale_factor", 1.0)
+                ),
+                "reference_reused": reused,
+                "reference_reuse_after_exhaustive_fit_search": reused,
+                "certified_capacity_fallback_shape": (
+                    reference_id in fallback_ids
+                ),
+                "cluster_id": f"packing-witness-{index:04d}",
+                "planned_cluster_size": 1,
+                "cluster_size": 1,
+                "spacing_px": 1,
+                "orientation_policy": "compiler_owned_packing_witness",
+                "anchor_sampling_policy": "compiler_owned_packing_witness",
+                "population_site_id": None,
+            }
+        )
+        used_reference_digests.add(reference_digest)
+
+    return target, placements
 
 def _accepted_center_ledger(
     placements: list[dict[str, Any]],

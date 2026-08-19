@@ -1,0 +1,15 @@
+d2cee2792a9162aa038dac605574a458d2d9cc80  Trust executor ledgers in cellularity gates
+f96d9b248a8baab5052a8ca2a95fd5942d7824dd  Replay certified cell packing on ranker underfill
+723fba41fad6b67fff17a6a7b117cd46992c21b6  Use executor ledgers for cell-only density gates
+f20b2e495a5097e35ea1267c53a41eead082fe22  Route cell-only edits through image generation
+7a0aaf156f231b4f18626564dbe70db5f1096733  Evaluate cell-only tissue edits source-relatively
+dc491b667fef1ef13ec4d997d7f801f1f13f74cb  Retain nucleus-scale context for cell-only generation
+6242e190f6116bc497930719a1c710623361dc18  Keep sufficient certified context for cell-only edits
+cfa20d92f39fce7ab2f302daf89a6fd03a55cf37  Use executor ledgers for cell-only generation evaluation
+06f951075b411d03ac54decc99ace5a7c9c9b944  Route cell-only edits through Cross-v1 first
+af8f4edcf3343af2c3aa4e6b7cc2dc36d5dd2dc7  Route cell-only edits by direction
+d8f240b770c60cb9518c043331c643075c9ef09f  Sharpen generic immune decrease generation
+9931b2ed04ca16a0ec1a73fe4ae4f3d0c9b7b498  Preserve source outside local edit support
+785425d17bfdaea0cac42974050aaab2b574ab7a  Align preservation support with edit authority
+136929e39bf58cce411eda63a0ca78762d79fe92  Route mask-only immune decrease safely
+20e8600910adb935f58333c3a4235179199331fe  Scope immune transition inference to BCSS

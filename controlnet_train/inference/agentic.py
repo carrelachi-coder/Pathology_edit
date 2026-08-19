@@ -16,7 +16,6 @@ from .router import (
     route_agentic_edit_request,
 )
 
-
 PRODUCTION_CROSS_MODE = "cross-v1-no-ip-pix2pix-v2"
 
 
@@ -129,6 +128,10 @@ def run_agentic_workflow(
     config: AgenticWorkflowConfig | None = None,
     recovery_policy: RecoveryPolicy | None = None,
     routing_decision: AgenticRoutingDecision | None = None,
+    routing_change_region: np.ndarray | None = None,
+    routing_change_scope: str = "tissue",
+    routing_cell_only_direction: str | None = None,
+    routing_edit_primitive_id: str | None = None,
 ) -> AgenticWorkflowResult:
     """Route, generate, verify, and perform bounded failure-aware recovery."""
 
@@ -141,6 +144,10 @@ def run_agentic_workflow(
         reference_tissue_mask,
         target_tissue_mask,
         config=config.routing,
+        change_region=routing_change_region,
+        change_scope=routing_change_scope,
+        cell_only_direction=routing_cell_only_direction,
+        edit_primitive_id=routing_edit_primitive_id,
     )
     if route.primary_mode == "noop":
         result = AgenticWorkflowResult(
@@ -381,6 +388,16 @@ def verify_mask_fidelity(
         "off_target_drift": off_target_drift,
     }
     if source_predicted_tissue_mask is not None:
+        source_relative_tissue_accuracy = (
+            float(np.mean(predicted[change] == source_predicted[change]))
+            if np.any(change)
+            else 1.0
+        )
+        source_relative_tissue_weighted_iou = _prevalence_weighted_iou(
+            source_predicted,
+            predicted,
+            region=change,
+        )
         no_edit_accuracy = (
             float(np.mean(source_predicted[change] == target[change]))
             if changed_count
@@ -404,6 +421,12 @@ def verify_mask_fidelity(
                 "no_edit_changed_region_accuracy": no_edit_accuracy,
                 "semantic_gate_no_edit_accuracy": (
                     semantic_gate_no_edit_accuracy
+                ),
+                "cell_only_source_relative_tissue_accuracy": (
+                    source_relative_tissue_accuracy
+                ),
+                "cell_only_source_relative_tissue_weighted_iou": (
+                    source_relative_tissue_weighted_iou
                 ),
                 "target_gain_accuracy": changed_accuracy - no_edit_accuracy,
                 "no_edit_changed_region_macro_iou": no_edit_macro_iou,
@@ -493,6 +516,122 @@ def verify_mask_fidelity(
     )
 
 
+def measure_local_detail_retention(
+    *,
+    reference_image: np.ndarray,
+    generated_image: np.ndarray,
+    edit_region: np.ndarray,
+    context_radius_px: int = 24,
+    context_gap_px: int = 3,
+    interior_erosion_px: int = 2,
+    minimum_region_pixels: int = 256,
+) -> dict[str, float]:
+    """Measure edit-region focus relative to nearby unchanged context.
+
+    Absolute high-frequency energy legitimately changes when cellular content
+    changes. The ratio-of-ratios instead asks whether the edited region became
+    disproportionately softer than its local context after generation.
+    """
+
+    from scipy import ndimage
+
+    reference = np.asarray(reference_image, dtype=np.float32)
+    generated = np.asarray(generated_image, dtype=np.float32)
+    region = np.asarray(edit_region, dtype=bool)
+    if reference.shape != generated.shape or reference.ndim != 3:
+        raise ValueError(
+            "reference and generated images must be same-shape RGB arrays."
+        )
+    if region.shape != reference.shape[:2]:
+        raise ValueError("edit_region must match the image height and width.")
+    if min(
+        context_radius_px,
+        context_gap_px,
+        interior_erosion_px,
+        minimum_region_pixels,
+    ) < 0:
+        raise ValueError("Local-detail measurement parameters must be non-negative.")
+    if context_radius_px <= context_gap_px:
+        raise ValueError("context_radius_px must exceed context_gap_px.")
+
+    interior = (
+        ndimage.binary_erosion(region, iterations=interior_erosion_px)
+        if interior_erosion_px
+        else region.copy()
+    )
+    if np.count_nonzero(interior) < minimum_region_pixels:
+        interior = region.copy()
+    context = ndimage.binary_dilation(
+        region, iterations=context_radius_px
+    ) & ~ndimage.binary_dilation(region, iterations=context_gap_px)
+    applicable = bool(
+        np.count_nonzero(interior) >= minimum_region_pixels
+        and np.count_nonzero(context) >= minimum_region_pixels
+    )
+    if not applicable:
+        return {
+            "local_detail_evaluator_applicable": 0.0,
+            "local_detail_edit_pixels": float(np.count_nonzero(interior)),
+            "local_detail_context_pixels": float(np.count_nonzero(context)),
+        }
+
+    def energies(image: np.ndarray, selected: np.ndarray) -> tuple[float, float]:
+        scale = 255.0 if float(np.nanmax(image)) > 1.5 else 1.0
+        normalized = image / scale
+        gray = (
+            0.299 * normalized[..., 0]
+            + 0.587 * normalized[..., 1]
+            + 0.114 * normalized[..., 2]
+        )
+        laplacian = ndimage.laplace(gray)
+        gradient = np.hypot(
+            ndimage.sobel(gray, axis=0),
+            ndimage.sobel(gray, axis=1),
+        )
+        return (
+            float(np.mean(np.square(laplacian[selected]))),
+            float(np.mean(np.square(gradient[selected]))),
+        )
+
+    source_edit_lap, source_edit_gradient = energies(reference, interior)
+    source_context_lap, source_context_gradient = energies(reference, context)
+    generated_edit_lap, generated_edit_gradient = energies(generated, interior)
+    generated_context_lap, generated_context_gradient = energies(
+        generated, context
+    )
+    epsilon = 1e-12
+    if min(
+        source_edit_lap,
+        source_edit_gradient,
+        source_context_lap,
+        source_context_gradient,
+        generated_context_lap,
+        generated_context_gradient,
+    ) <= epsilon:
+        return {
+            "local_detail_evaluator_applicable": 0.0,
+            "local_detail_edit_pixels": float(np.count_nonzero(interior)),
+            "local_detail_context_pixels": float(np.count_nonzero(context)),
+            "local_detail_energy_floor": epsilon,
+        }
+    laplacian_retention = (
+        generated_edit_lap / max(generated_context_lap, epsilon)
+    ) / (source_edit_lap / max(source_context_lap, epsilon))
+    gradient_retention = (
+        generated_edit_gradient / max(generated_context_gradient, epsilon)
+    ) / (source_edit_gradient / max(source_context_gradient, epsilon))
+    return {
+        "local_detail_evaluator_applicable": 1.0,
+        "local_detail_edit_pixels": float(np.count_nonzero(interior)),
+        "local_detail_context_pixels": float(np.count_nonzero(context)),
+        "local_detail_laplacian_relative_retention": float(laplacian_retention),
+        "local_detail_gradient_relative_retention": float(gradient_retention),
+        "local_detail_minimum_relative_retention": float(
+            min(laplacian_retention, gradient_retention)
+        ),
+    }
+
+
 def _macro_iou(target: np.ndarray, predicted: np.ndarray, *, region: np.ndarray) -> float:
     if not np.any(region):
         return 1.0
@@ -509,6 +648,30 @@ def _macro_iou(target: np.ndarray, predicted: np.ndarray, *, region: np.ndarray)
         if union:
             scores.append(np.count_nonzero(target_label & predicted_label) / union)
     return float(np.mean(scores)) if scores else 1.0
+
+
+def _prevalence_weighted_iou(
+    reference: np.ndarray,
+    predicted: np.ndarray,
+    *,
+    region: np.ndarray,
+) -> float:
+    """Measure source-relative label stability without rare-class domination."""
+
+    if not np.any(region):
+        return 1.0
+    region_pixels = int(np.count_nonzero(region))
+    score = 0.0
+    for label in np.unique(reference[region]):
+        reference_label = (reference == label) & region
+        predicted_label = (predicted == label) & region
+        union = np.count_nonzero(reference_label | predicted_label)
+        prevalence = np.count_nonzero(reference_label) / region_pixels
+        if union:
+            score += prevalence * (
+                np.count_nonzero(reference_label & predicted_label) / union
+            )
+    return float(score)
 
 
 def _semantic_evaluation_region(
