@@ -35,7 +35,7 @@ def load_cross_meta():
 
 
 def _run_single(args_tuple):
-    case_info, output_dir, lookup = args_tuple
+    case_info, output_dir, lookup, timeout_seconds, device = args_tuple
     prim = case_info["primitive_id"]
     sid = case_info["sample_id"]
     row = lookup.get(sid)
@@ -59,8 +59,9 @@ def _run_single(args_tuple):
         output_root=output_dir,
         checkpoint=PROBNET,
         library=LIBRARY,
-        timeout_seconds=180,
+        timeout_seconds=timeout_seconds,
         threads=4,
+        device=device,
     )
 
     status = result["status"]
@@ -91,6 +92,7 @@ def main():
     parser.add_argument("--cases", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 
     lookup = load_cross_meta()
@@ -99,7 +101,10 @@ def main():
     selected_by_primitive = {}
     attempts_log = []
 
-    work_items = [(c, args.output_dir, lookup) for c in cases]
+    work_items = [
+        (c, args.output_dir, lookup, args.timeout, args.device)
+        for c in cases
+    ]
 
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {executor.submit(_run_single, item): item for item in work_items}
