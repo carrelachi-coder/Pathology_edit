@@ -3475,7 +3475,11 @@ class JointPathologyEditWorkflow:
                 {
                     key: value
                     for key, value in provenance_update.items()
-                    if key != "cellularity_depletion_anchor"
+                    if (
+                        key != "cellularity_depletion_anchor"
+                        or case.pathology_domain_id
+                        == "breast-invasive-carcinoma-v1"
+                    )
                 }
             )
             candidate_case = replace(

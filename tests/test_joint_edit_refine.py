@@ -6766,7 +6766,7 @@ class JointWorkflowTests(unittest.TestCase):
                         if item["severity"] == "hard"
                     )
                 )
-                if primitive == "infiltrative-nest-cord-extension-v1":
+                if primitive == "peritumoral-tumor-nest-formation-v1":
                     self.assertTrue(
                         next(
                             check
