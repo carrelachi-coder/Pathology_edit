@@ -24,6 +24,7 @@ from scripts.materialize_panda_shadow_authority import (
     _validate_native_instances,
 )
 from scripts.prepare_panda_primitive_shadow_selection import (
+    EVALUATIONS,
     _diverse_top,
     _fill_distinct_overlap_minimized,
     _minimum_feasible_max_cases_per_slide,
@@ -36,6 +37,29 @@ from scripts.run_panda_primitive_shadow_replay import (
 
 
 class PandaShadowAuthorityTests(unittest.TestCase):
+    def test_shadow_evaluations_cover_every_supported_panda_pair(self):
+        matrix_path = (
+            Path(__file__).resolve().parents[1]
+            / "phase3_joint_edit_refine"
+            / "resources"
+            / "non_breast_organ_annotation_capability_matrix_v1.json"
+        )
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+        panda = next(
+            item
+            for item in matrix["profiles"]
+            if item["annotation_profile_id"] == "panda-gleason-v1"
+        )
+        supported = {
+            (item["mechanism_id"], item["primitive_id"])
+            for item in panda["capabilities"]
+            if item["status"] == "conditionally_supported"
+        }
+        evaluated = {
+            (item.mechanism_id, item.primitive_id) for item in EVALUATIONS
+        }
+        self.assertEqual(evaluated, supported)
+
     def test_runtime_inventory_binds_joint_change_ledger(self):
         self.assertIn(
             "phase3_joint_edit_refine/ledger.py",
