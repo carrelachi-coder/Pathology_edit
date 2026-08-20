@@ -33,6 +33,16 @@ SEAM_MODES = frozenset(
 )
 TARGET_COMPONENT_MERGE_POLICIES = frozenset({"forbid", "selected_only"})
 
+TISSUE_EFFECT_PATTERNS = frozenset(
+    {
+        "generic",
+        "single_coherent_retreat",
+        "distributed_replacement",
+        "roi_clearance",
+        "compartment_turnover",
+    }
+)
+
 
 @dataclass(frozen=True)
 class RecognitionContract:

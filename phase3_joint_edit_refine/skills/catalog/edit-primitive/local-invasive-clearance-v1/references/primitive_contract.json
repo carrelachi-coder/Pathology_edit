@@ -1,6 +1,6 @@
 {
   "primitive_id": "local-invasive-clearance-v1",
-  "version": "1.0.0-draft",
+  "version": "1.1.0-draft",
   "review_status": "draft",
   "scope": "tissue_and_cell",
   "summary": "Remove invasive tumor only inside a user-supplied local ROI; never claim whole-lesion clearance, pCR, RCB or clinical benefit.",
@@ -17,6 +17,17 @@
     "allow_source_component_split": false,
     "maximum_source_component_changed_fraction": 1.0,
     "minimum_source_component_remaining_px": 0
+  },
+  "tissue_effect_contract": {
+    "pattern": "roi_clearance",
+    "minimum_patch_fraction": 0.03,
+    "minimum_significant_component_count": 1,
+    "maximum_significant_component_count": 4,
+    "minimum_significant_component_area_px": 768,
+    "minimum_selected_interface_count": 1,
+    "minimum_selected_source_component_count": 1,
+    "maximum_selected_source_component_count": 1,
+    "minimum_roi_source_clearance_fraction": 0.9
   },
   "required_source_clearance_classes": [1],
   "minimum_source_clearance_instances": 1,

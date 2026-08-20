@@ -18,6 +18,7 @@
         "host_tissue_labels",
         "target_cell_classes",
         "tissue_topology_contract",
+        "tissue_effect_contract",
         "required_source_clearance_classes",
         "minimum_source_clearance_instances",
         "required_checker_ids"

@@ -17,6 +17,7 @@
         "allowed_quota_roles",
         "host_tissue_labels",
         "target_cell_classes",
+        "tissue_effect_contract",
         "required_checker_ids"
       ],
       "source_ids": [
