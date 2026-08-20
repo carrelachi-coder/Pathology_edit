@@ -1075,14 +1075,20 @@ def _render_board(
     tile_size: int,
 ) -> list[dict[str, Any]]:
     header = 58
-    columns = 4
+    columns = 5
     canvas = Image.new(
         "RGB", (columns * tile_size, len(selected) * (tile_size + header)), "white"
     )
     draw = ImageDraw.Draw(canvas)
     font = _font(16)
     small = _font(13)
-    labels = ("SOURCE MASK", "TARGET MASK", "DELTA", "DELTA ZOOM")
+    labels = (
+        "SOURCE H&E",
+        "SOURCE MASK",
+        "TARGET MASK",
+        "DELTA",
+        "DELTA ZOOM",
+    )
     records = []
     for row_index, record in enumerate(selected):
         payload = record["payload"]
@@ -1098,13 +1104,17 @@ def _render_board(
         )
         target_tissue = load_id_mask(selected_candidate["target_tissue_mask"])
         target_nuclei = load_nuclei_mask(selected_candidate["target_nuclei_mask"])
+        source_image = np.asarray(
+            Image.open(payload["source_image_uri"]).convert("RGB"),
+            dtype=np.uint8,
+        )
         source_view = _mask_composite(source_tissue, source_nuclei)
         target_view = _mask_composite(target_tissue, target_nuclei)
         delta_view, changed = _delta_view(
             source_tissue, source_nuclei, target_tissue, target_nuclei
         )
         zoom = _delta_zoom(delta_view, changed)
-        panels = (source_view, target_view, delta_view, zoom)
+        panels = (source_image, source_view, target_view, delta_view, zoom)
         y = row_index * (tile_size + header)
         counts = _change_counts(source_nuclei, target_nuclei)
         draw.text(
@@ -1124,7 +1134,12 @@ def _render_board(
         for column, (label, panel) in enumerate(zip(labels, panels, strict=True)):
             x = column * tile_size
             resized = Image.fromarray(panel).resize(
-                (tile_size, tile_size), Image.Resampling.NEAREST
+                (tile_size, tile_size),
+                (
+                    Image.Resampling.BILINEAR
+                    if column == 0
+                    else Image.Resampling.NEAREST
+                ),
             )
             canvas.paste(resized, (x, y + header))
             ImageDraw.Draw(canvas).text(
@@ -1135,6 +1150,7 @@ def _render_board(
                 "case_id": payload["case_id"],
                 "sample_id": payload["provenance"]["cross_meta_sample_id"],
                 "selected_candidate_id": run["selected_candidate_id"],
+                "source_image": payload["source_image_uri"],
                 "source_tissue_mask": payload["source_tissue_mask_uri"],
                 "source_nuclei_mask": payload["source_nuclei_mask_uri"],
                 "target_tissue_mask": selected_candidate["target_tissue_mask"],
