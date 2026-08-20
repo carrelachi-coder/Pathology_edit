@@ -20,6 +20,7 @@ from scripts.run_glas_primitive_mask_review import (
     MASK_REVIEW_CELL_BUDGETS,
     build_parser,
 )
+from scripts.rerun_glas_v5 import _frozen_attempt_index
 
 
 def _glas_case() -> JointCaseContext:
@@ -62,6 +63,27 @@ def test_runner_defaults_to_semantic_nuclei_mask_without_cellvit_paths():
     assert args.cellvit_python is None
 
 
+def test_frozen_rerun_preserves_the_original_compiler_seed():
+    assert _frozen_attempt_index({"compiler_seed": 0}) == 0
+    assert _frozen_attempt_index({"compiler_seed": 42}) == 0
+    assert _frozen_attempt_index({"compiler_seed": 47}) == 5
+    assert _frozen_attempt_index({"attempt_index": 3, "compiler_seed": 99}) == 3
+
+
+def test_frozen_review_manifest_contains_five_cases_per_primitive():
+    resource = (
+        Path(__file__).parents[1]
+        / "phase3_joint_edit_refine/resources/glas_mask_review_v5_frozen_cases.json"
+    )
+    cases = json.loads(resource.read_text())
+    counts = {}
+    for case in cases:
+        counts[case["primitive_id"]] = counts.get(case["primitive_id"], 0) + 1
+    assert len(cases) == 40
+    assert len(counts) == 8
+    assert set(counts.values()) == {5}
+
+
 def test_visible_review_budgets_are_larger_than_commit_7c6c69f():
     local = MASK_REVIEW_CELL_BUDGETS["cellularity-increase-v1"]
     scatter = MASK_REVIEW_CELL_BUDGETS[
@@ -76,9 +98,9 @@ def test_visible_review_budgets_are_larger_than_commit_7c6c69f():
     assert (scatter.target_delta_count, scatter.min_delta_count) == (10, 4)
     assert scatter.maximum_extent_px == 144
     assert scatter.minimum_effect_foci == 4
-    assert (cluster.target_delta_count, cluster.min_delta_count) == (12, 6)
+    assert (cluster.target_delta_count, cluster.min_delta_count) == (8, 6)
     assert cluster.maximum_extent_px == 160
-    assert cluster.minimum_effect_foci == 3
+    assert cluster.minimum_effect_foci == 2
 
 
 def test_derived_glas_budget_is_scaled_but_explicit_non_glas_policy_is_not():

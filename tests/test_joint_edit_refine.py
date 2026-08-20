@@ -3635,6 +3635,20 @@ class JointSkillTests(unittest.TestCase):
         self.assertAlmostEqual(outer_end, 192.0)
         self.assertAlmostEqual(outer_end - transition_end, 28.0)
 
+    def test_glas_depletion_can_use_remaining_extent_as_reference(self):
+        core_end, transition_end, outer_end = _depletion_band_edges(
+            diameter_px=20.0,
+            core_width_cell_diameters=1.25,
+            transition_width_cell_diameters=3.0,
+            outer_width_cell_diameters=1.5,
+            maximum_extent_px=192,
+            maximum_observed_distance_px=160.0,
+            maximize_outer_reference=True,
+        )
+        self.assertAlmostEqual(core_end, 25.0)
+        self.assertAlmostEqual(transition_end, 85.0)
+        self.assertAlmostEqual(outer_end, 160.0)
+
     def test_density_field_count_cap_preserves_radial_targets(self):
         quotas = _cap_density_field_quotas(
             quotas=[3, 6, 4, 3, 2, 0, 0],

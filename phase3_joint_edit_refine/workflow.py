@@ -110,7 +110,7 @@ from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillBundle, JointSkillRepository
 from .spatial_contracts import (
     BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS,
-    BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+    GLAS_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_TARGET_FOCUS_COUNT,
     small_cluster_maximum_hotspot_span_px,
@@ -3040,6 +3040,7 @@ class JointPathologyEditWorkflow:
         program = executable_contract.cell_program
         budget = case.cell_count_extent_budget
         requested = int(budget.target_delta_count if budget is not None else 0)
+        is_addition = "add" in plan.cell_plan.actions
         initial = CandidateCellFeasibility(
             candidate_id=tissue_candidate.candidate_id,
             passed=True,
@@ -3061,7 +3062,7 @@ class JointPathologyEditWorkflow:
                 np.count_nonzero(program.placement_center_region)
             ),
             required_add_count=(
-                requested if "add" in bundle.mechanism.cell_program.actions else 0
+                requested if is_addition else 0
             ),
             required_seam_count=0,
             estimated_add_capacity=requested,
@@ -3160,7 +3161,7 @@ class JointPathologyEditWorkflow:
                 ),
             )
             if budget is not None
-            and "add" in bundle.mechanism.cell_program.actions
+            and is_addition
             else None
         )
         certified = certify_compiled_cell_program_feasibility(
@@ -3171,6 +3172,12 @@ class JointPathologyEditWorkflow:
             preflight=pseudo_preflight,
             authoritative_references_by_class=references_by_class,
             minimum_acceptable_add_count=minimum_acceptable_count,
+            allow_final_capacity_refinement=(
+                case.annotation_profile_id == "glas-gland-v1"
+            ),
+            relax_group_preflight=(
+                case.annotation_profile_id == "glas-gland-v1"
+            ),
         )
         if not certified.passed:
             raise JointContractError(
@@ -3265,6 +3272,37 @@ class JointPathologyEditWorkflow:
                     eligible_touching.sort(
                         key=lambda item: (-item.contact_pixels, item.interface_id)
                     )
+                    if (
+                        case.annotation_profile_id == "glas-gland-v1"
+                        and len(eligible_touching) > 1
+                    ):
+                        all_anchor_ids = tuple(
+                            dict.fromkeys(
+                                anchor_id
+                                for interface in eligible_touching
+                                for anchor_id in interface.anchor_segment_ids
+                                if anchor_id in anchor_records
+                            )
+                        )
+                        if all_anchor_ids:
+                            variants.append(
+                                {
+                                    **provenance,
+                                    "cellularity_depletion_anchor": {
+                                        "type": "interface",
+                                        "interface_ids": [
+                                            item.interface_id
+                                            for item in eligible_touching
+                                        ],
+                                        "anchor_ids": list(all_anchor_ids),
+                                        "observation": (
+                                            "deterministic selected-component "
+                                            "boundary union"
+                                        ),
+                                        "confidence": 1.0,
+                                    },
+                                }
+                            )
                     # The scene graph may split one biological component-pair
                     # interface into several deterministic interface records.
                     # A density field is allowed to bind that one component
@@ -3408,16 +3446,64 @@ class JointPathologyEditWorkflow:
                     )["external_tumor_stroma_boundary"]
                 ]
             compatible.sort(key=lambda item: (-item.contact_pixels, item.interface_id))
-            exhaustive_scatter = (
+            prostate_scatter = (
                 bundle.mechanism.mechanism_id
                 == "prostate-pattern-5-peripheral-scatter"
             )
-            interfaces_to_consider = (
-                compatible if exhaustive_scatter else compatible[:4]
+            exhaustive_peritumoral = bool(
+                case.annotation_profile_id == "glas-gland-v1"
+                and case.primitive_id
+                in {
+                    "peritumoral-neoplastic-scatter-increase-v1",
+                    "peritumoral-small-cluster-increase-v1",
+                }
             )
+            interfaces_to_consider = (
+                compatible[:8]
+                if exhaustive_peritumoral
+                else compatible
+                if prostate_scatter
+                else compatible[:4]
+            )
+            if exhaustive_peritumoral:
+                interfaces_by_component_pair: dict[
+                    tuple[str, str], list[Any]
+                ] = defaultdict(list)
+                for interface in interfaces_to_consider:
+                    pair = tuple(
+                        sorted(
+                            (
+                                str(interface.source_component_id),
+                                str(interface.target_component_id),
+                            )
+                        )
+                    )
+                    interfaces_by_component_pair[pair].append(interface)
+                for grouped in interfaces_by_component_pair.values():
+                    if len(grouped) < 2:
+                        continue
+                    grouped.sort(
+                        key=lambda item: (-item.contact_pixels, item.interface_id)
+                    )
+                    grouped_anchors = tuple(
+                        dict.fromkeys(
+                            anchor_id
+                            for interface in grouped
+                            for anchor_id in interface.anchor_segment_ids
+                        )
+                    )
+                    if grouped_anchors:
+                        variants.append(
+                            {
+                                "joint_interface_ids": [
+                                    item.interface_id for item in grouped
+                                ],
+                                "joint_anchor_ids": list(grouped_anchors),
+                            }
+                        )
             for interface in interfaces_to_consider:
                 anchors = interface.anchor_segment_ids or ()
-                if exhaustive_scatter:
+                if prostate_scatter:
                     anchors = tuple(
                         anchor_id
                         for anchor_id in anchors
@@ -3444,8 +3530,11 @@ class JointPathologyEditWorkflow:
                         )
                     )
                 anchor_groups = (
-                    [anchors, *((anchor_id,) for anchor_id in anchors)]
-                    if exhaustive_scatter and anchors
+                    [
+                        anchors,
+                        *((anchor_id,) for anchor_id in anchors[:2]),
+                    ]
+                    if (prostate_scatter or exhaustive_peritumoral) and anchors
                     else [(anchor_id,) for anchor_id in anchors[:2]]
                 )
                 for anchor_ids in dict.fromkeys(anchor_groups):
@@ -3652,16 +3741,16 @@ class JointPathologyEditWorkflow:
                         minimum_effect_span_px=(
                             contract.cell_program.minimum_effect_span_px
                         ),
-                        required_focus_count=(
-                            BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT
-                            if bundle.mechanism.mechanism_id
-                            == "breast-peritumoral-small-cluster"
-                            else SMALL_CLUSTER_TARGET_FOCUS_COUNT
+                        required_focus_count=max(
+                            SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+                            int(contract.cell_program.minimum_effect_foci),
                         ),
                         minimum_anchor_separation_diameters=(
                             BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
                             if bundle.mechanism.mechanism_id
                             == "breast-peritumoral-small-cluster"
+                            else GLAS_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
+                            if case.annotation_profile_id == "glas-gland-v1"
                             else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
                         ),
                         strict_breast_small_cluster=(
@@ -4256,14 +4345,14 @@ def _apply_glas_visible_cell_budget(
         )
     elif primitive_id == "peritumoral-small-cluster-increase-v1":
         visible = CellCountExtentBudget(
-            target_delta_count=12,
+            target_delta_count=8,
             min_delta_count=6,
-            max_delta_count=20,
+            max_delta_count=12,
             maximum_extent_px=max(160, budget.maximum_extent_px),
             interface_min_px=max(4, budget.interface_min_px),
             interface_max_px=max(48, budget.interface_max_px),
             minimum_effect_span_px=max(32, budget.minimum_effect_span_px),
-            minimum_effect_foci=max(3, budget.minimum_effect_foci),
+            minimum_effect_foci=max(2, budget.minimum_effect_foci),
         )
     else:
         return budget, metadata

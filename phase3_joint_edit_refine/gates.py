@@ -3226,13 +3226,35 @@ def _local_population_density(c):
                     item.instance_id: item for item in c.scene.cells.instances
                 }
                 source_by_class: dict[int, int] = {}
-                for instance_id in program.depletion_population_instance_ids:
+                composition_instance_ids = (
+                    program.depletion_population_instance_ids
+                    if c.bundle.annotation_profile.annotation_profile_id
+                    != "glas-gland-v1"
+                    else tuple(
+                        dict.fromkeys(
+                            (
+                                *program.depletion_band_instance_ids.get(
+                                    "core", ()
+                                ),
+                                *program.depletion_band_instance_ids.get(
+                                    "transition", ()
+                                ),
+                            )
+                        )
+                    )
+                )
+                for instance_id in composition_instance_ids:
                     item = metadata.get(instance_id)
                     if item is not None:
                         source_by_class[item.class_id] = (
                             source_by_class.get(item.class_id, 0) + 1
                         )
-                composition_authority = "depletion_population_instance_ids"
+                composition_authority = (
+                    "depletion_population_instance_ids"
+                    if c.bundle.annotation_profile.annotation_profile_id
+                    != "glas-gland-v1"
+                    else "editable_depletion_band_instance_ids"
+                )
             else:
                 population_region = np.asarray(
                     program.population_target_region,

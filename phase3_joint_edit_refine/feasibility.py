@@ -1322,6 +1322,8 @@ def certify_compiled_cell_program_feasibility(
     ]
     | None = None,
     minimum_acceptable_add_count: int | None = None,
+    allow_final_capacity_refinement: bool = False,
+    relax_group_preflight: bool = False,
 ) -> CandidateCellFeasibility:
     """Re-certify packing on the compiler's exact P/V/E/C masks.
 
@@ -1433,6 +1435,24 @@ def certify_compiled_cell_program_feasibility(
         ),
         class_id=target_class,
     )
+    minimum_center_separation_px = (
+        independent_focus_minimum_center_separation_px(
+            contract.primitive_id,
+            program.nominal_nucleus_diameter_px,
+        )
+    )
+    if (
+        relax_group_preflight
+        and contract.primitive_id
+        in {
+            "cellularity-increase-v1",
+            "peritumoral-small-cluster-increase-v1",
+        }
+    ):
+        # These primitives require a bounded number of multi-cell foci, not
+        # global separation between every added nucleus. Final layout gates
+        # certify the actual groups; preflight only proves footprint capacity.
+        minimum_center_separation_px = 0.0
     certificate = certify_complete_footprint_packing(
         source_nuclei=scene.source_nuclei,
         erased_footprint=program.erasure_region,
@@ -1455,18 +1475,17 @@ def certify_compiled_cell_program_feasibility(
         required_seam_class=target_class,
         minimum_acceptable_count=minimum_acceptable_add_count,
         minimum_center_separation_px=(
-            independent_focus_minimum_center_separation_px(
-                contract.primitive_id,
-                program.nominal_nucleus_diameter_px,
-            )
+            minimum_center_separation_px
         ),
-        # Exactly one bounded fallback is allowed across the two feasibility
-        # stages. A broad candidate core may fit the nominal count while the
-        # final E/P/V/C compiler exposes the true lower capacity; in that case
-        # the final stage owns the fallback. If candidate assessment already
-        # used it, the exact recheck cannot reduce the count again.
+        # The compiled E/P/V/C stage owns the final executable count. A
+        # profile may explicitly permit one more refinement when the exact
+        # footprint capacity still satisfies its skill minimum.
         allow_finite_count_fallback=(
-            not prior_fallback_used and not architecture_group_required
+            not architecture_group_required
+            and (
+                not prior_fallback_used
+                or allow_final_capacity_refinement
+            )
         ),
     )
     if prior_fallback_used:

@@ -36,6 +36,7 @@ from .spatial_contracts import (
     CELL_EFFECT_MAXIMUM_FOCUS_DIAMETER_DIAMETERS,
     CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS,
     CELL_EFFECT_WITHIN_FOCUS_LINK_DIAMETERS,
+    GLAS_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS,
     SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS,
     SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE,
@@ -680,8 +681,16 @@ def generate_cell_layouts(
                     bundle.mechanism.mechanism_id
                     == "breast-peritumoral-small-cluster"
                 ),
+                compact_small_cluster=(
+                    bundle.annotation_profile.annotation_profile_id
+                    == "glas-gland-v1"
+                ),
                 enforce_multisite_population=enforce_multisite_population,
                 certified_witness_centers=(),
+                allow_immediate_reference_reuse=(
+                    bundle.annotation_profile.annotation_profile_id
+                    == "glas-gland-v1"
+                ),
                 seed=seed + variant * 104729,
             )
         halo_score = (
@@ -698,15 +707,14 @@ def generate_cell_layouts(
             if np.any(halo)
             else np.zeros_like(score)
         )
-        target, halo_placed, halo_placements = _place_layout(
-            base=target,
+        halo_base = target
+        halo_layout_kwargs = dict(
             references=references,
             class_id=target_class,
             legal_zone=halo,
             valid_footprint_region=valid_footprint,
             halo=halo,
             score=np.asarray(halo_score, dtype=float),
-            requested_count=reserve_count,
             layout_program=plan.cell_plan.layout_program_id,
             cluster_size_range=execution_cluster_size_range,
             nominal_nucleus_diameter_px=compiled_program.nominal_nucleus_diameter_px,
@@ -732,18 +740,63 @@ def generate_cell_layouts(
                 bundle.mechanism.mechanism_id
                 == "breast-peritumoral-small-cluster"
             ),
+            compact_small_cluster=(
+                bundle.annotation_profile.annotation_profile_id
+                == "glas-gland-v1"
+            ),
             enforce_multisite_population=enforce_multisite_population,
             certified_witness_centers=certified_focus_witness_centers,
             certified_fallback_reference_ids=(
                 certificate_capacity_reference_ids(packing_certificate)
             ),
-            previously_used_reference_digests=(
+            previously_used_reference_digests=tuple(
                 item["reference_shape_sha256"]
                 for item in core_placements
                 if item.get("reference_shape_sha256")
             ),
+            allow_immediate_reference_reuse=(
+                bundle.annotation_profile.annotation_profile_id
+                == "glas-gland-v1"
+            ),
             seed=seed + variant * 104729 + 8191,
         )
+        halo_requested_count = reserve_count
+        target, halo_placed, halo_placements = _place_layout(
+            base=halo_base,
+            requested_count=halo_requested_count,
+            **halo_layout_kwargs,
+        )
+        if (
+            bundle.annotation_profile.annotation_profile_id == "glas-gland-v1"
+            and bundle.primitive.primitive_id
+            == "peritumoral-small-cluster-increase-v1"
+            and 0 < halo_placed < halo_requested_count
+        ):
+            # Reflow a certified below-target count into the required three
+            # compact foci. Merely relabelling a 12-cell attempt that stopped
+            # after two 4-cell groups as an 8-cell fallback leaves the actual
+            # mask with only two foci.
+            reflow_count = min(
+                halo_requested_count,
+                max(
+                    halo_placed,
+                    int(
+                        packing_certificate.get(
+                            "minimum_safe_count", halo_placed
+                        )
+                    ),
+                ),
+            )
+            reflow_target, reflow_placed, reflow_placements = _place_layout(
+                base=halo_base,
+                requested_count=reflow_count,
+                **halo_layout_kwargs,
+            )
+            if reflow_placed > 0:
+                target = reflow_target
+                halo_placed = reflow_placed
+                halo_placements = reflow_placements
+                reserve_count = reflow_count
         placed = core_placed + halo_placed
         placements = [*core_placements, *halo_placements]
         # paired_packing_witness_replay_v2
@@ -753,7 +806,20 @@ def generate_cell_layouts(
             if packing_certificate.get("passed") is True
             else 0
         )
-        if packing_requested > 0 and placed < packing_requested:
+        if (
+            (
+                bundle.annotation_profile.annotation_profile_id
+                != "glas-gland-v1"
+                or float(
+                    packing_certificate.get(
+                        "minimum_center_separation_px", 0.0
+                    )
+                )
+                > 0.0
+            )
+            and packing_requested > 0
+            and placed < packing_requested
+        ):
             target, placements = _materialize_contract_packing_witness(
                 base=base,
                 references_by_class={target_class: references},
@@ -1292,10 +1358,36 @@ def _build_multiclass_addition_results(
     )
     if sum(quotas.values()) != desired:
         quotas = _largest_remainder_class_quotas(local_counts, desired)
-    effect_class = max(
-        quotas,
-        key=lambda class_id: (quotas[class_id], -class_id),
-    )
+    if bundle.annotation_profile.annotation_profile_id == "glas-gland-v1":
+        valid_support = np.asarray(
+            compiled_program.valid_footprint_region, dtype=bool
+        ) & np.asarray(compiled_program.support_context_region, dtype=bool)
+        effect_class = min(
+            quotas,
+            key=lambda class_id: (
+                int(
+                    np.count_nonzero(
+                        placement_zone
+                        & valid_support
+                        & np.isin(
+                            target_tissue,
+                            _compatible_host_fine_ids(
+                                schema=schema,
+                                bundle=bundle,
+                                class_id=class_id,
+                            ),
+                        )
+                    )
+                ),
+                -int(quotas[class_id]),
+                -int(class_id),
+            ),
+        )
+    else:
+        effect_class = max(
+            quotas,
+            key=lambda class_id: (quotas[class_id], -class_id),
+        )
     results = []
     for variant in range(variants):
         target = np.asarray(base).copy()
@@ -1383,6 +1475,15 @@ def _build_multiclass_addition_results(
                     int(bundle.mechanism.cell_program.cluster_size_range[1])
                     if class_id != effect_class
                     else 0
+                ),
+                allow_new_effect_foci=(
+                    bundle.annotation_profile.annotation_profile_id
+                    == "glas-gland-v1"
+                    and class_id != effect_class
+                ),
+                allow_immediate_reference_reuse=(
+                    bundle.annotation_profile.annotation_profile_id
+                    == "glas-gland-v1"
                 ),
                 seed=seed + variant * 104729 + offset * 8191,
             )
@@ -2112,6 +2213,7 @@ def _place_layout(
     enforce_single_scatter_separation=True,
     enforce_small_cluster_group_separation=True,
     strict_breast_small_cluster=False,
+    compact_small_cluster=False,
     enforce_multisite_population=False,
     minimum_single_center_separation_diameters=(
         SCATTER_MINIMUM_CENTER_SEPARATION_DIAMETERS
@@ -2122,6 +2224,8 @@ def _place_layout(
     previously_used_reference_digests=(),
     existing_focus_placements=(),
     existing_focus_maximum_size=0,
+    allow_immediate_reference_reuse=False,
+    allow_new_effect_foci=False,
 ):
     target = np.asarray(base).copy()
     occupied = target > 0
@@ -2168,7 +2272,7 @@ def _place_layout(
     values = score[executable_centers] + jitter
     order = np.argsort(-values)
     anchors = coords[order]
-    if existing_focus_placements:
+    if existing_focus_placements and not allow_new_effect_foci:
         anchors = np.asarray(
             [
                 (row, col)
@@ -2299,9 +2403,12 @@ def _place_layout(
                 minimum_anchor_separation_diameters=(
                     BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
                     if strict_breast_small_cluster
+                    else GLAS_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
+                    if compact_small_cluster
                     else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
                 ),
                 strict_breast_small_cluster=strict_breast_small_cluster,
+                compact_small_cluster=compact_small_cluster,
             )
             anchor_sampling_policy = (
                 "probnet_ranked_localized_front_segment"
@@ -2364,7 +2471,7 @@ def _place_layout(
     seam_region = np.asarray(continuity_region, dtype=bool)
     anchor_index = 0
     committed_group_count = 0
-    allow_reference_reuse = False
+    allow_reference_reuse = bool(allow_immediate_reference_reuse)
     while placed < requested_count:
         if anchor_index >= len(anchors):
             if allow_reference_reuse:
@@ -2378,6 +2485,23 @@ def _place_layout(
         ay, ax = (int(v) for v in anchors[anchor_index])
         anchor_index += 1
         remaining_count = requested_count - placed
+        if (
+            layout_program == "small_cluster"
+            and enforce_small_cluster_group_separation
+            and 0 < committed_group_count < planned_small_cluster_group_count
+            and minimum_effect_span_px > 0
+            and placement_trace
+            and max(
+                np.hypot(
+                    ay - int(item["center_xy"][1]),
+                    ax - int(item["center_xy"][0]),
+                )
+                for item in placement_trace
+            )
+            + 1e-9
+            < float(minimum_effect_span_px)
+        ):
+            continue
         group_cluster_range = effective_cluster_range
         establish_effect_focus_seeds = bool(
             layout_program == "small_cluster"
@@ -2429,7 +2553,9 @@ def _place_layout(
             orientation_mask=orientation_mask,
             nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
             seed=seed,
-            compact_small_cluster=strict_breast_small_cluster,
+            compact_small_cluster=(
+                strict_breast_small_cluster or compact_small_cluster
+            ),
         )
         if layout_program in {"pair", "small_cluster", "short_cord"}:
             minimum_group_size = max(1, int(effective_cluster_range[0]))
@@ -2578,7 +2704,22 @@ def _place_layout(
                     nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
                     maximum_focus_size=int(existing_focus_maximum_size),
                 )
-                if existing_focus_id is None:
+                if existing_focus_id is None and not allow_new_effect_foci:
+                    continue
+                if existing_focus_id is None and any(
+                    (accepted_y - int(item["center_xy"][1])) ** 2
+                    + (accepted_x - int(item["center_xy"][0])) ** 2
+                    < (
+                        CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS
+                        * float(nominal_nucleus_diameter_px)
+                    )
+                    ** 2
+                    - 1e-9
+                    for item in (
+                        *existing_focus_placements,
+                        *placement_trace,
+                    )
+                ):
                     continue
             if layout_program == "small_cluster" and separate_small_cluster_groups:
                 if extend_existing_effect_foci:
@@ -2779,6 +2920,7 @@ def _localized_small_cluster_anchor_order(
         SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
     ),
     strict_breast_small_cluster: bool = False,
+    compact_small_cluster: bool = False,
 ) -> np.ndarray:
     """Front-load a compact multi-focus hotspot on one interface segment.
 
@@ -2800,7 +2942,7 @@ def _localized_small_cluster_anchor_order(
     minimum_between = (
         max(0.0, float(minimum_anchor_separation_diameters)) * diameter
     )
-    if not strict_breast_small_cluster:
+    if not compact_small_cluster and not strict_breast_small_cluster:
         minimum_between = max(
             minimum_between,
             small_cluster_minimum_anchor_separation_px(diameter),
@@ -2819,32 +2961,52 @@ def _localized_small_cluster_anchor_order(
         index_by_center[tuple(int(value) for value in point)]
         for point in ranked
     ]
+    # Geometry is decided from a bounded high-score pool. Scanning every
+    # legal annulus pixel for every seed/endpoint made valid 512 px GLaS
+    # patches take longer than the review timeout without changing the
+    # ProbNet-first authority.
+    search_indices = ranked_indices[: min(512, len(ranked_indices))]
+    search_seen = set(search_indices)
+    spatial_bins: set[tuple[int, int]] = set()
+    bin_width = max(1, int(round(max(1.0, minimum_between) / 2.0)))
+    for index in ranked_indices:
+        row, col = (int(value) for value in points[index])
+        key = (row // bin_width, col // bin_width)
+        if key in spatial_bins:
+            continue
+        spatial_bins.add(key)
+        if index not in search_seen:
+            search_indices.append(index)
+            search_seen.add(index)
+        if len(search_indices) >= 4096:
+            break
+    search_points = points[np.asarray(search_indices, dtype=int)]
 
     best: tuple[float, list[int]] | None = None
-    for seed_index in ranked_indices[: min(256, len(ranked_indices))]:
+    for seed_index in search_indices[: min(64, len(search_indices))]:
         seed = points[seed_index].astype(float)
         seed_distances = np.linalg.norm(points - seed, axis=1)
         endpoint_candidates = [
             index
-            for index in ranked_indices
+            for index in search_indices
             if index != seed_index
             and seed_distances[index] > minimum_between
             and minimum_span <= seed_distances[index] <= maximum_span
         ]
-        for endpoint_index in endpoint_candidates[:128]:
+        for endpoint_index in endpoint_candidates[:32]:
             selected = [seed_index, endpoint_index]
             while len(selected) < required:
                 chosen = points[np.asarray(selected, dtype=int)]
                 distances = np.linalg.norm(
-                    points[:, None, :] - chosen[None, :, :],
+                    search_points[:, None, :] - chosen[None, :, :],
                     axis=2,
                 )
                 candidates = [
                     index
-                    for index in ranked_indices
+                    for position, index in enumerate(search_indices)
                     if index not in selected
-                    and float(np.min(distances[index])) > minimum_between
-                    and float(np.max(distances[index])) <= maximum_span
+                    and float(np.min(distances[position])) > minimum_between
+                    and float(np.max(distances[position])) <= maximum_span
                 ]
                 if not candidates:
                     break

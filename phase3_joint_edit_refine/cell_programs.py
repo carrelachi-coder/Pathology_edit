@@ -292,6 +292,11 @@ class CellToolProgramCompiler:
             and item.area_px > 0
             and (not effect_classes or item.class_id in effect_classes)
         ]
+        glas_source_depletion = bool(
+            bundle.annotation_profile.annotation_profile_id == "glas-gland-v1"
+            and any(action.startswith("remove") for action in cell.actions)
+            and not any(action.startswith("add") for action in cell.actions)
+        )
         calibrated_diameter = (
             scene.reference_shape_authority.nominal_diameter_px(
                 tuple(sorted(effect_classes))
@@ -299,6 +304,7 @@ class CellToolProgramCompiler:
             if primitive.scope == "cell_only"
             and scene.reference_shape_authority is not None
             and not native_seed_areas
+            and not glas_source_depletion
             else None
         )
         # Native seeds own biological scale when present. If a native raster
@@ -422,6 +428,10 @@ class CellToolProgramCompiler:
                     ),
                     maximum_extent_px=(
                         case.cell_count_extent_budget.maximum_extent_px
+                    ),
+                    maximize_outer_reference=(
+                        bundle.annotation_profile.annotation_profile_id
+                        == "glas-gland-v1"
                     ),
                 )
                 center_region = depletion_core | depletion_transition
@@ -931,6 +941,7 @@ class CellToolProgramCompiler:
         transition_width_cell_diameters: float,
         outer_width_cell_diameters: float,
         maximum_extent_px: int,
+        maximize_outer_reference: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Compile an interface-inward three-band cellularity field."""
 
@@ -973,14 +984,15 @@ class CellToolProgramCompiler:
             outer_width_cell_diameters=outer_width_cell_diameters,
             maximum_extent_px=maximum_extent_px,
             maximum_observed_distance_px=maximum_observed_distance,
+            maximize_outer_reference=maximize_outer_reference,
         )
         core = component & (distance <= core_end)
         transition = component & (distance > core_end) & (
             distance <= transition_end
         )
-        outer = component & (distance > transition_end) & (
-            distance <= outer_end
-        )
+        outer = component & (distance > transition_end)
+        if not maximize_outer_reference:
+            outer &= distance <= outer_end
         if not np.any(core) or not np.any(transition) or not np.any(outer):
             raise JointContractError(
                 "depletion anchor cannot represent core, transition and outer-reference bands"
@@ -1760,6 +1772,7 @@ def _depletion_band_edges(
     outer_width_cell_diameters: float,
     maximum_extent_px: int,
     maximum_observed_distance_px: float,
+    maximize_outer_reference: bool = False,
 ) -> tuple[float, float, float]:
     """Fit all three density bands inside the executable radial extent.
 
@@ -1792,6 +1805,9 @@ def _depletion_band_edges(
     nominal_total = float(np.sum(nominal))
     if nominal_total <= available:
         widths = nominal
+        if maximize_outer_reference:
+            widths = widths.copy()
+            widths[2] += available - nominal_total
     else:
         # The core+transition field carries the requested biological change;
         # the outer band is an unchanged density reference. Under an extent

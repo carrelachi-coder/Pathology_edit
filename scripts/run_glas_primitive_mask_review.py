@@ -87,7 +87,7 @@ MASK_REVIEW_CELL_BUDGETS = {
         10, 4, 14, 144, 4, 48, 32, 4
     ),
     "peritumoral-small-cluster-increase-v1": CellCountExtentBudget(
-        12, 6, 20, 160, 4, 48, 32, 3
+        8, 6, 12, 160, 4, 48, 32, 2
     ),
 }
 

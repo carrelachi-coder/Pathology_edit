@@ -34,6 +34,17 @@ def load_cross_meta():
     return lookup
 
 
+def _frozen_attempt_index(case_info):
+    """Recover the `_build_case` attempt index from historical manifests."""
+
+    if "attempt_index" in case_info:
+        return max(0, int(case_info["attempt_index"]))
+    value = int(case_info.get("compiler_seed", 0))
+    # Review manifests recorded the realized seed as 42 + attempt_index,
+    # while the frozen v5 case list records the attempt index directly.
+    return max(0, value - 42 if value >= 42 else value)
+
+
 def _run_single(args_tuple):
     case_info, output_dir, lookup, timeout_seconds, device = args_tuple
     prim = case_info["primitive_id"]
@@ -49,7 +60,7 @@ def _run_single(args_tuple):
         row,
         output_root=output_dir,
         native=None,
-        attempt_index=case_info.get("compiler_seed", 0) or 1,
+        attempt_index=_frozen_attempt_index(case_info),
         portfolio_index=case_info.get("portfolio_index", 0),
         removal_variant=case_info.get("removal_variant", 0),
     )
@@ -75,6 +86,7 @@ def _run_single(args_tuple):
         "return_code": result["return_code"],
         "duration_seconds": result["duration_seconds"],
         "abstain_reasons": reasons,
+        "attempt_index": _frozen_attempt_index(case_info),
         "portfolio_index": case_info.get("portfolio_index", 0),
         "removal_variant": case_info.get("removal_variant", 0),
     }
@@ -93,10 +105,14 @@ def main():
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--primitive", action="append", default=[])
     args = parser.parse_args()
 
     lookup = load_cross_meta()
     cases = json.loads(args.cases.read_text())
+    if args.primitive:
+        requested = set(args.primitive)
+        cases = [case for case in cases if case["primitive_id"] in requested]
 
     selected_by_primitive = {}
     attempts_log = []
