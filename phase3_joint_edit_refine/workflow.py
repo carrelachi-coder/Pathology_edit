@@ -4202,7 +4202,7 @@ def _apply_glas_visible_cell_budget(
     budget: CellCountExtentBudget,
     metadata: dict[str, Any],
 ) -> tuple[CellCountExtentBudget, dict[str, Any]]:
-    """Raise GLaS mask-only cell edits to a visible, auditable effect floor.
+    """Apply the reviewed post-7c6 GLaS saliency budgets.
 
     Explicit manifest budgets remain authoritative because this helper is used
     only after the workflow derives a missing budget.  Sparse cases that cannot
@@ -4224,35 +4224,46 @@ def _apply_glas_visible_cell_budget(
     if primitive_id in local_population:
         visible = CellCountExtentBudget(
             target_delta_count=20,
-            min_delta_count=16,
-            max_delta_count=24,
-            maximum_extent_px=max(128, budget.maximum_extent_px),
+            min_delta_count=12,
+            max_delta_count=28,
+            maximum_extent_px=max(384, budget.maximum_extent_px),
             interface_min_px=0,
-            interface_max_px=max(64, budget.interface_max_px),
-            minimum_effect_span_px=max(64, budget.minimum_effect_span_px),
-            minimum_effect_foci=max(4, budget.minimum_effect_foci),
+            interface_max_px=max(48, budget.interface_max_px),
+            minimum_effect_span_px=0,
+            minimum_effect_foci=0,
         )
+        if primitive_id == "cellularity-decrease-v1":
+            visible = CellCountExtentBudget(
+                target_delta_count=16,
+                min_delta_count=12,
+                max_delta_count=24,
+                maximum_extent_px=max(384, budget.maximum_extent_px),
+                interface_min_px=0,
+                interface_max_px=max(48, budget.interface_max_px),
+                minimum_effect_span_px=0,
+                minimum_effect_foci=0,
+            )
     elif primitive_id == "peritumoral-neoplastic-scatter-increase-v1":
         visible = CellCountExtentBudget(
-            target_delta_count=12,
-            min_delta_count=10,
-            max_delta_count=16,
-            maximum_extent_px=max(128, budget.maximum_extent_px),
+            target_delta_count=10,
+            min_delta_count=4,
+            max_delta_count=14,
+            maximum_extent_px=max(144, budget.maximum_extent_px),
             interface_min_px=max(4, budget.interface_min_px),
-            interface_max_px=max(64, budget.interface_max_px),
-            minimum_effect_span_px=max(48, budget.minimum_effect_span_px),
-            minimum_effect_foci=max(6, budget.minimum_effect_foci),
+            interface_max_px=max(48, budget.interface_max_px),
+            minimum_effect_span_px=max(32, budget.minimum_effect_span_px),
+            minimum_effect_foci=max(4, budget.minimum_effect_foci),
         )
     elif primitive_id == "peritumoral-small-cluster-increase-v1":
         visible = CellCountExtentBudget(
-            target_delta_count=16,
-            min_delta_count=12,
+            target_delta_count=12,
+            min_delta_count=6,
             max_delta_count=20,
-            maximum_extent_px=max(128, budget.maximum_extent_px),
+            maximum_extent_px=max(160, budget.maximum_extent_px),
             interface_min_px=max(4, budget.interface_min_px),
-            interface_max_px=max(64, budget.interface_max_px),
-            minimum_effect_span_px=max(48, budget.minimum_effect_span_px),
-            minimum_effect_foci=max(4, budget.minimum_effect_foci),
+            interface_max_px=max(48, budget.interface_max_px),
+            minimum_effect_span_px=max(32, budget.minimum_effect_span_px),
+            minimum_effect_foci=max(3, budget.minimum_effect_foci),
         )
     else:
         return budget, metadata
@@ -4260,7 +4271,7 @@ def _apply_glas_visible_cell_budget(
     return visible, {
         **metadata,
         "pre_scale_budget": budget.__dict__,
-        "policy_id": "glas-visible-cell-effect-budget-v2",
+        "policy_id": "glas-visible-cell-effect-budget-v3-feasible",
         "authority": "system_owned_profile_specific_budget",
         "budget": visible.__dict__,
     }
