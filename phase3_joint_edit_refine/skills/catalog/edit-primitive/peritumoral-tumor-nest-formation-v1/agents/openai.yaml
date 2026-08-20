@@ -1,0 +1,4 @@
+interface:
+  display_name: "peritumoral-tumor-nest-formation-v1"
+  short_description: "Plan a detached peritumoral Tumor nest."
+  default_prompt: "Use $peritumoral-tumor-nest-formation-v1 only for explicit nest/island intent and preserve the island-then-cells execution order."

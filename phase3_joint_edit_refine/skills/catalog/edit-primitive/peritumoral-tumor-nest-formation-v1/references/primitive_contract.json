@@ -1,0 +1,33 @@
+{
+  "primitive_id": "peritumoral-tumor-nest-formation-v1",
+  "version": "1.1.0-research",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Create one compact irregular detached Tumor island in a certified peritumoral host band and populate it with six to twelve complete tumor cells.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [1],
+  "tissue_topology_contract": {
+    "geometry_mode": "peritumoral_detached_tumor_island",
+    "allow_source_component_resolution": false,
+    "allow_target_hole_resolution": false,
+    "allow_target_component_creation": true,
+    "maximum_new_target_components": 1,
+    "maximum_source_component_changed_fraction": 0.20,
+    "minimum_source_component_remaining_px": 96
+  },
+  "required_source_clearance_classes": [],
+  "minimum_source_clearance_instances": 0,
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "external_boundary_binding",
+    "peritumoral_tumor_island_geometry",
+    "local_shape_distribution",
+    "local_population_density",
+    "mechanism_realization"
+  ]
+}

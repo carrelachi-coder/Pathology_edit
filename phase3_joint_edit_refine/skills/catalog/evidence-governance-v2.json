@@ -230,6 +230,27 @@
       "uri": "local://phase3_joint_edit_refine/artifacts/generator_capability",
       "locator": "Mechanism-stratified paired ablation, digest and pathology review are not yet frozen",
       "verification_status": "pending_internal_validation"
+    },
+    "pathology-breast-collective-invasion-study-2017": {
+      "category": "pathology_fact",
+      "title": "Collective invasion in ductal and lobular breast cancer associates with distant metastasis",
+      "uri": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5711975/",
+      "locator": "The primary breast-cancer study documents compact multicellular strands, nests and elongated chains in peritumoral fibrous or adipose tissue. It separately identifies very small 2--6-cell clusters, supporting an executable nest that is larger than the tumor-bud-like range without imposing an unsupported universal upper diameter.",
+      "verification_status": "verified"
+    },
+    "pathology-breast-pdc-study-2014": {
+      "category": "pathology_fact",
+      "title": "Prognostic value of poorly differentiated clusters in invasive breast cancer",
+      "uri": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4210482/",
+      "locator": "The primary invasive-breast-cancer study defines tumor budding as a single cell or cluster with fewer than five cells and analyzes non-gland-forming cancer clusters with five or more cells. The editor uses a conservative six-cell nest floor to stay clearly beyond the one-to-five-cell bud-like range and makes no diagnostic or prognostic claim.",
+      "verification_status": "verified"
+    },
+    "pathology-breast-microtrack-invasion-study-2020": {
+      "category": "pathology_fact",
+      "title": "Cell-cell adhesion and 3D matrix confinement determine jamming transitions in breast cancer invasion",
+      "uri": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7502685/",
+      "locator": "The primary human breast-carcinoma study documents both thick multilayered IDC strands and thinner multicellular files within stromal microtracks. The executor therefore enlarges cord length and cell count while retaining a narrow, variable caliber instead of converting the edit into a broad sheet.",
+      "verification_status": "verified"
     }
   },
   "mechanism_pathology_sources": {
@@ -391,6 +412,14 @@
     ],
     "prostate-pattern-5-peripheral-scatter": [
       "pathology-prostate-pattern5-2015"
+    ],
+    "breast-cell-seeded-invasive-cord": [
+      "pathology-breast-collective-invasion-study-2017",
+      "pathology-breast-invasive-compartment-study-2010"
+    ],
+    "breast-peritumoral-tumor-nest": [
+      "pathology-breast-collective-invasion-study-2017",
+      "pathology-breast-tumor-budding-study-2021"
     ]
   },
   "profile_dataset_sources": {

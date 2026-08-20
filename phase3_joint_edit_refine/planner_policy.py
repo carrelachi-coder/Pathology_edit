@@ -29,6 +29,10 @@ PLANNER_DECISIONS = frozenset(
     }
 )
 PREFERENCE_METRIC_CATALOG = {
+    "pref:projection:minimize-front-count": (
+        "selected_front_count",
+        "min",
+    ),
     "pref:broad-contact:minimize-depth-span-ratio": ("depth_span_ratio", "min"),
     "pref:packing-seam:maximize-capacity-margin": (
         "packing_seam_capacity_margin",

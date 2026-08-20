@@ -1,0 +1,4 @@
+interface:
+  display_name: "breast-peritumoral-tumor-nest"
+  short_description: "Execute a tissue-first detached Breast Tumor nest."
+  default_prompt: "Use $breast-peritumoral-tumor-nest only for explicit nest/island intent and select a certified detached-island candidate."

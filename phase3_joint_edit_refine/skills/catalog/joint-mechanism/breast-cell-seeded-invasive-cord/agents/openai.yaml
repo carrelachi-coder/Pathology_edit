@@ -1,0 +1,4 @@
+interface:
+  display_name: "breast-cell-seeded-invasive-cord"
+  short_description: "Execute a cell-first Breast invasive cord."
+  default_prompt: "Use $breast-cell-seeded-invasive-cord only for explicit cord intent and select a certified cell-seeded-cord candidate."

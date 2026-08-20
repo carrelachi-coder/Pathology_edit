@@ -1,0 +1,33 @@
+{
+  "primitive_id": "invasive-cord-formation-v1",
+  "version": "1.1.0-research",
+  "review_status": "draft",
+  "scope": "tissue_and_cell",
+  "summary": "Lay out an extended source-scaled cord of at least six tumor cells along a certified invasion path, then derive ordinary Tumor tissue support from those cell footprints.",
+  "tissue_action": "required",
+  "budget_mode": "joint_area_with_tissue_floor",
+  "allowed_baseline_modes": ["regenerate_target_population"],
+  "allowed_quota_roles": ["within_total_quota"],
+  "host_tissue_labels": [],
+  "target_cell_classes": [1],
+  "tissue_topology_contract": {
+    "geometry_mode": "cell_seeded_invasive_cord",
+    "allow_source_component_resolution": false,
+    "allow_target_hole_resolution": false,
+    "allow_target_component_creation": false,
+    "maximum_new_target_components": 0,
+    "maximum_source_component_changed_fraction": 0.25,
+    "minimum_source_component_remaining_px": 96
+  },
+  "required_source_clearance_classes": [],
+  "minimum_source_clearance_instances": 0,
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "external_boundary_binding",
+    "cell_seeded_cord_geometry",
+    "local_shape_distribution",
+    "local_population_density",
+    "mechanism_realization"
+  ]
+}

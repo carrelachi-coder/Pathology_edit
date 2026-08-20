@@ -1,0 +1,4 @@
+interface:
+  display_name: "invasive-cord-formation-v1"
+  short_description: "Plan a cell-seeded invasive cord."
+  default_prompt: "Use $invasive-cord-formation-v1 only for explicit cord/strand intent and preserve the cells-then-mask execution order."

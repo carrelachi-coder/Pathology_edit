@@ -1,0 +1,48 @@
+{
+  "mechanism_id": "breast-peritumoral-tumor-nest",
+  "pathology_domain_id": "breast-invasive-carcinoma-v1",
+  "supported_primitives": ["peritumoral-tumor-nest-formation-v1"],
+  "version": "1.1.0-draft",
+  "review_status": "draft",
+  "summary": "Create one compact irregular detached fine-1 Tumor island in a certified peritumoral operational-Stroma band, then fill it with six to twelve complete source-scaled neoplastic nuclei.",
+  "recognition_contract": {
+    "required_observations": ["explicit nest or tumor-island intent", "annotated invasive Tumor fine ID 1", "adjacent operational Stroma fine ID 2", "certified peritumoral band and complete class-1 shape capacity"],
+    "contraindications": ["cord or strand intent", "remote deposit", "broad bulk boundary expansion", "protected fine identity in the candidate island"],
+    "minimum_confidence": 0.86
+  },
+  "planner_policy": {
+    "allowed_observation_sources": ["instruction", "semantic_intent", "tissue_mask", "nuclei_mask", "scene_graph", "candidate_certificate", "skill_rules", "user_roi", "auxiliary_masks"],
+    "prohibited_observation_sources": ["source_he_for_execution", "unannotated_histology_inference", "general_vlm_invasive_pattern_diagnosis"],
+    "hard_constraint_checker_ids": ["external_boundary_binding", "peritumoral_tumor_island_geometry", "profile_fine_transition_authority", "bcss_operational_stroma_authority"],
+    "selection_preferences": ["pref:certificate:maximize-capacity-margin", "pref:protected-clearance:maximize-distance", "pref:projection:minimize-front-count"],
+    "clarification_triggers": ["the instruction does not distinguish a detached nest from a cord or broad boundary expansion"],
+    "allowed_decisions": ["select_primitive_mechanism_pair", "select_certified_tissue_plan_candidate", "select_certified_cell_plan_candidate", "select_certified_interface_anchor_ids", "select_allowed_tool_program", "request_clarification", "abstain"]
+  },
+  "representability_contract": {"status": "conditionally_supported", "required_cell_classes": [1, 3], "required_auxiliary_structures": [], "receiving_auxiliary_structures": [], "protected_auxiliary_structures": [], "allow_semantic_instance_fallback": true, "failure_action": "abstain_case"},
+  "tissue_program": {
+    "mode": "peritumoral_detached_tumor_island",
+    "target_component_merge_policy": "forbid",
+    "primitive_label_contracts": {"peritumoral-tumor-nest-formation-v1": {"source_labels": ["Stroma"], "target_labels": ["Tumor"]}},
+    "allowed_tools": ["peritumoral_tumor_island"],
+    "required_checker_ids": ["tissue_gate_binding", "external_boundary_binding", "peritumoral_tumor_island_geometry", "profile_fine_transition_authority", "bcss_operational_stroma_authority"],
+    "prohibited_structures": ["benign_duct", "benign_lobule", "dcis_unit", "angioinvasion", "vessel", "necrosis", "immune_infiltrate", "collapsed_zero"],
+    "front_contract": {"profile_mode": "multi_lobe", "edge_depth_ratio": 0.18, "taper_fraction": 0.0, "lobe_count": 1, "noise_depth_ratio": 0.06, "maximum_band_px": 96, "maximum_depth_span_ratio": 6.0, "maximum_boundary_compactness": 10.0, "directional_sector_required": false, "maximum_selected_anchor_fraction": 0.5, "minimum_unselected_anchor_count": 0, "directional_width_cell_diameters": 3.0, "directional_minimum_width_px": 8.0, "directional_maximum_width_px": 48.0, "directional_tip_width_px": 4.0, "directional_tip_width_cell_diameters": 0.5}
+  },
+  "cell_program": {
+    "actions": ["retain", "remove_whole", "add"],
+    "allowed_cell_classes": [1, 2, 3, 5],
+    "layout_programs": ["small_cluster"],
+    "layout_program_by_primitive": {"peritumoral-tumor-nest-formation-v1": "small_cluster"},
+    "core_policy": "populate_detached_tumor_island",
+    "halo_policy": "no_cell_only_halo",
+    "halo_distance_px": [0, 6],
+    "cluster_size_range": [6, 12],
+    "seam_contract": {"mode": "not_applicable", "width_cell_diameters": [0.25, 0.25], "reference_area_quantiles": [0.25, 0.75], "maximum_empty_run_cell_diameters": 0.5, "density_ratio_range": [0.25, 2.5], "minimum_anchor_coverage_fraction": 0.0, "requires_new_target_cells": false},
+    "required_checker_ids": ["whole_instance_changes", "protected_nuclei_preserved", "nuclei_overlap", "nuclei_tissue_containment", "cell_quota", "cell_spatial_distribution", "local_population_density", "mechanism_realization"]
+  },
+  "coupling_contract": {"compatibility_rule_ids": ["breast.mask.one_detached_tumor_nest", "breast.mask.nest_population_inside_island"], "allow_neoplastic_in_non_tumor_tissue": false, "joint_area_mode": "joint_footprint", "tissue_floor_applies": true, "cell_only_target_fraction": 0.0, "cell_footprint_spill_reserve_fraction": 0.0, "render_support_policy_id": "joint_change_plus_bounded_cell_halo_v1"},
+  "joint_gate_ids": ["joint_area", "tissue_floor", "cell_tissue_compatibility", "cell_zone_localization", "joint_provenance", "external_boundary_binding", "peritumoral_tumor_island_geometry", "profile_fine_transition_authority", "bcss_operational_stroma_authority", "mechanism_postcondition:breast-peritumoral-tumor-nest"],
+  "render_contract": {"required_findings": ["generator follows a compact detached Tumor island populated by six to twelve tumor cells"], "veto_findings": ["island bridges to the parent Tumor", "island becomes a long cord", "island is empty or sparsely dotted", "island resembles a one-to-five-cell tumor bud", "drift outside generation support"], "mask_guarantees": ["exactly one new detached Tumor component", "compact irregular boundary", "six-to-twelve-cell complete class-1 population inside the island", "protected labels preserved"], "render_only_claims": ["tumor budding score", "metastatic deposit", "specific invasive phenotype", "prognosis"]},
+  "evidence_citations": ["https://pmc.ncbi.nlm.nih.gov/articles/PMC5711975/", "https://pmc.ncbi.nlm.nih.gov/articles/PMC4210482/"],
+  "counterexamples": ["connected protrusion", "long cord", "perfect disk", "remote island", "broad sheet", "claiming tumor budding or metastasis"]
+}
