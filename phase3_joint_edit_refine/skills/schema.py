@@ -20,7 +20,13 @@ REVIEW_STATUSES = frozenset({"draft", "empirically_validated", "internally_revie
 PRIMITIVE_SCOPES = frozenset({"tissue_and_cell", "cell_only"})
 PRIMITIVE_BUDGET_MODES = frozenset({"joint_area_with_tissue_floor", "count_extent"})
 TISSUE_GEOMETRY_MODES = frozenset(
-    {"interface_front", "component_boundary_turnover", "residual_fragmentation"}
+    {
+        "interface_front",
+        "component_boundary_turnover",
+        "residual_fragmentation",
+        "cell_seeded_invasive_cord",
+        "peritumoral_detached_tumor_island",
+    }
 )
 SEAM_MODES = frozenset(
     {"adaptive_population_continuity", "turnover_transition", "not_applicable"}
