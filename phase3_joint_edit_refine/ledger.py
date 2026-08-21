@@ -80,7 +80,12 @@ def analyze_joint_change(
             removed |= component
             removed_ids.append(instance_id)
             continue
-        same = target_nuclei[component] == class_id
+        # Native instance authority supplies identity and class, while the
+        # persisted semantic raster remains the pixel baseline.  A CellViT
+        # class can legitimately differ from that raster; unchanged native
+        # instances must therefore be compared with their source pixels, not
+        # painted wholesale as if every footprint pixel equalled ``class_id``.
+        same = target_nuclei[component] == source_nuclei[component]
         if np.all(same):
             retained |= component
             retained_ids.append(instance_id)

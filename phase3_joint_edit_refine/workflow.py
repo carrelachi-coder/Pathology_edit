@@ -130,6 +130,14 @@ INFILTRATION_BUDGET_PRIMITIVES = frozenset(
     }
 )
 
+PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES = frozenset(
+    {
+        "invasive-tumor-footprint-decrease-v1",
+        "tumor-burden-increase-v1",
+        "cohesive-boundary-expansion-v1",
+    }
+)
+
 
 @dataclass(frozen=True)
 class JointWorkflowConfig:
@@ -832,6 +840,7 @@ class JointPathologyEditWorkflow:
             tissue_reports = ()
             area_fallback_state = None
             revoked_tissue_candidate_ids: set[str] = set()
+            panda_cell_capacity_floor_fallback_used = False
 
             def reject_repeated_deterministic_feedback(feedback: Mapping[str, Any]) -> None:
                 """Stop when another pass would execute the same failed contract.
@@ -922,6 +931,115 @@ class JointPathologyEditWorkflow:
                     )
                 ]
                 return bool(passing_joint)
+
+            def activate_panda_cell_capacity_floor_fallback(
+                feedback: Mapping[str, Any],
+            ) -> bool:
+                """Use the declared PANDA hard floor after proven cell failure."""
+
+                nonlocal allocation
+                nonlocal budget_rebalance_count
+                nonlocal execution_feedback
+                nonlocal last_deterministic_feedback_signature
+                nonlocal nuclei_preflight
+                nonlocal panda_cell_capacity_floor_fallback_used
+                nonlocal tissue_scene
+                if panda_cell_capacity_floor_fallback_used:
+                    return False
+                if (
+                    case.annotation_profile_id != "panda-gleason-v1"
+                    or case.primitive_id
+                    not in PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES
+                    or case.joint_area_budget.fallback_policy
+                    != "max_feasible_below_target"
+                ):
+                    return False
+                stage = str(feedback.get("stage") or "")
+                feasibility_failures = set(
+                    (feedback.get("cell_feasibility_failure_counts") or {}).keys()
+                )
+                execution_errors = " ".join(
+                    str(item) for item in feedback.get("errors", ())
+                )
+                proven_capacity_failure = bool(
+                    stage == "cell_feasibility"
+                    and feasibility_failures.intersection(
+                        {
+                            "candidate_cannot_fit_cell_in_continuity_region",
+                            "exact_complete_footprint_packing_capacity_shortfall",
+                            "exact_seam_packing_capacity_shortfall",
+                        }
+                    )
+                ) or bool(
+                    stage == "cell_execution"
+                    and any(
+                        marker in execution_errors
+                        for marker in (
+                            "PROBNET_UNDERFOLLOW",
+                            "exact-count placement failed",
+                            "target-tissue count quota",
+                        )
+                    )
+                )
+                if not proven_capacity_failure:
+                    return False
+                revised = self.budget_solver.fallback_tissue_target_to_execution_floor(
+                    allocation
+                )
+                if revised.tissue_target_pixels == allocation.tissue_target_pixels:
+                    return False
+                budget_revisions.append(
+                    {
+                        "reason": "panda_cell_capacity_hard_floor_fallback",
+                        "failure_stage": stage,
+                        "before": allocation.to_metadata(),
+                        "after": revised.to_metadata(),
+                    }
+                )
+                allocation = revised
+                budget_rebalance_count += 1
+                panda_cell_capacity_floor_fallback_used = True
+                revoked_tissue_candidate_ids.clear()
+                nuclei_preflight = build_joint_nuclei_preflight(
+                    case=case,
+                    source_tissue=source_tissue,
+                    schema=schema,
+                    scene=scene,
+                    tissue_bundle=tissue_bundle,
+                    joint_bundle=bundle,
+                    allocation=allocation,
+                )
+                if not nuclei_preflight.feasible_interface_ids:
+                    raise JointContractError(
+                        "PANDA cell-capacity floor has no feasible tissue--cell interface"
+                    )
+                if not nuclei_preflight.meaningful_tissue_capacity_passed:
+                    raise JointContractError(
+                        "PANDA cell-capacity floor is below the meaningful tissue floor"
+                    )
+                tissue_scene = augment_tissue_scene_with_nuclei_preflight(
+                    scene.tissue,
+                    nuclei_preflight,
+                    auxiliary_structure_masks=scene.auxiliary_structure_masks,
+                    required_auxiliary_structure_ids=(
+                        bundle.mechanism.representability.protected_auxiliary_structures
+                    ),
+                    receiving_auxiliary_structure_ids=(
+                        bundle.mechanism.representability.receiving_auxiliary_structures
+                    ),
+                )
+                audit.write_json(
+                    "joint_nuclei_preflight_cell_capacity_floor.json",
+                    nuclei_preflight.to_metadata(),
+                )
+                execution_feedback = {
+                    "retry_index": int(feedback.get("retry_index") or 0),
+                    "stage": "budget_rebalance",
+                    "errors": ["panda_cell_capacity_hard_floor_fallback"],
+                    "failed_interface_ids": [],
+                }
+                last_deterministic_feedback_signature = None
+                return True
 
             # A provisional tissue boundary may intersect a complete semantic or
             # native nucleus whose footprint extends beyond T.  Since v1 forbids
@@ -1064,17 +1182,35 @@ class JointPathologyEditWorkflow:
                         scene=tissue_scene,
                         bundle=tissue_bundle,
                     )
-                    (
-                        tissue_plan,
-                        compiler_usage,
-                        compiled_replay_parts,
-                        compiled_replay_audit,
-                    ) = compile_joint_tissue_plan_with_witness(
-                        raw_tissue_plan,
-                        source_mask=source_tissue,
-                        schema=schema,
-                        scene=tissue_scene,
-                    )
+                    if selected_tissue_witness is not None:
+                        # The feasibility compiler already produced and hard-
+                        # gated this exact raster. Preserve the Planner's
+                        # selection certificate on the bound plan and reuse
+                        # that immutable execution artifact instead of solving
+                        # the same topology problem a second time.
+                        tissue_plan = raw_tissue_plan
+                        compiler_usage = {
+                            "compiler": "candidate_feasibility_witness_reuse",
+                            "resolved_pixels": (
+                                selected_tissue_witness.realized_tissue_pixels
+                            ),
+                        }
+                        compiled_replay_parts = ()
+                        compiled_replay_audit = dict(
+                            selected_tissue_witness.replay_audit
+                        )
+                    else:
+                        (
+                            tissue_plan,
+                            compiler_usage,
+                            compiled_replay_parts,
+                            compiled_replay_audit,
+                        ) = compile_joint_tissue_plan_with_witness(
+                            raw_tissue_plan,
+                            source_mask=source_tissue,
+                            schema=schema,
+                            scene=tissue_scene,
+                        )
                     validate_edit_plan(
                         tissue_plan,
                         case=tissue_case,
@@ -1161,6 +1297,11 @@ class JointPathologyEditWorkflow:
                     seed=tissue_case.seed,
                     compiled_replay_parts=compiled_replay_parts,
                     compiled_replay_audit=compiled_replay_audit,
+                    precompiled_candidate=(
+                        selected_tissue_witness.execution_candidate
+                        if selected_tissue_witness is not None
+                        else None
+                    ),
                 )
                 tissue_reports = execution_batch.tissue_gate_reports
                 if selected_tissue_witness is not None:
@@ -1238,6 +1379,10 @@ class JointPathologyEditWorkflow:
                         f"execution_feedback_pass_{planning_pass + 1}.json",
                         execution_feedback,
                     )
+                    if activate_panda_cell_capacity_floor_fallback(
+                        execution_feedback
+                    ):
+                        continue
                     reject_repeated_deterministic_feedback(execution_feedback)
                     if activate_rebalance_exhausted_area_fallback():
                         break
@@ -1273,6 +1418,7 @@ class JointPathologyEditWorkflow:
                 )
                 retain_visible_regression_closure = (
                     _retain_visible_regression_whole_instance_closure(
+                        annotation_profile_id=case.annotation_profile_id,
                         primitive_id=case.primitive_id,
                         fallback_policy=case.joint_area_budget.fallback_policy,
                         predicted_pixels=predicted,
@@ -1427,10 +1573,6 @@ class JointPathologyEditWorkflow:
                 if passing_joint:
                     break
                 if cell_execution_failures and not candidates:
-                    if selected_tissue_witness is not None:
-                        revoked_tissue_candidate_ids.add(
-                            selected_tissue_witness.candidate_id
-                        )
                     execution_feedback = {
                         "retry_index": planning_pass + 1,
                         "stage": "cell_execution",
@@ -1453,6 +1595,14 @@ class JointPathologyEditWorkflow:
                         f"execution_feedback_pass_{planning_pass + 1}.json",
                         execution_feedback,
                     )
+                    if activate_panda_cell_capacity_floor_fallback(
+                        execution_feedback
+                    ):
+                        continue
+                    if selected_tissue_witness is not None:
+                        revoked_tissue_candidate_ids.add(
+                            selected_tissue_witness.candidate_id
+                        )
                     reject_repeated_deterministic_feedback(execution_feedback)
                     if planning_pass + 1 < maximum_planning_attempts:
                         continue
@@ -1491,6 +1641,7 @@ class JointPathologyEditWorkflow:
                         "tissue_reports": tuple(tissue_reports),
                     }
                     if _retain_visible_regression_whole_instance_closure(
+                        annotation_profile_id=case.annotation_profile_id,
                         primitive_id=case.primitive_id,
                         fallback_policy=(
                             case.joint_area_budget.fallback_policy
@@ -1932,38 +2083,49 @@ class JointPathologyEditWorkflow:
                 and candidate_case.cell_count_extent_budget is None
             ):
                 if primitive_id in INFILTRATION_BUDGET_PRIMITIVES:
-                    budget, budget_metadata = _derive_infiltration_budget(
-                        scene,
-                        minimum_effect_delta_count=(
-                            primitive_contract.minimum_effect_delta_count_for(
-                                candidate_case.pathology_domain_id
-                            )
-                        ),
-                        minimum_effect_span_cell_diameters=(
-                            primitive_contract.minimum_effect_span_cell_diameters
-                        ),
-                        minimum_effect_foci=(
-                            primitive_contract.minimum_effect_foci
-                        ),
-                    )
+                    try:
+                        budget, budget_metadata = _derive_infiltration_budget(
+                            scene,
+                            minimum_effect_delta_count=(
+                                primitive_contract.minimum_effect_delta_count_for(
+                                    candidate_case.pathology_domain_id
+                                )
+                            ),
+                            minimum_effect_span_cell_diameters=(
+                                primitive_contract.minimum_effect_span_cell_diameters
+                            ),
+                            minimum_effect_foci=(
+                                primitive_contract.minimum_effect_foci
+                            ),
+                        )
+                    except (JointContractError, RefineContractError, ValueError) as exc:
+                        rejected[primitive_id] = str(exc)
+                        continue
                 else:
-                    budget, budget_metadata = _derive_local_population_budget(
-                        scene,
-                        primitive_id=primitive_id,
-                        semantic_intent=candidate_case.semantic_intent,
-                        host_tissue_labels=primitive_contract.host_tissue_labels,
-                        minimum_effect_delta_count=(
-                            primitive_contract.minimum_effect_delta_count_for(
-                                candidate_case.pathology_domain_id
-                            )
-                        ),
-                        minimum_effect_span_cell_diameters=(
-                            primitive_contract.minimum_effect_span_cell_diameters
-                        ),
-                        minimum_effect_foci=(
-                            primitive_contract.minimum_effect_foci
-                        ),
-                    )
+                    try:
+                        budget, budget_metadata = _derive_local_population_budget(
+                            scene,
+                            primitive_id=primitive_id,
+                            semantic_intent=candidate_case.semantic_intent,
+                            annotation_profile_id=(
+                                candidate_case.annotation_profile_id
+                            ),
+                            host_tissue_labels=primitive_contract.host_tissue_labels,
+                            minimum_effect_delta_count=(
+                                primitive_contract.minimum_effect_delta_count_for(
+                                    candidate_case.pathology_domain_id
+                                )
+                            ),
+                            minimum_effect_span_cell_diameters=(
+                                primitive_contract.minimum_effect_span_cell_diameters
+                            ),
+                            minimum_effect_foci=(
+                                primitive_contract.minimum_effect_foci
+                            ),
+                        )
+                    except (JointContractError, RefineContractError, ValueError) as exc:
+                        rejected[primitive_id] = str(exc)
+                        continue
                 budget, budget_metadata = _apply_glas_visible_cell_budget(
                     candidate_case,
                     primitive_id=primitive_id,
@@ -3173,10 +3335,12 @@ class JointPathologyEditWorkflow:
             authoritative_references_by_class=references_by_class,
             minimum_acceptable_add_count=minimum_acceptable_count,
             allow_final_capacity_refinement=(
-                case.annotation_profile_id == "glas-gland-v1"
+                case.annotation_profile_id
+                in {"glas-gland-v1", "panda-gleason-v1"}
             ),
             relax_group_preflight=(
-                case.annotation_profile_id == "glas-gland-v1"
+                case.annotation_profile_id
+                in {"glas-gland-v1", "panda-gleason-v1"}
             ),
         )
         if not certified.passed:
@@ -3273,7 +3437,8 @@ class JointPathologyEditWorkflow:
                         key=lambda item: (-item.contact_pixels, item.interface_id)
                     )
                     if (
-                        case.annotation_profile_id == "glas-gland-v1"
+                        case.annotation_profile_id
+                        in {"glas-gland-v1", "panda-gleason-v1"}
                         and len(eligible_touching) > 1
                     ):
                         all_anchor_ids = tuple(
@@ -3465,7 +3630,7 @@ class JointPathologyEditWorkflow:
                 if prostate_scatter
                 else compatible[:4]
             )
-            if exhaustive_peritumoral:
+            if exhaustive_peritumoral or prostate_scatter:
                 interfaces_by_component_pair: dict[
                     tuple[str, str], list[Any]
                 ] = defaultdict(list)
@@ -3490,6 +3655,44 @@ class JointPathologyEditWorkflow:
                             anchor_id
                             for interface in grouped
                             for anchor_id in interface.anchor_segment_ids
+                        )
+                    )
+                    if grouped_anchors:
+                        variants.append(
+                            {
+                                "joint_interface_ids": [
+                                    item.interface_id for item in grouped
+                                ],
+                                "joint_anchor_ids": list(grouped_anchors),
+                            }
+                        )
+            if prostate_scatter:
+                # PANDA may split one Pattern-5 outer boundary across several
+                # adjacent Stroma components.  Scatter belongs to the selected
+                # tumor component's complete external boundary, so certify
+                # that union before its local sub-arcs.
+                interfaces_by_tumor: dict[str, list[Any]] = defaultdict(list)
+                for interface in interfaces_to_consider:
+                    tumor_component_id = (
+                        interface.source_component_id
+                        if interface.source_label == "Tumor"
+                        else interface.target_component_id
+                    )
+                    interfaces_by_tumor[str(tumor_component_id)].append(
+                        interface
+                    )
+                for grouped in interfaces_by_tumor.values():
+                    if len(grouped) < 2:
+                        continue
+                    grouped.sort(
+                        key=lambda item: (-item.contact_pixels, item.interface_id)
+                    )
+                    grouped_anchors = tuple(
+                        dict.fromkeys(
+                            anchor_id
+                            for interface in grouped
+                            for anchor_id in interface.anchor_segment_ids
+                            if anchor_id in scene.tissue.anchor_masks
                         )
                     )
                     if grouped_anchors:
@@ -4014,6 +4217,7 @@ def _provisional_union_requires_rebalance(
 
 def _retain_visible_regression_whole_instance_closure(
     *,
+    annotation_profile_id: str = "",
     primitive_id: str,
     fallback_policy: str,
     predicted_pixels,
@@ -4033,11 +4237,21 @@ def _retain_visible_regression_whole_instance_closure(
 
     values = [max(0, int(value)) for value in predicted_pixels]
     return bool(
-        primitive_id
-        in {
-            "invasive-tumor-footprint-decrease-v1",
-            "residual-tumor-fragmentation-v1",
-        }
+        (
+            primitive_id
+            in {
+                "invasive-tumor-footprint-decrease-v1",
+                "residual-tumor-fragmentation-v1",
+            }
+            or (
+                annotation_profile_id == "panda-gleason-v1"
+                and primitive_id
+                in {
+                    "tumor-burden-increase-v1",
+                    "cohesive-boundary-expansion-v1",
+                }
+            )
+        )
         and fallback_policy == "max_feasible_below_target"
         and values
         and int(desired_max_pixels) < min(values) <= int(hard_max_pixels)
@@ -4255,10 +4469,19 @@ def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext
             f"floor={floor_pixels}"
         )
     floor = floor_pixels / max(1, total)
+    maximum = target
+    if (
+        case.annotation_profile_id == "panda-gleason-v1"
+        and case.primitive_id == "residual-tumor-fragmentation-v1"
+    ):
+        # PANDA fragmentation owns a component-relative 12% breakup floor.
+        # Permit the tissue compiler to rise above the nominal 3.5% target,
+        # but never beyond the frozen joint task maximum (5%).
+        maximum = allocation.joint_hard_max_pixels / max(1, total)
     budget = AreaBudget(
         target_fraction=target,
         min_fraction=floor,
-        max_fraction=target,
+        max_fraction=maximum,
         basis="whole_mask",
         relative_tolerance=0.0,
         fallback_policy=("max_feasible_below_target" if target > floor else "exact"),
@@ -4475,6 +4698,7 @@ def _derive_local_population_budget(
     *,
     primitive_id: str,
     semantic_intent: Mapping[str, Any],
+    annotation_profile_id: str = "",
     host_tissue_labels: tuple[str, ...] = (),
     minimum_effect_delta_count: int = 0,
     minimum_effect_span_cell_diameters: float = 0.0,
@@ -4708,13 +4932,32 @@ def _derive_local_population_budget(
         48,
         int(np.floor(0.40 * min(np.asarray(scene.source_nuclei).shape))),
     )
+    span_capped_to_patch_support = False
+    if (
+        minimum_effect_span > patch_support_limit
+        and annotation_profile_id == "panda-gleason-v1"
+    ):
+        # PANDA patches can contain unusually large source nuclei.  The
+        # primitive's cell-diameter span is a meaningful-effect target, but
+        # it cannot exceed the profile's explicit bounded-support envelope.
+        # Clamp only this profile to that already-authoritative envelope; the
+        # post-execution span gate still verifies the full bounded effect.
+        minimum_effect_span = patch_support_limit
+        span_capped_to_patch_support = True
     if minimum_effect_span > patch_support_limit:
         raise JointContractError(
             "source-calibrated meaningful cell effect span exceeds the "
             "patch-relative bounded-support limit"
         )
+    footprint_span_margin = (
+        int(np.ceil(2.0 * diameter_px))
+        if annotation_profile_id == "panda-gleason-v1"
+        and increase
+        and minimum_effect_span > 0
+        else 0
+    )
     maximum_extent = max(
-        minimum_effect_span,
+        minimum_effect_span + footprint_span_margin,
         int(np.clip(round(6.0 * diameter_px), 48, 96)),
     )
     maximum_extent = min(patch_support_limit, maximum_extent)
@@ -4758,6 +5001,8 @@ def _derive_local_population_budget(
         ),
         "skill_minimum_effect_foci": int(minimum_effect_foci),
         "patch_relative_support_limit_px": patch_support_limit,
+        "span_capped_to_patch_support": span_capped_to_patch_support,
+        "complete_footprint_span_margin_px": footprint_span_margin,
         "budget": budget.__dict__,
     }
 

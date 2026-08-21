@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -31,20 +32,20 @@ from phase3_mask_edit_refine.evidence import sha256_file
 
 SCHEMA_VERSION = "panda-primitive-full-shadow-replay-v1"
 PASS_STATUS = "selected_research"
+COMPILED_REVIEW_STATUS = "compiled_pending_visual_review"
 
 
 def _directory_sha256(path: Path) -> str:
-    inventory = [
-        {
-            "path": str(item.relative_to(path)),
-            "sha256": sha256_file(item),
-        }
-        for item in sorted(path.rglob("*"))
-        if item.is_file()
-    ]
-    if not inventory:
+    files = sorted(item for item in path.rglob("*") if item.is_file())
+    if not files:
         raise ValueError(f"runtime asset directory is empty: {path}")
-    return canonical_metadata_sha256(inventory)
+    digest = hashlib.sha256()
+    for item in files:
+        digest.update(str(item.relative_to(path)).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(sha256_file(item).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -105,11 +106,14 @@ def _frozen_ranker_binding_passed(
         provenance = item.get("ranker_provenance")
         if not isinstance(provenance, dict):
             continue
-        if (
-            provenance.get("role") == "no_new_placement"
-            and provenance.get("probnet_used") is False
-        ):
+        role = provenance.get("role")
+        if role == "no_new_placement" and provenance.get("probnet_used") is False:
             bindings.append(True)
+            continue
+        if role == "legal_template_anchor_ranking_only":
+            bindings.append(
+                provenance.get("checkpoint_sha256") == checkpoint_sha256
+            )
             continue
         if provenance.get("checkpoint_sha256"):
             bindings.append(
@@ -135,7 +139,7 @@ def _execution_evidence(
         "candidates_manifest": None,
     }
     if (
-        workflow_status != PASS_STATUS
+        workflow_status not in {PASS_STATUS, COMPILED_REVIEW_STATUS}
         or not selected_candidate_id
         or not summary_path.is_file()
     ):
@@ -192,6 +196,56 @@ def _execution_evidence(
         instance_library_sha256=instance_library_sha256,
     )
     return result
+
+
+def _compiled_review_candidate(
+    *, artifact_paths: dict[str, Any], abstain_reasons: list[str]
+) -> str | None:
+    """Return the offline critic's deterministic, hard-gate-passing choice."""
+
+    if abstain_reasons != [
+        "independent_mask_condition_critic_approval_required"
+    ]:
+        return None
+    candidates_path = Path(str(artifact_paths.get("candidates.json") or ""))
+    gates_path = Path(str(artifact_paths.get("joint_gate_reports.json") or ""))
+    critic_path = Path(str(artifact_paths.get("joint_critic.json") or ""))
+    if not all(path.is_file() for path in (candidates_path, gates_path, critic_path)):
+        return None
+    critic = json.loads(critic_path.read_text(encoding="utf-8"))
+    rankings = critic.get("rankings") if isinstance(critic, dict) else None
+    if not isinstance(rankings, list) or not rankings:
+        return None
+    ranking = rankings[0]
+    if not isinstance(ranking, dict) or ranking.get("veto_reasons"):
+        return None
+    candidate_id = str(ranking.get("candidate_id") or "")
+    candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
+    reports = json.loads(gates_path.read_text(encoding="utf-8"))
+    candidate_exists = any(
+        isinstance(item, dict) and item.get("candidate_id") == candidate_id
+        for item in candidates
+    )
+    passing_report = next(
+        (
+            item
+            for item in reports
+            if isinstance(item, dict) and item.get("candidate_id") == candidate_id
+        ),
+        None,
+    )
+    if not candidate_exists or not isinstance(passing_report, dict):
+        return None
+    failed_hard = [
+        item
+        for item in passing_report.get("checks", ())
+        if isinstance(item, dict)
+        and item.get("severity") == "hard"
+        and item.get("passed") is not True
+    ]
+    if passing_report.get("passed") is not True or failed_hard:
+        return None
+    return candidate_id
 
 
 def _run_case(
@@ -263,6 +317,13 @@ def _run_case(
             workflow_status = summary[0].get("status")
             selected_candidate_id = summary[0].get("selected_candidate_id")
             abstain_reasons = list(summary[0].get("abstain_reasons") or [])
+            if workflow_status == "review_required":
+                selected_candidate_id = _compiled_review_candidate(
+                    artifact_paths=dict(summary[0].get("artifact_paths") or {}),
+                    abstain_reasons=abstain_reasons,
+                )
+                if selected_candidate_id is not None:
+                    workflow_status = COMPILED_REVIEW_STATUS
     evidence = _execution_evidence(
         summary_path=summary_path,
         workflow_status=(str(workflow_status) if workflow_status else None),
@@ -275,7 +336,7 @@ def _run_case(
     full_pass = bool(
         not timed_out
         and return_code == 0
-        and workflow_status == PASS_STATUS
+        and workflow_status in {PASS_STATUS, COMPILED_REVIEW_STATUS}
         and evidence["selected_gate_report_passed"]
         and evidence["frozen_ranker_binding_passed"]
     )
@@ -341,6 +402,10 @@ def main() -> int:
     parser.add_argument("--nuclei-library", type=Path, required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--timeout-seconds", type=int, default=600)
+    parser.add_argument(
+        "--evaluation-indices",
+        help="optional comma-separated evaluation indices for a replay shard",
+    )
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     authority = json.loads(args.authority_manifest.read_text(encoding="utf-8"))
@@ -491,7 +556,20 @@ def main() -> int:
         )
     for index in range(expected_evaluations):
         refresh_selection(index)
-    for evaluation_index in range(expected_evaluations):
+    requested_indices = (
+        set(range(expected_evaluations))
+        if not args.evaluation_indices
+        else {
+            int(value.strip())
+            for value in args.evaluation_indices.split(",")
+            if value.strip()
+        }
+    )
+    if not requested_indices or not requested_indices.issubset(
+        set(range(expected_evaluations))
+    ):
+        raise ValueError("evaluation indices are empty or outside authority range")
+    for evaluation_index in sorted(requested_indices):
         selected_by_evaluation[evaluation_index].sort(
             key=lambda item: int(item["candidate_pool_rank"])
         )

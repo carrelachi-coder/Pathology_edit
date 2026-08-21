@@ -521,6 +521,7 @@ def _with_scene_calibrated_cell_budget(
             scene,
             primitive_id=case.primitive_id,
             semantic_intent=case.semantic_intent,
+            annotation_profile_id=case.annotation_profile_id,
             host_tissue_labels=primitive.host_tissue_labels,
             minimum_effect_delta_count=(
                 primitive.minimum_effect_delta_count_for(

@@ -350,6 +350,7 @@ class CellToolProgramCompiler:
         depletion_transition = empty.copy()
         depletion_outer = empty.copy()
         depletion_anchor = empty.copy()
+        panda_cord_parent_band = empty.copy()
         depletion_parameters: dict[str, float | int | str] = {}
         depletion_population_instance_ids: tuple[str, ...] = ()
         depletion_band_instance_ids: dict[str, tuple[str, ...]] = {}
@@ -380,6 +381,27 @@ class CellToolProgramCompiler:
             )
             if bundle.mechanism.coupling.cell_only_target_fraction <= 0:
                 mechanism_region &= tissue_change
+            if (
+                bundle.annotation_profile.annotation_profile_id
+                == "panda-gleason-v1"
+                and case.primitive_id
+                == "infiltrative-nest-cord-extension-v1"
+            ):
+                target_ids = tuple(
+                    schema.resolve_fine_ids(plan.tissue_plan.target_label)
+                )
+                panda_cord_parent_band = (
+                    anchor_zone
+                    & ndimage.binary_dilation(
+                        tissue_change,
+                        iterations=max(1, int(np.ceil(diameter))),
+                    )
+                    & ~tissue_change
+                    & np.isin(target_tissue, target_ids)
+                )
+                center_region |= panda_cord_parent_band
+                population_target_region |= panda_cord_parent_band
+                mechanism_region |= panda_cord_parent_band
         else:
             if plan.tissue_plan is not None or np.any(tissue_change):
                 raise JointContractError("cell-only primitive forbids tissue changes")
@@ -820,6 +842,9 @@ class CellToolProgramCompiler:
             ),
         )
         continuity_mode = seam.mode
+        continuity_region = (
+            seam.continuity_region | panda_cord_parent_band
+        )
         continuity_requires_new_target_cells = seam.requires_new_target_cells
         if primitive.scope == "cell_only":
             # Cell-only mechanisms may be interface-local, but they do not
@@ -830,7 +855,7 @@ class CellToolProgramCompiler:
         elif cell.baseline_mode == "render_owned_clearance":
             continuity_mode = "render_owned_tissue_transition"
             continuity_requires_new_target_cells = False
-        if np.any(seam.continuity_region & ~center_region):
+        if np.any(continuity_region & ~center_region):
             raise JointContractError(
                 "compiled continuity seam lies outside placement center region"
             )
@@ -847,7 +872,7 @@ class CellToolProgramCompiler:
             valid_footprint_region=valid,
             support_context_region=support,
             mechanism_region=mechanism_region,
-            continuity_region=seam.continuity_region,
+            continuity_region=continuity_region,
             continuity_anchor_mask=seam.anchor_mask,
             depletion_core_region=depletion_core,
             depletion_transition_region=depletion_transition,
@@ -1090,6 +1115,12 @@ class CellToolProgramCompiler:
                 by_band["outer_reference"].append(item)
         core_count = len(by_band["core"])
         transition_count = len(by_band["transition"])
+        outer_reference_count = len(by_band["outer_reference"])
+        if outer_reference_count < contract.minimum_outer_reference_instances:
+            raise JointContractError(
+                "depletion outer-reference band lacks enough unchanged "
+                "complete nuclei"
+            )
         core_capacity = max(
             0,
             core_count

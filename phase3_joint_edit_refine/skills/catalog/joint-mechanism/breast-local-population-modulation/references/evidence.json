@@ -14,7 +14,8 @@
         "counterexamples"
       ],
       "source_ids": [
-        "pathology-mechanism-internal-review-pending"
+        "pathology-breast-tumor-cellularity-2004",
+        "pathology-breast-tils-working-group-2014"
       ],
       "production_eligible": false
     },

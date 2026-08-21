@@ -358,6 +358,13 @@ def generate_cell_layouts(
             interface_ids=plan.cell_plan.interface_ids,
             core_zone=plan.cell_plan.core_zone,
         )
+        if (
+            bundle.annotation_profile.annotation_profile_id
+            == "panda-gleason-v1"
+            and bundle.primitive.primitive_id
+            == "infiltrative-nest-cord-extension-v1"
+        ):
+            current = add_directional_rotation_variants(tuple(current))
         if current:
             references_by_class[class_id] = current
         rejected_references.update(rejected)
@@ -757,6 +764,15 @@ def generate_cell_layouts(
             allow_immediate_reference_reuse=(
                 bundle.annotation_profile.annotation_profile_id
                 == "glas-gland-v1"
+            ),
+            raw_component_effect_foci=(
+                bundle.annotation_profile.annotation_profile_id
+                == "panda-gleason-v1"
+                and bundle.primitive.primitive_id
+                in {
+                    "cell-type-abundance-increase-v1",
+                    "neoplastic-cell-abundance-increase-v1",
+                }
             ),
             seed=seed + variant * 104729 + 8191,
         )
@@ -1388,6 +1404,18 @@ def _build_multiclass_addition_results(
             quotas,
             key=lambda class_id: (quotas[class_id], -class_id),
         )
+    panda_cellularity = bool(
+        bundle.annotation_profile.annotation_profile_id == "panda-gleason-v1"
+        and bundle.primitive.primitive_id == "cellularity-increase-v1"
+    )
+    effect_focus_count = max(
+        1,
+        min(int(quotas[effect_class]), compiled_program.minimum_effect_foci),
+    )
+    effect_focus_maximum_size = max(
+        1,
+        int(np.ceil(int(quotas[effect_class]) / effect_focus_count)),
+    )
     results = []
     for variant in range(variants):
         target = np.asarray(base).copy()
@@ -1437,12 +1465,16 @@ def _build_multiclass_addition_results(
                 # small-cluster layout; final-mask gates rebuild the foci from
                 # accepted centers instead of trusting trace cluster IDs.
                 layout_program=(
-                    plan.cell_plan.layout_program_id
+                    "small_cluster"
+                    if panda_cellularity and class_id == effect_class
+                    else plan.cell_plan.layout_program_id
                     if class_id == effect_class
                     else "single"
                 ),
                 cluster_size_range=(
-                    bundle.mechanism.cell_program.cluster_size_range
+                    (min(2, effect_focus_maximum_size), effect_focus_maximum_size)
+                    if panda_cellularity and class_id == effect_class
+                    else bundle.mechanism.cell_program.cluster_size_range
                     if class_id == effect_class
                     else (1, 1)
                 ),
@@ -1472,19 +1504,29 @@ def _build_multiclass_addition_results(
                     tuple(placements) if class_id != effect_class else ()
                 ),
                 existing_focus_maximum_size=(
-                    int(bundle.mechanism.cell_program.cluster_size_range[1])
+                    effect_focus_maximum_size
+                    if panda_cellularity
+                    else int(bundle.mechanism.cell_program.cluster_size_range[1])
                     if class_id != effect_class
                     else 0
                 ),
                 allow_new_effect_foci=(
-                    bundle.annotation_profile.annotation_profile_id
-                    == "glas-gland-v1"
-                    and class_id != effect_class
+                    class_id != effect_class
+                    and (
+                        bundle.annotation_profile.annotation_profile_id
+                        == "glas-gland-v1"
+                        or panda_cellularity
+                    )
                 ),
                 allow_immediate_reference_reuse=(
                     bundle.annotation_profile.annotation_profile_id
                     == "glas-gland-v1"
+                    or panda_cellularity
                 ),
+                minimum_effect_focus_separation_diameters=(
+                    2.0 if panda_cellularity else None
+                ),
+                compact_reference_first=panda_cellularity,
                 seed=seed + variant * 104729 + offset * 8191,
             )
             placements.extend(current)
@@ -1956,6 +1998,66 @@ def _unique_reference_shapes(
     return tuple(result)
 
 
+def add_directional_rotation_variants(
+    references: tuple[ReferenceNucleusShape, ...],
+) -> tuple[ReferenceNucleusShape, ...]:
+    """Add bounded, traceable orientations of complete source nuclei.
+
+    A narrow directional cord can be oblique to every nucleus observed in the
+    source patch. Rotating one of the three smallest complete same-class
+    contours preserves source morphology while avoiding a false requirement
+    to widen the cord or synthesize a smaller nucleus. The compact source
+    family also keeps exact packing bounded.
+    """
+
+    original = _unique_reference_shapes(tuple(references))
+    if not original:
+        return ()
+    compact = tuple(sorted(
+        original, key=lambda item: (item.area_px, item.instance_id)
+    )[:3])
+    variants = list(compact)
+    for item in compact:
+        for degrees in (45, 90, 135):
+            rotated = ndimage.rotate(
+                np.asarray(item.mask, dtype=np.uint8),
+                angle=degrees,
+                reshape=True,
+                order=0,
+                mode="constant",
+                cval=0,
+                prefilter=False,
+            ).astype(bool)
+            if not np.any(rotated):
+                continue
+            rows, cols = np.nonzero(rotated)
+            rotated = np.ascontiguousarray(
+                rotated[
+                    rows.min() : rows.max() + 1,
+                    cols.min() : cols.max() + 1,
+                ],
+                dtype=bool,
+            )
+            if ndimage.label(
+                rotated, structure=np.ones((3, 3), dtype=bool)
+            )[1] != 1:
+                continue
+            if _semantic_instance_labels(rotated)[1] != 1:
+                continue
+            variants.append(
+                ReferenceNucleusShape(
+                    instance_id=f"{item.instance_id}:rotate-{degrees}",
+                    class_id=item.class_id,
+                    mask=rotated,
+                    source=f"{item.source}_rotated_{degrees}",
+                    area_px=int(np.count_nonzero(rotated)),
+                    parent_instance_id=item.instance_id,
+                    scale_factor=1.0,
+                )
+            )
+    return _unique_reference_shapes(tuple(variants))
+
+
 def _calibrated_reference_variants(
     references: tuple[ReferenceNucleusShape, ...],
     *,
@@ -2226,11 +2328,18 @@ def _place_layout(
     existing_focus_maximum_size=0,
     allow_immediate_reference_reuse=False,
     allow_new_effect_foci=False,
+    raw_component_effect_foci=False,
+    minimum_effect_focus_separation_diameters=None,
+    compact_reference_first=False,
 ):
     target = np.asarray(base).copy()
     occupied = target > 0
     rng = np.random.default_rng(seed)
     references = _reference_sampling_order(references, rng=rng)
+    if compact_reference_first:
+        references = tuple(
+            sorted(references, key=lambda item: (int(item.area_px), item.instance_id))
+        )
     used_reference_digests: set[str] = {
         str(value) for value in previously_used_reference_digests
     }
@@ -2282,6 +2391,9 @@ def _place_layout(
                     placement_trace=existing_focus_placements,
                     nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
                     maximum_focus_size=int(existing_focus_maximum_size),
+                    minimum_inter_focus_separation_diameters=(
+                        minimum_effect_focus_separation_diameters
+                    ),
                 )
                 is not None
             ],
@@ -2299,8 +2411,12 @@ def _place_layout(
         or contract_requires_separate_small_cluster_groups
     )
     small_cluster_group_separation_diameters = (
-        SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+        float(minimum_effect_focus_separation_diameters)
+        if minimum_effect_focus_separation_diameters is not None
+        else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
         if enforce_small_cluster_group_separation
+        else CELL_EFFECT_WITHIN_FOCUS_LINK_DIAMETERS
+        if raw_component_effect_foci
         else CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS
     )
     small_cluster_target_focus_count = (
@@ -2619,8 +2735,29 @@ def _place_layout(
                             nominal_nucleus_diameter_px
                         ),
                         maximum_focus_size=int(effective_cluster_range[1]),
+                        minimum_inter_focus_separation_diameters=(
+                            minimum_effect_focus_separation_diameters
+                        ),
                     )
-                    if extension_focus_id is None:
+                    if (
+                        extension_focus_id is None
+                        and minimum_effect_focus_separation_diameters is None
+                    ):
+                        continue
+                    if (
+                        extension_focus_id is None
+                        and any(
+                            (cy - int(item["center_xy"][1])) ** 2
+                            + (cx - int(item["center_xy"][0])) ** 2
+                            < (
+                                float(minimum_effect_focus_separation_diameters)
+                                * float(nominal_nucleus_diameter_px)
+                            )
+                            ** 2
+                            - 1e-9
+                            for item in placement_trace[:group_start]
+                        )
+                    ):
                         continue
                 elif any(
                     (cy - int(item["center_xy"][1])) ** 2
@@ -2703,6 +2840,9 @@ def _place_layout(
                     ),
                     nominal_nucleus_diameter_px=nominal_nucleus_diameter_px,
                     maximum_focus_size=int(existing_focus_maximum_size),
+                    minimum_inter_focus_separation_diameters=(
+                        minimum_effect_focus_separation_diameters
+                    ),
                 )
                 if existing_focus_id is None and not allow_new_effect_foci:
                     continue
@@ -2710,7 +2850,13 @@ def _place_layout(
                     (accepted_y - int(item["center_xy"][1])) ** 2
                     + (accepted_x - int(item["center_xy"][0])) ** 2
                     < (
-                        CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS
+                        (
+                            CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS
+                            if minimum_effect_focus_separation_diameters is None
+                            else float(
+                                minimum_effect_focus_separation_diameters
+                            )
+                        )
                         * float(nominal_nucleus_diameter_px)
                     )
                     ** 2
@@ -2730,8 +2876,29 @@ def _place_layout(
                             nominal_nucleus_diameter_px
                         ),
                         maximum_focus_size=int(effective_cluster_range[1]),
+                        minimum_inter_focus_separation_diameters=(
+                            minimum_effect_focus_separation_diameters
+                        ),
                     )
-                    if extension_focus_id is None:
+                    if (
+                        extension_focus_id is None
+                        and minimum_effect_focus_separation_diameters is None
+                    ):
+                        continue
+                    if (
+                        extension_focus_id is None
+                        and any(
+                            (accepted_y - int(item["center_xy"][1])) ** 2
+                            + (accepted_x - int(item["center_xy"][0])) ** 2
+                            < (
+                                float(minimum_effect_focus_separation_diameters)
+                                * float(nominal_nucleus_diameter_px)
+                            )
+                            ** 2
+                            - 1e-9
+                            for item in placement_trace[:group_start]
+                        )
+                    ):
                         continue
                 elif any(
                     (accepted_y - int(item["center_xy"][1])) ** 2
@@ -2866,6 +3033,7 @@ def _matching_effect_focus_id(
     placement_trace,
     nominal_nucleus_diameter_px,
     maximum_focus_size,
+    minimum_inter_focus_separation_diameters=None,
 ) -> str | None:
     """Bind one additional center to exactly one valid existing focus."""
 
@@ -2880,7 +3048,11 @@ def _matching_effect_focus_id(
     nominal = max(1.0, float(nominal_nucleus_diameter_px))
     link = CELL_EFFECT_WITHIN_FOCUS_LINK_DIAMETERS * nominal
     maximum_diameter = CELL_EFFECT_MAXIMUM_FOCUS_DIAMETER_DIAMETERS * nominal
-    inter_focus = CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS * nominal
+    inter_focus = (
+        CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS
+        if minimum_inter_focus_separation_diameters is None
+        else float(minimum_inter_focus_separation_diameters)
+    ) * nominal
     matches = []
     for cluster_id, members in groups.items():
         if len(members) >= max(1, int(maximum_focus_size)):

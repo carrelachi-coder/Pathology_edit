@@ -39,7 +39,7 @@ from phase3_joint_edit_refine.cell_programs import (
 from phase3_joint_edit_refine.nuclei import load_nuclei_mask
 
 SCHEMA_VERSION = "panda-cross-meta-eval-primitive-candidate-pool-v1"
-PRODUCER_ID = "cross-meta-eval-mask-only-panda-primitive-selector-v4"
+PRODUCER_ID = "cross-meta-eval-mask-only-panda-primitive-selector-v5"
 TUMOR_FINE_IDS = (8, 9, 10)
 STRUCTURE_8 = np.ones((3, 3), dtype=bool)
 SAMPLE_OFFSET = re.compile(r"_py(?P<y>\d+)_px(?P<x>\d+)$")
@@ -1438,14 +1438,11 @@ def build_candidate_pool(
         strict_nonoverlap_candidates = _diverse_top(
             eligible, maximum=required_candidate_count
         )
-        minimum_candidate_count = (
-            5 if target_evaluation_indices is not None else required_candidate_count
-        )
+        minimum_candidate_count = 5
         candidates = strict_nonoverlap_candidates
         overlap_exception = None
         if (
-            target_evaluation_indices is not None
-            and len(candidates) < minimum_candidate_count
+            len(candidates) < required_candidate_count
             and len(eligible) >= minimum_candidate_count
         ):
             candidates = _fill_distinct_overlap_minimized(
@@ -1462,8 +1459,12 @@ def build_candidate_pool(
                 default=0.0,
             )
             overlap_exception = {
-                "policy_id": "targeted-candidate-overlap-fallback-v1",
-                "reason": "strict_nonoverlap_maximum_below_five",
+                "policy_id": (
+                    "targeted-candidate-overlap-fallback-v1"
+                    if target_evaluation_indices is not None
+                    else "full-pool-candidate-overlap-fallback-v1"
+                ),
+                "reason": "strict_nonoverlap_maximum_below_requested_count",
                 "strict_nonoverlap_candidate_count": len(
                     strict_nonoverlap_candidates
                 ),
@@ -1607,8 +1608,10 @@ def validate_candidate_pool(payload: dict[str, Any]) -> None:
         if not overlap_forbidden:
             if (
                 not isinstance(overlap_exception, dict)
-                or overlap_exception.get("policy_id")
-                != "targeted-candidate-overlap-fallback-v1"
+                or overlap_exception.get("policy_id") not in {
+                    "targeted-candidate-overlap-fallback-v1",
+                    "full-pool-candidate-overlap-fallback-v1",
+                }
                 or not overlap_exception.get(
                     "physiology_and_execution_gates_unchanged"
                 )

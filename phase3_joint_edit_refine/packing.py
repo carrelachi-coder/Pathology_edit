@@ -18,7 +18,7 @@ from scipy import ndimage, signal
 
 from .cell_layouts import ReferenceNucleusShape
 
-PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v20"
+PACKING_CERTIFIER_VERSION = "complete-footprint-packing-v21"
 MAX_PACKING_REFERENCE_SHAPES_PER_CLASS = 3
 MINIMUM_LOCAL_MEDIAN_AREA_RATIO = 0.60
 MAXIMUM_LOCAL_MEDIAN_AREA_RATIO = 1.67
@@ -118,6 +118,7 @@ def certify_complete_footprint_packing(
     erased_footprint: np.ndarray,
     center_region: np.ndarray,
     valid_footprint_region: np.ndarray,
+    required_footprint_intersection_region: np.ndarray | None = None,
     references_by_class: dict[int, tuple[ReferenceNucleusShape, ...]],
     requested_count: int,
     class_request_weights: dict[int, float] | None = None,
@@ -146,8 +147,20 @@ def certify_complete_footprint_packing(
     erased = np.asarray(erased_footprint, dtype=bool)
     centers = np.asarray(center_region, dtype=bool)
     valid = np.asarray(valid_footprint_region, dtype=bool)
+    required_intersection = (
+        None
+        if required_footprint_intersection_region is None
+        else np.asarray(required_footprint_intersection_region, dtype=bool)
+    )
     if not (source.shape == erased.shape == centers.shape == valid.shape):
         raise ValueError("packing inputs must share one shape")
+    if (
+        required_intersection is not None
+        and required_intersection.shape != source.shape
+    ):
+        raise ValueError(
+            "packing footprint-intersection mask must share the source shape"
+        )
     # A component touching the raster edge is observationally censored even
     # when its stored footprint happens to fit inside the array.  The mature
     # sampler and the final instance gate use the same one-pixel exclusion.
@@ -251,6 +264,7 @@ def certify_complete_footprint_packing(
                 placements=placements,
                 required_seam=True,
                 minimum_center_separation_px=minimum_center_separation_px,
+                required_footprint_intersection_region=required_intersection,
                 coverage_anchor_mask=continuity_anchor,
                 coverage_centers=continuity_centers,
                 coverage_radius_px=continuity_maximum_empty_run_px,
@@ -292,6 +306,7 @@ def certify_complete_footprint_packing(
             placements=placements,
             required_seam=False,
             minimum_center_separation_px=minimum_center_separation_px,
+            required_footprint_intersection_region=required_intersection,
         )
 
     reasons = []
@@ -340,6 +355,9 @@ def certify_complete_footprint_packing(
             erased_footprint=erased_footprint,
             center_region=center_region,
             valid_footprint_region=valid_footprint_region,
+            required_footprint_intersection_region=(
+                required_footprint_intersection_region
+            ),
             references_by_class=references_by_class,
             requested_count=requested_count,
             class_request_weights=class_request_weights,
@@ -402,6 +420,9 @@ def certify_complete_footprint_packing(
                 erased_footprint=erased_footprint,
                 center_region=center_region,
                 valid_footprint_region=valid_footprint_region,
+                required_footprint_intersection_region=(
+                    required_footprint_intersection_region
+                ),
                 references_by_class=capacity_references,
                 requested_count=requested_count,
                 class_request_weights=class_request_weights,
@@ -441,6 +462,9 @@ def certify_complete_footprint_packing(
                 erased_footprint=erased_footprint,
                 center_region=center_region,
                 valid_footprint_region=valid_footprint_region,
+                required_footprint_intersection_region=(
+                    required_footprint_intersection_region
+                ),
                 references_by_class=capacity_references,
                 requested_count=requested_count,
                 class_request_weights=class_request_weights,
@@ -493,6 +517,9 @@ def certify_complete_footprint_packing(
             erased_footprint=erased_footprint,
             center_region=center_region,
             valid_footprint_region=valid_footprint_region,
+            required_footprint_intersection_region=(
+                required_footprint_intersection_region
+            ),
             references_by_class=references_by_class,
             requested_count=certificate.placed_count,
             class_request_weights=class_request_weights,
@@ -535,6 +562,7 @@ def _pack_into_zone(
     placements: list[PackingPlacement],
     required_seam: bool,
     minimum_center_separation_px: float,
+    required_footprint_intersection_region: np.ndarray | None = None,
     coverage_anchor_mask: np.ndarray | None = None,
     coverage_centers: np.ndarray | None = None,
     coverage_radius_px: int = 0,
@@ -576,6 +604,9 @@ def _pack_into_zone(
             placements=placements,
             required_seam=required_seam,
             minimum_center_separation_px=minimum_center_separation_px,
+            required_footprint_intersection_region=(
+                required_footprint_intersection_region
+            ),
             coverage_anchor_mask=coverage_anchor_mask,
             coverage_centers=coverage_centers,
             coverage_radius_px=coverage_radius_px,
@@ -631,6 +662,9 @@ def _pack_into_zone(
             placements=placements,
             required_seam=required_seam,
             minimum_center_separation_px=minimum_center_separation_px,
+            required_footprint_intersection_region=(
+                required_footprint_intersection_region
+            ),
         )
         if accepted:
             placed_here += 1
@@ -656,6 +690,9 @@ def _pack_into_zone(
             placements=placements,
             required_seam=required_seam,
             minimum_center_separation_px=minimum_center_separation_px,
+            required_footprint_intersection_region=(
+                required_footprint_intersection_region
+            ),
         )
 
 
@@ -674,6 +711,7 @@ def _pack_dynamic_tail(
     placements: list[PackingPlacement],
     required_seam: bool,
     minimum_center_separation_px: float,
+    required_footprint_intersection_region: np.ndarray | None = None,
     coverage_anchor_mask: np.ndarray | None = None,
     coverage_centers: np.ndarray | None = None,
     coverage_radius_px: int = 0,
@@ -738,6 +776,9 @@ def _pack_dynamic_tail(
                 placements=placements,
                 required_seam=required_seam,
                 minimum_center_separation_px=minimum_center_separation_px,
+                required_footprint_intersection_region=(
+                    required_footprint_intersection_region
+                ),
             ):
                 placed += 1
                 accepted = True
@@ -766,6 +807,7 @@ def _place_at_center(
     placements: list[PackingPlacement],
     required_seam: bool,
     minimum_center_separation_px: float,
+    required_footprint_intersection_region: np.ndarray | None = None,
 ) -> bool:
     minimum_separation_sq = max(
         0.0, float(minimum_center_separation_px)
@@ -808,6 +850,15 @@ def _place_at_center(
                 continue
             y0, y1, x0, x1 = window
             shape = np.asarray(reference.mask, dtype=bool)
+            if (
+                required_footprint_intersection_region is not None
+                and not np.any(
+                    required_footprint_intersection_region[
+                        y0:y1, x0:x1
+                    ][shape]
+                )
+            ):
+                continue
             gy0, gy1 = max(0, y0 - 1), min(zone.shape[0], y1 + 1)
             gx0, gx1 = max(0, x0 - 1), min(zone.shape[1], x1 + 1)
             local = np.zeros((gy1 - gy0, gx1 - gx0), dtype=bool)
@@ -992,6 +1043,32 @@ def _central_complete_references(
     if not values:
         return ()
     ordered = sorted(values, key=lambda item: (item.area_px, item.instance_id))
+    # A directional cord supplies a deliberately bounded family containing
+    # three complete source contours and their traceable 45/90/135-degree
+    # rotations.  Generic quantile thinning can discard the only orientation
+    # that fits a narrow oblique cord even though the mature executor retains
+    # the full family. Preserve that explicit family so feasibility and
+    # execution certify the same source-derived shapes.
+    rotated = tuple(
+        item
+        for item in ordered
+        if item.parent_instance_id is not None
+        and ":rotate-" in item.instance_id
+    )
+    rotation_parents = {
+        item.parent_instance_id for item in rotated
+    }
+    if (
+        rotated
+        and len(rotation_parents) <= 3
+        and len(ordered) <= 12
+        and all(
+            item.instance_id in rotation_parents
+            or item.parent_instance_id in rotation_parents
+            for item in ordered
+        )
+    ):
+        return tuple(ordered)
     if len(ordered) <= 4:
         return tuple(ordered)
     low = int(np.floor(0.20 * (len(ordered) - 1)))

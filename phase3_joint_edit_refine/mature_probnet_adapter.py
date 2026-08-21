@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -12,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 from inpaint_cells.instance_authority import write_instance_authority
 
@@ -771,8 +773,9 @@ def _compile_packing_witness(
     """Materialize the contract-owned footprint witness for mature fallback.
 
     Coordinates and instance IDs come from the exact pre-ProbNet packing
-    solver.  Shape pixels are copied only from complete, non-border source
-    instances already authorized by that immutable contract.
+    solver. Shape pixels are copied only from complete, non-border source
+    instances already authorized by that immutable contract. Bounded rotation
+    variants are reconstructed from their explicitly named source parent.
     """
 
     certificate = contract.packing_certificate
@@ -784,8 +787,15 @@ def _compile_packing_witness(
     placements = []
     for item in certificate.get("placements") or []:
         instance_id = str(item["reference_instance_id"])
-        nucleus = metadata.get(instance_id)
-        component = scene.instance_masks.get(instance_id)
+        source_instance_id = instance_id
+        rotation_degrees = None
+        if instance_id not in metadata:
+            match = re.fullmatch(r"(.+):rotate-(45|90|135)", instance_id)
+            if match is not None:
+                source_instance_id = match.group(1)
+                rotation_degrees = int(match.group(2))
+        nucleus = metadata.get(source_instance_id)
+        component = scene.instance_masks.get(source_instance_id)
         if nucleus is None or component is None:
             raise JointContractError(
                 f"packing witness references unknown instance {instance_id}"
@@ -797,6 +807,25 @@ def _compile_packing_witness(
             )
         x0, y0, x1, y1 = nucleus.bbox_xyxy
         shape = np.asarray(component, dtype=bool)[y0:y1, x0:x1]
+        if rotation_degrees is not None:
+            shape = ndimage.rotate(
+                shape.astype(np.uint8),
+                angle=rotation_degrees,
+                reshape=True,
+                order=0,
+                mode="constant",
+                cval=0,
+                prefilter=False,
+            ).astype(bool)
+            rows, cols = np.nonzero(shape)
+            if rows.size:
+                shape = np.ascontiguousarray(
+                    shape[
+                        rows.min() : rows.max() + 1,
+                        cols.min() : cols.max() + 1,
+                    ],
+                    dtype=bool,
+                )
         if not np.any(shape) or int(np.count_nonzero(shape)) != int(
             item["area_px"]
         ):
@@ -812,6 +841,8 @@ def _compile_packing_witness(
                 "col": int(item["col"]),
                 "nucleus_type": 100 + class_id,
                 "reference_instance_id": instance_id,
+                "source_reference_instance_id": source_instance_id,
+                "rotation_degrees": rotation_degrees,
                 "required_seam": bool(item.get("required_seam", False)),
                 "offsets_yx": offsets.astype(int).tolist(),
             }

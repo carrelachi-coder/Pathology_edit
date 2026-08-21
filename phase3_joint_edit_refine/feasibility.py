@@ -23,6 +23,7 @@ from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 from .budget import JointBudgetAllocation
 from .cell_layouts import (
     ReferenceNucleusShape,
+    add_directional_rotation_variants,
     build_reference_shape_library,
     independent_focus_minimum_center_separation_px,
 )
@@ -280,7 +281,12 @@ def build_joint_nuclei_preflight(
                 joint_bundle.primitive.scope == "cell_only"
             ),
         )
-        references_by_class[class_id] = tuple(current)
+        references_by_class[class_id] = (
+            add_directional_rotation_variants(tuple(current))
+            if case.annotation_profile_id == "panda-gleason-v1"
+            and case.primitive_id == "infiltrative-nest-cord-extension-v1"
+            else tuple(current)
+        )
         eligible_ids.update(item.instance_id for item in current)
         rejected.update(current_rejected)
     for instance_id in eligible_ids:
@@ -1112,6 +1118,40 @@ def assess_candidate_cell_feasibility(
         for value in np.unique(candidate.target_mask[legal_core])
     )
     target_fine_set = set(target_fine_ids)
+    adaptive_seam = compile_adaptive_seam(
+        scene=scene,
+        tissue_change=core,
+        interface_ids=joint_plan.cell_plan.interface_ids,
+        anchor_ids=joint_plan.cell_plan.anchor_ids,
+        target_class=preflight.target_cell_class,
+        contract=joint_bundle.mechanism.cell_program.seam_for(
+            case.primitive_id
+        ),
+    )
+    parent_side_center_band = np.zeros_like(core, dtype=bool)
+    if (
+        case.annotation_profile_id == "panda-gleason-v1"
+        and case.primitive_id == "infiltrative-nest-cord-extension-v1"
+    ):
+        parent_side_center_band = (
+            ndimage.binary_dilation(
+                adaptive_seam.anchor_mask,
+                iterations=max(
+                    1, int(np.ceil(adaptive_seam.cell_diameter_px))
+                ),
+            )
+            & ~core
+            & np.isin(candidate.target_mask, target_fine_ids)
+            & ~np.isin(candidate.target_mask, prohibited_ids)
+        )
+        adaptive_seam = replace(
+            adaptive_seam,
+            continuity_region=(
+                adaptive_seam.continuity_region
+                | parent_side_center_band
+            ),
+        )
+    placement_center_region = legal_core | parent_side_center_band
     local_references_by_class: dict[int, list[ReferenceNucleusShape]] = {}
     fallback_references_by_class: dict[int, list[ReferenceNucleusShape]] = {}
     for instance_id in preflight.eligible_reference_ids:
@@ -1133,10 +1173,18 @@ def assess_candidate_cell_feasibility(
         )
         for class_id, fallback_items in fallback_references_by_class.items()
     }
+    if (
+        case.annotation_profile_id == "panda-gleason-v1"
+        and case.primitive_id == "infiltrative-nest-cord-extension-v1"
+    ):
+        reference_groups = {
+            class_id: add_directional_rotation_variants(tuple(items))
+            for class_id, items in reference_groups.items()
+        }
     references = tuple(item for items in reference_groups.values() for item in items)
     fit_references = _representative_fit_references(references)
     free = _free_after_removing_instances(
-        legal_core,
+        placement_center_region,
         source_nuclei=scene.source_nuclei,
         scene=scene,
         removable_ids=removals,
@@ -1158,16 +1206,6 @@ def assess_candidate_cell_feasibility(
             _minimum_architecture_group_count(case, joint_bundle),
             required_count,
         )
-    adaptive_seam = compile_adaptive_seam(
-        scene=scene,
-        tissue_change=core,
-        interface_ids=joint_plan.cell_plan.interface_ids,
-        anchor_ids=joint_plan.cell_plan.anchor_ids,
-        target_class=preflight.target_cell_class,
-        contract=joint_bundle.mechanism.cell_program.seam_for(
-            case.primitive_id
-        ),
-    )
     erased = np.zeros_like(core, dtype=bool)
     for instance_id in removals:
         erased |= np.asarray(scene.instance_masks[instance_id], dtype=bool)
@@ -1220,11 +1258,18 @@ def assess_candidate_cell_feasibility(
     packing = certify_complete_footprint_packing(
         source_nuclei=scene.source_nuclei,
         erased_footprint=erased,
-        center_region=legal_core,
+        center_region=placement_center_region,
         valid_footprint_region=(
             np.isin(candidate.target_mask, target_fine_ids)
             if target_fine_ids
             else np.zeros_like(core, dtype=bool)
+        ),
+        required_footprint_intersection_region=(
+            core
+            if case.annotation_profile_id == "panda-gleason-v1"
+            and case.primitive_id
+            == "infiltrative-nest-cord-extension-v1"
+            else None
         ),
         references_by_class=reference_groups,
         requested_count=effective_required_count,
@@ -1262,6 +1307,13 @@ def assess_candidate_cell_feasibility(
         reasons.append("candidate_has_no_legal_cell_core")
     if "add" in joint_bundle.mechanism.cell_program.actions and not packing.passed:
         reasons.extend(packing.failure_reasons)
+    if (
+        case.annotation_profile_id == "panda-gleason-v1"
+        and case.primitive_id == "infiltrative-nest-cord-extension-v1"
+        and packing.passed
+        and not np.any(packing.footprint_union & core)
+    ):
+        reasons.append("cord_seam_nucleus_does_not_enter_new_tissue")
     if adaptive_seam.requires_new_target_cells:
         if not np.any(adaptive_seam.anchor_mask):
             reasons.append("candidate_has_no_active_planner_anchor")
@@ -1375,6 +1427,14 @@ def certify_compiled_cell_program_feasibility(
             )
             for class_id, fallback_items in fallback_references_by_class.items()
         }
+    if (
+        contract.mechanism_id == "prostate-pattern-5-infiltrative-front"
+        and contract.primitive_id == "infiltrative-nest-cord-extension-v1"
+    ):
+        references_by_class = {
+            class_id: add_directional_rotation_variants(tuple(items))
+            for class_id, items in references_by_class.items()
+        }
     program = contract.cell_program
     required_seam_count = 0
     minimum_seam_count = 0
@@ -1461,6 +1521,14 @@ def certify_compiled_cell_program_feasibility(
             np.asarray(program.valid_footprint_region, dtype=bool)
             & np.asarray(program.support_context_region, dtype=bool)
         ),
+        required_footprint_intersection_region=(
+            np.asarray(candidate.change_region, dtype=bool)
+            if contract.mechanism_id
+            == "prostate-pattern-5-infiltrative-front"
+            and contract.primitive_id
+            == "infiltrative-nest-cord-extension-v1"
+            else None
+        ),
         references_by_class=references_by_class,
         requested_count=report.required_add_count,
         class_request_weights=preflight.target_density_by_class,
@@ -1515,6 +1583,17 @@ def certify_compiled_cell_program_feasibility(
     ]
     if not certificate.passed:
         reasons.extend(certificate.failure_reasons)
+    if (
+        contract.mechanism_id == "prostate-pattern-5-infiltrative-front"
+        and contract.primitive_id
+        == "infiltrative-nest-cord-extension-v1"
+        and certificate.passed
+        and not np.any(
+            certificate.footprint_union
+            & np.asarray(candidate.change_region, dtype=bool)
+        )
+    ):
+        reasons.append("cord_seam_nucleus_does_not_enter_new_tissue")
     if (
         program.continuity_requires_new_target_cells
         and certificate.requested_count <= 0

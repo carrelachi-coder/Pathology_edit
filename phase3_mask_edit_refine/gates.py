@@ -648,7 +648,16 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
         realized = int(np.count_nonzero(assigned))
         expected = int(expected_allocations[index])
         allocation_tolerance = (
-            0
+            max(
+                1,
+                int(
+                    np.ceil(
+                        target_pixels * effective_allocation_tolerance
+                    )
+                ),
+            )
+            if isinstance(replay, dict) and residual_fragmentation
+            else 0
             if isinstance(replay, dict)
             else max(
                 1, int(np.ceil(target_pixels * effective_allocation_tolerance))

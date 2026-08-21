@@ -205,7 +205,8 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             [item.primitive_id for item in intent.primitive_hypotheses],
             [
                 "peritumoral-neoplastic-scatter-increase-v1",
-                "infiltrative-nest-cord-extension-v1",
+                "invasive-cord-formation-v1",
+                "peritumoral-tumor-nest-formation-v1",
             ],
         )
 

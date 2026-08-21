@@ -8,7 +8,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from phase3_joint_edit_refine.candidate_feasibility import (
+    _panda_architecture_portfolio_mode,
+)
 from phase3_joint_edit_refine.g2_v2_shadow import _materialize_joint_context
+from phase3_joint_edit_refine.mature_probnet_adapter import _tree_sha256
 from phase3_joint_edit_refine.portfolio_authority import (
     canonical_metadata_sha256,
 )
@@ -17,6 +21,7 @@ from phase3_joint_edit_refine.skills.repository import JointSkillRepository
 from phase3_mask_edit_refine.evidence import sha256_file
 from scripts.materialize_panda_shadow_authority import (
     RUNTIME_CODE_RELATIVE_PATHS,
+    _directory_sha256 as _authority_directory_sha256,
     _fixed_roi,
     _joint_area_budget,
     _parse_evaluation_count_overrides,
@@ -31,12 +36,42 @@ from scripts.prepare_panda_primitive_shadow_selection import (
     _parse_evaluation_count_overrides as _parse_selection_count_overrides,
 )
 from scripts.run_panda_primitive_shadow_replay import (
+    _compiled_review_candidate,
+    _directory_sha256 as _replay_directory_sha256,
     _frozen_ranker_binding_passed,
     _select_diverse_passes,
 )
 
 
 class PandaShadowAuthorityTests(unittest.TestCase):
+    def test_panda_component_architecture_uses_bounded_portfolios(self):
+        for primitive_id in (
+            "invasive-tumor-footprint-decrease-v1",
+            "residual-tumor-fragmentation-v1",
+        ):
+            self.assertEqual(
+                _panda_architecture_portfolio_mode(
+                    "panda-gleason-v1", primitive_id
+                ),
+                "single_global",
+            )
+        for primitive_id in (
+            "tumor-burden-increase-v1",
+            "cohesive-boundary-expansion-v1",
+        ):
+            self.assertEqual(
+                _panda_architecture_portfolio_mode(
+                    "panda-gleason-v1", primitive_id
+                ),
+                "global_plus_ranked_front",
+            )
+        self.assertEqual(
+            _panda_architecture_portfolio_mode(
+                "glas-gland-v1", "tumor-burden-increase-v1"
+            ),
+            "standard",
+        )
+
     def test_shadow_evaluations_cover_every_supported_panda_pair(self):
         matrix_path = (
             Path(__file__).resolve().parents[1]
@@ -66,6 +101,17 @@ class PandaShadowAuthorityTests(unittest.TestCase):
             RUNTIME_CODE_RELATIVE_PATHS,
         )
 
+    def test_runtime_directory_digest_matches_mature_executor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "a.bin").write_bytes(b"a")
+            nested = root / "nested"
+            nested.mkdir()
+            (nested / "b.bin").write_bytes(b"b")
+            expected = _tree_sha256(root)
+            self.assertEqual(_authority_directory_sha256(root), expected)
+            self.assertEqual(_replay_directory_sha256(root), expected)
+
     def test_final_diversity_selection_backtracks_across_slides(self):
         records = []
         for rank, slide_id in enumerate(("a", "a", "b", "b", "c", "d"), 1):
@@ -90,6 +136,54 @@ class PandaShadowAuthorityTests(unittest.TestCase):
             [item["candidate_pool_rank"] for item in selected],
             [1, 2, 3, 5, 6],
         )
+
+    def test_offline_visual_review_keeps_hard_gate_passing_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidates = root / "candidates.json"
+            gates = root / "gates.json"
+            critic = root / "critic.json"
+            candidates.write_text(
+                json.dumps([{"candidate_id": "candidate-1"}]),
+                encoding="utf-8",
+            )
+            gates.write_text(
+                json.dumps(
+                    [
+                        {
+                            "candidate_id": "candidate-1",
+                            "passed": True,
+                            "checks": [
+                                {"severity": "hard", "passed": True}
+                            ],
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            critic.write_text(
+                json.dumps(
+                    {
+                        "rankings": [
+                            {"candidate_id": "candidate-1", "veto_reasons": []}
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                _compiled_review_candidate(
+                    artifact_paths={
+                        "candidates.json": str(candidates),
+                        "joint_gate_reports.json": str(gates),
+                        "joint_critic.json": str(critic),
+                    },
+                    abstain_reasons=[
+                        "independent_mask_condition_critic_approval_required"
+                    ],
+                ),
+                "candidate-1",
+            )
 
     def test_diverse_top_maximizes_nonoverlap_count_before_score(self):
         rows = [
@@ -196,16 +290,34 @@ class PandaShadowAuthorityTests(unittest.TestCase):
             )
         )
 
+    def test_source_template_anchor_ranker_binds_checkpoint_only(self):
+        evidence = [
+            {
+                "ranker": "frozen_probnet_spatial_ranker",
+                "ranker_provenance": {
+                    "checkpoint_sha256": "checkpoint",
+                    "role": "legal_template_anchor_ranking_only",
+                },
+            }
+        ]
+        self.assertTrue(
+            _frozen_ranker_binding_passed(
+                evidence,
+                checkpoint_sha256="checkpoint",
+                instance_library_sha256="unused-for-source-template",
+            )
+        )
+
     def test_frozen_joint_area_budget_is_primitive_specific(self):
         self.assertEqual(
             _joint_area_budget("infiltrative-nest-cord-extension-v1")
             ["min_fraction"],
-            0.001,
+            0.0018,
         )
         self.assertEqual(
             _joint_area_budget("infiltrative-nest-cord-extension-v1")
             ["max_fraction"],
-            0.004,
+            0.012,
         )
         self.assertEqual(
             _joint_area_budget("local-invasive-clearance-v1")["max_fraction"],

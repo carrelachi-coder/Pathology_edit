@@ -60,13 +60,10 @@ JOINT_AREA_BUDGET_BY_PRIMITIVE = {
     "residual-tumor-fragmentation-v1": (0.035, 0.03, 0.05, 0.03),
     "tumor-burden-increase-v1": (0.08, 0.04, 0.12, 0.04),
     "cohesive-boundary-expansion-v1": (0.08, 0.04, 0.12, 0.04),
-    # Cord width/depth are source-calibrated absolute geometry (at most
-    # 24 px wide and 64 px deep), not a bulk area edit.  The historical
-    # 1--4% range happened to work on small synthetic Breast fixtures but
-    # scales to an impossible 2,622-pixel floor on a 512x512 PANDA patch and
-    # forces several unrelated fronts.  Keep one annotation-anchored cord at
-    # the same absolute geometric scale: 262--1,049 pixels on PANDA.
-    "infiltrative-nest-cord-extension-v1": (0.0025, 0.001, 0.004, 0.001),
+    # One PANDA Pattern-5 cord must be large enough to contain complete
+    # source-calibrated nuclei while remaining a single narrow projection.
+    # On a 512x512 patch this is about 603--3,146 pixels, not bulk growth.
+    "infiltrative-nest-cord-extension-v1": (0.008, 0.0018, 0.012, 0.0018),
 }
 FROZEN_EXECUTION_INSTRUCTIONS = {
     ("prostate-local-population-modulation", "cell-type-abundance-increase-v1"): (
@@ -205,17 +202,16 @@ def _write_json_atomic(path: Path, value: Any) -> None:
 
 
 def _directory_sha256(path: Path) -> str:
-    inventory = [
-        {
-            "path": str(item.relative_to(path)),
-            "sha256": sha256_file(item),
-        }
-        for item in sorted(path.rglob("*"))
-        if item.is_file()
-    ]
-    if not inventory:
+    files = sorted(item for item in path.rglob("*") if item.is_file())
+    if not files:
         raise ValueError(f"runtime asset directory is empty: {path}")
-    return _canonical_sha256(inventory)
+    digest = hashlib.sha256()
+    for item in files:
+        digest.update(str(item.relative_to(path)).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(sha256_file(item).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
 
 
 def _runtime_code_inventory() -> tuple[list[dict[str, str]], str]:
@@ -621,17 +617,16 @@ def _prefill_cellvit_cache(
     ]
     if not pending:
         return
-    if workers > len(gpu_ids):
-        raise ValueError(
-            "parallel CellViT prefill requires at least one distinct GPU per worker"
-        )
-    active_gpu_ids = gpu_ids[:workers]
-    executors = {
-        gpu_id: ThreadPoolExecutor(max_workers=1) for gpu_id in active_gpu_ids
-    }
+    active_gpu_ids = tuple(
+        gpu_ids[index % len(gpu_ids)] for index in range(workers)
+    )
+    executors = [
+        (gpu_id, ThreadPoolExecutor(max_workers=1))
+        for gpu_id in active_gpu_ids
+    ]
     try:
         futures = {
-            executors[gpu_id].submit(
+            executor.submit(
                 _run_cellvit,
                 candidate=candidate,
                 output_root=output_root,
@@ -643,7 +638,7 @@ def _prefill_cellvit_cache(
                 resume=resume,
             ): str(candidate["filename"])
             for index, candidate in enumerate(pending)
-            for gpu_id in (active_gpu_ids[index % len(active_gpu_ids)],)
+            for gpu_id, executor in (executors[index % len(executors)],)
         }
         for completed, future in enumerate(as_completed(futures), start=1):
             filename = futures[future]
@@ -673,7 +668,7 @@ def _prefill_cellvit_cache(
                 flush=True,
             )
     finally:
-        for executor in executors.values():
+        for _gpu_id, executor in executors:
             executor.shutdown(wait=True, cancel_futures=True)
 
 

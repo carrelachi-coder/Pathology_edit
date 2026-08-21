@@ -113,6 +113,7 @@ class _CompilerWork:
     item_capacity_px: int
     source_deletion_limit_px: int
     protected_source_necks: np.ndarray
+    relax_fragmentation_intermediate_audit: bool = False
 
 
 @dataclass(frozen=True)
@@ -191,6 +192,34 @@ def compile_edit_plan_with_witness(
         raise RefineContractError(
             "execution solver found no legal pixels on the selected interfaces"
         )
+    if (
+        topology_policy["allow_source_component_split"]
+        and plan.tool_program.parameter_ranges.get(
+            "fragmentation_full_selected_component_support", False
+        )
+    ):
+        selected_source = np.logical_or.reduce(
+            tuple(work.source_component for work in works)
+        )
+        minimum_fragmentation_pixels = int(
+            np.ceil(
+                np.count_nonzero(selected_source)
+                * (
+                    1.0
+                    - topology_policy["maximum_residual_area_fraction"]
+                )
+            )
+        )
+        if minimum_fragmentation_pixels > hard_max_pixels:
+            raise RefineContractError(
+                "fragmentation residual-area contract exceeds the task hard maximum"
+            )
+        # The patch-relative area request can otherwise fall just below the
+        # primitive's component-relative 12% breakup floor on a large PANDA
+        # tumor.  Promote the executable request to the already-declared
+        # topology minimum before geometry is compiled.
+        desired_pixels = max(desired_pixels, minimum_fragmentation_pixels)
+        hard_min_pixels = max(hard_min_pixels, minimum_fragmentation_pixels)
 
     requested_weights = np.asarray(
         [item.planned.execution_contract.area_allocation_fraction for item in works],
@@ -652,6 +681,18 @@ def _prepare_compiler_work(
             & (distance >= max(0.0, band_min))
             & (distance <= band_max)
         )
+        if residual_fragmentation and bool(
+            params.get("fragmentation_full_selected_component_support", False)
+        ):
+            # PANDA residual fragmentation is a component-scale breakup.  Its
+            # area and residual-foci contracts already bound the change; a
+            # generic distance band must not strand raster tumor caps outside
+            # the transactional cleanup authority on large Pattern-5 regions.
+            legal_envelope = (
+                source_component
+                & source_region
+                & ~prohibited
+            )
         if not residual_fragmentation:
             legal_envelope &= required_scale <= band_max + 1e-6
         if (
@@ -756,6 +797,12 @@ def _prepare_compiler_work(
                 item_capacity_px=int(np.count_nonzero(legal)),
                 source_deletion_limit_px=item["source_deletion_limit_px"],
                 protected_source_necks=item["protected_source_necks"],
+                relax_fragmentation_intermediate_audit=bool(
+                    residual_fragmentation
+                    and params.get(
+                        "fragmentation_full_selected_component_support", False
+                    )
+                ),
             )
         )
     return tuple(item for item in works if item.item_capacity_px > 0)
@@ -2311,6 +2358,13 @@ def _rebalance_fragmentation_residual_islands(
         updated[assigned][row, col] = True
         assigned_indices.append(assigned)
 
+    relax_intermediate_audit = bool(
+        works
+        and all(
+            getattr(work, "relax_fragmentation_intermediate_audit", False)
+            for work in works
+        )
+    )
     filled_audit = _whole_mask_topology_audit(
         source_region=source_region,
         target_region=target_region,
@@ -2321,11 +2375,21 @@ def _rebalance_fragmentation_residual_islands(
         maximum_residual_components=maximum_residual_components,
         minimum_residual_component_area_px=minimum_residual_component_area_px,
         minimum_residual_spacing_px=minimum_residual_spacing_px,
-        residual_area_floor_fraction=residual_area_floor_fraction,
-        maximum_residual_area_fraction=maximum_residual_area_fraction,
-        minimum_residual_component_fraction=(minimum_residual_component_fraction),
+        residual_area_floor_fraction=(
+            0.0 if relax_intermediate_audit else residual_area_floor_fraction
+        ),
+        maximum_residual_area_fraction=(
+            1.0 if relax_intermediate_audit else maximum_residual_area_fraction
+        ),
+        minimum_residual_component_fraction=(
+            0.0
+            if relax_intermediate_audit
+            else minimum_residual_component_fraction
+        ),
         maximum_dominant_residual_component_fraction=(
-            maximum_dominant_residual_component_fraction
+            1.0
+            if relax_intermediate_audit
+            else maximum_dominant_residual_component_fraction
         ),
     )
     if not filled_audit["passed"]:
@@ -2410,61 +2474,124 @@ def _rebalance_fragmentation_residual_islands(
                     updated = proposed
                     removed = remaining_reclaim
                 else:
-                    # Uniform dilation can close a concave focus around a
-                    # target pocket.  Try donating the same area to one focus
-                    # at a time; this keeps the other cleft walls fixed and
-                    # selects the passing option with the best final balance.
-                    focus_options: list[
-                        tuple[tuple[float, float, int], list[np.ndarray]]
-                    ] = []
-                    for focus_index in range(1, residual_count + 1):
-                        focus_candidates = fast_candidates & (
-                            nearest_focus == focus_index
+                    # A uniform layer can preserve an already-dominant focus.
+                    # For PANDA, allocate the same donor count to the smallest
+                    # residual foci first, then verify the complete strict
+                    # topology contract in one transaction.  This replaces a
+                    # minutes-long one-pixel audit loop with one deterministic
+                    # geometry proposal.
+                    balanced_passed = False
+                    if relax_intermediate_audit and residual_count > 1:
+                        residual_sizes = np.bincount(
+                            residual_labels.ravel(), minlength=residual_count + 1
+                        )[1:].astype(int)
+                        available = np.asarray(
+                            [
+                                np.count_nonzero(
+                                    fast_candidates & (nearest_focus == focus_id)
+                                )
+                                for focus_id in range(1, residual_count + 1)
+                            ],
+                            dtype=int,
                         )
-                        focus_ids = np.flatnonzero(focus_candidates)
-                        if focus_ids.size < remaining_reclaim:
-                            continue
-                        focus_order = np.argsort(
-                            nearest_distance.ravel()[focus_ids],
-                            kind="stable",
-                        )
-                        focus_reclaim = np.zeros_like(
-                            selected_source, dtype=bool
-                        )
-                        focus_reclaim.ravel()[
-                            focus_ids[focus_order[:remaining_reclaim]]
-                        ] = True
-                        focus_proposed = [
-                            np.array(item, copy=True) for item in updated
-                        ]
-                        for selected in focus_proposed:
-                            selected[focus_reclaim] = False
-                        focus_audit = reclaim_audit(focus_proposed)
-                        if not focus_audit["passed"]:
-                            continue
-                        focus_options.append(
-                            (
-                                (
-                                    float(
-                                        focus_audit[
-                                            "dominant_residual_component_fraction"
-                                        ]
-                                    ),
-                                    -float(
-                                        focus_audit[
-                                            "minimum_observed_residual_component_fraction"
-                                        ]
-                                    ),
-                                    focus_index,
+                        allocation = np.zeros(residual_count, dtype=int)
+                        for _ in range(remaining_reclaim):
+                            choices = np.flatnonzero(allocation < available)
+                            if not choices.size:
+                                break
+                            chosen = min(
+                                choices.tolist(),
+                                key=lambda item: (
+                                    residual_sizes[item] + allocation[item],
+                                    item,
                                 ),
-                                focus_proposed,
                             )
-                        )
-                    if focus_options:
-                        _score, updated = min(
-                            focus_options, key=lambda option: option[0]
-                        )
-                        removed = remaining_reclaim
+                            allocation[chosen] += 1
+                        if int(allocation.sum()) == remaining_reclaim:
+                            balanced_reclaim = np.zeros_like(
+                                selected_source, dtype=bool
+                            )
+                            for focus_offset, requested in enumerate(
+                                allocation.tolist()
+                            ):
+                                if requested <= 0:
+                                    continue
+                                focus_ids = np.flatnonzero(
+                                    fast_candidates
+                                    & (nearest_focus == focus_offset + 1)
+                                )
+                                focus_order = np.argsort(
+                                    nearest_distance.ravel()[focus_ids],
+                                    kind="stable",
+                                )
+                                balanced_reclaim.ravel()[
+                                    focus_ids[focus_order[:requested]]
+                                ] = True
+                            balanced_proposed = [
+                                np.array(item, copy=True) for item in updated
+                            ]
+                            for selected in balanced_proposed:
+                                selected[balanced_reclaim] = False
+                            balanced_audit = reclaim_audit(balanced_proposed)
+                            if balanced_audit["passed"]:
+                                updated = balanced_proposed
+                                removed = remaining_reclaim
+                                balanced_passed = True
+
+                    if not balanced_passed:
+                        # Try donating the same area to one focus at a time;
+                        # this keeps the other cleft walls fixed.
+                        focus_options: list[
+                            tuple[tuple[float, float, int], list[np.ndarray]]
+                        ] = []
+                        for focus_index in range(1, residual_count + 1):
+                            focus_candidates = fast_candidates & (
+                                nearest_focus == focus_index
+                            )
+                            focus_ids = np.flatnonzero(focus_candidates)
+                            if focus_ids.size < remaining_reclaim:
+                                continue
+                            focus_order = np.argsort(
+                                nearest_distance.ravel()[focus_ids],
+                                kind="stable",
+                            )
+                            focus_reclaim = np.zeros_like(
+                                selected_source, dtype=bool
+                            )
+                            focus_reclaim.ravel()[
+                                focus_ids[focus_order[:remaining_reclaim]]
+                            ] = True
+                            focus_proposed = [
+                                np.array(item, copy=True) for item in updated
+                            ]
+                            for selected in focus_proposed:
+                                selected[focus_reclaim] = False
+                            focus_audit = reclaim_audit(focus_proposed)
+                            if not focus_audit["passed"]:
+                                continue
+                            focus_options.append(
+                                (
+                                    (
+                                        float(
+                                            focus_audit[
+                                                "dominant_residual_component_fraction"
+                                            ]
+                                        ),
+                                        -float(
+                                            focus_audit[
+                                                "minimum_observed_residual_component_fraction"
+                                            ]
+                                        ),
+                                        focus_index,
+                                    ),
+                                    focus_proposed,
+                                )
+                            )
+                        if focus_options:
+                            _score, updated = min(
+                                focus_options, key=lambda option: option[0]
+                            )
+                            removed = remaining_reclaim
     maximum_rounds = (
         0
         if removed >= remaining_reclaim

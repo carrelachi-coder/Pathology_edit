@@ -49,6 +49,20 @@
       "locator": "Stromal and intratumoral lymphocytic infiltration are observable on H&E, while this editor intentionally retains only generic inflammatory representability",
       "verification_status": "verified"
     },
+    "pathology-breast-tumor-cellularity-2004": {
+      "category": "pathology_fact",
+      "title": "Change in tumor cellularity of breast carcinoma after neoadjuvant chemotherapy as a variable in pathologic response assessment",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/15042669/",
+      "locator": "Primary paired-specimen study showing that residual invasive-tumor cellularity is a distinct, spatially variable pathologic quantity; the editor changes only local mask-observable counts and does not infer treatment response from the edit alone",
+      "verification_status": "verified"
+    },
+    "pathology-breast-tumor-necrosis-1993": {
+      "category": "pathology_fact",
+      "title": "Tumor necrosis is a prognostic predictor for early recurrence and death in lymph node-positive breast cancer",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/8410120/",
+      "locator": "Primary pathology cohort defines tumor necrosis as confluent cell death within invasive tumor; the editor requires a native annotated Tumor--Necrosis interface and makes no prognostic or hypoxia claim",
+      "verification_status": "verified"
+    },
     "pathology-colorectal-cap-v2024": {
       "category": "pathology_fact",
       "title": "CAP Protocol for Colon and Rectum Carcinoma",
@@ -61,6 +75,13 @@
       "title": "International Tumor Budding Consensus Conference 2016",
       "uri": "https://pubmed.ncbi.nlm.nih.gov/28548122/",
       "locator": "Definition of a bud as one tumor cell or a cluster of up to four at the invasive front",
+      "verification_status": "verified"
+    },
+    "pathology-colorectal-spatial-cell-composition-2025": {
+      "category": "pathology_fact",
+      "title": "The single-cell spatial landscape of stage III colorectal cancers",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/40189697/",
+      "locator": "Primary spatial pathology study demonstrates that local cell-type abundance and neighborhood composition vary across colorectal tumor, stromal and immune niches; the editor retains only classes directly represented by its nuclei annotation",
       "verification_status": "verified"
     },
     "pathology-prostate-isup-2014": {
@@ -89,6 +110,13 @@
       "title": "Histopathological changes in androgen-deprived localized prostatic cancer",
       "uri": "https://pubmed.ncbi.nlm.nih.gov/8287886/",
       "locator": "Glandular atrophy, nuclear pyknosis, cytoplasmic vacuolation and increased relative stroma after androgen deprivation",
+      "verification_status": "verified"
+    },
+    "pathology-prostate-tissue-composition-2016": {
+      "category": "pathology_fact",
+      "title": "Evaluating prostate cancer using fractional tissue composition of radical prostatectomy specimens",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/27467064/",
+      "locator": "Primary whole-mount pathology study quantifies cellularity, luminal space and fibromuscular stroma and reports higher cellularity and lower luminal/stromal fractions in prostate tumor; the editor preserves the native Gleason and lumen masks while changing only observable nuclei",
       "verification_status": "verified"
     },
     "pathology-lung-cap-v2025": {
@@ -279,10 +307,11 @@
       "pathology-breast-tils-working-group-2014"
     ],
     "breast-intratumoral-necrosis-turnover": [
-      "pathology-mechanism-internal-review-pending"
+      "pathology-breast-tumor-necrosis-1993"
     ],
     "breast-local-population-modulation": [
-      "pathology-mechanism-internal-review-pending"
+      "pathology-breast-tumor-cellularity-2004",
+      "pathology-breast-tils-working-group-2014"
     ],
     "breast-local-invasive-clearance": [
       "pathology-breast-cap-invasive-resection-v4.11.0.0"
@@ -303,7 +332,7 @@
       "pathology-colorectal-cap-v2024"
     ],
     "colorectal-local-population-modulation": [
-      "pathology-mechanism-internal-review-pending"
+      "pathology-colorectal-spatial-cell-composition-2025"
     ],
     "colorectal-tumor-budding-front": [
       "pathology-colorectal-itbcc-2016"
@@ -363,7 +392,7 @@
       "pathology-prostate-pattern5-2015"
     ],
     "prostate-local-population-modulation": [
-      "pathology-mechanism-internal-review-pending"
+      "pathology-prostate-tissue-composition-2016"
     ],
     "prostate-pattern-3-growth": [
       "pathology-prostate-isup-2014"

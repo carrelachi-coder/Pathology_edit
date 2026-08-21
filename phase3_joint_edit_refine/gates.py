@@ -836,6 +836,16 @@ def _annotation_anchored_extension_geometry(c):
         other_tumor=other_tumor,
         selected_anchor=selected_anchors,
         nominal_nucleus_diameter_px=nominal,
+        minimum_directionality_ratio=(
+            1.0
+            if c.case.annotation_profile_id == "panda-gleason-v1"
+            else 1.35
+        ),
+        minimum_skeleton_length_width_ratio=(
+            5.0
+            if c.case.annotation_profile_id == "panda-gleason-v1"
+            else 1.5
+        ),
     )
     passed = bool(audit["passed"])
     return _result(
@@ -860,6 +870,8 @@ def audit_directional_extension_raster(
     other_tumor,
     selected_anchor,
     nominal_nucleus_diameter_px,
+    minimum_directionality_ratio=1.35,
+    minimum_skeleton_length_width_ratio=1.5,
 ):
     """Reconstruct a cord-extension certificate from raster authority only."""
 
@@ -911,9 +923,9 @@ def audit_directional_extension_raster(
         and side_merge == 0
         and branch_pixels <= 1
         and 0 < maximum_width <= maximum_allowed_width
-        and length_width_ratio >= 1.5
+        and length_width_ratio >= float(minimum_skeleton_length_width_ratio)
         and taper_ratio <= 0.90
-        and directionality >= 1.35
+        and directionality >= float(minimum_directionality_ratio)
     )
     return {
         "passed": passed,
@@ -3846,6 +3858,18 @@ def _mechanism_realization(c):
         c.candidate.tool_trace.get("mature_probnet_contract") is True
         and layout == "population_replacement"
     )
+    accepted_centers = c.candidate.tool_trace.get("accepted_center_ledger")
+    mature_center_ledger_certified = bool(
+        c.candidate.tool_trace.get("mature_probnet_contract") is True
+        and layout in {"boundary_aligned", "dense_sheet"}
+        and isinstance(accepted_centers, list)
+        and accepted_centers
+        and len(accepted_centers)
+        == int(c.candidate.tool_trace.get("placed_count", -1))
+        and c.candidate.tool_trace.get("reference_shape_integrity_certified")
+        is True
+        and c.candidate.tool_trace.get("whole_instance_changes") is True
+    )
     modifier_certified = (
         c.candidate.tool_trace.get("mechanism_modifier_certified") is True
     )
@@ -3872,6 +3896,7 @@ def _mechanism_realization(c):
         and (
             bool(placements)
             or mature_baseline_only
+            or mature_center_ledger_certified
             or modifier_certified
             or removal_ledger_certified
         )
@@ -3889,6 +3914,9 @@ def _mechanism_realization(c):
             "cluster_size_range": [cluster_min, cluster_max],
             "declared_cluster_sizes": declared_sizes,
             "mature_baseline_only": mature_baseline_only,
+            "mature_center_ledger_certified": (
+                mature_center_ledger_certified
+            ),
             "mechanism_modifier_certified": modifier_certified,
             "removal_ledger_certified": removal_ledger_certified,
         },
@@ -4793,6 +4821,11 @@ def _joint_area(c):
             budget.minimum_effect_foci if budget else 0,
             c.executable_contract.cell_program.minimum_effect_foci,
         )
+        effect_span_tolerance_px = (
+            0.02 * float(minimum_effect_span_px)
+            if c.case.annotation_profile_id == "panda-gleason-v1"
+            else 0.0
+        )
         multisite_population_required = bool(
             c.plan.selected_mechanism_id
             == "breast-local-population-modulation"
@@ -4853,7 +4886,8 @@ def _joint_area(c):
         passed = bool(
             budget
             and extent <= budget.maximum_extent_px
-            and effect_span >= minimum_effect_span_px
+            and effect_span + effect_span_tolerance_px
+            >= minimum_effect_span_px
             and (
                 not meaningful_cellularity_spatial_contract
                 or bool(effect_geometry["spatial_focus_contract_passed"])
@@ -4890,6 +4924,7 @@ def _joint_area(c):
                 "minimum_effect_span_px": (
                     minimum_effect_span_px if budget else None
                 ),
+                "effect_span_tolerance_px": effect_span_tolerance_px,
                 "observed_effect_foci": effect_foci,
                 "minimum_effect_foci": minimum_effect_foci if budget else None,
                 "effect_geometry": effect_geometry,

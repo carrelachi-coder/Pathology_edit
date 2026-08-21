@@ -44,6 +44,18 @@ CANDIDATE_FEASIBILITY_COMPILER_VERSION = (
 )
 _COMPILER_CAPABILITY_ISSUER = object()
 _ISSUED_TISSUE_PORTFOLIOS: dict[int, tuple[tuple[int, str], ...]] = {}
+_PANDA_SINGLE_GLOBAL_ARCHITECTURE_PRIMITIVES = frozenset(
+    {
+        "invasive-tumor-footprint-decrease-v1",
+        "residual-tumor-fragmentation-v1",
+    }
+)
+_PANDA_GROWTH_ARCHITECTURE_PRIMITIVES = frozenset(
+    {
+        "tumor-burden-increase-v1",
+        "cohesive-boundary-expansion-v1",
+    }
+)
 
 
 def _tissue_portfolio_allows_anchor_diversification(
@@ -56,6 +68,19 @@ def _tissue_portfolio_allows_anchor_diversification(
     # anchor, so enumerating every anchor here only recompiles the identical
     # full-interface plan before SHA-based deduplication.
     return primitive_id != "residual-tumor-fragmentation-v1"
+
+
+def _panda_architecture_portfolio_mode(
+    annotation_profile_id: str,
+    primitive_id: str,
+) -> str:
+    if annotation_profile_id != "panda-gleason-v1":
+        return "standard"
+    if primitive_id in _PANDA_SINGLE_GLOBAL_ARCHITECTURE_PRIMITIVES:
+        return "single_global"
+    if primitive_id in _PANDA_GROWTH_ARCHITECTURE_PRIMITIVES:
+        return "global_plus_ranked_front"
+    return "standard"
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -701,6 +726,133 @@ class CandidateFeasibilityCompiler:
                             (anchor_id,),
                         )
                     )
+        panda_architecture_mode = _panda_architecture_portfolio_mode(
+            tissue_case.annotation_profile_id,
+            tissue_case.primitive_id,
+        )
+        if panda_architecture_mode == "single_global":
+            # These PANDA primitives edit one component-scale architecture.
+            # The global solve already combines every legal interface needed
+            # by that edit.  Re-solving it once per local interface produces
+            # duplicate alternatives and can consume the bounded replay time
+            # without adding a distinct operation.  Diversity is supplied by
+            # the frozen five-source replay rather than redundant local solves.
+            preference_orders = [((), ())]
+            maximum_candidates = 1
+        elif panda_architecture_mode == "global_plus_ranked_front":
+            # Growth must keep one local fallback because a globally valid
+            # tissue expansion can still lack complete-nucleus seam capacity.
+            # Rank mask/nucleus preflight witnesses and bound the search to
+            # the six strongest fronts instead of enumerating every anchor.
+            ranked_anchors: list[
+                tuple[tuple[float, ...], str, str]
+            ] = []
+            for interface_id in feasible:
+                item = nuclei_preflight.interface(interface_id)
+                if item is None:
+                    continue
+                allowed = set(item.cell_feasible_anchor_segment_ids)
+                for report in item.anchor_continuity_reports:
+                    anchor_id = str(report.get("anchor_segment_id") or "")
+                    if not anchor_id or anchor_id not in allowed:
+                        continue
+                    ranked_anchors.append(
+                        (
+                            (
+                                float(bool(report.get("feasible"))),
+                                float(report.get("seam_fit_center_pixels", 0)),
+                                float(report.get("reference_fit_center_pixels", 0)),
+                                float(report.get("editable_tissue_capacity_pixels", 0)),
+                                float(report.get("potential_anchor_coverage_fraction", 0.0)),
+                            ),
+                            interface_id,
+                            anchor_id,
+                        )
+                    )
+            ranked_anchors.sort(
+                key=lambda value: (
+                    tuple(-number for number in value[0]),
+                    value[1],
+                    value[2],
+                )
+            )
+            # Once the global witness is revoked by exact cell feasibility,
+            # do not manufacture another global raster under a new ID. Retry
+            # only the ranked local fronts so feedback changes the operation.
+            preference_orders = (
+                [] if revoked_candidate_ids else [((), ())]
+            ) + [
+                (
+                    tuple(value for value in feasible if value != interface_id),
+                    (anchor_id,),
+                )
+                for _score, interface_id, anchor_id in ranked_anchors[:6]
+            ]
+            maximum_candidates = 1 if revoked_candidate_ids else 2
+        if (
+            tissue_case.annotation_profile_id == "panda-gleason-v1"
+            and tissue_case.primitive_id
+            == "infiltrative-nest-cord-extension-v1"
+        ):
+            # Some PANDA fronts expose hundreds of anchors.  Rank the sealed
+            # mask/nucleus preflight witnesses by complete-shape and seam-fit
+            # capacity so the compiler tries the strongest sectors first,
+            # instead of spending the replay timeout on raster-order anchors.
+            ranked_anchors: list[
+                tuple[tuple[float, ...], str, str]
+            ] = []
+            for interface_id in feasible:
+                item = nuclei_preflight.interface(interface_id)
+                if item is None:
+                    continue
+                allowed = set(item.cell_feasible_anchor_segment_ids)
+                for report in item.anchor_continuity_reports:
+                    anchor_id = str(report.get("anchor_segment_id") or "")
+                    if not anchor_id or anchor_id not in allowed:
+                        continue
+                    ranked_anchors.append(
+                        (
+                            (
+                                float(bool(report.get("feasible"))),
+                                float(report.get("seam_fit_center_pixels", 0)),
+                                float(
+                                    report.get("reference_fit_center_pixels", 0)
+                                ),
+                                float(
+                                    report.get(
+                                        "editable_tissue_capacity_pixels", 0
+                                    )
+                                ),
+                                float(
+                                    report.get(
+                                        "potential_anchor_coverage_fraction", 0.0
+                                    )
+                                ),
+                            ),
+                            interface_id,
+                            anchor_id,
+                        )
+                    )
+            ranked_anchors.sort(
+                key=lambda value: (
+                    tuple(-number for number in value[0]),
+                    value[1],
+                    value[2],
+                )
+            )
+            preference_orders = [
+                (
+                    tuple(value for value in feasible if value != interface_id),
+                    (anchor_id,),
+                )
+                for _score, interface_id, anchor_id in ranked_anchors[:6]
+            ]
+            if not preference_orders:
+                preference_orders = [((), ())]
+            # The strongest immutable witness is sufficient for this
+            # deterministic single-cord operation; later cell-feasibility
+            # feedback can revoke it and advance to the next ranked sector.
+            maximum_candidates = 1
         for deprioritized, preferred_anchor_ids in preference_orders:
             try:
                 witness = self._compile_one(
@@ -820,7 +972,14 @@ class CandidateFeasibilityCompiler:
             "preferred_anchor_ids": list(preferred_anchor_ids),
         }
         errors: list[str] = []
-        for attempt in range(1, self.maximum_attempts + 1):
+        attempt_limit = (
+            1
+            if tissue_case.annotation_profile_id == "panda-gleason-v1"
+            and tissue_case.primitive_id
+            == "infiltrative-nest-cord-extension-v1"
+            else self.maximum_attempts
+        )
+        for attempt in range(1, attempt_limit + 1):
             raw_plan: EditPlan | None = None
             try:
                 raw_plan, planner_usage = planner.create_joint_tissue_plan(
@@ -849,6 +1008,11 @@ class CandidateFeasibilityCompiler:
                     and compiled.resolved_area.used_fallback
                     and feedback.get("stage") != "tissue_area_underfill"
                     and not _is_subcomponent_raster_tail(compiled)
+                    and not (
+                        tissue_case.annotation_profile_id == "panda-gleason-v1"
+                        and tissue_case.primitive_id
+                        == "infiltrative-nest-cord-extension-v1"
+                    )
                 ):
                     # A maximum over one selected interface set is not yet a
                     # global maximum over the frozen preflight portfolio.
@@ -988,6 +1152,18 @@ class CandidateFeasibilityCompiler:
                         nominal_nucleus_diameter_px=(
                             scene.population.nominal_nucleus_diameter_px
                             or 8.0
+                        ),
+                        minimum_directionality_ratio=(
+                            1.0
+                            if tissue_case.annotation_profile_id
+                            == "panda-gleason-v1"
+                            else 1.35
+                        ),
+                        minimum_skeleton_length_width_ratio=(
+                            5.0
+                            if tissue_case.annotation_profile_id
+                            == "panda-gleason-v1"
+                            else 1.5
                         ),
                     )
                     if not directional_audit["passed"]:

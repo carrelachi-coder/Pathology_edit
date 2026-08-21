@@ -103,6 +103,7 @@ def execute_gate_aware_tissue_candidates(
     seed: int,
     compiled_replay_parts: tuple[Any, ...] | None = None,
     compiled_replay_audit: dict[str, Any] | None = None,
+    precompiled_candidate: CandidateMask | None = None,
 ) -> TissueExecutionBatch:
     compiled_tissue_tools = compile_tissue_tool_program(
         primitive_id=tissue_plan.primitive_id,
@@ -127,17 +128,21 @@ def execute_gate_aware_tissue_candidates(
         raise JointContractError(
             "nuclei preflight density authority differs from the execution scene"
         )
-    baseline_candidates = generate_joint_tissue_candidates(
-        source_tissue,
-        schema=schema,
-        tissue_scene=tissue_scene,
-        joint_scene=joint_scene,
-        plan=tissue_plan,
-        bundle=tissue_bundle,
-        seed=seed,
-        candidate_limit=1,
-        compiled_replay_parts=compiled_replay_parts,
-        compiled_replay_audit=compiled_replay_audit,
+    baseline_candidates = (
+        (precompiled_candidate,)
+        if precompiled_candidate is not None
+        else generate_joint_tissue_candidates(
+            source_tissue,
+            schema=schema,
+            tissue_scene=tissue_scene,
+            joint_scene=joint_scene,
+            plan=tissue_plan,
+            bundle=tissue_bundle,
+            seed=seed,
+            candidate_limit=1,
+            compiled_replay_parts=compiled_replay_parts,
+            compiled_replay_audit=compiled_replay_audit,
+        )
     )
     _bind_and_validate_tissue_candidate_traces(
         baseline_candidates, compiled_tissue_tools
@@ -165,6 +170,11 @@ def execute_gate_aware_tissue_candidates(
         baseline.certified_candidates[0].tool_trace[
             "candidate_portfolio_policy"
         ] = "compiler_witness_early_accept"
+        return baseline
+    if precompiled_candidate is not None:
+        # A Planner-selected compiler witness is immutable. If its current
+        # joint cell/executable-contract checks fail, return that evidence so
+        # the workflow can revoke it; never replace it with an unrelated draw.
         return baseline
     all_candidates = generate_joint_tissue_candidates(
         source_tissue,

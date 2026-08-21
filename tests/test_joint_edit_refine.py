@@ -74,6 +74,7 @@ from phase3_joint_edit_refine.gates import (
     _cell_tissue_compatibility,
     _discrete_radial_profile_is_monotonic,
     _fine_pattern_preserved,
+    _mechanism_realization,
     _nearest_reference_area_ratio,
     _recorded_instance_areas_by_class,
     _reference_shape_integrity,
@@ -95,6 +96,7 @@ from phase3_joint_edit_refine.mature_probnet_adapter import (
     MatureProbNetCellExecutor,
     MatureProbNetConfig,
     _architecture_placement_trace,
+    _compile_packing_witness,
     _mature_nucleus_area_medians,
 )
 from phase3_joint_edit_refine.models import (
@@ -173,6 +175,7 @@ from phase3_joint_edit_refine.tissue_tools import (
 )
 from phase3_joint_edit_refine.workflow import (
     INFILTRATION_BUDGET_PRIMITIVES,
+    PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES,
     JointPathologyEditWorkflow,
     JointWorkflowConfig,
     _as_tissue_case,
@@ -185,6 +188,7 @@ from phase3_joint_edit_refine.workflow import (
     _maximum_safe_below_target_joint_pixels,
     _minimum_safe_above_target_joint_pixels,
     _provisional_union_requires_rebalance,
+    _retain_visible_regression_whole_instance_closure,
     _select_cell_execution_choice,
 )
 from phase3_mask_edit.core.labels import MaskProfileSchema
@@ -510,6 +514,38 @@ class JointSkillTests(unittest.TestCase):
                 self.assertFalse(
                     any(token in recognition for token in prohibited_entry_tokens),
                     recognition,
+                )
+
+    def test_breast_colorectal_prostate_pathology_sources_are_verified(self):
+        repository = JointSkillRepository()
+        audited_domains = {
+            "breast-invasive-carcinoma-v1",
+            "colorectal-adenocarcinoma-v1",
+            "prostate-adenocarcinoma-v1",
+        }
+        for mechanism in repository.mechanisms.values():
+            if mechanism.pathology_domain_id not in audited_domains:
+                continue
+            with self.subTest(mechanism=mechanism.mechanism_id):
+                evidence = repository.skill_evidence_status[
+                    f"joint-mechanism:{mechanism.mechanism_id}"
+                ]
+                self.assertEqual(
+                    evidence.category_status["pathology_fact"],
+                    "verified_source_binding",
+                )
+                policy = mechanism.planner_policy
+                self.assertIn(
+                    "source_he_for_execution",
+                    policy.prohibited_observation_sources,
+                )
+                self.assertIn(
+                    "unannotated_histology_inference",
+                    policy.prohibited_observation_sources,
+                )
+                self.assertNotIn(
+                    "source_he_for_execution",
+                    policy.allowed_observation_sources,
                 )
 
     def test_non_breast_capability_matrix_matches_catalog_source_of_truth(self):
@@ -3520,6 +3556,67 @@ class JointSkillTests(unittest.TestCase):
             {"small-complete"},
         )
 
+    def test_packing_preserves_bounded_directional_rotation_family(self):
+        shape = (21, 21)
+        center = np.zeros(shape, dtype=bool)
+        center[10, 10] = True
+        valid = np.zeros(shape, dtype=bool)
+        valid[7:14, 10] = True
+        references = []
+        for parent_index in range(3):
+            parent_id = f"parent-{parent_index}"
+            references.append(
+                ReferenceNucleusShape(
+                    instance_id=parent_id,
+                    class_id=1,
+                    mask=np.ones((1, 5), dtype=bool),
+                    source="semantic_complete_instance",
+                    area_px=5,
+                )
+            )
+            for degrees in (45, 90, 135):
+                is_only_fitting_orientation = (
+                    parent_index == 2 and degrees == 135
+                )
+                references.append(
+                    ReferenceNucleusShape(
+                        instance_id=(
+                            "zz-fitting:rotate-135"
+                            if is_only_fitting_orientation
+                            else f"{parent_id}:rotate-{degrees}"
+                        ),
+                        class_id=1,
+                        mask=np.ones(
+                            (5, 1) if is_only_fitting_orientation else (1, 5),
+                            dtype=bool,
+                        ),
+                        source=(
+                            "semantic_complete_instance_rotated_135"
+                            if is_only_fitting_orientation
+                            else f"semantic_complete_instance_rotated_{degrees}"
+                        ),
+                        area_px=5,
+                        parent_instance_id=parent_id,
+                        scale_factor=1.0,
+                    )
+                )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=center,
+            valid_footprint_region=valid,
+            references_by_class={1: tuple(references)},
+            requested_count=1,
+            allow_finite_count_fallback=False,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertEqual(
+            certificate.placements[0].reference_instance_id,
+            "zz-fitting:rotate-135",
+        )
+
     def test_added_shape_measurement_excludes_retained_same_class_neighbour(self):
         source = np.zeros((20, 20), dtype=np.uint8)
         source[2:6, 2:6] = 1
@@ -4216,6 +4313,65 @@ class JointSkillTests(unittest.TestCase):
             )
         )
 
+    def test_panda_growth_retains_hard_range_complete_instance_closure(self):
+        self.assertTrue(
+            _retain_visible_regression_whole_instance_closure(
+                annotation_profile_id="panda-gleason-v1",
+                primitive_id="tumor-burden-increase-v1",
+                fallback_policy="max_feasible_below_target",
+                predicted_pixels=[22_000],
+                desired_max_pixels=20_972,
+                hard_max_pixels=31_457,
+            )
+        )
+        self.assertFalse(
+            _retain_visible_regression_whole_instance_closure(
+                annotation_profile_id="glas-gland-v1",
+                primitive_id="tumor-burden-increase-v1",
+                fallback_policy="max_feasible_below_target",
+                predicted_pixels=[22_000],
+                desired_max_pixels=20_972,
+                hard_max_pixels=31_457,
+            )
+        )
+
+    def test_dense_sheet_accepts_certified_mature_center_ledger(self):
+        context = SimpleNamespace(
+            bundle=SimpleNamespace(
+                mechanism=SimpleNamespace(
+                    cell_program=SimpleNamespace(
+                        layout_programs=("dense_sheet",),
+                        cluster_size_range=(1, 1),
+                    )
+                )
+            ),
+            candidate=SimpleNamespace(
+                ledger=SimpleNamespace(removed_instance_ids=()),
+                tool_trace={
+                    "accepted_center_ledger": [
+                        {"row": 10, "col": 12, "class_id": 1},
+                        {"row": 20, "col": 22, "class_id": 1},
+                    ],
+                    "mature_probnet_contract": True,
+                    "placed_count": 2,
+                    "placements": [],
+                    "reference_shape_integrity_certified": True,
+                    "whole_instance_changes": True,
+                },
+            ),
+            plan=SimpleNamespace(
+                cell_plan=SimpleNamespace(
+                    actions=("add",),
+                    mechanism_program_id="dense_sheet",
+                )
+            ),
+        )
+        result = _mechanism_realization(context)
+        self.assertTrue(result.passed)
+        self.assertTrue(result.metrics["mature_center_ledger_certified"])
+        context.candidate.tool_trace["placed_count"] = 1
+        self.assertFalse(_mechanism_realization(context).passed)
+
     def test_budget_broker_rebalances_from_exact_executed_cell_spill(self):
         repository = JointSkillRepository()
         case = _breast_case_stub()
@@ -4299,6 +4455,43 @@ class JointSkillTests(unittest.TestCase):
         )
         self.assertLess(revised.tissue_target_pixels, revised.tissue_floor_pixels)
         self.assertEqual(revised.tissue_execution_floor_pixels, 0)
+
+    def test_panda_cell_capacity_fallback_rebrokers_to_existing_hard_floor(self):
+        repository = JointSkillRepository()
+        case = replace(
+            _case_stub(),
+            pathology_domain_id="prostate-adenocarcinoma-v1",
+            annotation_profile_id="panda-gleason-v1",
+            cell_population_profile_id="prostate-cellvit-source-first-v1",
+            primitive_id="tumor-burden-increase-v1",
+            joint_area_budget=JointAreaBudget(
+                target_fraction=0.08,
+                min_fraction=0.04,
+                max_fraction=0.12,
+                tissue_min_fraction=0.04,
+                fallback_policy="max_feasible_below_target",
+            ),
+        )
+        bundle = repository.compose(
+            case=case,
+            mechanism_id="prostate-pattern-4-growth",
+            available_checker_ids=JointGateRegistry().available_checker_ids,
+            production=False,
+        )
+        solver = JointFeasibilitySolver()
+        initial = solver.allocate(
+            shape=(512, 512), budget=case.joint_area_budget, bundle=bundle
+        )
+        revised = solver.fallback_tissue_target_to_execution_floor(initial)
+        self.assertIn(
+            case.primitive_id, PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES
+        )
+        self.assertEqual(
+            revised.tissue_target_pixels,
+            revised.tissue_execution_floor_pixels,
+        )
+        self.assertEqual(revised.joint_hard_min_pixels, initial.joint_hard_min_pixels)
+        self.assertEqual(revised.joint_hard_max_pixels, initial.joint_hard_max_pixels)
 
     def test_capacity_adaptive_budget_enforces_meaningful_edit_floor(self):
         repository = JointSkillRepository()
@@ -4600,6 +4793,65 @@ class JointSkillTests(unittest.TestCase):
             ),
             {"101": 626.5, "103": 260.0},
         )
+
+    def test_mature_packing_reconstructs_bound_rotation_variant(self):
+        component = np.zeros((12, 12), dtype=bool)
+        component[2:7, 4:7] = np.asarray(
+            [
+                [1, 0, 0],
+                [1, 1, 0],
+                [1, 1, 1],
+                [0, 1, 1],
+                [0, 0, 1],
+            ],
+            dtype=bool,
+        )
+        source_shape = component[2:7, 4:7]
+        rotated = ndimage.rotate(
+            source_shape.astype(np.uint8),
+            angle=45,
+            reshape=True,
+            order=0,
+            mode="constant",
+            cval=0,
+            prefilter=False,
+        ).astype(bool)
+        contract = SimpleNamespace(
+            contract_id="contract-1",
+            packing_certificate={
+                "version": "complete-footprint-packing-v21",
+                "requested_count": 1,
+                "required_seam_count": 1,
+                "placements": [
+                    {
+                        "row": 8,
+                        "col": 8,
+                        "class_id": 1,
+                        "area_px": int(np.count_nonzero(rotated)),
+                        "reference_instance_id": "native-9:rotate-45",
+                        "required_seam": True,
+                    }
+                ],
+            },
+        )
+        scene = SimpleNamespace(
+            cells=SimpleNamespace(
+                instances=(
+                    SimpleNamespace(
+                        instance_id="native-9",
+                        class_id=1,
+                        bbox_xyxy=(4, 2, 7, 7),
+                    ),
+                )
+            ),
+            instance_masks={"native-9": component},
+        )
+        witness = _compile_packing_witness(contract=contract, scene=scene)
+        placement = witness["placements"][0]
+        self.assertEqual(placement["reference_instance_id"], "native-9:rotate-45")
+        self.assertEqual(placement["source_reference_instance_id"], "native-9")
+        self.assertEqual(placement["rotation_degrees"], 45)
+        self.assertEqual(len(placement["offsets_yx"]), np.count_nonzero(rotated))
 
     def test_mature_architecture_replay_preserves_group_cardinality_trace(self):
         ledger = [
@@ -4982,6 +5234,33 @@ class JointLedgerTests(unittest.TestCase):
         self.assertTrue(np.array_equal(result.cell_change, support))
         self.assertEqual(result.ledger.added_nucleus_pixels, 12)
         self.assertEqual(len(result.ledger.added_instance_ids), 1)
+
+    def test_native_class_disagreement_does_not_mark_unchanged_instance_removed(self):
+        tissue = np.ones((24, 24), dtype=np.uint8)
+        source = np.zeros_like(tissue)
+        source[2:8, 2:8] = 3
+        target = source.copy()
+        target[14:17, 14:17] = 2
+        support = np.zeros_like(tissue, dtype=bool)
+        support[14:17, 14:17] = True
+        native = np.zeros_like(tissue, dtype=bool)
+        native[2:8, 2:8] = True
+
+        result = analyze_joint_change(
+            source_tissue=tissue,
+            target_tissue=tissue,
+            source_nuclei=source,
+            target_nuclei=target,
+            generation_halo_px=0,
+            generation_support_contract=support,
+            source_instance_masks={"native-1": native},
+            source_instance_classes={"native-1": 2},
+            erased_source_instance_ids=(),
+        )
+
+        self.assertTrue(np.array_equal(result.cell_change, support))
+        self.assertEqual(result.ledger.removed_nucleus_pixels, 0)
+        self.assertEqual(result.ledger.retained_instance_ids, ("native-1",))
 
     def test_local_population_reference_priority_excludes_distant_native_shapes(self):
         local = ReferenceNucleusShape(

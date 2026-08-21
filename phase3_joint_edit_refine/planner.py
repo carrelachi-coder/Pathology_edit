@@ -976,11 +976,33 @@ class HeuristicJointPlanner:
                 and class_id in bundle.mechanism.cell_program.allowed_cell_classes
                 and class_id in compatible_classes
             )
+        increase = case.primitive_id.endswith("increase-v1")
+        if (
+            not classes
+            and increase
+            and case.annotation_profile_id == "panda-gleason-v1"
+        ):
+            # A legal PANDA host component may contain no nuclei even though
+            # the same tissue class elsewhere supplies verified source-shape
+            # authority.  Addition is allowed to populate that empty zone;
+            # depletion continues to require observable local instances.
+            classes = tuple(
+                sorted(
+                    {
+                        int(item.class_id)
+                        for item in scene.cells.instances
+                        if item.completeness_status == "complete"
+                        and not item.quality_flags
+                        and item.class_id
+                        in bundle.mechanism.cell_program.allowed_cell_classes
+                        and item.class_id in compatible_classes
+                    }
+                )
+            )
         if not classes:
             raise JointContractError(
                 "selected population zone has no observable compatible cell class"
             )
-        increase = case.primitive_id.endswith("increase-v1")
         baseline = "structured_add" if increase else "selective_remove"
         action = ("retain", "add") if increase else ("retain", "remove_whole")
         interface_ids: tuple[str, ...] = ()

@@ -163,6 +163,31 @@ class JointFeasibilitySolver:
             reserved_cell_footprint_spill_pixels=footprint,
         )
 
+    def fallback_tissue_target_to_execution_floor(
+        self,
+        allocation: JointBudgetAllocation,
+    ) -> JointBudgetAllocation:
+        """Re-broker a declared below-target fallback at the tissue floor.
+
+        This is used only after exact complete-footprint or mature cell
+        execution proves that the preferred tissue target cannot be paired
+        with the required cell program.  It changes no hard interval: the
+        downstream joint gates must still certify the largest safe union at
+        or above the task's existing hard minimum.
+        """
+
+        floor = int(allocation.tissue_execution_floor_pixels)
+        target = int(allocation.tissue_target_pixels)
+        if floor >= target:
+            return allocation
+        return replace(
+            allocation,
+            tissue_target_pixels=floor,
+            reserved_cell_only_pixels=max(
+                0, int(allocation.joint_target_pixels) - floor
+            ),
+        )
+
     def bind_tissue_plan(
         self,
         plan: EditPlan,

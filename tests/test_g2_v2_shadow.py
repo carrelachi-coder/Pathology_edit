@@ -23,7 +23,7 @@ class G2V2ShadowTests(unittest.TestCase):
             cases = []
             index = 0
             for organ, dataset, domain, annotation, population, mechanism in (
-                ("breast", "BCSS", "breast-invasive-carcinoma-v1", "bcss-semantic-v1", "breast-cellvit-source-first-v1", "breast-cohesive-nst-front"),
+                ("breast", "BCSS", "breast-invasive-carcinoma-v1", "bcss-semantic-v1", "breast-cellvit-source-first-v1", "breast-annotation-anchored-boundary-growth"),
                 ("lung", "IGNITE", "lung-carcinoma-v1", "ignite-semantic-v1", "lung-cellvit-source-first-v1", "lung-solid-squamous-growth"),
             ):
                 for primitive in ("tumor-burden-increase-v1",) * 2:

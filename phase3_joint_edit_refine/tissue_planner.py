@@ -796,13 +796,80 @@ class MultiInterfaceResearchTissuePlanner:
         artifact_registry: MaskPlannerArtifactRegistry | None = None,
         candidate_portfolio: Sequence[Any] = (),
     ) -> tuple[EditPlan, dict[str, Any]]:
-        del (
-            image_paths,
-            artifact_registry,
-            candidate_portfolio,
-            joint_case,
-            allocation,
-        )
+        del image_paths, artifact_registry
+        portfolio = tuple(candidate_portfolio)
+        if portfolio:
+            if not hasattr(candidate_portfolio, "validate_authority"):
+                raise RefineContractError(
+                    "research tissue Planner requires a compiler-issued portfolio"
+                )
+            expected_binding = _expected_tissue_authority_binding_sha256(
+                case=case,
+                joint_case=joint_case,
+                joint_bundle=joint_bundle,
+                tissue_bundle=bundle,
+                allocation=allocation,
+                nuclei_preflight=nuclei_preflight,
+                candidate_portfolio=candidate_portfolio,
+            )
+            candidate_portfolio.validate_authority(
+                expected_binding_sha256=expected_binding
+            )
+
+            def preference_key(witness):
+                values = []
+                metrics = witness.deterministic_candidate_metrics
+                for rule_id in joint_bundle.mechanism.planner_policy.selection_preferences:
+                    metric_id, direction = PREFERENCE_METRIC_CATALOG[rule_id]
+                    value = float(metrics.get(metric_id, 0.0))
+                    values.append(value if direction == "max" else -value)
+                return (*values, witness.candidate_id)
+
+            selected_witness = max(portfolio, key=preference_key)
+            selected_witness.validate_identity()
+            selected_family = selected_witness.allowed_tool_families[0]
+            selected_executor = JOINT_TOOL_FAMILY_TO_EXECUTOR[selected_family]
+            compiled_plan = selected_witness.compiled_plan
+            plan = replace(
+                compiled_plan,
+                tool_program=replace(
+                    compiled_plan.tool_program,
+                    allowed_tools=(selected_executor,),
+                    parameter_ranges={
+                        **compiled_plan.tool_program.parameter_ranges,
+                        "planner_selection_certificate": {
+                            "decision_id": "select_certified_tissue_plan_candidate",
+                            "selected_candidate_id": selected_witness.candidate_id,
+                            "selected_tool_family": selected_family,
+                            "supporting_preference_rule_ids": list(
+                                joint_bundle.mechanism.planner_policy.selection_preferences
+                            ),
+                            "compiler_certificate_sha256": (
+                                selected_witness.compiler_certificate_sha256
+                            ),
+                            "authority_binding_sha256": (
+                                selected_witness.authority_binding_sha256
+                            ),
+                            "execution_raster_sha256": (
+                                selected_witness.execution_raster_sha256
+                            ),
+                            "tissue_gate_report_sha256": (
+                                selected_witness.tissue_gate_report_sha256
+                            ),
+                        },
+                    },
+                ),
+            )
+            validate_edit_plan(plan, case=case, scene=scene, bundle=bundle)
+            return plan, {
+                "provider": self.name,
+                "selection_mode": "compiler_portfolio_preference_ranking",
+                "selected_candidate_id": selected_witness.candidate_id,
+                "selected_tool_family": selected_family,
+                "portfolio_candidate_count": len(portfolio),
+                "previous_execution_feedback": dict(execution_feedback or {}),
+            }
+        del joint_case, allocation
         mechanism_contract = joint_bundle.mechanism.tissue_program.primitive_label_contracts.get(case.primitive_id)
         if mechanism_contract is None:
             raise RefineContractError("joint mechanism has no primitive label contract")
@@ -829,10 +896,31 @@ class MultiInterfaceResearchTissuePlanner:
                 / np.pi
             )
         )
-        directional_maximum_width_px = float(
-            np.clip(4.0 * reference_equivalent_diameter, 8.0, 24.0)
-        )
-        directional_tip_width_px = 2.0
+        if case.annotation_profile_id == "panda-gleason-v1":
+            # A Pattern-5 cord must remain narrow, but it must still admit a
+            # complete source-calibrated neoplastic nucleus.  PANDA nuclei are
+            # substantially larger in raster pixels than the historical
+            # Breast fixtures, so a fixed 24-pixel cap made valid cell
+            # execution impossible.
+            directional_maximum_width_px = (
+                28.0
+                if reference_equivalent_diameter >= 16.0
+                else float(
+                    np.clip(
+                        0.75 * reference_equivalent_diameter,
+                        8.0,
+                        28.0,
+                    )
+                )
+            )
+            directional_tip_width_px = float(
+                np.clip(0.12 * reference_equivalent_diameter, 2.0, 5.0)
+            )
+        else:
+            directional_maximum_width_px = float(
+                np.clip(4.0 * reference_equivalent_diameter, 8.0, 24.0)
+            )
+            directional_tip_width_px = 2.0
         legal = [
             item for item in scene.graph.interfaces
             if item.source_label in allowed_sources and item.target_label == bundle.edit_contract.target_label
@@ -1421,6 +1509,15 @@ class MultiInterfaceResearchTissuePlanner:
                         "annotation_anchored_narrow_connected_extension"
                         if directional_projection
                         else topology["geometry_mode"]
+                    ),
+                    **(
+                        {
+                            "fragmentation_full_selected_component_support": True
+                        }
+                        if case.annotation_profile_id == "panda-gleason-v1"
+                        and case.primitive_id
+                        == "residual-tumor-fragmentation-v1"
+                        else {}
                     ),
                     "directional_maximum_width_px": (
                         directional_maximum_width_px
