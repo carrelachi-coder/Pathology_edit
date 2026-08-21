@@ -14,7 +14,8 @@
         "counterexamples"
       ],
       "source_ids": [
-        "pathology-mechanism-internal-review-pending"
+        "pathology-cellvit-five-class-taxonomy-2024",
+        "pathology-lung-cap-v2025"
       ],
       "production_eligible": false
     },

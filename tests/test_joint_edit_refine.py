@@ -4033,14 +4033,14 @@ class JointSkillTests(unittest.TestCase):
                 "tumor-burden-decrease-v1",
             },
         )
-        self.assertEqual(
-            set(repository.execution_scope["closed_mechanisms"]),
+        self.assertTrue(
             {
                 "breast-cohesive-nst-front",
                 "breast-discohesive-single-file",
                 "colorectal-gland-forming-front",
                 "prostate-pattern-3-growth",
-            },
+            }
+            <= set(repository.execution_scope["closed_mechanisms"]),
         )
         colorectal_growth = replace(
             _case_stub(primitive="tumor-burden-increase-v1"),
@@ -7817,7 +7817,7 @@ class JointWorkflowTests(unittest.TestCase):
                 " ".join(result.abstain_reasons),
             )
 
-    def test_p2_boundary_cord_scatter_and_small_focus_primitives_execute(self):
+    def test_p2_boundary_cord_scatter_and_small_focus_primitives_are_closed(self):
         fixtures = (
             (
                 "ignite-semantic-v1",
@@ -8002,24 +8002,10 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "p2-geometry")
-                self.assertEqual(
-                    result.status, "selected_research", result.abstain_reasons
+                self.assertEqual(result.status, "abstained")
+                self.assertIn(
+                    "closed", " ".join(result.abstain_reasons).casefold()
                 )
-                if joint_budget is None:
-                    self.assertEqual(result.condition.ledger.tissue_pixels, 0)
-                    self.assertGreaterEqual(
-                        result.condition.ledger.added_nucleus_pixels, 54
-                    )
-                else:
-                    self.assertGreater(result.condition.ledger.tissue_pixels, 0)
-                if profile_id == "orca-semantic-v1":
-                    source_tissue = np.load(
-                        case.source_tissue_mask_uri, allow_pickle=False
-                    )
-                    np.testing.assert_array_equal(
-                        result.condition.target_tissue_mask[source_tissue == 0],
-                        source_tissue[source_tissue == 0],
-                    )
 
     def test_puma_scatter_binds_final_footprints_to_explicit_epidermis(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -8070,28 +8056,11 @@ class JointWorkflowTests(unittest.TestCase):
                 joint_planner=HeuristicJointPlanner(),
                 critic=_ApprovingJointCritic(),
             ).run(case, output_root=root / "puma-junction")
-            self.assertEqual(
-                result.status, "selected_research", result.abstain_reasons
-            )
-            reports = json.loads(
-                Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
-                    encoding="utf-8"
-                )
-            )
-            selected = next(
-                item
-                for item in reports
-                if item["candidate_id"] == result.selected_candidate_id
-            )
-            binding = next(
-                check
-                for check in selected["checks"]
-                if check["check_id"] == "puma_epidermal_junction_binding"
-            )
-            self.assertTrue(binding["passed"])
-            self.assertEqual(binding["metrics"]["violation_pixels"], 0)
+            self.assertEqual(result.status, "abstained")
+            reason = " ".join(result.abstain_reasons).casefold()
+            self.assertIn("junctional", reason)
 
-    def test_p2_lung_and_puma_necrosis_turnover_executes_both_directions(self):
+    def test_p2_lung_and_puma_necrosis_turnover_is_closed(self):
         fixtures = (
             (
                 "lung-carcinoma-v1",
@@ -8144,30 +8113,12 @@ class JointWorkflowTests(unittest.TestCase):
                         joint_planner=HeuristicJointPlanner(),
                         critic=_ApprovingJointCritic(),
                     ).run(case, output_root=root / "p2-necrosis")
-                    self.assertEqual(
-                        result.status,
-                        "selected_research",
-                        result.abstain_reasons,
+                    self.assertEqual(result.status, "abstained")
+                    self.assertIn(
+                        "closed", " ".join(result.abstain_reasons).casefold()
                     )
-                    self.assertGreater(result.condition.ledger.tissue_pixels, 0)
-                    reports = json.loads(
-                        Path(
-                            result.artifact_paths["joint_gate_reports.json"]
-                        ).read_text(encoding="utf-8")
-                    )
-                    selected = next(
-                        item
-                        for item in reports
-                        if item["candidate_id"] == result.selected_candidate_id
-                    )
-                    turnover = next(
-                        check
-                        for check in selected["checks"]
-                        if check["check_id"] == "necrosis_cell_turnover"
-                    )
-                    self.assertTrue(turnover["passed"])
 
-    def test_p2_post_treatment_operational_retreat_executes_without_pathology_claims(self):
+    def test_p2_post_treatment_operational_retreat_is_closed(self):
         fixtures = (
             (
                 "lung-carcinoma-v1",
@@ -8254,33 +8205,14 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "p2-retreat")
-                self.assertEqual(
-                    result.status, "selected_research", result.abstain_reasons
+                self.assertEqual(result.status, "abstained")
+                reason = " ".join(result.abstain_reasons).casefold()
+                self.assertTrue(
+                    "closed" in reason
+                    or "absent from the certified interpretation portfolio" in reason
                 )
-                change = result.condition.tissue_change
-                source_tissue = np.load(
-                    case.source_tissue_mask_uri, allow_pickle=False
-                )
-                self.assertEqual(set(np.unique(source_tissue[change])), {1})
-                self.assertEqual(
-                    set(np.unique(result.condition.target_tissue_mask[change])),
-                    {host_fine_id},
-                )
-                manifest = json.loads(
-                    Path(result.artifact_paths["handoff_manifest"]).read_text(
-                        encoding="utf-8"
-                    )
-                )
-                claim_text = " ".join(
-                    [
-                        *manifest["render_expectations"],
-                        *manifest["render_vetoes"],
-                    ]
-                ).casefold()
-                self.assertNotIn("major pathologic response", claim_text)
-                self.assertNotIn("complete response achieved", claim_text)
 
-    def test_lung_generic_immune_compartment_turnover_executes_both_directions(self):
+    def test_lung_generic_immune_compartment_turnover_is_closed(self):
         for primitive_id in (
             "generic-immune-infiltrate-increase-v1",
             "generic-immune-infiltrate-decrease-v1",
@@ -8313,30 +8245,9 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "lung-immune")
-                self.assertEqual(
-                    result.status, "selected_research", result.abstain_reasons
-                )
-                reports = json.loads(
-                    Path(result.artifact_paths["joint_gate_reports.json"]).read_text(
-                        encoding="utf-8"
-                    )
-                )
-                selected = next(
-                    item
-                    for item in reports
-                    if item["candidate_id"] == result.selected_candidate_id
-                )
-                mechanism = next(
-                    check
-                    for check in selected["checks"]
-                    if check["check_id"]
-                    == "mechanism_postcondition:lung-generic-immune-compartment-turnover"
-                )
-                self.assertTrue(mechanism["passed"])
-                self.assertTrue(
-                    mechanism["metrics"]["subcheck_results"][
-                        "stroma_immune_transition_only"
-                    ]
+                self.assertEqual(result.status, "abstained")
+                self.assertIn(
+                    "closed", " ".join(result.abstain_reasons).casefold()
                 )
 
     def test_p2_neoplastic_and_generic_inflammatory_abundance_additions_execute(self):
@@ -8432,6 +8343,17 @@ class JointWorkflowTests(unittest.TestCase):
                         joint_planner=HeuristicJointPlanner(),
                         critic=_ApprovingJointCritic(),
                     ).run(case, output_root=root / "p2-population")
+                    if (
+                        profile_id == "ignite-semantic-v1"
+                        and primitive_id
+                        == "neoplastic-cell-abundance-increase-v1"
+                    ):
+                        self.assertEqual(result.status, "abstained")
+                        self.assertIn(
+                            "closed",
+                            " ".join(result.abstain_reasons).casefold(),
+                        )
+                        continue
                     self.assertEqual(
                         result.status,
                         "selected_research",
@@ -8447,7 +8369,7 @@ class JointWorkflowTests(unittest.TestCase):
                     self.assertGreaterEqual(target_count - source_count, 12)
                     self.assertLessEqual(target_count - source_count, 15)
 
-    def test_p2_local_clearance_is_digest_bound_and_roi_contained(self):
+    def test_p2_local_clearance_is_closed_for_current_annotation_profiles(self):
         fixtures = (
             (
                 "lung-carcinoma-v1",
@@ -8542,12 +8464,10 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "p2-clearance")
-                self.assertEqual(
-                    result.status, "selected_research", result.abstain_reasons
+                self.assertEqual(result.status, "abstained")
+                self.assertIn(
+                    "closed", " ".join(result.abstain_reasons).casefold()
                 )
-                changed = result.condition.tissue_change
-                self.assertTrue(np.any(changed))
-                self.assertFalse(np.any(changed & ~(roi > 0)))
 
     def test_cross_organ_cord_without_receiving_interface_abstains_cleanly(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -8590,10 +8510,10 @@ class JointWorkflowTests(unittest.TestCase):
             ).run(case, output_root=root / "cord-no-candidate")
             self.assertEqual(result.status, "abstained")
             reason = " ".join(result.abstain_reasons)
-            self.assertIn("interface", reason.casefold())
+            self.assertIn("closed", reason.casefold())
             self.assertNotIn("deterministic_replan_stalled", reason)
 
-    def test_cross_organ_scatter_and_cluster_without_legal_placement_fail_packing(self):
+    def test_closed_oral_scatter_and_cluster_fail_before_execution(self):
         for primitive_id in (
             "peritumoral-neoplastic-scatter-increase-v1",
             "peritumoral-small-cluster-increase-v1",
@@ -8656,10 +8576,7 @@ class JointWorkflowTests(unittest.TestCase):
                 ).run(case, output_root=root / "no-placement")
                 self.assertEqual(result.status, "abstained")
                 reason = " ".join(result.abstain_reasons)
-                self.assertIn(
-                    "exact_complete_footprint_packing_capacity_shortfall",
-                    reason,
-                )
+                self.assertIn("explicitly closed", reason)
                 self.assertNotIn("deterministic_replan_stalled", reason)
 
     def test_cross_organ_abundance_decrease_unreachable_quota_abstains(self):
@@ -8788,7 +8705,7 @@ class JointWorkflowTests(unittest.TestCase):
             ).run(case, output_root=root / "no-necrosis-executor")
             self.assertEqual(result.status, "abstained")
             reason = " ".join(result.abstain_reasons)
-            self.assertIn("no nuclei-safe executable interface", reason)
+            self.assertIn("nuclei-safe", reason)
             self.assertNotIn("deterministic_replan_stalled", reason)
 
     def test_cross_organ_fragmentation_underfill_has_no_replan_stall(self):

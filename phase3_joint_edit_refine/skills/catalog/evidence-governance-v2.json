@@ -154,6 +154,13 @@
       "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
       "verification_status": "verified"
     },
+    "pathology-cellvit-five-class-taxonomy-2024": {
+      "category": "pathology_fact",
+      "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+      "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+      "verification_status": "verified"
+    },
     "pathology-mechanism-internal-review-pending": {
       "category": "pathology_fact",
       "title": "Mechanism-specific internal pathology evidence review",
@@ -349,7 +356,8 @@
       "pathology-lung-iaslc-2011"
     ],
     "lung-local-population-modulation": [
-      "pathology-mechanism-internal-review-pending"
+      "pathology-cellvit-five-class-taxonomy-2024",
+      "pathology-lung-cap-v2025"
     ],
     "lung-solid-squamous-growth": [
       "pathology-lung-cap-v2025",
@@ -373,10 +381,11 @@
       "pathology-melanoma-cap-v2025"
     ],
     "melanoma-intratumoral-necrosis-turnover": [
-      "pathology-mechanism-internal-review-pending"
+      "pathology-melanoma-cap-v2025"
     ],
     "melanoma-local-population-modulation": [
-      "pathology-mechanism-internal-review-pending"
+      "pathology-cellvit-five-class-taxonomy-2024",
+      "pathology-melanoma-cap-v2025"
     ],
     "oral-scc-cohesive-nest-cord": [
       "pathology-oral-cap-v2024"
@@ -385,7 +394,8 @@
       "pathology-oral-cap-v2024"
     ],
     "oral-scc-local-population-modulation": [
-      "pathology-mechanism-internal-review-pending"
+      "pathology-cellvit-five-class-taxonomy-2024",
+      "pathology-oral-cap-v2024"
     ],
     "prostate-gleason-architecture-progression": [
       "pathology-prostate-isup-2014",

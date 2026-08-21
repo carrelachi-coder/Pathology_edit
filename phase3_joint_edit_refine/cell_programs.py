@@ -627,6 +627,8 @@ class CellToolProgramCompiler:
             )
         if (
             bundle.annotation_profile.annotation_profile_id == "puma-semantic-v1"
+            and bundle.mechanism.mechanism_id
+            == "melanoma-discohesive-junctional"
             and primitive.primitive_id
             == "peritumoral-neoplastic-scatter-increase-v1"
         ):

@@ -756,6 +756,8 @@ def _puma_epidermal_junction_binding(c):
 
     applicable = bool(
         c.bundle.annotation_profile.annotation_profile_id == "puma-semantic-v1"
+        and c.bundle.mechanism.mechanism_id
+        == "melanoma-discohesive-junctional"
         and c.case.primitive_id
         == "peritumoral-neoplastic-scatter-increase-v1"
     )

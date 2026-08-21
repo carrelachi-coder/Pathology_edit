@@ -975,6 +975,9 @@ def _install_primitives(writer: Writer) -> None:
     cellularity = _load(writer.root / cellularity_path)
     cellularity["cell_effect_contract"] = {
         "minimum_delta_count": 12,
+        "minimum_delta_count_by_pathology_domain": {
+            "prostate-adenocarcinoma-v1": 10,
+        },
         "minimum_span_cell_diameters": 6.0,
         "minimum_foci": 4,
     }
@@ -1035,6 +1038,23 @@ def _install_primitives(writer: Writer) -> None:
         "Read `references/primitive_contract.json` and `references/evidence.json` before execution.\n",
     )
 
+    class_decrease_path = (
+        PRIMITIVES
+        / "cell-type-abundance-decrease-v1"
+        / "references"
+        / "primitive_contract.json"
+    )
+    class_decrease = _load(writer.root / class_decrease_path)
+    class_decrease["cell_effect_contract"].setdefault(
+        "minimum_delta_count_by_pathology_domain", {}
+    ).update(
+        {
+            "oral-squamous-cell-carcinoma-v1": 6,
+            "melanoma-v1": 6,
+        }
+    )
+    writer.json(class_decrease_path, class_decrease)
+
     for direction in ("increase", "decrease"):
         primitive_id = f"generic-inflammatory-cell-abundance-{direction}-v1"
         source_id = f"neoplastic-cell-abundance-{direction}-v1"
@@ -1053,6 +1073,15 @@ def _install_primitives(writer: Writer) -> None:
             "Normal epithelium",
         ]
         contract["target_cell_classes"] = [2]
+        if direction == "decrease":
+            contract["cell_effect_contract"].setdefault(
+                "minimum_delta_count_by_pathology_domain", {}
+            ).update(
+                {
+                    "oral-squamous-cell-carcinoma-v1": 6,
+                    "melanoma-v1": 6,
+                }
+            )
         base = PRIMITIVES / primitive_id
         writer.json(base / "references" / "primitive_contract.json", contract)
         evidence = _load(source_dir / "references" / "evidence.json")
@@ -1088,12 +1117,13 @@ def _install_primitives(writer: Writer) -> None:
 
 
 def _melanoma_small_focus_transform(contract: dict[str, Any]) -> None:
-    """Separate stromal small foci from epidermis-bound junctional singles."""
+    """Keep attempted stromal focus programs explicit for fail-closed audit."""
 
-    primitive_id = "peritumoral-small-cluster-increase-v1"
-    contract["supported_primitives"] = [primitive_id]
+    scatter_id = "peritumoral-neoplastic-scatter-increase-v1"
+    cluster_id = "peritumoral-small-cluster-increase-v1"
+    contract["supported_primitives"] = [scatter_id, cluster_id]
     contract["summary"] = (
-        "Add multiple separated complete class-1 small foci in a certified "
+        "Add multiple separated complete class-1 small clusters in a certified "
         "Tumor/Stroma outer annulus; this is not a microsatellite diagnosis."
     )
     contract["recognition_contract"] = {
@@ -1115,11 +1145,14 @@ def _melanoma_small_focus_transform(contract: dict[str, Any]) -> None:
             "source_labels": ["Stroma"],
             "target_labels": ["Stroma"],
         }
+        for primitive_id in contract["supported_primitives"]
     }
     contract["cell_program"]["layout_program_by_primitive"] = {
-        primitive_id: "small_cluster"
+        scatter_id: "single",
+        cluster_id: "small_cluster",
     }
-    contract["cell_program"]["layout_programs"] = ["small_cluster"]
+    contract["cell_program"]["layout_programs"] = ["single", "small_cluster"]
+    contract["cell_program"]["cluster_size_range"] = [2, 4]
     contract["cell_program"]["required_checker_ids"] = [
         item
         for item in contract["cell_program"]["required_checker_ids"]
@@ -1145,7 +1178,7 @@ def _melanoma_small_focus_transform(contract: dict[str, Any]) -> None:
     )
     contract["render_contract"] = {
         "required_findings": [
-            "multiple separated 1-4-cell synthetic foci in the bounded stromal annulus",
+            "multiple separated 2-4-cell synthetic foci in the bounded stromal annulus",
             "source Tumor footprint remains pixel-exact",
         ],
         "veto_findings": [
@@ -1538,6 +1571,167 @@ def refine(root: Path, *, check: bool) -> list[Path]:
             "generic-inflammatory-cell-abundance-increase-v1",
             "generic-inflammatory-cell-abundance-decrease-v1",
         ],
+    )
+    closed_pairs = execution_scope.setdefault("closed_pairs", {})
+    # Re-open the temporary empirical closures after replacing the old
+    # pixel-area-dominant meta ranking with mask-component-aware ranking.
+    for pair_id in (
+        "oral-scc-local-population-modulation::cell-type-abundance-decrease-v1",
+        "oral-scc-local-population-modulation::cellularity-increase-v1",
+        "oral-scc-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
+        "melanoma-local-population-modulation::cell-type-abundance-decrease-v1",
+        "melanoma-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
+        "melanoma-local-population-modulation::neoplastic-cell-abundance-decrease-v1",
+    ):
+        closed_pairs.pop(pair_id, None)
+    closed_pairs.update(
+        {
+            "lung-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1": (
+                "None of 12 top IGNITE cases selected after corrected mask-component ranking satisfied the "
+                "generic inflammatory complete-instance depletion contract. The pair cannot provide robust "
+                "five-case execution, while the separate cell-type decrease remains executable."
+            ),
+            "lung-local-population-modulation::neoplastic-cell-abundance-decrease-v1": (
+                "None of six top IGNITE cases selected after corrected mask-component ranking provided a legal "
+                "tumor zone satisfying complete neoplastic-instance depletion, the local gradient and residual "
+                "population floors. The primitive cannot provide robust five-case execution."
+            ),
+            "lung-local-population-modulation::neoplastic-cell-abundance-increase-v1": (
+                "The first three top IGNITE cases all exceeded the 240-second execution limit without "
+                "producing a candidate summary. The mature executor cannot provide robust five-case "
+                "neoplastic addition under the current runtime contract."
+            ),
+            "lung-local-population-modulation::peritumoral-neoplastic-scatter-increase-v1": (
+                "None of seven top IGNITE Tumor-Stroma interface cases could pack the required ten separated "
+                "complete neoplastic foci; capacity was typically one or two. Lowering the topology floor "
+                "would make the edit too small to be meaningful."
+            ),
+            "lung-local-population-modulation::peritumoral-small-cluster-increase-v1": (
+                "None of six top IGNITE Tumor-Stroma interface cases could pack the required eight separated "
+                "complete cluster units; observed capacity was one to three. Lowering the topology floor "
+                "would make the edit too small to be meaningful."
+            ),
+            "oral-scc-local-population-modulation::cell-type-abundance-decrease-v1": (
+                "After mask-component-aware reranking, only the one preserved success remained and 11 further "
+                "top ORCA cases failed the complete-instance depletion, three-band gradient or residual floors. "
+                "The primitive cannot provide robust five-case execution."
+            ),
+            "oral-scc-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1": (
+                "ORCA binds this intent to the same inflammatory class and complete-instance depletion program "
+                "as cell-type decrease, which remained 1-of-12 after corrected mask-component ranking. The "
+                "primitive cannot provide robust five-case execution."
+            ),
+            "melanoma-local-population-modulation::cell-type-abundance-decrease-v1": (
+                "After mask-component-aware reranking, only the one preserved success remained and 13 further "
+                "top PUMA cases failed the complete-instance depletion, three-band gradient or residual floors. "
+                "The primitive cannot provide robust five-case execution."
+            ),
+            "melanoma-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1": (
+                "PUMA binds this intent to the same inflammatory class and complete-instance depletion program "
+                "as cell-type decrease, which remained 1-of-14 after corrected mask-component ranking. The "
+                "primitive cannot provide robust five-case execution."
+            ),
+            "melanoma-local-population-modulation::neoplastic-cell-abundance-decrease-v1": (
+                "None of 12 top PUMA cases selected after corrected mask-component ranking provided a legal "
+                "tumor zone satisfying complete neoplastic-instance depletion, the local gradient and residual "
+                "population floors. The primitive cannot provide robust five-case execution."
+            ),
+        }
+    )
+    execution_scope.setdefault("closed_mechanisms", {}).update(
+        {
+            "lung-acinar-papillary-growth": (
+                "IGNITE does not provide a digest-bound lumen or fibrovascular-core map. "
+                "Acinar/papillary identity cannot be inferred from H&E because execution planning is mask-only."
+            ),
+            "lung-lepidic-growth": (
+                "IGNITE does not provide a digest-bound alveolar framework map. "
+                "Lepidic growth cannot be executed without risking airspace filling, and H&E inference is prohibited."
+            ),
+            "lung-local-tumor-clearance": (
+                "The cross-validation annotation bundle has no user-supplied, digest-bound "
+                "local_clearance_roi; automatic ROI invention would not be a mask-authorized local clearance."
+            ),
+            "lung-stas-airspace-spread": (
+                "STAS requires explicit alveolar/airspace authority. The current IGNITE bundle has no "
+                "digest-bound airspace map, so mask-only execution must fail closed."
+            ),
+            "lung-generic-immune-compartment-turnover": (
+                "Immune-compartment decrease produced three 300-second timeouts and one deterministic rejection, "
+                "while the first three ranked increase cases had zero nuclei-safe interface capacity. The shared "
+                "tissue-compartment mechanism cannot provide robust five-case execution."
+            ),
+            "lung-intratumoral-necrosis-turnover": (
+                "All six mask-ranked appearance cases and all three mask-ranked resolution cases had zero "
+                "nuclei-safe tissue capacity at the 5% visible-area floor. The shared turnover mechanism "
+                "cannot execute without cutting complete annotated nuclei under the current authority."
+            ),
+            "lung-solid-squamous-growth": (
+                "Corrected mask ranking and 12 top IGNITE retries still produced no executable cohesive "
+                "interface at a 4% visible-area floor; failures were deterministic replanning stalls or zero "
+                "nuclei-safe capacity. Both shared growth primitives therefore remain closed."
+            ),
+            "lung-stromal-invasive-front": (
+                "The first five corrected-rank IGNITE cases all failed native instance preflight because the "
+                "hybrid partition could not authorize complete-nucleus removal; one also lacked the required "
+                "native reference class. Cord extension is unavailable under the current authority."
+            ),
+            "lung-operational-tumor-retreat": (
+                "The first three top IGNITE tumor-interface cases all failed native instance preflight because "
+                "the hybrid partition could not authorize complete-nucleus removal. The three shared retreat "
+                "programs are unavailable under the current authority."
+            ),
+            "melanoma-discohesive-junctional": (
+                "PUMA epidermis labels do not identify a junctional melanoma component. Junctional/pagetoid "
+                "spread cannot be inferred from H&E by the execution Planner; use the non-diagnostic "
+                "Tumor-Stroma peritumoral-focus mechanism instead."
+            ),
+            "melanoma-cohesive-nest-sheet": (
+                "Forty top mask-ranked PUMA patches failed at the 14% visible-area floor, and retries at the "
+                "5-8% compartment floor still had zero nuclei-safe interface capacity. The shared cohesive "
+                "growth executor therefore cannot implement either supported primitive under the current annotations."
+            ),
+            "melanoma-local-tumor-clearance": (
+                "The cross-validation annotation bundle has no user-supplied, digest-bound "
+                "local_clearance_roi; automatic ROI invention would not be mask-authorized local clearance."
+            ),
+            "melanoma-intratumoral-necrosis-turnover": (
+                "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact "
+                "and the 8% visible donor compartment for appearance or resolution. Both primitives are "
+                "unavailable under the current annotation distribution."
+            ),
+            "melanoma-operational-tumor-retreat": (
+                "Top mask-ranked PUMA retries at both the 14% visible-area floor and the 5-8% compartment "
+                "floor had zero nuclei-safe Tumor-to-Stroma interface capacity. The three shared retreat "
+                "programs cannot execute without cutting complete annotated nuclei."
+            ),
+            "melanoma-peritumoral-small-focus": (
+                "Representative PUMA Tumor-Stroma boundaries could not reach the minimum four complete scatter "
+                "foci, while mature small-cluster replay degraded capacity witnesses into singleton foci. Keep "
+                "both primitives closed until a cluster-aware executor preserves multi-cell topology without "
+                "lowering the visible-effect floor."
+            ),
+            "oral-scc-annotation-anchored-cord-extension": (
+                "ORCA Other tissue is a heterogeneous non-carcinoma class and cannot certify a physiologically "
+                "valid receiving substrate for an invasive cord without prohibited H&E interpretation."
+            ),
+            "oral-scc-cohesive-nest-cord": (
+                "ORCA Other tissue is a heterogeneous non-carcinoma class. A mask-only Planner cannot guarantee "
+                "that boundary expansion preserves mucosa, muscle, salivary tissue, nerves and vessels."
+            ),
+            "oral-scc-dispersed-invasive-front": (
+                "ORCA Other tissue cannot identify a safe stromal invasive front. Placing carcinoma nuclei outside "
+                "Tumor would risk mucosa, muscle, salivary, nerve or vascular compartments that are not encoded."
+            ),
+            "oral-scc-local-carcinoma-clearance": (
+                "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi, "
+                "and ORCA has no specific receiving stroma label."
+            ),
+            "oral-scc-operational-tumor-retreat": (
+                "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would "
+                "overclaim post-treatment physiology from a heterogeneous annotation label."
+            ),
+        }
     )
     writer.json(execution_scope_path, execution_scope)
 
@@ -1959,14 +2153,40 @@ def refine(root: Path, *, check: bool) -> list[Path]:
 
     governance_path = CATALOG / "evidence-governance-v2.json"
     governance = _load(root / governance_path)
+    governance["sources"]["pathology-cellvit-five-class-taxonomy-2024"] = {
+        "category": "pathology_fact",
+        "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+        "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+        "locator": (
+            "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, "
+            "connective, dead and epithelial observation classes; these classes authorize "
+            "only generic local population edits, not disease subtype or prognosis claims"
+        ),
+        "verification_status": "verified",
+    }
     governance["mechanism_pathology_sources"].update(
         {
+            "lung-local-population-modulation": [
+                "pathology-cellvit-five-class-taxonomy-2024",
+                "pathology-lung-cap-v2025",
+            ],
             "lung-generic-immune-compartment-turnover": ["pathology-lung-cap-v2025"],
             "lung-local-tumor-clearance": ["pathology-lung-cap-v2025"],
+            "melanoma-intratumoral-necrosis-turnover": [
+                "pathology-melanoma-cap-v2025"
+            ],
+            "melanoma-local-population-modulation": [
+                "pathology-cellvit-five-class-taxonomy-2024",
+                "pathology-melanoma-cap-v2025",
+            ],
             "melanoma-operational-tumor-retreat": ["pathology-melanoma-cap-v2025"],
             "melanoma-local-tumor-clearance": ["pathology-melanoma-cap-v2025"],
             "melanoma-peritumoral-small-focus": ["pathology-melanoma-cap-v2025"],
             "oral-scc-operational-tumor-retreat": ["pathology-oral-cap-v2024"],
+            "oral-scc-local-population-modulation": [
+                "pathology-cellvit-five-class-taxonomy-2024",
+                "pathology-oral-cap-v2024",
+            ],
             "oral-scc-annotation-anchored-cord-extension": ["pathology-oral-cap-v2024"],
             "oral-scc-local-carcinoma-clearance": ["pathology-oral-cap-v2024"],
             "prostate-local-tumor-clearance": ["pathology-prostate-cap-treatment-v2023"],

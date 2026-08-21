@@ -2126,7 +2126,7 @@ class JointPathologyEditWorkflow:
                     except (JointContractError, RefineContractError, ValueError) as exc:
                         rejected[primitive_id] = str(exc)
                         continue
-                budget, budget_metadata = _apply_glas_visible_cell_budget(
+                budget, budget_metadata = _apply_profile_visible_cell_budget(
                     candidate_case,
                     primitive_id=primitive_id,
                     budget=budget,
@@ -3336,7 +3336,13 @@ class JointPathologyEditWorkflow:
             minimum_acceptable_add_count=minimum_acceptable_count,
             allow_final_capacity_refinement=(
                 case.annotation_profile_id
-                in {"glas-gland-v1", "panda-gleason-v1"}
+                in {
+                    "glas-gland-v1",
+                    "panda-gleason-v1",
+                    "ignite-semantic-v1",
+                    "orca-semantic-v1",
+                    "puma-semantic-v1",
+                }
             ),
             relax_group_preflight=(
                 case.annotation_profile_id
@@ -3344,9 +3350,17 @@ class JointPathologyEditWorkflow:
             ),
         )
         if not certified.passed:
+            packing = certified.exact_packing_certificate or {}
             raise JointContractError(
                 "cell-only exact packing preflight failed before execution: "
                 + ", ".join(certified.reasons)
+                + (
+                    f" [placed={packing.get('placed_count', 0)}/"
+                    f"requested={packing.get('requested_count', 0)}, "
+                    f"center_pixels={packing.get('center_region_pixels', 0)}, "
+                    f"minimum_separation_px="
+                    f"{packing.get('minimum_center_separation_px', 0)}]"
+                )
             )
         # NOTE: Premature witness spatial audit (effect_span / effect_foci)
         # was here but was removed.  The packing certificate's distance-based
@@ -3392,8 +3406,20 @@ class JointPathologyEditWorkflow:
                 in set(bundle.primitive.host_tissue_labels)
                 and item.area_px > 0
             ]
+            target_classes = tuple(
+                int(value)
+                for value in case.provenance.get("target_cell_class_ids", ())
+            )
             zones.sort(
-                key=lambda item: (-item.nucleus_count, -item.area_px, item.zone_id)
+                key=lambda item: (
+                    -sum(
+                        int(item.class_counts.get(class_id, 0))
+                        for class_id in target_classes
+                    ),
+                    -item.nucleus_count,
+                    -item.area_px,
+                    item.zone_id,
+                )
             )
             layout_program = bundle.mechanism.cell_program.layout_for(
                 case.primitive_id
@@ -4507,22 +4533,27 @@ def _as_tissue_case(case: JointCaseContext, *, allocation, shape) -> CaseContext
     )
 
 
-def _apply_glas_visible_cell_budget(
+def _apply_profile_visible_cell_budget(
     case: JointCaseContext,
     *,
     primitive_id: str,
     budget: CellCountExtentBudget,
     metadata: dict[str, Any],
 ) -> tuple[CellCountExtentBudget, dict[str, Any]]:
-    """Apply the reviewed post-7c6 GLaS saliency budgets.
+    """Apply reviewed minimum-visible cell budgets to mask-review profiles.
 
     Explicit manifest budgets remain authoritative because this helper is used
-    only after the workflow derives a missing budget.  Sparse cases that cannot
-    reach the new minimum fail deterministic preflight rather than presenting a
-    tiny edit as success.
+    only after the workflow derives a missing budget. Sparse cases fail
+    deterministic preflight instead of presenting a tiny edit as success.
     """
 
-    if case.annotation_profile_id != "glas-gland-v1":
+    visible_profiles = {
+        "glas-gland-v1",
+        "ignite-semantic-v1",
+        "orca-semantic-v1",
+        "puma-semantic-v1",
+    }
+    if case.annotation_profile_id not in visible_profiles:
         return budget, metadata
 
     local_population = {
@@ -4532,6 +4563,8 @@ def _apply_glas_visible_cell_budget(
         "cellularity-decrease-v1",
         "neoplastic-cell-abundance-increase-v1",
         "neoplastic-cell-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-increase-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
     }
     if primitive_id in local_population:
         visible = CellCountExtentBudget(
@@ -4583,7 +4616,7 @@ def _apply_glas_visible_cell_budget(
     return visible, {
         **metadata,
         "pre_scale_budget": budget.__dict__,
-        "policy_id": "glas-visible-cell-effect-budget-v3-feasible",
+        "policy_id": "mask-review-visible-cell-effect-budget-v4",
         "authority": "system_owned_profile_specific_budget",
         "budget": visible.__dict__,
     }
