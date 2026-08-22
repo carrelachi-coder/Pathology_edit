@@ -5133,7 +5133,7 @@ def run_single(args, model, library, config, density_scales, device):
         )
         if (
             packing_witness.get("version") != "compiled-packing-witness-v4"
-            or int(packing_witness.get("requested_count", 0)) <= 0
+            or int(packing_witness.get("requested_count", 0)) < 0
             or len(packing_witness.get("placements") or [])
             != int(packing_witness.get("requested_count", 0))
         ):

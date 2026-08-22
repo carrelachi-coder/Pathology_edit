@@ -86,6 +86,7 @@ EXPLICIT_EDIT_SCOPES = frozenset(
 OBSERVATION_CELL_CLASS_IDS = {
     "cellvit-five-class-v1": {
         "immune": (2,),
+        "connective": (3,),
         "neoplastic": (1,),
     }
 }
@@ -239,6 +240,7 @@ class RuleBasedSemanticParser:
             "increase",
             (
                 r"\b(expand|advance|increase)\b.*\b(tumou?r boundary|tumou?r edge|cohesive boundary)\b",
+                r"\b(expand|advance|increase)\b.*\b(?:pattern[- ]?[345] )?gland[- ]unit boundary\b",
                 r"\b(expand|advance|increase)\b.*\b(invasive front|invasion front)\b",
                 r"(\u6269\u5927|\u63a8\u8fdb|\u589e\u52a0).*(\u80bf\u7624\u8fb9\u754c|\u80bf\u7624\u8fb9\u7f18|\u8fde\u7eed\u8fb9\u754c)",
                 r"(\u6269\u5927|\u63a8\u8fdb|\u589e\u52a0).*(\u6d78\u6da6\u524d\u7f18|\u4fb5\u88ad\u524d\u7f18)",
@@ -401,7 +403,7 @@ class RuleBasedSemanticParser:
             "cell-type-abundance",
             "decrease",
             (
-                r"\b(decrease|reduce)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?)\b",
+                r"\b(decrease|reduce)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?|connective tissue cells?|fibroblasts?)\b",
                 r"\bremove\b.*\bgeneric inflammatory cells?\b",
                 r"(减少|降低).*(免疫细胞|淋巴细胞|浆细胞|巨噬细胞)",
             ),
@@ -411,7 +413,7 @@ class RuleBasedSemanticParser:
             "cell-type-abundance",
             "increase",
             (
-                r"\b(increase|add)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?)\b",
+                r"\b(increase|add)\b.*\b(immune cells?|lymphocytes?|plasma cells?|macrophages?|connective tissue cells?|fibroblasts?)\b",
                 r"\badd\b.*\bgeneric inflammatory cells?\b",
                 r"(增加|添加).*(免疫细胞|淋巴细胞|浆细胞|巨噬细胞)",
             ),
@@ -425,6 +427,10 @@ class RuleBasedSemanticParser:
         ),
         ("plasma_cell", (r"\bplasma cells?\b", r"浆细胞")),
         ("macrophage", (r"\bmacrophages?\b", r"巨噬细胞")),
+        (
+            "connective",
+            (r"\b(?:connective tissue cells?|fibroblasts?)\b", r"结缔组织细胞|成纤维细胞"),
+        ),
         (
             "neoplastic",
             (r"\b(?:neoplastic|tumou?r) cells?\b", r"肿瘤细胞|癌细胞"),
@@ -887,7 +893,23 @@ def bind_semantic_intent(
             },
             **fields,
         )
+    annotation_profile_id = _required_text(payload, "annotation_profile_id")
+    intent = _normalize_profile_specific_legacy_primitives(
+        intent,
+        annotation_profile_id=annotation_profile_id,
+    )
     manifest_primitive = payload.get("primitive_id")
+    if (
+        annotation_profile_id == "panda-gleason-v1"
+        and manifest_primitive == RETIRED_TUMOR_BURDEN_INCREASE_PRIMITIVE_ID
+    ):
+        provenance = dict(payload.get("provenance") or {})
+        provenance["retired_primitive_alias"] = str(manifest_primitive)
+        provenance["retired_primitive_resolution"] = (
+            "cohesive-boundary-expansion-v1"
+        )
+        payload["provenance"] = provenance
+        manifest_primitive = "cohesive-boundary-expansion-v1"
     candidate_ids = {
         item.primitive_id for item in intent.primitive_hypotheses
     }
@@ -943,6 +965,62 @@ def bind_semantic_intent(
         )
     case = JointCaseContext.from_mapping(payload)
     return replace(case, semantic_intent=metadata), intent
+
+
+def _normalize_profile_specific_legacy_primitives(
+    intent: SemanticEditIntent,
+    *,
+    annotation_profile_id: str,
+) -> SemanticEditIntent:
+    """Retire duplicate PANDA burden execution without touching Breast.
+
+    The parser may retain the historical wording as language compatibility,
+    but PANDA executes the concrete cohesive boundary operation only.
+    """
+
+    if annotation_profile_id != "panda-gleason-v1":
+        return intent
+    normalized: list[PrimitiveHypothesis] = []
+    seen: set[str] = set()
+    retired = False
+    for hypothesis in intent.primitive_hypotheses:
+        primitive_id = hypothesis.primitive_id
+        if primitive_id == RETIRED_TUMOR_BURDEN_INCREASE_PRIMITIVE_ID:
+            primitive_id = "cohesive-boundary-expansion-v1"
+            retired = True
+        if primitive_id in seen:
+            continue
+        seen.add(primitive_id)
+        normalized.append(
+            replace(
+                hypothesis,
+                primitive_id=primitive_id,
+                priority=len(normalized),
+                rationale=(
+                    hypothesis.rationale
+                    + "; PANDA resolves the retired generic burden alias to "
+                    "a concrete cohesive boundary expansion"
+                    if hypothesis.primitive_id
+                    == RETIRED_TUMOR_BURDEN_INCREASE_PRIMITIVE_ID
+                    else hypothesis.rationale
+                ),
+            )
+        )
+    if not retired:
+        return intent
+    return replace(
+        intent,
+        primitive_id=normalized[0].primitive_id,
+        primitive_hypotheses=tuple(normalized),
+        parser_metadata={
+            **intent.parser_metadata,
+            "profile_primitive_normalization": {
+                "annotation_profile_id": annotation_profile_id,
+                "retired_alias": RETIRED_TUMOR_BURDEN_INCREASE_PRIMITIVE_ID,
+                "resolved_primitive_id": "cohesive-boundary-expansion-v1",
+            },
+        },
+    )
 
 
 def _compile_primitive_hypotheses(

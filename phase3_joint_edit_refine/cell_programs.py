@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from itertools import pairwise
 
 import numpy as np
@@ -266,6 +266,29 @@ class CellToolProgramCompiler:
             target_tissue,
             bundle.annotation_profile.prohibit_generation_support_fine_ids,
         )
+        automatic_lumen_ids = {
+            "glas-gland-v1": ("gland_or_lumen_support",),
+            "panda-gleason-v1": ("gland_lumen_map",),
+        }.get(bundle.annotation_profile.annotation_profile_id, ())
+        protected_structure_ids = tuple(
+            dict.fromkeys(
+                (
+                    *bundle.mechanism.representability.protected_auxiliary_structures,
+                    *(
+                        structure_id
+                        for structure_id in automatic_lumen_ids
+                        if structure_id in scene.auxiliary_structure_masks
+                    ),
+                )
+            )
+        )
+        for structure_id in protected_structure_ids:
+            structure = scene.auxiliary_structure_masks.get(structure_id)
+            if structure is None:
+                raise JointContractError(
+                    f"required protected auxiliary {structure_id!r} is unavailable"
+                )
+            valid_erasure_footprint &= ~np.asarray(structure, dtype=bool)
         effect_classes = set(cell.allowed_cell_classes)
         source_diameter = float(
             scene.population.nominal_nucleus_diameter_px or 8.0
@@ -330,10 +353,27 @@ class CellToolProgramCompiler:
         # diameter for the latter stages collapsed valid GLaS depletion fields
         # even though preflight had already applied the finite-raster floor.
         diameter = float(effect_diameter)
+        minimum_effect_span_cell_diameters = (
+            primitive.minimum_effect_span_cell_diameters
+        )
+        minimum_effect_foci = primitive.minimum_effect_foci
+        if case.annotation_profile_id == "panda-gleason-v1":
+            panda_local_effect_overrides = {
+                "cell-type-abundance-increase-v1": (2.5, 1),
+                "cell-type-abundance-decrease-v1": (1.5, 0),
+                "cellularity-increase-v1": (3.0, 3),
+                "cellularity-decrease-v1": (4.0, 0),
+                "neoplastic-cell-abundance-increase-v1": (2.0, 1),
+                "neoplastic-cell-abundance-decrease-v1": (1.5, 0),
+            }
+            if case.primitive_id in panda_local_effect_overrides:
+                (
+                    minimum_effect_span_cell_diameters,
+                    minimum_effect_foci,
+                ) = panda_local_effect_overrides[case.primitive_id]
         skill_minimum_effect_span_px = int(
             np.floor(
-                primitive.minimum_effect_span_cell_diameters
-                * effect_diameter
+                minimum_effect_span_cell_diameters * effect_diameter
             )
         )
         if (
@@ -558,6 +598,21 @@ class CellToolProgramCompiler:
                 item.component_id: item.label for item in scene.tissue.graph.components
             }
             component_label = component_labels.get(selected_component_id)
+            if (
+                bundle.annotation_profile.annotation_profile_id
+                == "panda-gleason-v1"
+                and component_label == "Stroma"
+                and cell.baseline_mode == "structured_add"
+            ):
+                external_stroma = scene.auxiliary_structure_masks.get(
+                    "external_cellular_stroma_map"
+                )
+                if external_stroma is None:
+                    raise JointContractError(
+                        "PANDA stromal cell edits require external cellular stroma"
+                    )
+                external_stroma = np.asarray(external_stroma, dtype=bool)
+                valid &= external_stroma
             compatible_classes = set(
                 bundle.cell_observation_profile.tissue_compatible_classes.get(
                     component_label, ()
@@ -841,6 +896,18 @@ class CellToolProgramCompiler:
                 case.primitive_id
             ),
         )
+        if (
+            case.annotation_profile_id == "panda-gleason-v1"
+            and case.primitive_id == "residual-tumor-fragmentation-v1"
+        ):
+            seam = replace(
+                seam,
+                mode="not_applicable",
+                anchor_mask=np.zeros_like(tissue_change, dtype=bool),
+                continuity_region=np.zeros_like(tissue_change, dtype=bool),
+                minimum_anchor_coverage_fraction=0.0,
+                requires_new_target_cells=False,
+            )
         continuity_mode = seam.mode
         continuity_region = (
             seam.continuity_region | panda_cord_parent_band
@@ -914,10 +981,10 @@ class CellToolProgramCompiler:
             minimum_effect_foci=(
                 max(
                     case.cell_count_extent_budget.minimum_effect_foci,
-                    primitive.minimum_effect_foci,
+                    minimum_effect_foci,
                 )
                 if case.cell_count_extent_budget is not None
-                else primitive.minimum_effect_foci
+                else minimum_effect_foci
             ),
             policies={
                 "T_pop": (

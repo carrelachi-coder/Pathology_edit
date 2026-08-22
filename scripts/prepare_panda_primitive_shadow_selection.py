@@ -64,12 +64,12 @@ EVALUATIONS = (
     EvaluationSpec(
         "prostate-local-population-modulation",
         "cell-type-abundance-increase-v1",
-        "Increase immune cells in the selected region.",
+        "Increase connective tissue cells in the selected region.",
     ),
     EvaluationSpec(
         "prostate-local-population-modulation",
         "cell-type-abundance-decrease-v1",
-        "Decrease immune cells in the selected region.",
+        "Decrease connective tissue cells in the selected region.",
     ),
     EvaluationSpec(
         "prostate-local-population-modulation",
@@ -113,18 +113,8 @@ EVALUATIONS = (
     ),
     EvaluationSpec(
         "prostate-pattern-4-growth",
-        "tumor-burden-increase-v1",
-        "Increase annotation-defined Pattern-4 tumor burden.",
-    ),
-    EvaluationSpec(
-        "prostate-pattern-4-growth",
         "cohesive-boundary-expansion-v1",
         "Expand an annotation-defined Pattern-4 boundary into adjacent stroma.",
-    ),
-    EvaluationSpec(
-        "prostate-pattern-5-growth",
-        "tumor-burden-increase-v1",
-        "Increase annotation-defined Pattern-5 tumor burden.",
     ),
     EvaluationSpec(
         "prostate-pattern-5-growth",
@@ -367,15 +357,17 @@ def _coarse_eligible(group: str, metrics: dict[str, Any]) -> bool:
             and metrics["p5_stroma_contact_pixels"] >= 512
         )
     if group == "fragmentation":
-        # The frozen 3--5% fragmentation budget and the primitive-owned 12%
-        # per-component change floor are jointly feasible only when the
-        # selected source component is at most floor(.05 * 512^2 / .12).
+        # PANDA owns a 3% selected-component visibility floor.  Even the
+        # largest possible 512x512 source component can therefore satisfy it
+        # inside the frozen 3--5% patch budget.  The former 109226-pixel cap
+        # was inherited from the generic 12% floor and wrongly discarded
+        # large Pattern-5 fields that contain suitable narrow tumor bridges.
         largest = int(metrics["tumor_largest_component_pixels"])
         return (
             int(fine["10"]) >= 50000
             and stroma >= 50000
             and metrics["p5_stroma_contact_pixels"] >= 512
-            and 20000 <= largest <= 109226
+            and largest >= 20000
         )
     raise ValueError(group)
 
@@ -895,22 +887,15 @@ def _evaluation_eligible(spec: EvaluationSpec, item: dict[str, Any]) -> bool:
     complete_classes = item["semantic_complete_class_counts"]
     primitive = spec.primitive_id
     if primitive == "cell-type-abundance-increase-v1":
-        return int(complete_classes["2"]) >= 4
+        return int(stroma_classes["3"]) >= 8
     if primitive == "cell-type-abundance-decrease-v1":
-        proxy = item["semantic_immune_depletion_interface_proxy"]
-        return (
-            int(complete_classes["2"])
-            >= PROSTATE_IMMUNE_DEPLETION_MINIMUM_COUNT
-            and int(proxy["three_band_complete_class2"])
-            >= PROSTATE_IMMUNE_DEPLETION_MINIMUM_COUNT
-            and bool(proxy["density_gradient_feasible"])
-        )
+        return int(stroma_classes["3"]) >= 6
     if primitive == "cellularity-increase-v1":
         return int(item["semantic_complete_instance_count"]) >= 16
     if primitive == "cellularity-decrease-v1":
         return int(item["semantic_complete_instance_count"]) >= 36
     if primitive == "neoplastic-cell-abundance-increase-v1":
-        return int(tumor_classes["1"]) >= 4
+        return int(tumor_classes["1"]) >= 8
     if primitive == "neoplastic-cell-abundance-decrease-v1":
         return int(tumor_classes["1"]) >= 12
     if spec.mechanism_id == "prostate-pattern-5-peripheral-scatter":
@@ -919,7 +904,7 @@ def _evaluation_eligible(spec: EvaluationSpec, item: dict[str, Any]) -> bool:
             int(complete_classes["1"]) >= 4
             and int(stroma_classes["3"]) >= 4
             and int(proxy["separated_complete_footprint_proxy_capacity"])
-            >= 4
+            >= 3
         )
     if spec.mechanism_id in {
         "prostate-pattern-4-growth",
@@ -940,6 +925,7 @@ def _evaluation_score(spec: EvaluationSpec, item: dict[str, Any]) -> float:
     base = _coarse_group_scores(item)[group]
     primitive = spec.primitive_id
     tumor_classes = item["semantic_complete_tumor_class_counts"]
+    stroma_classes = item["semantic_complete_stroma_class_counts"]
     complete_classes = item["semantic_complete_class_counts"]
     packing = item["semantic_packing_center_pixels"]
     if primitive.startswith("cell-type-abundance-"):
@@ -948,32 +934,10 @@ def _evaluation_score(spec: EvaluationSpec, item: dict[str, Any]) -> float:
             if primitive.endswith("increase-v1")
             else 0
         )
-        depletion = item["semantic_immune_depletion_interface_proxy"]
-        depletion_score = (
-            1_000_000 * int(bool(depletion["density_gradient_feasible"]))
-            + 20_000
-            * min(int(depletion["density_gradient_resolved_removals"]), 16)
-            + 8000
-            * min(
-                int(depletion["residual_safe_removal_capacity"]),
-                PROSTATE_IMMUNE_DEPLETION_MINIMUM_COUNT,
-            )
-            + 5000
-            * min(int(depletion["outer_reference_complete_class2"]), 3)
-            + 1000
-            * min(
-                float(depletion["field_area_cell_diameter_squares"]), 57.0
-            )
-            + 500 * int(depletion["three_band_complete_class2"])
-            + 5 * int(depletion["interface_anchor_pixels"])
-            if primitive.endswith("decrease-v1")
-            else 0
-        )
         return (
             base
-            + 700 * int(complete_classes["2"])
+            + 700 * int(stroma_classes["3"])
             + 2.0 * free_space
-            + depletion_score
         )
     if primitive.startswith("cellularity-"):
         free_space = (

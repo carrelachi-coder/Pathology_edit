@@ -496,6 +496,9 @@ def _prepare_interfaces(
                     tip_width_px=float(
                         params.get("directional_tip_width_px", 2.0)
                     ),
+                    shape_mode=str(
+                        params.get("directional_shape_mode", "linear_taper")
+                    ),
                 )
             )
             ownership_envelope &= directional_envelope
@@ -775,6 +778,7 @@ def compile_directional_tapered_projection_field(
     maximum_depth_px: float,
     maximum_width_px: float,
     tip_width_px: float,
+    shape_mode: str = "linear_taper",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compile one mask-owned, outward, tapered projection.
 
@@ -825,23 +829,62 @@ def compile_directional_tapered_projection_field(
     delta_row = rows - pivot[0]
     delta_col = cols - pivot[1]
     longitudinal = delta_row * normal[0] + delta_col * normal[1]
-    lateral = np.abs(delta_row * tangent[0] + delta_col * tangent[1])
+    signed_lateral = delta_row * tangent[0] + delta_col * tangent[1]
     depth = max(2.0, float(maximum_depth_px))
     neck_width = max(4.0, float(maximum_width_px))
     tip_width = float(np.clip(tip_width_px, 1.0, neck_width * 0.45))
     progress = np.clip(longitudinal / depth, 0.0, 1.0)
-    local_width = neck_width + (tip_width - neck_width) * np.power(progress, 0.72)
-    projection = (
-        legal
-        & (longitudinal >= -1.0)
-        & (longitudinal <= depth)
-        & (lateral <= 0.5 * local_width)
-    )
-    priority = np.where(
-        projection,
-        np.maximum(longitudinal, 0.0) + 0.08 * lateral,
-        np.inf,
-    )
+    if shape_mode == "organic_rounded_cord":
+        phase = 0.17 * float(pivot[0]) + 0.11 * float(pivot[1])
+        bend = min(0.16 * depth, 0.32 * neck_width)
+        center_offset = bend * np.sin(np.pi * progress) * np.sin(
+            0.75 * np.pi * progress + phase
+        )
+        lateral = np.abs(signed_lateral - center_offset)
+        tip_width = float(np.clip(tip_width, 0.45 * neck_width, 0.85 * neck_width))
+        width_progress = np.power(progress, 0.85)
+        local_width = neck_width + (tip_width - neck_width) * width_progress
+        irregularity = (
+            1.0
+            + 0.07 * np.sin(3.0 * np.pi * progress + phase)
+            + 0.035 * np.sin(7.0 * np.pi * progress + 0.5 * phase)
+        )
+        local_width *= irregularity
+        tip_radius = max(1.5, 0.5 * tip_width)
+        body_end = max(1.0, depth - tip_radius)
+        body = (
+            (longitudinal >= -1.0)
+            & (longitudinal <= body_end)
+            & (lateral <= 0.5 * local_width)
+        )
+        rounded_tip = (
+            ((longitudinal - body_end) / tip_radius) ** 2
+            + (lateral / tip_radius) ** 2
+            <= 1.0
+        ) & (longitudinal >= body_end)
+        projection = legal & (body | rounded_tip)
+        normalized_lateral = lateral / np.maximum(0.5 * local_width, 1.0)
+        # Establish a connected, cell-wide centerline before filling its
+        # shoulders; this avoids the historical short triangular wedge.
+        priority = np.where(
+            projection,
+            normalized_lateral + 0.12 * progress,
+            np.inf,
+        )
+    else:
+        lateral = np.abs(signed_lateral)
+        local_width = neck_width + (tip_width - neck_width) * np.power(progress, 0.72)
+        projection = (
+            legal
+            & (longitudinal >= -1.0)
+            & (longitudinal <= depth)
+            & (lateral <= 0.5 * local_width)
+        )
+        priority = np.where(
+            projection,
+            np.maximum(longitudinal, 0.0) + 0.08 * lateral,
+            np.inf,
+        )
     return projection, priority
 
 

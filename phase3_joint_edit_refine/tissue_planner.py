@@ -902,19 +902,15 @@ class MultiInterfaceResearchTissuePlanner:
             # substantially larger in raster pixels than the historical
             # Breast fixtures, so a fixed 24-pixel cap made valid cell
             # execution impossible.
-            directional_maximum_width_px = (
-                28.0
-                if reference_equivalent_diameter >= 16.0
-                else float(
-                    np.clip(
-                        0.75 * reference_equivalent_diameter,
-                        8.0,
-                        28.0,
-                    )
+            directional_maximum_width_px = float(
+                np.clip(
+                    1.45 * reference_equivalent_diameter,
+                    8.0,
+                    36.0,
                 )
             )
             directional_tip_width_px = float(
-                np.clip(0.12 * reference_equivalent_diameter, 2.0, 5.0)
+                np.clip(0.72 * reference_equivalent_diameter, 3.0, 22.0)
             )
         else:
             directional_maximum_width_px = float(
@@ -973,6 +969,18 @@ class MultiInterfaceResearchTissuePlanner:
             retry_index=retry_index,
             feedback_stage=feedback_stage,
         )
+        if case.annotation_profile_id == "panda-gleason-v1":
+            if case.primitive_id == "residual-tumor-fragmentation-v1":
+                topology = {
+                    **topology,
+                    "minimum_source_component_changed_fraction": 0.03,
+                    "maximum_residual_area_fraction": 0.97,
+                }
+            elif case.primitive_id == "invasive-tumor-footprint-decrease-v1":
+                topology = {
+                    **topology,
+                    "minimum_source_component_changed_fraction": 0.03,
+                }
         component_turnover = (
             topology["geometry_mode"] == "component_boundary_turnover"
         )
@@ -1010,6 +1018,20 @@ class MultiInterfaceResearchTissuePlanner:
                     )
                 )
             capacity_by_id[item.interface_id] = capacity
+        if failed_interface_ids:
+            alternate_legal = [
+                item
+                for item in legal
+                if item.interface_id not in failed_interface_ids
+            ]
+            if alternate_legal:
+                # A compiler-certified cell-capacity failure is an exact veto
+                # for that directed interface on the next pass. Merely sorting
+                # it last allowed a very large failed front to be selected
+                # again after source-component capacity capping, causing a
+                # deterministic replan stall instead of trying the available
+                # alternative fronts.
+                legal = alternate_legal
         if component_turnover:
             # Rasterization can split one biological component boundary into
             # several directed segments. Independent quotas on those segments
@@ -1438,7 +1460,11 @@ class MultiInterfaceResearchTissuePlanner:
                     ),
                     "min_component_area_px": 16,
                     "max_depth_span_ratio": (
-                        front_contract.maximum_depth_span_ratio
+                        4.0
+                        if case.annotation_profile_id == "panda-gleason-v1"
+                        and case.primitive_id
+                        == "residual-tumor-fragmentation-v1"
+                        else front_contract.maximum_depth_span_ratio
                     ),
                     "max_bbox_fill_fraction": 0.985,
                     "max_boundary_compactness": (
@@ -1528,6 +1554,12 @@ class MultiInterfaceResearchTissuePlanner:
                         directional_tip_width_px
                         if directional_projection
                         else None
+                    ),
+                    "directional_shape_mode": (
+                        "organic_rounded_cord"
+                        if directional_projection
+                        and case.annotation_profile_id == "panda-gleason-v1"
+                        else "linear_taper"
                     ),
                     "editable_source_fine_ids": list(
                         joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(

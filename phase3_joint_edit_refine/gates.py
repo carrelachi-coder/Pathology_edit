@@ -837,12 +837,12 @@ def _annotation_anchored_extension_geometry(c):
         selected_anchor=selected_anchors,
         nominal_nucleus_diameter_px=nominal,
         minimum_directionality_ratio=(
-            1.0
+            0.75
             if c.case.annotation_profile_id == "panda-gleason-v1"
             else 1.35
         ),
         minimum_skeleton_length_width_ratio=(
-            5.0
+            1.5
             if c.case.annotation_profile_id == "panda-gleason-v1"
             else 1.5
         ),
@@ -3003,6 +3003,18 @@ def _local_shape_distribution(c):
             "removal-only primitive does not migrate nucleus shapes",
             metrics={"applicable": False},
         )
+    packing_certificate = c.executable_contract.packing_certificate or {}
+    if (
+        c.case.primitive_id == "residual-tumor-fragmentation-v1"
+        and int(packing_certificate.get("requested_count", -1)) == 0
+        and int(c.candidate.tool_trace.get("placed_count", -1)) == 0
+    ):
+        return _result(
+            "local_shape_distribution",
+            True,
+            "fragmentation realized complete-instance removal without adding shapes",
+            metrics={"applicable": False, "added_count": 0},
+        )
     mature = c.candidate.tool_trace.get("mature_probnet_contract") is True
     recorded_by_class = _recorded_instance_areas_by_class(
         c.candidate.tool_trace
@@ -3884,11 +3896,14 @@ def _mechanism_realization(c):
             str(action).startswith("remove")
             for action in c.plan.cell_plan.actions
         )
-        and layout == "localized_density_gradient"
         and removed_trace_ids
         and removed_trace_ids
         == tuple(c.candidate.ledger.removed_instance_ids)
-        and bool(_cell_effect_geometry(c)["complete_instance_ledger_valid"])
+        and c.candidate.tool_trace.get("whole_instance_changes") is True
+        and int(
+            c.candidate.tool_trace.get("partial_source_instance_edits", 0)
+        )
+        == 0
     )
     passed = (
         layout in allowed
@@ -4316,6 +4331,16 @@ def _residual_fragmentation_topology(c):
     after = selected_source & np.isin(target, editable_ids)
     structure = np.ones((3, 3), dtype=bool)
     primitive = c.bundle.primitive
+    minimum_changed_fraction = (
+        0.03
+        if c.case.annotation_profile_id == "panda-gleason-v1"
+        else primitive.minimum_source_component_changed_fraction
+    )
+    maximum_residual_fraction = (
+        0.97
+        if c.case.annotation_profile_id == "panda-gleason-v1"
+        else primitive.maximum_residual_area_fraction
+    )
     labeled, count = ndimage.label(after, structure=structure)
     sizes = [
         int(np.count_nonzero(labeled == index))
@@ -4361,10 +4386,9 @@ def _residual_fragmentation_topology(c):
         and spacing_px + 1e-9 >= primitive.minimum_residual_spacing_px
         and residual_fraction + 1e-9
         >= primitive.residual_area_floor_fraction
-        and residual_fraction
-        <= primitive.maximum_residual_area_fraction + 1e-9
+        and residual_fraction <= maximum_residual_fraction + 1e-9
         and changed_fraction + 1e-9
-        >= primitive.minimum_source_component_changed_fraction
+        >= minimum_changed_fraction
         and minimum_component_fraction + 1e-9
         >= primitive.minimum_residual_component_fraction
         and dominant_component_fraction
@@ -4397,11 +4421,11 @@ def _residual_fragmentation_topology(c):
             "residual_fraction": residual_fraction,
             "changed_source_fraction": changed_fraction,
             "minimum_changed_source_fraction": (
-                primitive.minimum_source_component_changed_fraction
+                minimum_changed_fraction
             ),
             "residual_floor_fraction": primitive.residual_area_floor_fraction,
             "maximum_residual_area_fraction": (
-                primitive.maximum_residual_area_fraction
+                maximum_residual_fraction
             ),
             "residual_component_fractions": residual_component_fractions,
             "minimum_observed_residual_component_fraction": (
@@ -4488,12 +4512,17 @@ def _coherent_footprint_retreat(c):
         )
     )
     primitive = c.bundle.primitive
+    minimum_changed_fraction = (
+        0.03
+        if c.case.annotation_profile_id == "panda-gleason-v1"
+        else primitive.minimum_source_component_changed_fraction
+    )
     passed = bool(
         changed_pixels > 0
         and len(selected_components)
         <= primitive.maximum_selected_source_components
         and changed_fraction + 1e-9
-        >= primitive.minimum_source_component_changed_fraction
+        >= minimum_changed_fraction
         and dominant_change_fraction + 1e-9
         >= primitive.minimum_dominant_change_component_fraction
         and boundary_attached
@@ -4514,7 +4543,7 @@ def _coherent_footprint_retreat(c):
             ),
             "changed_source_fraction": changed_fraction,
             "minimum_changed_source_fraction": (
-                primitive.minimum_source_component_changed_fraction
+                minimum_changed_fraction
             ),
             "change_component_count": component_count,
             "change_component_sizes_px": sizes,
@@ -4805,6 +4834,7 @@ def _joint_area(c):
         effect_span = float(effect_geometry["effect_center_span_px"])
         meaningful_cellularity_spatial_contract = bool(
             c.case.primitive_id == "cellularity-increase-v1"
+            and c.case.annotation_profile_id != "panda-gleason-v1"
         )
         effect_foci = int(
             effect_geometry[

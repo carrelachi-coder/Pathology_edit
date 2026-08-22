@@ -61,15 +61,15 @@ PERIGLANDULAR_PRIMITIVES = frozenset(
     }
 )
 
-# These are the reviewed post-7c6 saliency budgets from commit 403db69.  They
-# enlarge target/max count and spatial extent without changing any primitive's
-# add/remove/layout operation or imposing a new multi-focus interpretation.
+# Post-7c6 review budgets tune only count and spatial extent; add/remove/layout
+# semantics are unchanged. Depletion keeps the primitive contract's twelve-cell
+# floor while allowing the compiler to choose a larger safe local population.
 MASK_REVIEW_CELL_BUDGETS = {
     "cell-type-abundance-increase-v1": CellCountExtentBudget(
         20, 12, 28, 384, 0, 48, 0, 0
     ),
     "cell-type-abundance-decrease-v1": CellCountExtentBudget(
-        20, 12, 28, 384, 0, 48, 0, 0
+        16, 12, 24, 384, 0, 48, 0, 0
     ),
     "cellularity-increase-v1": CellCountExtentBudget(
         20, 12, 28, 384, 0, 48, 0, 0
@@ -81,7 +81,7 @@ MASK_REVIEW_CELL_BUDGETS = {
         20, 12, 28, 384, 0, 48, 0, 0
     ),
     "neoplastic-cell-abundance-decrease-v1": CellCountExtentBudget(
-        20, 12, 28, 384, 0, 48, 0, 0
+        24, 12, 36, 384, 0, 48, 0, 0
     ),
     "peritumoral-neoplastic-scatter-increase-v1": CellCountExtentBudget(
         10, 4, 14, 144, 4, 48, 32, 4
@@ -853,6 +853,8 @@ def _build_case(
     case, _produced = materialize_profile_auxiliaries(
         case,
         source_tissue=load_id_mask(tissue_path),
+        source_image=np.asarray(Image.open(image).convert("RGB"), dtype=np.uint8),
+        source_nuclei=load_nuclei_mask(nuclei),
         output_dir=output_root / "profile_auxiliary" / case_id,
     )
     payload = case.to_metadata()
@@ -1235,7 +1237,10 @@ def _change_counts(source: np.ndarray, target: np.ndarray) -> dict[str, int]:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     output_root = args.output_dir.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-    if args.nucleus_instance_source == "cellvit":
+    nucleus_instance_source = (
+        "semantic-mask" if args.no_cellvit else args.nucleus_instance_source
+    )
+    if nucleus_instance_source == "cellvit":
         missing = [
             name
             for name, value in (
@@ -1322,7 +1327,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             compiler_attempt_index = attempt_index + int(args.seed_offset)
             native = None
             native_error = None
-            if not args.no_cellvit and evaluation.primitive_id in NATIVE_REQUIRED_PRIMITIVES:
+            if nucleus_instance_source == "cellvit":
                 try:
                     native = _native_authority(
                         row,
@@ -1429,7 +1434,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "he_generation_run": False,
         "llm_api_used": False,
         "probnet_device": args.probnet_device,
-        "nucleus_instance_source": args.nucleus_instance_source,
+        "nucleus_instance_source": nucleus_instance_source,
     }
     _write_json(output_root / "mask_review_summary.json", summary)
     return summary

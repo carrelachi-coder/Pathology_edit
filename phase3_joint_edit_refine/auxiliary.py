@@ -1,9 +1,9 @@
 """Deterministic auxiliary structure producers for executable joint edits.
 
-The producers in this module do not infer histology from H&E.  They recover
-only topology that is already observable in the versioned fine tissue mask:
-an internal non-pattern space must be completely enclosed by one gland/pattern
-component.  The resulting masks are protection maps, not new tissue labels.
+Lumen maps are conservative protection maps derived from the aligned H&E,
+tissue annotation, and complete nucleus mask.  The encoding is profile-aware:
+GLaS stores lumen inside the gland/tumor label, while PANDA stores it as
+Stroma.  The maps never rewrite the source tissue annotation.
 """
 
 from __future__ import annotations
@@ -24,8 +24,9 @@ from .authority import (
     semantic_gland_component_authority_metadata,
 )
 from .models import JointCaseContext, JointContractError
+from .lumen_observer import observe_luminal_spaces
 
-AUXILIARY_PRODUCER_VERSION = "joint-semantic-topology-auxiliary-v2"
+AUXILIARY_PRODUCER_VERSION = "joint-annotation-aware-auxiliary-v4"
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,8 @@ def materialize_profile_auxiliaries(
     case: JointCaseContext,
     *,
     source_tissue: np.ndarray,
+    source_image: np.ndarray | None = None,
+    source_nuclei: np.ndarray | None = None,
     output_dir: str | Path,
 ) -> tuple[JointCaseContext, tuple[ProducedAuxiliary, ...]]:
     """Produce missing profile-owned topology maps and bind their provenance.
@@ -114,6 +117,169 @@ def materialize_profile_auxiliaries(
                 pattern_fine_ids=specification.fine_ids,
             )
             protection_semantics = "enclosed_internal_space"
+        elif specification.producer_kind in {
+            "annotation_aware_lumen_protection",
+            "annotation_aware_gland_wall_protection",
+            "annotation_aware_external_stroma_receiving",
+        }:
+            if source_image is None or source_nuclei is None:
+                # Compatibility for read-only topology utilities.  Production
+                # workflow call sites bind all three aligned source assets.
+                lumen_fallback, details = _enclosed_pattern_spaces(
+                    source_tissue,
+                    pattern_fine_ids=specification.fine_ids,
+                )
+                if (
+                    specification.producer_kind
+                    == "annotation_aware_external_stroma_receiving"
+                ):
+                    mask = np.isin(source_tissue, (2,)) & ~lumen_fallback
+                    fallback_semantics = "semantic_stroma_receiving_fallback"
+                elif (
+                    specification.producer_kind
+                    == "annotation_aware_gland_wall_protection"
+                ):
+                    architecture = np.isin(
+                        source_tissue, specification.fine_ids
+                    )
+                    mask = lumen_fallback | (
+                        ndimage.binary_dilation(
+                            lumen_fallback,
+                            structure=_disk(9),
+                        )
+                        & architecture
+                    )
+                    fallback_semantics = (
+                        "enclosed_space_plus_epithelial_wall_fallback"
+                    )
+                else:
+                    mask = lumen_fallback
+                    fallback_semantics = "enclosed_internal_space_fallback"
+                details = {
+                    **details,
+                    "observer_status": "semantic_topology_fallback",
+                    "fallback_reason": "aligned_image_or_nuclei_unavailable",
+                }
+                protection_semantics = fallback_semantics
+            else:
+                encoding = (
+                    "within_architecture"
+                    if case.annotation_profile_id == "glas-gland-v1"
+                    else "stroma"
+                )
+                observation = observe_luminal_spaces(
+                    source_image,
+                    source_tissue,
+                    source_nuclei,
+                    stroma_fine_ids=(2,),
+                    architecture_fine_ids=specification.fine_ids,
+                    lumen_encoding=encoding,
+                )
+                if (
+                    specification.producer_kind
+                    == "annotation_aware_gland_wall_protection"
+                ):
+                    # One operational gland unit is its protected luminal
+                    # space plus the immediately adjacent annotated epithelial
+                    # wall.  The band is cell-scale and can reach a crop edge;
+                    # it therefore protects both closed and truncated glands.
+                    radius = max(
+                        2,
+                        int(round(1.15 * observation.nominal_cell_diameter_px)),
+                    )
+                    lumen = observation.protected_space
+                    architecture = np.isin(
+                        source_tissue, specification.fine_ids
+                    )
+                    wall = ndimage.binary_dilation(
+                        lumen,
+                        structure=_disk(radius),
+                    ) & architecture
+                    mask = lumen | wall
+                    details = {
+                        **observation.to_metadata(),
+                        "gland_wall_radius_px": radius,
+                        "protected_lumen_pixels": int(
+                            np.count_nonzero(lumen)
+                        ),
+                        "protected_epithelial_wall_pixels": int(
+                            np.count_nonzero(wall)
+                        ),
+                    }
+                    protection_semantics = (
+                        "lumen_plus_cell_scale_epithelial_wall_protection"
+                    )
+                elif (
+                    specification.producer_kind
+                    == "annotation_aware_external_stroma_receiving"
+                ):
+                    # Scatter is legal only in external tissue-bearing stroma.
+                    # White glass/lumen, uncertain low-cell spaces and extreme
+                    # dark artifacts are not receiving tissue.
+                    stained = (
+                        (observation.raw_luminance <= 0.92)
+                        & (observation.raw_luminance >= 0.25)
+                        & (observation.raw_optical_density >= 0.06)
+                        & (observation.raw_optical_density <= 1.40)
+                    )
+                    cellular_support = (
+                        (observation.local_nucleus_count >= 0.20)
+                        | (observation.raw_optical_density >= 0.12)
+                    )
+                    receiving_support = stained & cellular_support
+                    if case.annotation_profile_id == "panda-gleason-v1":
+                        # This is a receiving *domain*, not a pixelwise H&E
+                        # texture mask.  Expand nearby tissue evidence enough
+                        # to admit a small source-calibrated cell group while
+                        # the external-stroma observer continues to exclude
+                        # lumina and slide background.
+                        support_radius = max(
+                            2,
+                            int(
+                                round(
+                                    2.5
+                                    * observation.nominal_cell_diameter_px
+                                )
+                            ),
+                        )
+                        receiving_support = ndimage.binary_dilation(
+                            receiving_support,
+                            structure=_disk(support_radius),
+                        )
+                    mask = (
+                        observation.external_stroma
+                        & receiving_support
+                        & stained
+                    )
+                    details = {
+                        **observation.to_metadata(),
+                        "external_stroma_pixels": int(
+                            np.count_nonzero(observation.external_stroma)
+                        ),
+                        "receiving_external_cellular_stroma_pixels": int(
+                            np.count_nonzero(mask)
+                        ),
+                    }
+                    protection_semantics = (
+                        "external_cellular_stroma_receiving_domain"
+                    )
+                else:
+                    mask = observation.protected_space
+                    details = {
+                        **observation.to_metadata(),
+                        "observer_status": "annotation_aware_observation",
+                        "confirmed_pixels": int(
+                            np.count_nonzero(observation.confirmed_lumen)
+                        ),
+                        "uncertain_protected_pixels": int(
+                            np.count_nonzero(
+                                observation.uncertain_low_cell_space
+                            )
+                        ),
+                    }
+                    protection_semantics = (
+                        "confirmed_or_uncertain_luminal_space_protection"
+                    )
         elif specification.producer_kind == "explicit_profile_structure":
             mask = np.isin(source_tissue, specification.fine_ids)
             details = _explicit_structure_units(
@@ -141,9 +307,19 @@ def materialize_profile_auxiliaries(
         current_provenance = {
             "producer_id": AUXILIARY_PRODUCER_VERSION,
             "producer_version": AUXILIARY_PRODUCER_VERSION,
-            "observation_scope": "semantic_fine_mask_topology_only",
+            "observation_scope": (
+                "aligned_he_tissue_and_nuclei"
+                if specification.producer_kind.startswith("annotation_aware_")
+                and source_image is not None
+                and source_nuclei is not None
+                else "semantic_fine_mask_topology_only"
+            ),
             "protection_semantics": protection_semantics,
             "source_tissue_mask_sha256": source_digest,
+            "source_image_sha256": case.provenance.get("source_image_sha256"),
+            "source_nuclei_mask_sha256": case.provenance.get(
+                "source_nuclei_mask_sha256"
+            ),
             "output_sha256": digest,
             "output_dtype": str(output.dtype),
             "pattern_fine_ids": list(specification.fine_ids),
@@ -195,7 +371,7 @@ def _profile_specifications(
         return (
             _AuxiliarySpecification(
                 "gland_or_lumen_support",
-                "enclosed_pattern_spaces",
+                "annotation_aware_lumen_protection",
                 (5, 11, 12, 13),
             ),
             _AuxiliarySpecification(
@@ -203,12 +379,17 @@ def _profile_specifications(
                 "connected_gland_instances",
                 (5, 11, 12, 13),
             ),
+            _AuxiliarySpecification(
+                "external_cellular_stroma_map",
+                "annotation_aware_external_stroma_receiving",
+                (5, 11, 12, 13),
+            ),
         )
     if annotation_profile_id == "panda-gleason-v1":
         return (
             _AuxiliarySpecification(
                 "native_pattern_and_lumen_map",
-                "enclosed_pattern_spaces",
+                "annotation_aware_lumen_protection",
                 (8, 9, 10),
             ),
             _AuxiliarySpecification(
@@ -218,7 +399,17 @@ def _profile_specifications(
             ),
             _AuxiliarySpecification(
                 "gland_lumen_map",
-                "enclosed_pattern_spaces",
+                "annotation_aware_lumen_protection",
+                (8, 9, 10),
+            ),
+            _AuxiliarySpecification(
+                "gland_unit_wall_map",
+                "annotation_aware_gland_wall_protection",
+                (8, 9, 10),
+            ),
+            _AuxiliarySpecification(
+                "external_cellular_stroma_map",
+                "annotation_aware_external_stroma_receiving",
                 (8, 9, 10),
             ),
         )
@@ -496,3 +687,9 @@ def _validate_bound_auxiliary_provenance(case: JointCaseContext) -> None:
             raise JointContractError(
                 f"auxiliary structure {structure_id!r} producer identity is missing"
             )
+
+
+def _disk(radius: int) -> np.ndarray:
+    radius = max(1, int(radius))
+    rows, cols = np.ogrid[-radius : radius + 1, -radius : radius + 1]
+    return rows * rows + cols * cols <= radius * radius

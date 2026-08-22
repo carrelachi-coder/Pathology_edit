@@ -195,7 +195,6 @@ class ClinicalScenarioParserTests(unittest.TestCase):
         intent = RuleBasedSemanticParser().parse(
             "increase tumor infiltration"
         )
-
         self.assertEqual(
             intent.primitive_id,
             "peritumoral-neoplastic-scatter-increase-v1",
@@ -208,6 +207,39 @@ class ClinicalScenarioParserTests(unittest.TestCase):
                 "invasive-cord-formation-v1",
                 "peritumoral-tumor-nest-formation-v1",
             ],
+        )
+
+    def test_panda_retires_generic_burden_alias_but_keeps_language_compatibility(self):
+        raw = {
+            "case_id": "panda-retired-burden",
+            "instruction": "increase tumor burden",
+            "primitive_id": "tumor-burden-increase-v1",
+            "source_image_uri": "/tmp/image.png",
+            "source_tissue_mask_uri": "/tmp/tissue.png",
+            "source_nuclei_mask_uri": "/tmp/nuclei.png",
+            "pathology_domain_id": "prostate-adenocarcinoma-v1",
+            "annotation_profile_id": "panda-gleason-v1",
+            "cell_observation_profile_id": "cellvit-five-class-v1",
+            "cell_population_profile_id": "prostate-cell-population-v1",
+            "seed": 42,
+            "provenance": {
+                "source_image_sha256": "image-digest",
+                "source_tissue_mask_sha256": "tissue-digest",
+                "source_nuclei_mask_sha256": "nuclei-digest",
+            },
+        }
+
+        case, intent = bind_semantic_intent(raw, RuleBasedSemanticParser())
+
+        self.assertEqual(case.primitive_id, "cohesive-boundary-expansion-v1")
+        self.assertEqual(intent.primitive_id, "cohesive-boundary-expansion-v1")
+        self.assertNotIn(
+            "tumor-burden-increase-v1",
+            [item.primitive_id for item in intent.primitive_hypotheses],
+        )
+        self.assertEqual(
+            case.provenance["retired_primitive_alias"],
+            "tumor-burden-increase-v1",
         )
 
     def test_infiltration_rules_do_not_collide_with_abundance(self):
@@ -235,6 +267,23 @@ class ClinicalScenarioParserTests(unittest.TestCase):
                 intent.primitive_id,
                 "neoplastic-cell-abundance-decrease-v1",
             )
+
+    def test_connective_cell_abundance_is_an_explicit_cell_type_edit(self):
+        parser = RuleBasedSemanticParser()
+        for instruction, primitive in (
+            (
+                "Increase connective tissue cells in the selected region.",
+                "cell-type-abundance-increase-v1",
+            ),
+            (
+                "Decrease fibroblasts in the selected region.",
+                "cell-type-abundance-decrease-v1",
+            ),
+        ):
+            intent = parser.parse(instruction)
+            self.assertEqual(intent.primitive_id, primitive)
+            self.assertEqual(intent.explicit_cell_class, "connective")
+
     def test_parser_keeps_front_void_and_architecture_scales_separate(self):
         parser = RuleBasedSemanticParser()
         self.assertEqual(

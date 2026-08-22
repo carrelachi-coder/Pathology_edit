@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from PIL import Image
 
 from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_mask_edit_refine.gates import GateRegistry
@@ -42,7 +43,9 @@ from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillRepository
 from .workflow import (
     INFILTRATION_BUDGET_PRIMITIVES,
+    PANDA_CELL_EFFECT_EXTENT_OVERRIDES,
     JointPathologyEditWorkflow,
+    _apply_panda_profile_cell_budget,
     _as_tissue_case,
     _derive_infiltration_budget,
     _derive_local_population_budget,
@@ -250,6 +253,11 @@ def _qualify_case(
         case, produced = materialize_profile_auxiliaries(
             case,
             source_tissue=source_tissue,
+            source_image=np.asarray(
+                Image.open(case.source_image_uri).convert("RGB"),
+                dtype=np.uint8,
+            ),
+            source_nuclei=source_nuclei,
             output_dir=auxiliary_root / case_id,
         )
         schema = mask_skills.annotation_schema(case.annotation_profile_id)
@@ -503,6 +511,18 @@ def _with_scene_calibrated_cell_budget(
         return case
     if case.cell_count_extent_budget is not None:
         return case
+    minimum_effect_span_cell_diameters = (
+        primitive.minimum_effect_span_cell_diameters
+    )
+    minimum_effect_foci = primitive.minimum_effect_foci
+    if (
+        case.annotation_profile_id == "panda-gleason-v1"
+        and case.primitive_id in PANDA_CELL_EFFECT_EXTENT_OVERRIDES
+    ):
+        (
+            minimum_effect_span_cell_diameters,
+            minimum_effect_foci,
+        ) = PANDA_CELL_EFFECT_EXTENT_OVERRIDES[case.primitive_id]
     if case.primitive_id in INFILTRATION_BUDGET_PRIMITIVES:
         budget, budget_metadata = _derive_infiltration_budget(
             scene,
@@ -512,9 +532,9 @@ def _with_scene_calibrated_cell_budget(
                 )
             ),
             minimum_effect_span_cell_diameters=(
-                primitive.minimum_effect_span_cell_diameters
+                minimum_effect_span_cell_diameters
             ),
-            minimum_effect_foci=primitive.minimum_effect_foci,
+            minimum_effect_foci=minimum_effect_foci,
         )
     else:
         budget, budget_metadata = _derive_local_population_budget(
@@ -529,10 +549,16 @@ def _with_scene_calibrated_cell_budget(
                 )
             ),
             minimum_effect_span_cell_diameters=(
-                primitive.minimum_effect_span_cell_diameters
+                minimum_effect_span_cell_diameters
             ),
-            minimum_effect_foci=primitive.minimum_effect_foci,
+            minimum_effect_foci=minimum_effect_foci,
         )
+    budget, budget_metadata = _apply_panda_profile_cell_budget(
+        case,
+        primitive_id=case.primitive_id,
+        budget=budget,
+        metadata=budget_metadata,
+    )
     semantic = dict(case.semantic_intent)
     derived = dict(semantic.get("derived_budget_policies", {}))
     derived[case.primitive_id] = budget_metadata

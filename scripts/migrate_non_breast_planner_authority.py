@@ -136,6 +136,15 @@ SIMPLE_INSTRUCTION_BY_PRIMITIVE = {
     "tumor-burden-increase-v1": "Increase tumor burden.",
 }
 
+
+def _simple_instruction(profile_id: str, primitive_id: str) -> str:
+    if profile_id == "panda-gleason-v1":
+        if primitive_id == "cell-type-abundance-increase-v1":
+            return "Increase connective tissue cells in the selected region."
+        if primitive_id == "cell-type-abundance-decrease-v1":
+            return "Decrease connective tissue cells in the selected region."
+    return SIMPLE_INSTRUCTION_BY_PRIMITIVE[primitive_id]
+
 RECOGNITION_REPLACEMENTS = (
     (r"H&E-confirmed", "mask-component-certified"),
     (r"high-confidence H&E evidence", "digest-bound mask-graph evidence"),
@@ -590,7 +599,7 @@ def _render_capability_matrix(root: Path) -> str:
                         "status": status,
                         "production_status": "shadow_only",
                         "simple_instructions": [
-                            SIMPLE_INSTRUCTION_BY_PRIMITIVE[primitive_id]
+                            _simple_instruction(profile_id, primitive_id)
                         ],
                         "required_auxiliary_structures": list(
                             mechanism.representability.required_auxiliary_structures

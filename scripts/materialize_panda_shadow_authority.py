@@ -54,23 +54,25 @@ DEFAULT_USER_AUTHORITY_TEXT = (
 JOINT_AREA_BUDGET_BY_PRIMITIVE = {
     # These are the repository's already exercised cross-organ/PANDA geometry
     # contracts.  A narrow cord must never inherit a bulk-growth floor.
-    "local-invasive-clearance-v1": (0.04, 0.02, 0.07, 0.02),
-    "stroma-increase-v1": (0.08, 0.04, 0.12, 0.04),
-    "invasive-tumor-footprint-decrease-v1": (0.08, 0.04, 0.12, 0.04),
-    "residual-tumor-fragmentation-v1": (0.035, 0.03, 0.05, 0.03),
-    "tumor-burden-increase-v1": (0.08, 0.04, 0.12, 0.04),
-    "cohesive-boundary-expansion-v1": (0.08, 0.04, 0.12, 0.04),
+    "local-invasive-clearance-v1": (0.04, 0.02, 0.12, 0.02),
+    "stroma-increase-v1": (0.03, 0.02, 0.12, 0.02),
+    "invasive-tumor-footprint-decrease-v1": (0.03, 0.02, 0.12, 0.02),
+    # These are local topology edits, not whole-patch tumor-burden edits.
+    # A 1.5% floor remains plainly visible at 512x512 while avoiding the
+    # forced bulk cuts/growth that damaged otherwise intact gland units.
+    "residual-tumor-fragmentation-v1": (0.035, 0.015, 0.05, 0.015),
+    "cohesive-boundary-expansion-v1": (0.02, 0.015, 0.06, 0.015),
     # One PANDA Pattern-5 cord must be large enough to contain complete
     # source-calibrated nuclei while remaining a single narrow projection.
-    # On a 512x512 patch this is about 603--3,146 pixels, not bulk growth.
-    "infiltrative-nest-cord-extension-v1": (0.008, 0.0018, 0.012, 0.0018),
+    # On a 512x512 patch this is about 786--3,146 pixels, not bulk growth.
+    "infiltrative-nest-cord-extension-v1": (0.0053, 0.003, 0.012, 0.003),
 }
 FROZEN_EXECUTION_INSTRUCTIONS = {
     ("prostate-local-population-modulation", "cell-type-abundance-increase-v1"): (
-        "Increase immune cells in the selected region."
+        "Increase connective tissue cells in the selected region."
     ),
     ("prostate-local-population-modulation", "cell-type-abundance-decrease-v1"): (
-        "Decrease immune cells in the selected region."
+        "Decrease connective tissue cells in the selected region."
     ),
     ("prostate-local-population-modulation", "cellularity-increase-v1"): (
         "Increase local cellularity."
@@ -103,14 +105,8 @@ FROZEN_EXECUTION_INSTRUCTIONS = {
         "Simulate post-treatment residual disease by fragmenting residual tumor "
         "into controlled foci."
     ),
-    ("prostate-pattern-4-growth", "tumor-burden-increase-v1"): (
-        "Increase tumor burden."
-    ),
     ("prostate-pattern-4-growth", "cohesive-boundary-expansion-v1"): (
         "Expand the tumor boundary locally."
-    ),
-    ("prostate-pattern-5-growth", "tumor-burden-increase-v1"): (
-        "Increase tumor burden."
     ),
     ("prostate-pattern-5-growth", "cohesive-boundary-expansion-v1"): (
         "Expand the tumor boundary locally."

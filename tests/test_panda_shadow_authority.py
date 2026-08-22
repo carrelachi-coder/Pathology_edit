@@ -30,6 +30,7 @@ from scripts.materialize_panda_shadow_authority import (
 )
 from scripts.prepare_panda_primitive_shadow_selection import (
     EVALUATIONS,
+    _coarse_eligible,
     _diverse_top,
     _fill_distinct_overlap_minimized,
     _minimum_feasible_max_cases_per_slide,
@@ -39,11 +40,42 @@ from scripts.run_panda_primitive_shadow_replay import (
     _compiled_review_candidate,
     _directory_sha256 as _replay_directory_sha256,
     _frozen_ranker_binding_passed,
+    _load_qualification_records,
+    _qualification_record_passed,
     _select_diverse_passes,
 )
 
 
 class PandaShadowAuthorityTests(unittest.TestCase):
+    def test_replay_loads_materializer_json_qualification_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "qualification.json"
+            path.write_text(
+                json.dumps({"cases": [{"case_id": "case-1"}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                _load_qualification_records(path),
+                [{"case_id": "case-1"}],
+            )
+
+    def test_replay_accepts_current_and_legacy_qualification_records(self):
+        self.assertTrue(
+            _qualification_record_passed(
+                {"execution_allowed": True, "decision_status": "eligible"}
+            )
+        )
+        self.assertTrue(
+            _qualification_record_passed(
+                {"status": "executable_preflight_passed"}
+            )
+        )
+        self.assertFalse(
+            _qualification_record_passed(
+                {"execution_allowed": False, "decision_status": "eligible"}
+            )
+        )
+
     def test_panda_component_architecture_uses_bounded_portfolios(self):
         for primitive_id in (
             "invasive-tumor-footprint-decrease-v1",
@@ -265,6 +297,17 @@ class PandaShadowAuthorityTests(unittest.TestCase):
             _parse_selection_count_overrides("15:48"), {15: 48}
         )
 
+    def test_panda_fragmentation_screen_uses_profile_owned_three_percent_floor(self):
+        metrics = {
+            "fine_pixel_counts": {"10": 70000},
+            "stroma_pixels": 60000,
+            "p5_stroma_contact_pixels": 800,
+            "tumor_largest_component_pixels": 180000,
+        }
+        self.assertTrue(_coarse_eligible("fragmentation", metrics))
+        metrics["tumor_largest_component_pixels"] = 19000
+        self.assertFalse(_coarse_eligible("fragmentation", metrics))
+
     def test_full_replay_requires_exact_frozen_ranker_assets(self):
         evidence = [
             {
@@ -312,7 +355,7 @@ class PandaShadowAuthorityTests(unittest.TestCase):
         self.assertEqual(
             _joint_area_budget("infiltrative-nest-cord-extension-v1")
             ["min_fraction"],
-            0.0018,
+            0.003,
         )
         self.assertEqual(
             _joint_area_budget("infiltrative-nest-cord-extension-v1")
@@ -321,12 +364,22 @@ class PandaShadowAuthorityTests(unittest.TestCase):
         )
         self.assertEqual(
             _joint_area_budget("local-invasive-clearance-v1")["max_fraction"],
-            0.07,
+            0.12,
         )
         self.assertEqual(
             _joint_area_budget("residual-tumor-fragmentation-v1")
             ["target_fraction"],
             0.035,
+        )
+        self.assertEqual(
+            _joint_area_budget("residual-tumor-fragmentation-v1")
+            ["min_fraction"],
+            0.015,
+        )
+        self.assertEqual(
+            _joint_area_budget("cohesive-boundary-expansion-v1")
+            ["target_fraction"],
+            0.02,
         )
 
     def test_frozen_semantic_intent_binds_reviewed_primitive(self):

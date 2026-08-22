@@ -1,7 +1,7 @@
 {
   "schema_version": "p1-glas-panda-runtime-authority-v1",
   "production_status": "shadow_only",
-  "selection_manifest_sha256": "df4cbf3d1af5ba407a260ea2f490ca2b26aafb14f171a83d516836b280978d59",
+  "selection_manifest_sha256": "e5d09e655f90390e9fe34a306e878bb9077e4083846d452f627a6d08e1213be5",
   "preflight_configuration": {
     "cell_budget_policy_id": "scene-calibrated-local-population-budget-v1",
     "joint_area_budget": {

@@ -132,11 +132,24 @@ INFILTRATION_BUDGET_PRIMITIVES = frozenset(
 
 PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES = frozenset(
     {
+        "local-invasive-clearance-v1",
+        "stroma-increase-v1",
         "invasive-tumor-footprint-decrease-v1",
-        "tumor-burden-increase-v1",
         "cohesive-boundary-expansion-v1",
     }
 )
+
+PANDA_CELL_EFFECT_EXTENT_OVERRIDES = {
+    "cell-type-abundance-increase-v1": (2.5, 1),
+    "cell-type-abundance-decrease-v1": (1.5, 0),
+    # Cellularity is one bounded mixed-population field.  It must span a
+    # visible local region, but it is not three independent abundance foci.
+    "cellularity-increase-v1": (3.0, 1),
+    "cellularity-decrease-v1": (4.0, 0),
+    "neoplastic-cell-abundance-increase-v1": (2.0, 1),
+    "neoplastic-cell-abundance-decrease-v1": (1.5, 0),
+    "peritumoral-neoplastic-scatter-increase-v1": (4.0, 3),
+}
 
 
 @dataclass(frozen=True)
@@ -388,6 +401,11 @@ class JointPathologyEditWorkflow:
             case, produced_auxiliaries = materialize_profile_auxiliaries(
                 case,
                 source_tissue=source_tissue,
+                source_image=np.asarray(
+                    Image.open(case.source_image_uri).convert("RGB"),
+                    dtype=np.uint8,
+                ),
+                source_nuclei=source_nuclei,
                 output_dir=audit.case_dir / "auxiliary_structures",
             )
             if produced_auxiliaries:
@@ -2082,6 +2100,16 @@ class JointPathologyEditWorkflow:
                 and primitive_contract.scope == "cell_only"
                 and candidate_case.cell_count_extent_budget is None
             ):
+                minimum_effect_span_cell_diameters = (
+                    primitive_contract.minimum_effect_span_cell_diameters
+                )
+                minimum_effect_foci = primitive_contract.minimum_effect_foci
+                if candidate_case.annotation_profile_id == "panda-gleason-v1":
+                    if primitive_id in PANDA_CELL_EFFECT_EXTENT_OVERRIDES:
+                        (
+                            minimum_effect_span_cell_diameters,
+                            minimum_effect_foci,
+                        ) = PANDA_CELL_EFFECT_EXTENT_OVERRIDES[primitive_id]
                 if primitive_id in INFILTRATION_BUDGET_PRIMITIVES:
                     try:
                         budget, budget_metadata = _derive_infiltration_budget(
@@ -2092,11 +2120,9 @@ class JointPathologyEditWorkflow:
                                 )
                             ),
                             minimum_effect_span_cell_diameters=(
-                                primitive_contract.minimum_effect_span_cell_diameters
+                                minimum_effect_span_cell_diameters
                             ),
-                            minimum_effect_foci=(
-                                primitive_contract.minimum_effect_foci
-                            ),
+                            minimum_effect_foci=minimum_effect_foci,
                         )
                     except (JointContractError, RefineContractError, ValueError) as exc:
                         rejected[primitive_id] = str(exc)
@@ -2117,15 +2143,19 @@ class JointPathologyEditWorkflow:
                                 )
                             ),
                             minimum_effect_span_cell_diameters=(
-                                primitive_contract.minimum_effect_span_cell_diameters
+                                minimum_effect_span_cell_diameters
                             ),
-                            minimum_effect_foci=(
-                                primitive_contract.minimum_effect_foci
-                            ),
+                            minimum_effect_foci=minimum_effect_foci,
                         )
                     except (JointContractError, RefineContractError, ValueError) as exc:
                         rejected[primitive_id] = str(exc)
                         continue
+                budget, budget_metadata = _apply_panda_profile_cell_budget(
+                    candidate_case,
+                    primitive_id=primitive_id,
+                    budget=budget,
+                    metadata=budget_metadata,
+                )
                 budget, budget_metadata = _apply_glas_visible_cell_budget(
                     candidate_case,
                     primitive_id=primitive_id,
@@ -3384,6 +3414,21 @@ class JointPathologyEditWorkflow:
                 item.component_id: item.label
                 for item in scene.tissue.graph.components
             }
+            raw_classes = case.provenance.get("target_cell_class_ids", ())
+            if isinstance(raw_classes, int):
+                raw_classes = (raw_classes,)
+            requested_class_ids = (
+                tuple(sorted({int(value) for value in raw_classes}))
+                if isinstance(raw_classes, (list, tuple))
+                else ()
+            )
+            abundance = case.primitive_id.startswith(
+                (
+                    "cell-type-abundance-",
+                    "neoplastic-cell-abundance-",
+                    "generic-inflammatory-cell-abundance-",
+                )
+            )
             zones = [
                 item
                 for item in scene.population.zones
@@ -3392,8 +3437,33 @@ class JointPathologyEditWorkflow:
                 in set(bundle.primitive.host_tissue_labels)
                 and item.area_px > 0
             ]
+            if (
+                abundance
+                and requested_class_ids
+                and case.annotation_profile_id
+                in {"glas-gland-v1", "panda-gleason-v1"}
+            ):
+                required_label = (
+                    "Tumor" if set(requested_class_ids) == {1} else "Stroma"
+                )
+                zones = [
+                    item
+                    for item in zones
+                    if component_labels.get(item.tissue_component_id)
+                    == required_label
+                ]
             zones.sort(
-                key=lambda item: (-item.nucleus_count, -item.area_px, item.zone_id)
+                key=lambda item: (
+                    -sum(
+                        int(item.class_counts.get(class_id, 0))
+                        for class_id in requested_class_ids
+                    )
+                    if abundance and requested_class_ids
+                    else -item.nucleus_count,
+                    -item.nucleus_count,
+                    -item.area_px,
+                    item.zone_id,
+                )
             )
             layout_program = bundle.mechanism.cell_program.layout_for(
                 case.primitive_id
@@ -4589,6 +4659,44 @@ def _apply_glas_visible_cell_budget(
     }
 
 
+def _apply_panda_profile_cell_budget(
+    case: JointCaseContext,
+    *,
+    primitive_id: str,
+    budget: CellCountExtentBudget,
+    metadata: dict[str, Any],
+) -> tuple[CellCountExtentBudget, dict[str, Any]]:
+    """Keep PANDA cell edits meaningful without over-scaling small patches."""
+
+    if (
+        case.annotation_profile_id != "panda-gleason-v1"
+        or primitive_id not in PANDA_CELL_EFFECT_EXTENT_OVERRIDES
+    ):
+        return budget, metadata
+    meaningful_count = int(metadata.get("skill_minimum_effect_delta_count", 0))
+    if meaningful_count <= 0:
+        return budget, metadata
+    calibrated = replace(
+        budget,
+        target_delta_count=meaningful_count,
+        min_delta_count=meaningful_count,
+        max_delta_count=max(
+            meaningful_count,
+            min(
+                budget.max_delta_count,
+                int(np.ceil(meaningful_count * 1.5)),
+            ),
+        ),
+    )
+    return calibrated, {
+        **metadata,
+        "pre_profile_budget": budget.__dict__,
+        "policy_id": "panda-profile-cell-effect-budget-v1",
+        "authority": "system_owned_profile_specific_budget",
+        "budget": calibrated.__dict__,
+    }
+
+
 def _derive_infiltration_budget(
     scene,
     *,
@@ -4730,6 +4838,30 @@ def _derive_local_population_budget(
         item.component_id: item.label
         for item in scene.tissue.graph.components
     }
+    protected_lumen = None
+    external_cellular_stroma = None
+    if annotation_profile_id == "panda-gleason-v1":
+        protected_lumen = scene.auxiliary_structure_masks.get(
+            "gland_lumen_map"
+        )
+        external_cellular_stroma = scene.auxiliary_structure_masks.get(
+            "external_cellular_stroma_map"
+        )
+
+    def legal_zone_mask(zone) -> np.ndarray:
+        mask = np.asarray(
+            scene.population_zone_masks[zone.zone_id], dtype=bool
+        ).copy()
+        if protected_lumen is not None:
+            mask &= ~np.asarray(protected_lumen, dtype=bool)
+        if (
+            primitive_id.endswith("increase-v1")
+            and component_labels.get(zone.tissue_component_id) == "Stroma"
+            and external_cellular_stroma is not None
+        ):
+            mask &= np.asarray(external_cellular_stroma, dtype=bool)
+        return mask
+
     host_labels = set(host_tissue_labels)
     component_zones = [
         zone
@@ -4774,12 +4906,16 @@ def _derive_local_population_budget(
             and item.completeness_status == "complete"
             and not item.quality_flags
             and (not class_ids or item.class_id in class_ids)
+            and not np.any(
+                np.asarray(scene.instance_masks[item.instance_id], dtype=bool)
+                & ~legal_zone_mask(zone)
+            )
         )
         for zone in component_zones
     }
     coarse_capacity_by_zone = {}
     for zone in component_zones:
-        zone_mask = scene.population_zone_masks[zone.zone_id]
+        zone_mask = legal_zone_mask(zone)
         free_pixels = int(
             np.count_nonzero(
                 np.asarray(zone_mask, dtype=bool)
@@ -4853,9 +4989,7 @@ def _derive_local_population_budget(
                 class_weights = {
                     int(class_id): 1.0 for class_id in references_by_class
                 }
-            zone_mask = np.asarray(
-                scene.population_zone_masks[zone.zone_id], dtype=bool
-            )
+            zone_mask = legal_zone_mask(zone)
             packing_by_zone[zone.zone_id] = certify_complete_footprint_packing(
                 source_nuclei=scene.source_nuclei,
                 erased_footprint=np.zeros_like(zone_mask, dtype=bool),

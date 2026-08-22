@@ -226,7 +226,7 @@ class P1AuthorityPreflightTests(unittest.TestCase):
             raise AssertionError(runtime)
         return runtime
 
-    def test_builds_complete_fail_closed_24_by_5_ledgers(self):
+    def test_builds_complete_fail_closed_22_by_5_ledgers(self):
         artifacts = self._build()
         validate_artifacts(artifacts)
         summary = json.loads(artifacts[OUTPUT_FILENAMES["summary"]])
@@ -239,11 +239,11 @@ class P1AuthorityPreflightTests(unittest.TestCase):
             for line in artifacts[OUTPUT_FILENAMES["preflight"]].splitlines()
         ]
         auxiliary = json.loads(artifacts[OUTPUT_FILENAMES["auxiliary"]])
-        self.assertEqual(summary["frozen_binding_count"], 120)
-        self.assertEqual(summary["evaluation_count"], 24)
-        self.assertEqual(summary["status_counts"], {"eligible": 0, "reject": 120, "abstain": 0})
-        self.assertEqual(len(authority), 120)
-        self.assertEqual(len(preflight), 120)
+        self.assertEqual(summary["frozen_binding_count"], 110)
+        self.assertEqual(summary["evaluation_count"], 22)
+        self.assertEqual(summary["status_counts"], {"eligible": 0, "reject": 110, "abstain": 0})
+        self.assertEqual(len(authority), 110)
+        self.assertEqual(len(preflight), 110)
         self.assertEqual(len(auxiliary["entries"]), 25)
         self.assertTrue(all(item["fixed_case_no_replacement"] for item in authority))
         self.assertTrue(
@@ -263,11 +263,11 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         counts = summary["before_after_counts"]
         self.assertEqual(
             counts["bindings_with_missing_source_digest"],
-            {"before": 40, "after": 40},
+            {"before": 38, "after": 38},
         )
         self.assertEqual(
             counts["source_digest_fields_missing"],
-            {"before": 80, "after": 80},
+            {"before": 76, "after": 76},
         )
         self.assertEqual(
             counts["binding_external_auxiliary_missing"],
@@ -283,7 +283,7 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         )
         self.assertEqual(
             counts["bindings_missing_profile_provenance"],
-            {"before": 120, "after": 120},
+            {"before": 110, "after": 110},
         )
         self.assertEqual(
             counts["profile_owned_auxiliary_outputs_materialized"],
@@ -291,7 +291,7 @@ class P1AuthorityPreflightTests(unittest.TestCase):
         )
         self.assertEqual(
             len(artifacts[OUTPUT_FILENAMES["status_table"]].splitlines()),
-            121,
+            111,
         )
         for field in (
             "planner_called",

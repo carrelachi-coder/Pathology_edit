@@ -27,12 +27,15 @@
       3
     ],
     "required_auxiliary_structures": [
-      "local_clearance_roi"
+      "local_clearance_roi",
+      "gland_unit_wall_map"
     ],
     "receiving_auxiliary_structures": [
       "local_clearance_roi"
     ],
-    "protected_auxiliary_structures": [],
+    "protected_auxiliary_structures": [
+      "gland_unit_wall_map"
+    ],
     "allow_semantic_instance_fallback": true,
     "failure_action": "abstain_case"
   },

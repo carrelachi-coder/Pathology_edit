@@ -176,9 +176,11 @@ from phase3_joint_edit_refine.tissue_tools import (
 from phase3_joint_edit_refine.workflow import (
     INFILTRATION_BUDGET_PRIMITIVES,
     PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES,
+    PANDA_CELL_EFFECT_EXTENT_OVERRIDES,
     JointPathologyEditWorkflow,
     JointWorkflowConfig,
     _as_tissue_case,
+    _apply_panda_profile_cell_budget,
     _candidate_preserving_closure_pixels,
     _CertifiedCellExecutionChoice,
     _CertifiedCellExecutionPortfolio,
@@ -210,6 +212,47 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_panda_profile_keeps_primitive_count_and_extent_distinct(self):
+        case = JointCaseContext(
+            case_id="panda-budget",
+            instruction="decrease neoplastic cells",
+            source_image_uri="image.png",
+            source_tissue_mask_uri="tissue.png",
+            source_nuclei_mask_uri="nuclei.png",
+            pathology_domain_id="prostate-adenocarcinoma-v1",
+            annotation_profile_id="panda-gleason-v1",
+            cell_observation_profile_id="cellvit-five-class-v1",
+            cell_population_profile_id="prostate-cell-population-v1",
+            primitive_id="neoplastic-cell-abundance-decrease-v1",
+            joint_area_budget=None,
+            seed=7,
+            provenance={},
+        )
+        source = CellCountExtentBudget(
+            target_delta_count=9,
+            min_delta_count=5,
+            max_delta_count=13,
+            maximum_extent_px=48,
+            minimum_effect_span_px=12,
+        )
+        budget, metadata = _apply_panda_profile_cell_budget(
+            case,
+            primitive_id=case.primitive_id,
+            budget=source,
+            metadata={"skill_minimum_effect_delta_count": 2},
+        )
+
+        self.assertEqual((budget.min_delta_count, budget.target_delta_count), (2, 2))
+        self.assertEqual(budget.minimum_effect_span_px, 12)
+        self.assertEqual(metadata["policy_id"], "panda-profile-cell-effect-budget-v1")
+        self.assertEqual(
+            PANDA_CELL_EFFECT_EXTENT_OVERRIDES[case.primitive_id], (1.5, 0)
+        )
+        self.assertEqual(
+            PANDA_CELL_EFFECT_EXTENT_OVERRIDES["cellularity-increase-v1"],
+            (3.0, 1),
+        )
+
     def test_infiltration_budget_primitives_cover_all_peripheral_additions(self):
         self.assertEqual(
             INFILTRATION_BUDGET_PRIMITIVES,
@@ -1906,7 +1949,7 @@ class JointSkillTests(unittest.TestCase):
             abundance_decrease.minimum_effect_delta_count_for(
                 "prostate-adenocarcinoma-v1"
             ),
-            6,
+            2,
         )
 
     def test_density_gradient_quota_can_fill_transition_shortfall(self):
@@ -3905,7 +3948,18 @@ class JointSkillTests(unittest.TestCase):
         )
         for mechanism_id in growth_mechanism_ids:
             mechanism = repository.mechanisms[mechanism_id]
-            self.assertIn("tumor-burden-increase-v1", mechanism.supported_primitives)
+            if mechanism.pathology_domain_id == "prostate-adenocarcinoma-v1":
+                self.assertNotIn(
+                    "tumor-burden-increase-v1", mechanism.supported_primitives
+                )
+                self.assertIn(
+                    "cohesive-boundary-expansion-v1",
+                    mechanism.supported_primitives,
+                )
+            else:
+                self.assertIn(
+                    "tumor-burden-increase-v1", mechanism.supported_primitives
+                )
             self.assertNotIn(
                 "tumor-burden-decrease-v1", mechanism.supported_primitives
             )
@@ -4372,6 +4426,40 @@ class JointSkillTests(unittest.TestCase):
         context.candidate.tool_trace["placed_count"] = 1
         self.assertFalse(_mechanism_realization(context).passed)
 
+    def test_density_decrease_accepts_final_whole_instance_removal_ledger(self):
+        context = SimpleNamespace(
+            bundle=SimpleNamespace(
+                mechanism=SimpleNamespace(
+                    cell_program=SimpleNamespace(
+                        layout_programs=("localized_density_gradient",),
+                        cluster_size_range=(1, 4),
+                    )
+                )
+            ),
+            candidate=SimpleNamespace(
+                ledger=SimpleNamespace(
+                    removed_instance_ids=("native-7", "native-10")
+                ),
+                tool_trace={
+                    "placements": [],
+                    "removed_source_instance_ids": ["native-7", "native-10"],
+                    "whole_instance_changes": True,
+                    "partial_source_instance_edits": 0,
+                },
+            ),
+            plan=SimpleNamespace(
+                cell_plan=SimpleNamespace(
+                    actions=("remove_whole",),
+                    mechanism_program_id="localized_density_gradient",
+                )
+            ),
+        )
+
+        result = _mechanism_realization(context)
+
+        self.assertTrue(result.passed)
+        self.assertTrue(result.metrics["removal_ledger_certified"])
+
     def test_budget_broker_rebalances_from_exact_executed_cell_spill(self):
         repository = JointSkillRepository()
         case = _breast_case_stub()
@@ -4463,7 +4551,7 @@ class JointSkillTests(unittest.TestCase):
             pathology_domain_id="prostate-adenocarcinoma-v1",
             annotation_profile_id="panda-gleason-v1",
             cell_population_profile_id="prostate-cellvit-source-first-v1",
-            primitive_id="tumor-burden-increase-v1",
+            primitive_id="cohesive-boundary-expansion-v1",
             joint_area_budget=JointAreaBudget(
                 target_fraction=0.08,
                 min_fraction=0.04,
@@ -4485,6 +4573,12 @@ class JointSkillTests(unittest.TestCase):
         revised = solver.fallback_tissue_target_to_execution_floor(initial)
         self.assertIn(
             case.primitive_id, PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES
+        )
+        self.assertTrue(
+            {
+                "local-invasive-clearance-v1",
+                "stroma-increase-v1",
+            }.issubset(PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES)
         )
         self.assertEqual(
             revised.tissue_target_pixels,
@@ -4777,6 +4871,8 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(command[command.index("--device") + 1], "cuda")
         shape_ratio_index = command.index("--reference-shape-max-area-ratio")
         self.assertEqual(command[shape_ratio_index + 1], "0.0")
+        shape_min_index = command.index("--reference-shape-min-area")
+        self.assertEqual(command[shape_min_index + 1], "8")
         self.assertEqual(
             command[command.index("--maximum-required-placements") + 1],
             "1",
@@ -7512,7 +7608,11 @@ class JointWorkflowTests(unittest.TestCase):
                     "required_auxiliary_structures"
                 ]
             ),
-            {"native_gland_instance_map", "gland_or_lumen_support"},
+            {
+                "native_gland_instance_map",
+                "gland_or_lumen_support",
+                "external_cellular_stroma_map",
+            },
         )
         self.assertIn(
             "native_gland_instance_annulus_binding",
@@ -7643,7 +7743,7 @@ class JointWorkflowTests(unittest.TestCase):
             ),
             (
                 10,
-                "tumor-burden-increase-v1",
+                "cohesive-boundary-expansion-v1",
                 "prostate-pattern-5-growth",
                 JointAreaBudget(0.08, 0.04, 0.12, 0.04),
             ),
@@ -9382,6 +9482,10 @@ class JointWorkflowTests(unittest.TestCase):
                 "selected_research",
                 result.abstain_reasons,
             )
+            self.assertEqual(
+                result.selected_candidate.ledger.added_instance_ids,
+                (),
+            )
             preflight = json.loads(
                 (
                     root
@@ -9989,7 +10093,7 @@ class StructuralHierarchyTests(unittest.TestCase):
         for mechanism in (pattern3, pattern4):
             self.assertEqual(
                 mechanism.cell_program.seam_for(
-                    "tumor-burden-increase-v1"
+                    "cohesive-boundary-expansion-v1"
                 ).minimum_anchor_coverage_fraction,
                 0.5,
             )
@@ -10273,7 +10377,11 @@ class StructuralHierarchyTests(unittest.TestCase):
             )
             self.assertEqual(
                 [item.structure_id for item in produced],
-                ["gland_or_lumen_support", "native_gland_instance_map"],
+                [
+                    "gland_or_lumen_support",
+                    "native_gland_instance_map",
+                    "external_cellular_stroma_map",
+                ],
             )
             with Image.open(
                 effective.auxiliary_structure_uris[
@@ -10523,10 +10631,10 @@ class OtherOrganIndependentReviewBlockerTests(unittest.TestCase):
         selection = json.loads(selection_path.read_text(encoding="utf-8"))
         source = json.loads(source_path.read_text(encoding="utf-8"))
         validate_selection(selection)
-        self.assertEqual(selection["evaluation_count"], 24)
+        self.assertEqual(selection["evaluation_count"], 22)
         self.assertEqual(
             sum(len(item["selected_cases"]) for item in selection["evaluations"]),
-            120,
+            110,
         )
         self.assertEqual(
             selection["source_manifest"],
@@ -10917,6 +11025,12 @@ class OtherOrganIndependentReviewBlockerTests(unittest.TestCase):
                 result.status,
                 "selected_research",
                 result.abstain_reasons,
+            )
+            self.assertEqual(
+                result.joint_plan.tissue_plan.tool_program.parameter_ranges[
+                    "max_depth_span_ratio"
+                ],
+                4.0,
             )
 
             final_tumor = result.condition.target_tissue_mask == 10

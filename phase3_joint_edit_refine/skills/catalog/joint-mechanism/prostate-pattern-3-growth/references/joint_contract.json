@@ -2,7 +2,7 @@
   "mechanism_id": "prostate-pattern-3-growth",
   "pathology_domain_id": "prostate-adenocarcinoma-v1",
   "supported_primitives": [
-    "tumor-burden-increase-v1"
+    "cohesive-boundary-expansion-v1"
   ],
   "version": "1.3.0-draft",
   "review_status": "draft",
@@ -37,7 +37,7 @@
     "mode": "separated_complete_gland_displacement",
     "target_component_merge_policy": "forbid",
     "primitive_label_contracts": {
-      "tumor-burden-increase-v1": {
+      "cohesive-boundary-expansion-v1": {
         "source_labels": [
           "Stroma",
           "Other tissue"
@@ -116,7 +116,7 @@
       "cell_spatial_distribution"
     ],
     "layout_program_by_primitive": {
-      "tumor-burden-increase-v1": "boundary_aligned"
+      "cohesive-boundary-expansion-v1": "boundary_aligned"
     }
   },
   "coupling_contract": {

@@ -914,6 +914,19 @@ class HeuristicJointPlanner:
         component_labels = {
             item.component_id: item.label for item in scene.tissue.graph.components
         }
+        raw_classes = case.provenance.get("target_cell_class_ids", ())
+        if isinstance(raw_classes, int):
+            raw_classes = (raw_classes,)
+        if not isinstance(raw_classes, (list, tuple)):
+            raise JointContractError("target_cell_class_ids must be a sequence")
+        requested_class_ids = tuple(sorted({int(value) for value in raw_classes}))
+        abundance = case.primitive_id.startswith(
+            (
+                "cell-type-abundance-",
+                "neoplastic-cell-abundance-",
+                "generic-inflammatory-cell-abundance-",
+            )
+        )
         host = set(bundle.primitive.host_tissue_labels)
         eligible_zones = [
             item
@@ -921,8 +934,37 @@ class HeuristicJointPlanner:
             if component_labels.get(item.tissue_component_id) in host
             and item.area_px > 0
         ]
+        if (
+            abundance
+            and requested_class_ids
+            and case.annotation_profile_id
+            in {"glas-gland-v1", "panda-gleason-v1"}
+        ):
+            # Gland-bearing profiles need an explicit compartment distinction:
+            # neoplastic abundance is intratumoral, while immune/connective
+            # abundance is interglandular stromal.  This prevents a global
+            # class count from selecting a lumen-bearing gland component.
+            required_label = (
+                "Tumor" if set(requested_class_ids) == {1} else "Stroma"
+            )
+            eligible_zones = [
+                item
+                for item in eligible_zones
+                if component_labels.get(item.tissue_component_id)
+                == required_label
+            ]
         eligible_zones.sort(
-            key=lambda item: (-item.nucleus_count, -item.area_px, item.zone_id)
+            key=lambda item: (
+                -sum(
+                    int(item.class_counts.get(class_id, 0))
+                    for class_id in requested_class_ids
+                )
+                if abundance and requested_class_ids
+                else -item.nucleus_count,
+                -item.nucleus_count,
+                -item.area_px,
+                item.zone_id,
+            )
         )
         if isinstance(requested_zone, str) and requested_zone in zones:
             zone = zones[requested_zone]
@@ -942,11 +984,6 @@ class HeuristicJointPlanner:
             )
         )
 
-        raw_classes = case.provenance.get("target_cell_class_ids", ())
-        if isinstance(raw_classes, int):
-            raw_classes = (raw_classes,)
-        if not isinstance(raw_classes, (list, tuple)):
-            raise JointContractError("target_cell_class_ids must be a sequence")
         classes = tuple(
             sorted(
                 {
@@ -955,13 +992,6 @@ class HeuristicJointPlanner:
                     if int(value) in bundle.mechanism.cell_program.allowed_cell_classes
                     and int(value) in compatible_classes
                 }
-            )
-        )
-        abundance = case.primitive_id.startswith(
-            (
-                "cell-type-abundance-",
-                "neoplastic-cell-abundance-",
-                "generic-inflammatory-cell-abundance-",
             )
         )
         if abundance and len(classes) != 1:

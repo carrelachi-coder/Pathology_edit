@@ -1128,6 +1128,23 @@ def assess_candidate_cell_feasibility(
             case.primitive_id
         ),
     )
+    if (
+        case.annotation_profile_id == "panda-gleason-v1"
+        and case.primitive_id == "residual-tumor-fragmentation-v1"
+    ):
+        # Fragmentation creates an internal stromal cleft across a selected
+        # tumor component, rather than a shallow replacement front along the
+        # pre-existing outer Tumor/Stroma interface.  Keep population packing
+        # inside the converted tissue, but do not impose an unrelated external
+        # anchor-continuity quota on that internal cleft.
+        adaptive_seam = replace(
+            adaptive_seam,
+            mode="not_applicable",
+            anchor_mask=np.zeros_like(core, dtype=bool),
+            continuity_region=np.zeros_like(core, dtype=bool),
+            minimum_anchor_coverage_fraction=0.0,
+            requires_new_target_cells=False,
+        )
     parent_side_center_band = np.zeros_like(core, dtype=bool)
     if (
         case.annotation_profile_id == "panda-gleason-v1"
@@ -1206,6 +1223,17 @@ def assess_candidate_cell_feasibility(
             _minimum_architecture_group_count(case, joint_bundle),
             required_count,
         )
+    if (
+        case.annotation_profile_id == "panda-gleason-v1"
+        and case.primitive_id == "residual-tumor-fragmentation-v1"
+    ):
+        # The primitive's cell operation is complete-instance clearance forced
+        # by the internal tissue cleft.  Adding a token stromal nucleus is a
+        # different abundance edit, inflates the joint footprint, and can fall
+        # back to an uncalibrated library shape when the cleft has no local
+        # connective reference.  Keep replacement count at zero; every
+        # intersected incompatible source instance is still removed whole.
+        required_count = 0
     erased = np.zeros_like(core, dtype=bool)
     for instance_id in removals:
         erased |= np.asarray(scene.instance_masks[instance_id], dtype=bool)

@@ -20,6 +20,23 @@
     },
     {
       "annotation_profile_id": "glas-gland-v1",
+      "case_id": "g2_101_colorectal_tumor_increase_92bc8db15a",
+      "classification": "profile_owned",
+      "he_or_llm_used": false,
+      "materialization_error": null,
+      "output_array_sha256": null,
+      "output_file_sha256": null,
+      "output_path": "artifact://profile_auxiliary/g2_101_colorectal_tumor_increase_92bc8db15a/native_gland_instance_map.png",
+      "producer_id": "joint-semantic-topology-auxiliary-v1",
+      "producer_provenance": null,
+      "producer_version": "joint-semantic-topology-auxiliary-v1",
+      "source_tissue_array_sha256": null,
+      "source_tissue_mask_sha256": "2ffb55969e919992443dfa3cc222449b46e80e2e399e7f64618ba3c5e9209ec8",
+      "status": "blocked_unverified_source_tissue",
+      "structure_id": "native_gland_instance_map"
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
       "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
       "classification": "profile_owned",
       "he_or_llm_used": false,
@@ -34,6 +51,23 @@
       "source_tissue_mask_sha256": "711f4806e134f4cb6e745f07f589337e55e7ef7a062db8431dce2e7a0a41caa6",
       "status": "blocked_unverified_source_tissue",
       "structure_id": "gland_or_lumen_support"
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_id": "g2_102_colorectal_tumor_increase_f9c512abf3",
+      "classification": "profile_owned",
+      "he_or_llm_used": false,
+      "materialization_error": null,
+      "output_array_sha256": null,
+      "output_file_sha256": null,
+      "output_path": "artifact://profile_auxiliary/g2_102_colorectal_tumor_increase_f9c512abf3/native_gland_instance_map.png",
+      "producer_id": "joint-semantic-topology-auxiliary-v1",
+      "producer_provenance": null,
+      "producer_version": "joint-semantic-topology-auxiliary-v1",
+      "source_tissue_array_sha256": null,
+      "source_tissue_mask_sha256": "711f4806e134f4cb6e745f07f589337e55e7ef7a062db8431dce2e7a0a41caa6",
+      "status": "blocked_unverified_source_tissue",
+      "structure_id": "native_gland_instance_map"
     },
     {
       "annotation_profile_id": "glas-gland-v1",
@@ -54,6 +88,23 @@
     },
     {
       "annotation_profile_id": "glas-gland-v1",
+      "case_id": "g2_103_colorectal_tumor_increase_761cca0541",
+      "classification": "profile_owned",
+      "he_or_llm_used": false,
+      "materialization_error": null,
+      "output_array_sha256": null,
+      "output_file_sha256": null,
+      "output_path": "artifact://profile_auxiliary/g2_103_colorectal_tumor_increase_761cca0541/native_gland_instance_map.png",
+      "producer_id": "joint-semantic-topology-auxiliary-v1",
+      "producer_provenance": null,
+      "producer_version": "joint-semantic-topology-auxiliary-v1",
+      "source_tissue_array_sha256": null,
+      "source_tissue_mask_sha256": "9efaa056e7da4d188284bfb971b052a3a975d4643c574af1ef5507282e8d1203",
+      "status": "blocked_unverified_source_tissue",
+      "structure_id": "native_gland_instance_map"
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
       "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
       "classification": "profile_owned",
       "he_or_llm_used": false,
@@ -71,6 +122,23 @@
     },
     {
       "annotation_profile_id": "glas-gland-v1",
+      "case_id": "g2_104_colorectal_tumor_increase_74de4f2d0f",
+      "classification": "profile_owned",
+      "he_or_llm_used": false,
+      "materialization_error": null,
+      "output_array_sha256": null,
+      "output_file_sha256": null,
+      "output_path": "artifact://profile_auxiliary/g2_104_colorectal_tumor_increase_74de4f2d0f/native_gland_instance_map.png",
+      "producer_id": "joint-semantic-topology-auxiliary-v1",
+      "producer_provenance": null,
+      "producer_version": "joint-semantic-topology-auxiliary-v1",
+      "source_tissue_array_sha256": null,
+      "source_tissue_mask_sha256": "13d0bc3a304f1e3cd35859d837be4fe46e7855f490d5c2b92a4420fbb8a5eb07",
+      "status": "blocked_unverified_source_tissue",
+      "structure_id": "native_gland_instance_map"
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
       "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
       "classification": "profile_owned",
       "he_or_llm_used": false,
@@ -85,6 +153,23 @@
       "source_tissue_mask_sha256": "ff8549298bb9945bc4f4f19834b205ebb753ab09ba88dd64a8af2939aeff5b18",
       "status": "blocked_unverified_source_tissue",
       "structure_id": "gland_or_lumen_support"
+    },
+    {
+      "annotation_profile_id": "glas-gland-v1",
+      "case_id": "g2_105_colorectal_tumor_increase_cd730a57be",
+      "classification": "profile_owned",
+      "he_or_llm_used": false,
+      "materialization_error": null,
+      "output_array_sha256": null,
+      "output_file_sha256": null,
+      "output_path": "artifact://profile_auxiliary/g2_105_colorectal_tumor_increase_cd730a57be/native_gland_instance_map.png",
+      "producer_id": "joint-semantic-topology-auxiliary-v1",
+      "producer_provenance": null,
+      "producer_version": "joint-semantic-topology-auxiliary-v1",
+      "source_tissue_array_sha256": null,
+      "source_tissue_mask_sha256": "ff8549298bb9945bc4f4f19834b205ebb753ab09ba88dd64a8af2939aeff5b18",
+      "status": "blocked_unverified_source_tissue",
+      "structure_id": "native_gland_instance_map"
     },
     {
       "annotation_profile_id": "panda-gleason-v1",
@@ -342,14 +427,13 @@
       "structure_id": "gland_lumen_map"
     }
   ],
-  "entry_count": 20,
+  "entry_count": 25,
   "external_only_structure_ids": [
-    "local_clearance_roi",
-    "native_gland_instance_map"
+    "local_clearance_roi"
   ],
-  "manifest_content_sha256": "baebc04955fbd9623ce16a0c75c64b2f851144dd1270b416730921de4ee15dd4",
+  "manifest_content_sha256": "e1eec442f44f9e3cee9fd8917de0b989ffb72432ff8abd27ffb0afb4660000ae",
   "producer_source_path": "phase3_joint_edit_refine/auxiliary.py",
-  "producer_source_sha256": "1c87936e1e7fa03503015450c5d65f0782b670af1786fbc41fce91ee66a4ef44",
+  "producer_source_sha256": "0ffde0afecf275139b69aa18ae2e167df50a392fd48afcb3a9f774ffa5bc54fd",
   "profile_owned_output_count": 0,
   "schema_version": "p1-profile-auxiliary-materialization-v1",
   "visualization_run": false

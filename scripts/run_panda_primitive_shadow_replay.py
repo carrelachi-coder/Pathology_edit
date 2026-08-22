@@ -56,6 +56,30 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def _load_qualification_records(path: Path) -> list[dict[str, Any]]:
+    """Load either the materializer's JSON manifest or a legacy JSONL ledger."""
+
+    text = path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
+    if isinstance(payload, dict) and isinstance(payload.get("cases"), list):
+        return [dict(item) for item in payload["cases"]]
+    if isinstance(payload, list):
+        return [dict(item) for item in payload]
+    raise ValueError("qualification ledger must be a JSON manifest or JSONL records")
+
+
+def _qualification_record_passed(record: dict[str, Any] | None) -> bool:
+    if not record:
+        return False
+    return record.get("status") == "executable_preflight_passed" or (
+        record.get("execution_allowed") is True
+        and record.get("decision_status") == "eligible"
+    )
+
+
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -465,12 +489,12 @@ def main() -> int:
     )
     qualification = {
         str(item["case_id"]): item
-        for item in _load_jsonl(args.qualification_ledger)
+        for item in _load_qualification_records(args.qualification_ledger)
     }
     qualified_rows = []
     for row in qualification_payload["cases"]:
         record = qualification.get(str(row["case_id"]))
-        if record and record.get("status") == "executable_preflight_passed":
+        if _qualification_record_passed(record):
             qualified_rows.append(row)
     grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for row in qualified_rows:

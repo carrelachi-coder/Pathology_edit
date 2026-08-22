@@ -44,12 +44,14 @@ from phase3_mask_edit_refine.candidates import (
 )
 from phase3_mask_edit_refine.execution import (
     TopologySafeAreaUnderfillError,
+    _fragmentation_neck_separation_priority,
     _low_frequency_organic_field,
     _minimum_component_spacing_px,
     _natural_external_retreat_priority,
     _normalized_organic_field,
     _prepare_compiler_work,
     _rebalance_fragmentation_residual_islands,
+    _resolve_topology_safe_area,
     _residual_fragmentation_priority,
     _simulate_topology_safe_execution,
     _whole_mask_topology_audit,
@@ -60,6 +62,7 @@ from phase3_mask_edit_refine.gates import (
     GateRegistry,
     _check_boundary_naturalness,
     _check_component_topology,
+    _check_depth_span_ratio,
 )
 from phase3_mask_edit_refine.models import (
     AreaBudget,
@@ -376,6 +379,75 @@ class FailClosedGateTests(unittest.TestCase):
         )
         self.assertFalse(depth_check.passed)
         self.assertFalse(report.passed)
+
+    def test_panda_fragmentation_full_component_support_replaces_shallow_band(self):
+        bundle = self.repository.compose(
+            pathology_domain_id="colorectal-adenocarcinoma-v1",
+            annotation_profile_id="glas-gland-v1",
+            primitive_id="tumor-burden-decrease-v1",
+            production=False,
+            available_checker_ids=self.gates.available_checker_ids,
+        )
+        interface = max(
+            self.scene.interfaces_for(source_labels=("Tumor",), target_label="Stroma"),
+            key=lambda item: item.contact_pixels,
+        )
+        change = np.zeros_like(self.mask, dtype=bool)
+        change[60:68, 34:64] = self.mask[60:68, 34:64] == 12
+        fraction = int(change.sum()) / self.mask.size
+        plan = _manual_plan(
+            case=_case(primitive="tumor-burden-decrease-v1", area=fraction),
+            interface=interface,
+            source_label="Tumor",
+            target_label="Stroma",
+            area=fraction,
+            supporting_rules=_bundle_ids(bundle),
+            band_max=4.0,
+        )
+        ranges = {
+            **plan.tool_program.parameter_ranges,
+            "tissue_geometry_mode": "residual_fragmentation",
+            "max_depth_span_ratio": 4.0,
+        }
+        plan = replace(
+            plan,
+            tool_program=replace(plan.tool_program, parameter_ranges=ranges),
+        )
+        target = self.mask.copy()
+        target[change] = 2
+        candidate = CandidateMask(
+            "panda-fragmentation-depth",
+            interface.interface_id,
+            "fixture",
+            target,
+            change,
+            {},
+        )
+        context = GateContext(
+            case=_case(primitive="tumor-burden-decrease-v1", area=fraction),
+            source_mask=self.mask,
+            schema=self.schema,
+            scene=self.scene,
+            bundle=bundle,
+            plan=plan,
+            candidate=candidate,
+        )
+        self.assertFalse(_check_depth_span_ratio(context).passed)
+        supported_plan = replace(
+            plan,
+            tool_program=replace(
+                plan.tool_program,
+                parameter_ranges={
+                    **ranges,
+                    "fragmentation_full_selected_component_support": True,
+                },
+            ),
+        )
+        supported = _check_depth_span_ratio(
+            replace(context, plan=supported_plan)
+        )
+        self.assertTrue(supported.passed, supported.detail)
+        self.assertTrue(supported.metrics["full_fragmentation_component_support"])
 
     def test_case175_style_normal_epithelium_to_stroma_is_rejected(self):
         mask = self.mask.copy()
@@ -1035,6 +1107,88 @@ class CandidateAndSceneTests(unittest.TestCase):
                 "redistribute_across_alternate_interfaces",
             },
         )
+
+    def test_fragmentation_neck_priority_splits_fused_mass_not_gland_walls(self):
+        shape = (160, 240)
+        source = np.zeros(shape, dtype=bool)
+        source[20:140, 10:100] = True
+        source[20:140, 140:230] = True
+        source[60:100, 100:140] = True
+
+        priority = _fragmentation_neck_separation_priority(
+            source_component=source,
+            legal_envelope=source,
+            default_priority=np.zeros(shape, dtype=float),
+            target_change_pixels=3500,
+            minimum_residual_components=2,
+            maximum_residual_components=6,
+            minimum_residual_component_area_px=96,
+            minimum_residual_spacing_px=24,
+            minimum_residual_component_fraction=0.025,
+            maximum_dominant_residual_component_fraction=0.75,
+        )
+
+        self.assertIsNotNone(priority)
+        change = np.asarray(priority) < 0.40
+        residual_labels, residual_count = ndimage.label(
+            source & ~change, structure=np.ones((3, 3), dtype=bool)
+        )
+        sizes = np.bincount(residual_labels.ravel())[1:]
+        self.assertEqual(residual_count, 2)
+        self.assertGreaterEqual(
+            _minimum_component_spacing_px(residual_labels, residual_count),
+            24,
+        )
+        self.assertGreaterEqual(float(sizes.min() / sizes.sum()), 0.025)
+        self.assertLessEqual(float(sizes.max() / sizes.sum()), 0.75)
+
+    def test_fragmentation_area_solver_probes_nonmonotone_safe_window(self):
+        shape = (10, 20)
+        work = SimpleNamespace(
+            item_capacity_px=shape[0] * shape[1],
+            source_deletion_limit_px=shape[0] * shape[1],
+            planned=SimpleNamespace(source_component_id="tumor:1"),
+        )
+
+        def simulate(_works, *, desired_pixels, **_kwargs):
+            selected = np.zeros(shape, dtype=bool)
+            realized = 20 if desired_pixels == 100 else desired_pixels
+            selected.ravel()[:realized] = True
+            return (selected,), ({},)
+
+        def audit(*, selected_by_work, **_kwargs):
+            realized = int(np.count_nonzero(selected_by_work[0]))
+            return {"passed": realized == 59}
+
+        with mock.patch(
+            "phase3_mask_edit_refine.execution._simulate_topology_safe_execution",
+            side_effect=simulate,
+        ), mock.patch(
+            "phase3_mask_edit_refine.execution._whole_mask_topology_audit",
+            side_effect=audit,
+        ):
+            allocations, selected, _audits, topology, solver = (
+                _resolve_topology_safe_area(
+                    (work,),
+                    desired_pixels=100,
+                    hard_min_pixels=20,
+                    weights=np.asarray([1.0]),
+                    source_region=np.ones(shape, dtype=bool),
+                    target_region=np.zeros(shape, dtype=bool),
+                    scene=SimpleNamespace(),
+                    fallback_policy="max_feasible_below_target",
+                    allow_source_component_split=True,
+                )
+            )
+
+        self.assertEqual(allocations, (59,))
+        self.assertEqual(np.count_nonzero(selected[0]), 59)
+        self.assertTrue(topology["passed"])
+        self.assertEqual(
+            solver["selection"],
+            "largest_verified_nonmonotone_fragmentation_window",
+        )
+        self.assertFalse(solver["monotone_prefix_assumption"])
 
     def test_fragmentation_cleanup_fills_micro_island_at_constant_area(self):
         shape = (160, 240)

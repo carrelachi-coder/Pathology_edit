@@ -12,6 +12,9 @@
   "target_cell_classes": [],
   "cell_effect_contract": {
     "minimum_delta_count": 12,
+    "minimum_delta_count_by_pathology_domain": {
+      "prostate-adenocarcinoma-v1": 6
+    },
     "minimum_span_cell_diameters": 6.0,
     "minimum_foci": 0
   },

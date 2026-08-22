@@ -74,10 +74,14 @@
       1
     ],
     "required_auxiliary_structures": [
-      "native_pattern_and_lumen_map"
+      "native_pattern_and_lumen_map",
+      "external_cellular_stroma_map"
     ],
     "protected_auxiliary_structures": [
       "native_pattern_and_lumen_map"
+    ],
+    "receiving_auxiliary_structures": [
+      "external_cellular_stroma_map"
     ],
     "allow_semantic_instance_fallback": false,
     "failure_action": "abstain_case"

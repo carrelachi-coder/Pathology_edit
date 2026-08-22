@@ -748,6 +748,7 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
             and outside_influence == 0
             and (
                 residual_fragmentation
+                or directional_projection
                 or depth_violation_fraction <= 0.02
             )
             and 0 < component_count <= allowed_components
@@ -1516,6 +1517,12 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
         context.plan.tool_program.parameter_ranges.get("tissue_geometry_mode")
         == "residual_fragmentation"
     )
+    full_fragmentation_component_support = bool(
+        residual_fragmentation
+        and context.plan.tool_program.parameter_ranges.get(
+            "fragmentation_full_selected_component_support", False
+        )
+    )
     max_ratio = min(
         6.0
         if directional_projection
@@ -1524,7 +1531,15 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
         else 2.0,
         float(context.plan.tool_program.parameter_ranges.get("max_depth_span_ratio", 1.25)),
     )
-    passed = max_depth <= band_max + 1e-6 and ratio <= max_ratio
+    # A certified residual-fragmentation cleft is allowed to traverse the
+    # selected tumor component.  The ordinary boundary-band depth limit is
+    # intended for a shallow front and is not meaningful for this topology;
+    # broad interface contact and the residual-focus topology gates remain
+    # mandatory.  The opt-in flag is emitted only for PANDA fragmentation.
+    depth_supported = bool(
+        full_fragmentation_component_support or max_depth <= band_max + 1e-6
+    )
+    passed = depth_supported and ratio <= max_ratio
     return _result(
         "depth_span_ratio",
         passed,
@@ -1541,6 +1556,9 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
             "max_depth_span_ratio": ratio,
             "allowed_depth_span_ratio": max_ratio,
             "allowed_band_max_px": band_max,
+            "full_fragmentation_component_support": (
+                full_fragmentation_component_support
+            ),
             "resolved_source_component_ids": sorted(
                 set(resolved_source_components)
             ),

@@ -109,6 +109,7 @@ class MatureProbNetCellExecutor:
         prohibited_tissue_ids: tuple[int, ...],
         allowed_new_cell_classes: tuple[int, ...],
         source_instance_authority_path: Path | None = None,
+        reference_shape_min_area: int = 8,
     ) -> list[str]:
         mature_device = (
             "cuda"
@@ -156,6 +157,8 @@ class MatureProbNetCellExecutor:
             "--require-full-tissue-containment",
             "--reference-shape-max-area-ratio",
             str(self.config.reference_shape_max_area_ratio),
+            "--reference-shape-min-area",
+            str(max(1, int(reference_shape_min_area))),
             "--allowed-nucleus-types",
             *[
                 str(100 + int(value))
@@ -317,10 +320,17 @@ class MatureProbNetCellExecutor:
             minimum_required_placements = int(
                 packing_witness.get("required_seam_count", 0)
             )
-            maximum_required_placements = minimum_required_placements
+            # The certificate marks which placements are required to prove
+            # seam continuity. Other certified population placements may
+            # legitimately fall inside the same broad continuity region; a
+            # maximum equal to the required count incorrectly rejected those
+            # optional, non-overlapping witnesses and made an exact total
+            # count impossible on small PANDA growth fronts.
+            maximum_required_placements = None
             _save_binary(required_placement_path, program.continuity_region)
 
         eligible: set[str] = set()
+        eligible_reference_areas: list[int] = []
         reference_supported_classes: set[int] = set()
         rejected: dict[str, str] = {}
         for class_id in program.target_classes:
@@ -328,6 +338,7 @@ class MatureProbNetCellExecutor:
                 scene, class_id=class_id
             )
             eligible.update(item.instance_id for item in references)
+            eligible_reference_areas.extend(int(item.area_px) for item in references)
             if references:
                 reference_supported_classes.add(int(class_id))
             rejected.update(current_rejected)
@@ -397,6 +408,12 @@ class MatureProbNetCellExecutor:
                 output_path=output_path,
                 prohibited_tissue_ids=prohibited_tissue_ids,
                 allowed_new_cell_classes=executable_new_cell_classes,
+                reference_shape_min_area=(
+                    max(8, min(eligible_reference_areas))
+                    if self.config.dataset_name.lower() == "panda"
+                    and eligible_reference_areas
+                    else 8
+                ),
             )
             completed = self._runner(
                 command,

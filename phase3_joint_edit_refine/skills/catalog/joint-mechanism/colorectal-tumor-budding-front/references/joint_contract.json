@@ -29,10 +29,14 @@
     ],
     "required_auxiliary_structures": [
       "native_gland_instance_map",
-      "gland_or_lumen_support"
+      "gland_or_lumen_support",
+      "external_cellular_stroma_map"
     ],
     "protected_auxiliary_structures": [
       "gland_or_lumen_support"
+    ],
+    "receiving_auxiliary_structures": [
+      "external_cellular_stroma_map"
     ],
     "allow_semantic_instance_fallback": true,
     "failure_action": "abstain_case"

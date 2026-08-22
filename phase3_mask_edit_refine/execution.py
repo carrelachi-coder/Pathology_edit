@@ -714,6 +714,9 @@ def _prepare_compiler_work(
                     params.get("directional_maximum_width_px", 24.0)
                 ),
                 tip_width_px=float(params.get("directional_tip_width_px", 2.0)),
+                shape_mode=str(
+                    params.get("directional_shape_mode", "linear_taper")
+                ),
             )
         if plan.primitive_id == "invasive-tumor-footprint-decrease-v1":
             required_scale = _natural_external_retreat_priority(
@@ -759,6 +762,12 @@ def _prepare_compiler_work(
                 # source component; ownership still allocates pixels exactly
                 # after priorities are built.
                 target_change_pixels=max(1, target_change_pixels),
+                prefer_neck_separation=bool(
+                    params.get(
+                        "fragmentation_full_selected_component_support",
+                        False,
+                    )
+                ),
             )
         provisional.append(
             {
@@ -880,6 +889,192 @@ def _natural_external_retreat_priority(
     return priority
 
 
+def _fragmentation_neck_separation_priority(
+    *,
+    source_component: np.ndarray,
+    legal_envelope: np.ndarray,
+    default_priority: np.ndarray,
+    target_change_pixels: int,
+    minimum_residual_components: int,
+    maximum_residual_components: int,
+    minimum_residual_component_area_px: int,
+    minimum_residual_spacing_px: int,
+    minimum_residual_component_fraction: float,
+    maximum_dominant_residual_component_fraction: float,
+) -> np.ndarray | None:
+    """Rank one organic target-connected cleft through a feasible tumor neck.
+
+    Residual fragmentation is not an erosion of every gland wall.  On a
+    component that contains a real bridge, this search finds a crooked,
+    cell-bearing cleft whose complete removal already yields a bounded set of
+    balanced residual foci.  Lumen, gland-wall and other prohibited pixels
+    have already been removed from ``legal_envelope``; any resulting gap makes
+    the proposed cleft fail its topology screen rather than cutting around it.
+    """
+
+    source = np.asarray(source_component, dtype=bool)
+    legal = np.asarray(legal_envelope, dtype=bool) & source
+    if target_change_pixels <= 0 or not np.any(legal):
+        return None
+    structure = np.ones((3, 3), dtype=bool)
+    boundary = (
+        source
+        & ndimage.binary_dilation(~source, structure=structure)
+        & legal
+    )
+    raw_default = np.asarray(default_priority, dtype=float)
+    finite_boundary = raw_default[boundary & np.isfinite(raw_default)]
+    if finite_boundary.size == 0:
+        return None
+    anchor_threshold = float(np.quantile(finite_boundary, 0.20)) + 1e-9
+    anchor_boundary = (
+        boundary
+        & np.isfinite(raw_default)
+        & (raw_default <= anchor_threshold)
+    )
+    if not np.any(anchor_boundary):
+        return None
+
+    rows, cols = np.indices(source.shape, dtype=float)
+    coordinates = np.argwhere(source).astype(float)
+    center_row, center_col = coordinates.mean(axis=0)
+    row_field = rows - center_row
+    col_field = cols - center_col
+    source_area = max(int(np.count_nonzero(source)), 1)
+    correlation = float(np.clip(np.sqrt(source_area) / 6.0, 20.0, 72.0))
+    bend = _low_frequency_organic_field(
+        source.shape,
+        support=source,
+        seed=_component_seed(source, salt=2711),
+        correlation_px=correlation,
+    )
+    width_texture = _low_frequency_organic_field(
+        source.shape,
+        support=source,
+        seed=_component_seed(source, salt=3253),
+        correlation_px=max(10.0, correlation * 0.45),
+    )
+    source_depth = ndimage.distance_transform_edt(source)
+    base_half_width = max(
+        _FRAGMENTATION_CELL_BEARING_HALF_WIDTH_PX,
+        (minimum_residual_spacing_px + 2.0) / 2.0,
+    )
+    best: tuple[tuple[float, ...], np.ndarray] | None = None
+    for angle_index in range(8):
+        angle = np.pi * angle_index / 8.0
+        projected = (
+            np.cos(angle) * row_field
+            + np.sin(angle) * col_field
+            + 6.0 * bend
+        )
+        supported_projection = projected[source]
+        offsets = np.quantile(
+            supported_projection,
+            (0.20, 0.35, 0.50, 0.65, 0.80),
+        )
+        for offset_index, offset in enumerate(offsets.tolist()):
+            for width_extra in (0.0, 4.0):
+                local_half_width = (
+                    base_half_width
+                    + width_extra
+                    # Smoothly alternate narrow cell-bearing necks with broad
+                    # regression bays.  A three-pixel modulation was
+                    # topologically valid but still failed the primitive's
+                    # anti-ruler depth-span audit on production PANDA masks.
+                    + 16.0
+                    * np.clip(
+                        (width_texture + 1.0) / 2.0,
+                        0.0,
+                        1.0,
+                    )
+                    ** 2
+                )
+                raw_seam = (
+                    source
+                    & legal
+                    & (np.abs(projected - float(offset)) <= local_half_width)
+                )
+                seam_labels, seam_count = ndimage.label(
+                    raw_seam, structure=structure
+                )
+                for seam_id in range(1, seam_count + 1):
+                    seam = seam_labels == seam_id
+                    anchor_contact = int(
+                        np.count_nonzero(seam & anchor_boundary)
+                    )
+                    seam_area = int(np.count_nonzero(seam))
+                    if (
+                        anchor_contact <= 0
+                        or seam_area < minimum_residual_spacing_px**2
+                        or seam_area > target_change_pixels
+                    ):
+                        continue
+                    residual = source & ~seam
+                    residual_labels, residual_count = ndimage.label(
+                        residual, structure=structure
+                    )
+                    if not (
+                        minimum_residual_components
+                        <= residual_count
+                        <= maximum_residual_components
+                    ):
+                        continue
+                    sizes = np.bincount(residual_labels.ravel())[1:]
+                    if (
+                        sizes.size == 0
+                        or int(sizes.min())
+                        < minimum_residual_component_area_px
+                    ):
+                        continue
+                    total = max(int(sizes.sum()), 1)
+                    minimum_fraction = float(sizes.min()) / total
+                    dominant_fraction = float(sizes.max()) / total
+                    spacing = _minimum_component_spacing_px(
+                        residual_labels, residual_count
+                    )
+                    if (
+                        spacing + 1e-9 < minimum_residual_spacing_px
+                        or minimum_fraction + 1e-9
+                        < minimum_residual_component_fraction
+                        or dominant_fraction
+                        > maximum_dominant_residual_component_fraction + 1e-9
+                    ):
+                        continue
+                    score = (
+                        float(seam_area),
+                        float(np.mean(source_depth[seam])),
+                        float(dominant_fraction),
+                        -float(minimum_fraction),
+                        -float(anchor_contact),
+                        float(angle_index),
+                        float(offset_index),
+                        float(width_extra),
+                    )
+                    if best is None or score < best[0]:
+                        best = (score, seam)
+    if best is None:
+        return None
+
+    seam = best[1]
+    seam_distance = ndimage.distance_transform_edt(~seam)
+    anchor_seed = seam & anchor_boundary
+    path_distance = ndimage.distance_transform_edt(~anchor_seed)
+    path_scale = max(float(np.max(path_distance[seam], initial=1.0)), 1.0)
+    priority = 4.0 + 0.04 * source_depth
+    widening = legal & (seam_distance <= base_half_width * 0.75)
+    priority[widening] = np.minimum(
+        priority[widening],
+        0.55 + seam_distance[widening] / max(base_half_width, 1.0),
+    )
+    priority[seam] = (
+        0.05
+        + 0.30 * path_distance[seam] / path_scale
+        + 1e-4 * np.nan_to_num(raw_default[seam], nan=0.0, posinf=0.0)
+    )
+    priority[~legal] = np.inf
+    return priority
+
+
 def _residual_fragmentation_priority(
     *,
     source_component: np.ndarray,
@@ -892,6 +1087,7 @@ def _residual_fragmentation_priority(
     minimum_residual_component_fraction: float,
     maximum_dominant_residual_component_fraction: float,
     target_change_pixels: int = 0,
+    prefer_neck_separation: bool = False,
 ) -> np.ndarray:
     """Construct shrunken organic residual foci instead of drawing cut lines.
 
@@ -907,6 +1103,27 @@ def _residual_fragmentation_priority(
     legal = np.asarray(legal_envelope, dtype=bool)
     if not np.any(source & legal):
         return np.asarray(default_priority, dtype=float)
+    if prefer_neck_separation:
+        neck_priority = _fragmentation_neck_separation_priority(
+            source_component=source,
+            legal_envelope=legal,
+            default_priority=np.asarray(default_priority, dtype=float),
+            target_change_pixels=target_change_pixels,
+            minimum_residual_components=minimum_residual_components,
+            maximum_residual_components=maximum_residual_components,
+            minimum_residual_component_area_px=(
+                minimum_residual_component_area_px
+            ),
+            minimum_residual_spacing_px=minimum_residual_spacing_px,
+            minimum_residual_component_fraction=(
+                minimum_residual_component_fraction
+            ),
+            maximum_dominant_residual_component_fraction=(
+                maximum_dominant_residual_component_fraction
+            ),
+        )
+        if neck_priority is not None:
+            return neck_priority
     structure = np.ones((3, 3), dtype=bool)
     focus_count = int(
         np.clip(minimum_residual_components, 2, maximum_residual_components)
@@ -1509,7 +1726,14 @@ def _resolve_topology_safe_area(
             f"topology={first[3]}"
         )
 
-    upper = min(desired_pixels - 1, max(hard_min_pixels, first_realized - 1))
+    upper = (
+        desired_pixels - 1
+        if allow_source_component_split
+        else min(
+            desired_pixels - 1,
+            max(hard_min_pixels, first_realized - 1),
+        )
+    )
     if upper < hard_min_pixels:
         raise RefineContractError(
             "no topology-safe area remains inside the hard allowed interval"
@@ -1522,6 +1746,44 @@ def _resolve_topology_safe_area(
     # bound.
     floor_result = attempt(hard_min_pixels)
     if not floor_result[-1]:
+        if allow_source_component_split and upper > hard_min_pixels + 1:
+            # Fragmentation is intentionally non-monotone in area.  A small
+            # prefix may not yet traverse the selected tumor neck, an
+            # intermediate prefix can form two to six valid residual foci,
+            # and a much larger prefix can over-fragment the same component.
+            # Therefore the generic "unsafe floor implies unsafe larger
+            # prefix" shortcut is invalid for this one topology mode.  Probe
+            # a bounded descending set of intermediate areas and accept only
+            # a complete whole-mask audit pass; no topology threshold is
+            # relaxed and the largest verified window is preferred.
+            probe_totals = sorted(
+                {
+                    int(value)
+                    for value in np.linspace(
+                        hard_min_pixels,
+                        upper,
+                        num=9,
+                        endpoint=True,
+                    )[1:-1]
+                },
+                reverse=True,
+            )
+            for probe_total in probe_totals:
+                probe_result = attempt(probe_total)
+                if probe_result[-1]:
+                    return (
+                        *probe_result[:4],
+                        {
+                            "attempts": attempts,
+                            "selection": (
+                                "largest_verified_nonmonotone_"
+                                "fragmentation_window"
+                            ),
+                            "monotone_prefix_assumption": False,
+                            "floor_first_search": True,
+                            "selected_pixels": int(probe_total),
+                        },
+                    )
         realized_pixels = int(floor_result[-2])
         topology_passed = bool(floor_result[3]["passed"])
         safe_realized_pixels = realized_pixels if topology_passed else 0

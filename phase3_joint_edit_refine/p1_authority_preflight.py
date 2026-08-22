@@ -956,6 +956,11 @@ def _materialize_glas_gland_instance_authorities(
         _, produced = materialize_profile_auxiliaries(
             context,
             source_tissue=load_id_mask(row["source_tissue_mask"]),
+            source_image=np.asarray(
+                Image.open(row["source_image"]).convert("RGB"),
+                dtype=np.uint8,
+            ),
+            source_nuclei=load_nuclei_mask(row["source_nuclei_mask"]),
             output_dir=output_dir / case_id,
         )
         gland_instance = next(
@@ -1212,6 +1217,13 @@ def _auxiliary_inventory(
                 _, produced = materialize_profile_auxiliaries(
                     context,
                     source_tissue=load_id_mask(row["source_tissue_mask"]),
+                    source_image=np.asarray(
+                        Image.open(row["source_image"]).convert("RGB"),
+                        dtype=np.uint8,
+                    ),
+                    source_nuclei=load_nuclei_mask(
+                        row["source_nuclei_mask"]
+                    ),
                     output_dir=output_case_dir,
                 )
                 produced_by_id = {item.structure_id: item for item in produced}
@@ -1955,8 +1967,8 @@ def build_artifacts(
     if selection.get("source_manifest_sha256") != source_sha:
         raise ValueError("P1 selection is detached from its source case pool")
     evaluations = selection.get("evaluations")
-    if not isinstance(evaluations, list) or len(evaluations) != 24:
-        raise ValueError("P1 authority materialization requires 24 evaluations")
+    if not isinstance(evaluations, list) or len(evaluations) != 22:
+        raise ValueError("P1 authority materialization requires 22 evaluations")
     resources = root / "phase3_joint_edit_refine" / "resources"
     authority_erratum_path = authority_erratum_path or resources / (
         AUTHORITY_ERRATUM_FILENAME
@@ -2422,8 +2434,8 @@ def build_artifacts(
                 )
             )
 
-    if len(authority_records) != 120 or len(preflight_records) != 120:
-        raise ValueError("P1 authority ledgers must contain exactly 120 bindings")
+    if len(authority_records) != 110 or len(preflight_records) != 110:
+        raise ValueError("P1 authority ledgers must contain exactly 110 bindings")
     authority_bytes = b"".join(
         _canonical_json_bytes(item) + b"\n" for item in authority_records
     )
@@ -2545,8 +2557,8 @@ def build_artifacts(
             runtime_authority_path, root=root
         ),
         "runtime_input_manifest_sha256": runtime_input_sha,
-        "frozen_binding_count": 120,
-        "evaluation_count": 24,
+        "frozen_binding_count": 110,
+        "evaluation_count": len(evaluations),
         "fixed_cases_per_evaluation": 5,
         "frozen_case_replacement_allowed": False,
         "authority_records": OUTPUT_FILENAMES["authority"],
@@ -2590,7 +2602,7 @@ def build_artifacts(
                 "after": auxiliary["profile_owned_output_count"],
             },
             "bindings_missing_profile_provenance": {
-                "before": 120,
+                "before": 110,
                 "after": sum(
                     not item["required_profile_provenance"]["authority_verified"]
                     for item in authority_records
@@ -2668,9 +2680,9 @@ def validate_artifacts(artifacts: Mapping[str, bytes]) -> None:
         for line in artifacts[OUTPUT_FILENAMES["preflight"]].splitlines()
         if line.strip()
     ]
-    if len(bindings) != 120 or len(preflight) != 120:
-        raise ValueError("P1 authority/preflight ledgers must each contain 120 rows")
-    if len({item["binding_id"] for item in bindings}) != 120:
+    if len(bindings) != 110 or len(preflight) != 110:
+        raise ValueError("P1 authority/preflight ledgers must each contain 110 rows")
+    if len({item["binding_id"] for item in bindings}) != 110:
         raise ValueError("P1 authority binding IDs are not unique")
     if [item["binding_id"] for item in bindings] != [
         item["binding_id"] for item in preflight
@@ -2792,10 +2804,10 @@ def validate_artifacts(artifacts: Mapping[str, bytes]) -> None:
     if runtime_digest != canonical_metadata_sha256(unsigned_runtime):
         raise ValueError("P1 runtime authority content digest mismatch")
     status_lines = artifacts[OUTPUT_FILENAMES["status_table"]].splitlines()
-    if len(status_lines) != 121 or not status_lines[0].startswith(
+    if len(status_lines) != 111 or not status_lines[0].startswith(
         b"schema_version\tevaluation_id\tcase_id\t"
     ):
-        raise ValueError("P1 full status table does not contain all 120 bindings")
+        raise ValueError("P1 full status table does not contain all 110 bindings")
 
 
 def validate_committed_artifacts(*, root: Path, resources: Path) -> None:

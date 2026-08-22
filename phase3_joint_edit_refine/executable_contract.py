@@ -247,7 +247,10 @@ class ExecutableJointContract:
         # hash dependency.
         payload.pop("contract_id", None)
         resolved_count = int(payload.get("requested_count", 0))
-        if resolved_count <= 0:
+        if resolved_count < 0 or (
+            resolved_count == 0
+            and self.primitive_id != "residual-tumor-fragmentation-v1"
+        ):
             raise JointContractError(
                 "packing certificate has no positive executable count"
             )
@@ -635,9 +638,19 @@ class ExecutableJointContractCompiler:
             schema=schema,
         )
         protected_structure = np.zeros_like(target_tissue, dtype=bool)
-        for structure_id in sorted(
+        automatic_lumen_ids = {
+            "glas-gland-v1": ("gland_or_lumen_support",),
+            "panda-gleason-v1": ("gland_lumen_map",),
+        }.get(bundle.annotation_profile.annotation_profile_id, ())
+        protected_structure_ids = set(
             bundle.mechanism.representability.protected_auxiliary_structures
-        ):
+        )
+        protected_structure_ids.update(
+            structure_id
+            for structure_id in automatic_lumen_ids
+            if structure_id in scene.auxiliary_structure_masks
+        )
+        for structure_id in sorted(protected_structure_ids):
             if structure_id not in scene.auxiliary_structure_masks:
                 raise JointContractError(
                     f"required auxiliary structure {structure_id!r} is unavailable"
@@ -721,6 +734,15 @@ class ExecutableJointContractCompiler:
             iterations=support_radius,
         ) & generation_allowed
         support |= support_seed
+        depletion_core = np.asarray(
+            base_program.depletion_core_region, dtype=bool
+        ) & valid
+        depletion_transition = np.asarray(
+            base_program.depletion_transition_region, dtype=bool
+        ) & valid
+        depletion_outer_reference = np.asarray(
+            base_program.depletion_outer_reference_region, dtype=bool
+        ) & valid
         program = replace(
             base_program,
             population_target_region=population,
@@ -730,6 +752,9 @@ class ExecutableJointContractCompiler:
             support_context_region=support,
             mechanism_region=mechanism_region,
             continuity_region=continuity_region,
+            depletion_core_region=depletion_core,
+            depletion_transition_region=depletion_transition,
+            depletion_outer_reference_region=depletion_outer_reference,
             whole_instance_closure_px=whole_instance_closure_px,
             target_classes=allowed_classes,
             policies={

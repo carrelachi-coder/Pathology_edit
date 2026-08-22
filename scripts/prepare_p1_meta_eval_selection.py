@@ -33,11 +33,16 @@ PROBNET_CHECKPOINT_SHA256 = (
     "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8"
 )
 PROFILE_PRODUCIBLE_AUXILIARY_STRUCTURES = {
-    "glas-gland-v1": {"gland_or_lumen_support"},
+    "glas-gland-v1": {
+        "gland_or_lumen_support",
+        "external_cellular_stroma_map",
+    },
     "panda-gleason-v1": {
         "native_pattern_and_lumen_map",
         "native_pattern_map",
         "gland_lumen_map",
+        "gland_unit_wall_map",
+        "external_cellular_stroma_map",
     },
 }
 RUNTIME_DIGEST_FIELDS = (
@@ -293,8 +298,8 @@ def validate_selection(
         payload.get("evaluation_count", -1)
     ):
         raise ValueError("P1 meta-eval evaluation count is inconsistent")
-    if len(evaluations) != 24:
-        raise ValueError("P1 meta-eval must contain exactly 24 evaluations")
+    if len(evaluations) != 22:
+        raise ValueError("P1 meta-eval must contain exactly 22 evaluations")
     expected_case_ids_by_profile: dict[str, tuple[str, ...]] = {}
     evaluation_ids: set[str] = set()
     for evaluation in evaluations:

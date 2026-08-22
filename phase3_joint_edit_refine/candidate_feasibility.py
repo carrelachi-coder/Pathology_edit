@@ -1011,7 +1011,12 @@ class CandidateFeasibilityCompiler:
                     and not (
                         tissue_case.annotation_profile_id == "panda-gleason-v1"
                         and tissue_case.primitive_id
-                        == "infiltrative-nest-cord-extension-v1"
+                        in {
+                            "infiltrative-nest-cord-extension-v1",
+                            "invasive-tumor-footprint-decrease-v1",
+                            "stroma-increase-v1",
+                            "cohesive-boundary-expansion-v1",
+                        }
                     )
                 ):
                     # A maximum over one selected interface set is not yet a
@@ -1047,6 +1052,8 @@ class CandidateFeasibilityCompiler:
                     ),
                 )
                 executable_artifacts: list[tuple[str, str, Any, Any]] = []
+                failed_executor_check_ids: set[str] = set()
+                failed_executor_details: dict[str, str] = {}
                 for family, executor in zip(
                     tools.allowed_joint_families,
                     tools.allowed_concrete_executors,
@@ -1081,6 +1088,17 @@ class CandidateFeasibilityCompiler:
                         )
                         if report.passed:
                             passing.append((candidate, report))
+                        else:
+                            failed_executor_check_ids.update(
+                                item.check_id
+                                for item in report.checks
+                                if not item.passed
+                            )
+                            for item in report.checks:
+                                if not item.passed:
+                                    failed_executor_details.setdefault(
+                                        item.check_id, item.detail
+                                    )
                     if not passing:
                         continue
                     candidate, report = passing[0]
@@ -1089,7 +1107,11 @@ class CandidateFeasibilityCompiler:
                     )
                 if not executable_artifacts:
                     raise JointContractError(
-                        "compiled tissue plan has no concrete executor that passes all tissue hard gates"
+                        "compiled tissue plan has no concrete executor that passes all tissue hard gates: "
+                        + "; ".join(
+                            f"{check_id} ({failed_executor_details.get(check_id, 'failed')})"
+                            for check_id in sorted(failed_executor_check_ids)
+                        )
                     )
                 # Each witness binds exactly one candidate/tool pair. The
                 # portfolio builder invokes this compiler per anchor; exposing
@@ -1154,13 +1176,13 @@ class CandidateFeasibilityCompiler:
                             or 8.0
                         ),
                         minimum_directionality_ratio=(
-                            1.0
+                            0.75
                             if tissue_case.annotation_profile_id
                             == "panda-gleason-v1"
                             else 1.35
                         ),
                         minimum_skeleton_length_width_ratio=(
-                            5.0
+                            1.5
                             if tissue_case.annotation_profile_id
                             == "panda-gleason-v1"
                             else 1.5

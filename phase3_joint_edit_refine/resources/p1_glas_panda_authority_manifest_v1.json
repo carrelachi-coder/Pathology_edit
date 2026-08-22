@@ -3,28 +3,28 @@
   "all_required_authority_bound": false,
   "api_used": false,
   "authority_erratum_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_authority_erratum_v1.json",
-  "authority_erratum_manifest_sha256": "1d20c0e49ae36cc82a8d3808a46ad5d88ae0d28e1f2e4ac0f50ded8359f2b9c8",
-  "authority_materializer_code_commit": "35c2e831dbcbbfe334fa36fdacd46e0c808575ba",
+  "authority_erratum_manifest_sha256": "40dd60878f942adcc19f9d58c59b4ab8bffb2460060eadfcb15330edb5fa97c4",
+  "authority_materializer_code_commit": "37b0c13c5c879679d30452413407a23784a2d66f",
   "authority_records": "p1_glas_panda_authority_records_v1.jsonl",
-  "authority_records_sha256": "df7e73999f51e18ec3b689777bd4af394294cb4f67ef28f73687e7d58d9bc48c",
+  "authority_records_sha256": "b4b15bbd4eacf592768cfd0f77834f09b163e01696b02880a707946b7ae7f5fb",
   "auxiliary_materialization_manifest": "p1_glas_panda_auxiliary_materialization_v1.json",
-  "auxiliary_materialization_manifest_sha256": "1b6b632d1f2584d5aa2a138f935ad8164e47d1af66f5408acc1128ab969cb79e",
+  "auxiliary_materialization_manifest_sha256": "ea55cf6ae5b7736e348c67db77e8a2544d3d7c4b3883137d107ab65f73131c6b",
   "before_after_counts": {
     "binding_external_auxiliary_missing": {
-      "after": 15,
-      "before": 15
+      "after": 5,
+      "before": 5
     },
     "binding_local_clearance_roi_missing": {
       "after": 5,
       "before": 5
     },
     "bindings_missing_profile_provenance": {
-      "after": 120,
-      "before": 120
+      "after": 110,
+      "before": 110
     },
     "bindings_with_missing_source_digest": {
-      "after": 40,
-      "before": 40
+      "after": 38,
+      "before": 38
     },
     "profile_owned_auxiliary_outputs_materialized": {
       "after": 0,
@@ -35,32 +35,32 @@
       "before": 3
     },
     "source_digest_fields_missing": {
-      "after": 80,
-      "before": 80
+      "after": 76,
+      "before": 76
     }
   },
   "candidate_preflight_records": "p1_glas_panda_candidate_preflight_v1.jsonl",
-  "candidate_preflight_records_sha256": "01692ab96d0c4d8b221a85d4f24364375010325f9d6d9810683d0a0dc3e3487f",
+  "candidate_preflight_records_sha256": "1cf937e74f5d2b1ab7c2b826a4d56fd5abb1b4f86e05009bf9b84a08656a9a39",
   "eligible_for_later_visualization_count": 0,
   "evaluation_count": 24,
   "execution_status": "blocked_pending_authority_and_surviving_certificates",
   "executor_called": false,
   "fixed_cases_per_evaluation": 5,
-  "frozen_binding_count": 120,
+  "frozen_binding_count": 110,
   "frozen_case_replacement_allowed": false,
   "frozen_cases_changed": false,
   "full_case_status_table": "p1_glas_panda_preflight_status_v1.tsv",
-  "full_case_status_table_sha256": "23b4ec20fbf7167ebc3e176d139a3549e5250b2de9f2eca29727df48a993ecab",
+  "full_case_status_table_sha256": "5c860ce0b112297ebfa76ddc1f12599c426b7c885b267daf445d229973136440",
   "generated_he_run": false,
-  "manifest_content_sha256": "64afbe5c100ae1661033fec5fa574845dfff70f8989058966f15e4dff2576307",
+  "manifest_content_sha256": "8e90fa8cd4d355030fd7283024b66fdd650eebdd88baff55729054d5d2a5703d",
   "planner_called": false,
   "production_status": "shadow_only",
   "runtime_authority": {
     "all_required_runtime_assets_verified": false,
-    "authority_materializer_code_commit": "35c2e831dbcbbfe334fa36fdacd46e0c808575ba",
+    "authority_materializer_code_commit": "37b0c13c5c879679d30452413407a23784a2d66f",
     "code_assets": [
       {
-        "file_sha256": "250b54fe9cbc9fc8ff8423c482e67d9d5f49f953c06349f008f478f44ee5f8fa",
+        "file_sha256": "73f1e4a32ed11906798302e462d3952683851369105f8df009fae11b56e98d76",
         "path": "phase3_joint_edit_refine/mature_probnet_adapter.py"
       },
       {
@@ -68,15 +68,15 @@
         "path": "phase3_joint_edit_refine/probnet_adapter.py"
       },
       {
-        "file_sha256": "b01bb92b1dc870abcbdea48462acf949236ce9edc6615d5e7c1a4897accd7ddc",
+        "file_sha256": "da14fc8856e9b4136a3d36500ae0292570287de7586d032e5416654eb512d16e",
         "path": "phase3_joint_edit_refine/candidate_feasibility.py"
       },
       {
-        "file_sha256": "0ea19c122c6120e5eb8935d6bf359b259330840ee5b38ed29695a02aee5b8577",
+        "file_sha256": "4f6458c3d22405ef18e63e409ad9fb7c9650c642a343eee3752aa2f41c04c58d",
         "path": "phase3_joint_edit_refine/cell_programs.py"
       },
       {
-        "file_sha256": "967f067af345a4d20d5cb142a374acb3b2b0a5b6a314e9945d96be1bf936cc22",
+        "file_sha256": "fd97028990ba5d59ed59e5858a0f9573360c0873b86c6d0b2aa5533ab45c980d",
         "path": "phase3_joint_edit_refine/gates.py"
       },
       {
@@ -84,11 +84,11 @@
         "path": "phase3_joint_edit_refine/portfolio_authority.py"
       },
       {
-        "file_sha256": "6b2967594d758af092309585f6aeea247ef61a27057d1bebb7d8df735a6845b2",
+        "file_sha256": "78b9a5c6b53a36645b63223d3b805970f6d13cd1b1f727fd370e6b8c71456442",
         "path": "phase3_joint_edit_refine/workflow.py"
       },
       {
-        "file_sha256": "9a12d50afb761c57bd06062f602178b35bd56fb254a58ab26cf0310e45e158e9",
+        "file_sha256": "392977d71d2e7961c84706e00e7bd80e7676bb79fda8acbcefbb146c61e26591",
         "path": "phase3_mask_edit_refine/skills/catalog_manifest_v1.json"
       },
       {
@@ -204,9 +204,15 @@
       },
       "maximum_tissue_candidates": 4
     },
-    "runtime_authority_sha256": "a1720c57367323669e0e1db6dc234799a8022be3a3ca535737cc7534849d880c",
-    "runtime_code_set_sha256": "5d1d0f6e82d26a14ed386586a2fa7875fb348ea092f3f8951d34dfeac53bf417",
-    "runtime_input_manifest_sha256": "0e391ece64bc9b61ac0b2e7559ab49819fb1b84071be2f893f49632e4d30df13",
+    "required_runtime_digest_fields": [
+      "frozen_spatial_ranker_sha256",
+      "generator_checkpoint_sha256",
+      "instance_library_sha256",
+      "mature_probnet_checkpoint_sha256"
+    ],
+    "runtime_authority_sha256": "c53864fa96b4f016f2fb711e0e683b40e9ed486543ae66068fde5222849b7d11",
+    "runtime_code_set_sha256": "246104899c0705c46b709502e7b243174f391c969869c59766c6b24e1aa2ee27",
+    "runtime_input_manifest_sha256": "0ac4264b47925f302bb978fd63e3f7c0b027eccdc3f3f5161f24b826e8904cf6",
     "schema_version": "p1-runtime-authority-materialization-v1",
     "selection_runtime_authority": {
       "all_required_digests_bound": false,
@@ -214,7 +220,7 @@
       "generator_checkpoint_sha256": null,
       "instance_library_sha256": null,
       "mature_probnet_checkpoint_sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8",
-      "selection_generator_sha256": "77e1553d587f344871a50fd7d9c39e670cb687bcca5d7076999dfbae372ff418"
+      "selection_generator_sha256": "a1e4ba0be22033c9850b7e4dd5e070c593e35a9d179c39f07e43d1a48cc16782"
     },
     "selection_runtime_binding_mismatches": [],
     "selection_runtime_digest_fields_missing": [
@@ -231,21 +237,21 @@
     ]
   },
   "runtime_input_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_runtime_authority_v1.json",
-  "runtime_input_manifest_sha256": "0e391ece64bc9b61ac0b2e7559ab49819fb1b84071be2f893f49632e4d30df13",
+  "runtime_input_manifest_sha256": "0ac4264b47925f302bb978fd63e3f7c0b027eccdc3f3f5161f24b826e8904cf6",
   "schema_version": "p1-glas-panda-authority-manifest-v1",
   "selection_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_meta_eval_selection_v1.json",
-  "selection_manifest_sha256": "df4cbf3d1af5ba407a260ea2f490ca2b26aafb14f171a83d516836b280978d59",
+  "selection_manifest_sha256": "e5d09e655f90390e9fe34a306e878bb9077e4083846d452f627a6d08e1213be5",
   "source_asset_mutated": false,
   "source_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_source_case_pool_v1.json",
   "source_manifest_sha256": "5ce6d9bbb84bae82db576b38a1f15328d2bd620b844daf3cac47572c9ded3223",
   "status_counts": {
     "abstain": 0,
     "eligible": 0,
-    "reject": 120
+    "reject": 110
   },
   "target_mask_created": false,
   "terminal_reason_counts": {
-    "frozen_source_authority_failed": 120
+    "frozen_source_authority_failed": 110
   },
   "visualization_run": false
 }

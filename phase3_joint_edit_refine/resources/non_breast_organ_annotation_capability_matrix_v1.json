@@ -90,7 +90,8 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [
             "native_gland_instance_map",
-            "gland_or_lumen_support"
+            "gland_or_lumen_support",
+            "external_cellular_stroma_map"
           ],
           "simple_instructions": [
             "Add scattered tumor cells near the tumor boundary."
@@ -104,7 +105,8 @@
           "production_status": "shadow_only",
           "required_auxiliary_structures": [
             "native_gland_instance_map",
-            "gland_or_lumen_support"
+            "gland_or_lumen_support",
+            "external_cellular_stroma_map"
           ],
           "simple_instructions": [
             "Add peritumoral small tumor-cell clusters."
@@ -238,7 +240,8 @@
           "primitive_id": "local-invasive-clearance-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [
-            "local_clearance_roi"
+            "local_clearance_roi",
+            "gland_unit_wall_map"
           ],
           "simple_instructions": [
             "Clear tumor in this local ROI."
@@ -250,7 +253,9 @@
           "mechanism_id": "prostate-operational-tumor-retreat",
           "primitive_id": "stroma-increase-v1",
           "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
+          "required_auxiliary_structures": [
+            "gland_unit_wall_map"
+          ],
           "simple_instructions": [
             "Simulate a post-treatment response by increasing operational stroma."
           ],
@@ -261,7 +266,9 @@
           "mechanism_id": "prostate-operational-tumor-retreat",
           "primitive_id": "invasive-tumor-footprint-decrease-v1",
           "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
+          "required_auxiliary_structures": [
+            "gland_unit_wall_map"
+          ],
           "simple_instructions": [
             "Simulate a post-treatment response by decreasing tumor area."
           ],
@@ -272,7 +279,9 @@
           "mechanism_id": "prostate-operational-tumor-retreat",
           "primitive_id": "residual-tumor-fragmentation-v1",
           "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
+          "required_auxiliary_structures": [
+            "gland_unit_wall_map"
+          ],
           "simple_instructions": [
             "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
           ],
@@ -281,28 +290,15 @@
         {
           "closed_reason": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist.",
           "mechanism_id": "prostate-pattern-3-growth",
-          "primitive_id": "tumor-burden-increase-v1",
+          "primitive_id": "cohesive-boundary-expansion-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [
             "native_pattern_and_lumen_map"
           ],
           "simple_instructions": [
-            "Increase tumor burden."
+            "Expand a separated Pattern-3 gland-unit boundary."
           ],
           "status": "closed"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "prostate-pattern-4-growth",
-          "primitive_id": "tumor-burden-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [
-            "native_pattern_and_lumen_map"
-          ],
-          "simple_instructions": [
-            "Increase tumor burden."
-          ],
-          "status": "conditionally_supported"
         },
         {
           "closed_reason": null,
@@ -314,19 +310,6 @@
           ],
           "simple_instructions": [
             "Expand the tumor boundary locally."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "prostate-pattern-5-growth",
-          "primitive_id": "tumor-burden-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [
-            "native_pattern_and_lumen_map"
-          ],
-          "simple_instructions": [
-            "Increase tumor burden."
           ],
           "status": "conditionally_supported"
         },
@@ -362,7 +345,8 @@
           "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [
-            "native_pattern_and_lumen_map"
+            "native_pattern_and_lumen_map",
+            "external_cellular_stroma_map"
           ],
           "simple_instructions": [
             "Add scattered tumor cells near the tumor boundary."
