@@ -40,12 +40,12 @@ def test_pattern5_organic_cord_is_long_rounded_and_cell_scale() -> None:
         anchor_mask=anchor,
         parent_mask=parent,
         maximum_depth_px=90,
-        maximum_width_px=24,
+        maximum_width_px=32,
         tip_width_px=12,
         shape_mode="organic_rounded_cord",
     )
     finite = np.flatnonzero(np.isfinite(priority))
-    selected_ids = finite[np.argsort(priority.flat[finite])[:900]]
+    selected_ids = finite[np.argsort(priority.flat[finite])[:1800]]
     selected = np.zeros(shape, dtype=bool)
     selected.flat[selected_ids] = True
 
@@ -59,7 +59,7 @@ def test_pattern5_organic_cord_is_long_rounded_and_cell_scale() -> None:
         minimum_skeleton_length_width_ratio=5.0,
     )
 
-    assert projection.sum() > selected.sum() >= 900
+    assert projection.sum() > selected.sum() >= 1800
     assert audit["passed"], audit
     assert audit["longitudinal_span_px"] >= 5 * 12
     assert 0.45 <= audit["tip_to_neck_width_ratio"] <= 0.90

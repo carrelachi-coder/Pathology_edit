@@ -65,8 +65,11 @@ JOINT_AREA_BUDGET_BY_PRIMITIVE = {
     "cohesive-boundary-expansion-v1": (0.03, 0.02, 0.08, 0.02),
     # One PANDA Pattern-5 cord must be large enough to contain complete
     # source-calibrated nuclei while remaining a single narrow projection.
-    # On a 512x512 patch this is about 1,180--4,194 pixels, not bulk growth.
-    "infiltrative-nest-cord-extension-v1": (0.0075, 0.0045, 0.016, 0.0045),
+    # On a 512x512 patch this is about 3,146--7,340 pixels, not bulk growth.
+    # Match the already validated Breast cord scale while retaining a narrow
+    # Pattern-5 front: the previous 0.45--1.6% envelope routinely collapsed
+    # to a one-to-three-cell nub on 512 px PANDA patches.
+    "infiltrative-nest-cord-extension-v1": (0.018, 0.012, 0.028, 0.012),
 }
 FROZEN_EXECUTION_INSTRUCTIONS = {
     ("prostate-local-population-modulation", "cell-type-abundance-increase-v1"): (
