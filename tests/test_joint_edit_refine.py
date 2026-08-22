@@ -264,10 +264,10 @@ class JointSkillTests(unittest.TestCase):
             PANDA_CELL_EFFECT_COUNT_OVERRIDES[
                 "cell-type-abundance-decrease-v1"
             ],
-            (8, 6, 10),
+            (6, 4, 8),
         )
 
-    def test_panda_cell_type_decrease_uses_a_six_cell_floor(self):
+    def test_panda_cell_type_decrease_uses_a_four_cell_floor(self):
         case = JointCaseContext(
             case_id="panda-connective-depletion-budget",
             instruction="decrease connective tissue cells",
@@ -306,7 +306,7 @@ class JointSkillTests(unittest.TestCase):
                 budget.target_delta_count,
                 budget.max_delta_count,
             ),
-            (6, 8, 10),
+            (4, 6, 8),
         )
 
     def test_infiltration_budget_primitives_cover_all_peripheral_additions(self):

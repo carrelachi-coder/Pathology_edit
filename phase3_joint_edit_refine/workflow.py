@@ -141,7 +141,7 @@ PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES = frozenset(
 
 PANDA_CELL_EFFECT_EXTENT_OVERRIDES = {
     "cell-type-abundance-increase-v1": (3.5, 1),
-    "cell-type-abundance-decrease-v1": (4.0, 0),
+    "cell-type-abundance-decrease-v1": (3.0, 0),
     # Cellularity is one bounded mixed-population field.  It must span a
     # visible local region, but it is not three independent abundance foci.
     "cellularity-increase-v1": (4.0, 1),
@@ -159,7 +159,10 @@ PANDA_CELL_EFFECT_EXTENT_OVERRIDES = {
 # cells.
 PANDA_CELL_EFFECT_COUNT_OVERRIDES = {
     "cell-type-abundance-increase-v1": (10, 8, 14),
-    "cell-type-abundance-decrease-v1": (8, 6, 10),
+    # The old two-cell effect was visually negligible.  A 4--8 whole-cell
+    # field remains clearly larger while avoiding the severe full-replay
+    # capacity collapse observed with the provisional 6--10 cell floor.
+    "cell-type-abundance-decrease-v1": (6, 4, 8),
     "cellularity-increase-v1": (9, 6, 12),
     "cellularity-decrease-v1": (9, 6, 12),
     "neoplastic-cell-abundance-increase-v1": (6, 3, 8),
