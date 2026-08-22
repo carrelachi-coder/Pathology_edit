@@ -92,14 +92,16 @@ def test_visible_review_budgets_are_larger_than_commit_7c6c69f():
     cluster = MASK_REVIEW_CELL_BUDGETS[
         "peritumoral-small-cluster-increase-v1"
     ]
-    assert (local.target_delta_count, local.min_delta_count) == (20, 12)
-    assert local.max_delta_count == 28
-    assert local.maximum_extent_px == 384
-    assert (scatter.target_delta_count, scatter.min_delta_count) == (10, 4)
-    assert scatter.maximum_extent_px == 144
+    assert (local.target_delta_count, local.min_delta_count) == (24, 12)
+    assert local.max_delta_count == 32
+    assert local.maximum_extent_px == 416
+    assert (scatter.target_delta_count, scatter.min_delta_count) == (12, 4)
+    assert scatter.maximum_extent_px == 176
+    assert scatter.minimum_effect_span_px == 40
     assert scatter.minimum_effect_foci == 4
-    assert (cluster.target_delta_count, cluster.min_delta_count) == (8, 6)
-    assert cluster.maximum_extent_px == 160
+    assert (cluster.target_delta_count, cluster.min_delta_count) == (10, 6)
+    assert cluster.maximum_extent_px == 192
+    assert cluster.minimum_effect_span_px == 40
     assert cluster.minimum_effect_foci == 2
 
 
@@ -111,9 +113,9 @@ def test_derived_glas_budget_is_scaled_but_explicit_non_glas_policy_is_not():
         budget=base,
         metadata={"policy_id": "legacy"},
     )
-    assert (scaled.target_delta_count, scaled.min_delta_count) == (10, 4)
-    assert scaled.maximum_extent_px >= 144
-    assert metadata["policy_id"] == "glas-visible-cell-effect-budget-v3-feasible"
+    assert (scaled.target_delta_count, scaled.min_delta_count) == (12, 4)
+    assert scaled.maximum_extent_px >= 176
+    assert metadata["policy_id"] == "glas-visible-cell-effect-budget-v4-amplitude"
 
 
 def test_gland_mechanisms_allow_semantic_nucleus_instance_fallback_and_64px_halo():

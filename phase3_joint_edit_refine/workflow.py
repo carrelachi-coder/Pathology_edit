@@ -140,15 +140,31 @@ PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES = frozenset(
 )
 
 PANDA_CELL_EFFECT_EXTENT_OVERRIDES = {
-    "cell-type-abundance-increase-v1": (2.5, 1),
-    "cell-type-abundance-decrease-v1": (1.5, 0),
+    "cell-type-abundance-increase-v1": (3.5, 1),
+    "cell-type-abundance-decrease-v1": (4.0, 0),
     # Cellularity is one bounded mixed-population field.  It must span a
     # visible local region, but it is not three independent abundance foci.
-    "cellularity-increase-v1": (3.0, 1),
-    "cellularity-decrease-v1": (4.0, 0),
-    "neoplastic-cell-abundance-increase-v1": (2.0, 1),
-    "neoplastic-cell-abundance-decrease-v1": (1.5, 0),
-    "peritumoral-neoplastic-scatter-increase-v1": (4.0, 3),
+    "cellularity-increase-v1": (4.0, 1),
+    "cellularity-decrease-v1": (5.0, 0),
+    "neoplastic-cell-abundance-increase-v1": (3.0, 1),
+    "neoplastic-cell-abundance-decrease-v1": (3.0, 0),
+    "peritumoral-neoplastic-scatter-increase-v1": (5.0, 3),
+}
+
+# Profile-specific visible-count targets.  These deliberately sit above the
+# primitive's biological minimum: the minimum answers whether an edit is
+# meaningful at all, while this policy makes a typical 512 px PANDA result
+# readily visible.  Exact source/removal or packing capacity remains the hard
+# upper bound, so sparse patches abstain or fall back instead of fabricating
+# cells.
+PANDA_CELL_EFFECT_COUNT_OVERRIDES = {
+    "cell-type-abundance-increase-v1": (10, 8, 14),
+    "cell-type-abundance-decrease-v1": (8, 6, 10),
+    "cellularity-increase-v1": (9, 6, 12),
+    "cellularity-decrease-v1": (9, 6, 12),
+    "neoplastic-cell-abundance-increase-v1": (6, 3, 8),
+    "neoplastic-cell-abundance-decrease-v1": (6, 4, 8),
+    "peritumoral-neoplastic-scatter-increase-v1": (5, 3, 7),
 }
 
 
@@ -4605,21 +4621,43 @@ def _apply_glas_visible_cell_budget(
     }
     if primitive_id in local_population:
         visible = CellCountExtentBudget(
-            target_delta_count=20,
+            target_delta_count=24,
             min_delta_count=12,
-            max_delta_count=28,
-            maximum_extent_px=max(384, budget.maximum_extent_px),
+            max_delta_count=32,
+            maximum_extent_px=max(416, budget.maximum_extent_px),
             interface_min_px=0,
             interface_max_px=max(48, budget.interface_max_px),
             minimum_effect_span_px=0,
             minimum_effect_foci=0,
         )
+        if primitive_id == "cell-type-abundance-decrease-v1":
+            visible = CellCountExtentBudget(
+                target_delta_count=20,
+                min_delta_count=12,
+                max_delta_count=28,
+                maximum_extent_px=max(416, budget.maximum_extent_px),
+                interface_min_px=0,
+                interface_max_px=max(48, budget.interface_max_px),
+                minimum_effect_span_px=0,
+                minimum_effect_foci=0,
+            )
         if primitive_id == "cellularity-decrease-v1":
             visible = CellCountExtentBudget(
-                target_delta_count=16,
+                target_delta_count=20,
                 min_delta_count=12,
-                max_delta_count=24,
-                maximum_extent_px=max(384, budget.maximum_extent_px),
+                max_delta_count=28,
+                maximum_extent_px=max(416, budget.maximum_extent_px),
+                interface_min_px=0,
+                interface_max_px=max(48, budget.interface_max_px),
+                minimum_effect_span_px=0,
+                minimum_effect_foci=0,
+            )
+        if primitive_id == "neoplastic-cell-abundance-decrease-v1":
+            visible = CellCountExtentBudget(
+                target_delta_count=28,
+                min_delta_count=12,
+                max_delta_count=40,
+                maximum_extent_px=max(416, budget.maximum_extent_px),
                 interface_min_px=0,
                 interface_max_px=max(48, budget.interface_max_px),
                 minimum_effect_span_px=0,
@@ -4627,24 +4665,24 @@ def _apply_glas_visible_cell_budget(
             )
     elif primitive_id == "peritumoral-neoplastic-scatter-increase-v1":
         visible = CellCountExtentBudget(
-            target_delta_count=10,
+            target_delta_count=12,
             min_delta_count=4,
-            max_delta_count=14,
-            maximum_extent_px=max(144, budget.maximum_extent_px),
+            max_delta_count=16,
+            maximum_extent_px=max(176, budget.maximum_extent_px),
             interface_min_px=max(4, budget.interface_min_px),
             interface_max_px=max(48, budget.interface_max_px),
-            minimum_effect_span_px=max(32, budget.minimum_effect_span_px),
+            minimum_effect_span_px=max(40, budget.minimum_effect_span_px),
             minimum_effect_foci=max(4, budget.minimum_effect_foci),
         )
     elif primitive_id == "peritumoral-small-cluster-increase-v1":
         visible = CellCountExtentBudget(
-            target_delta_count=8,
+            target_delta_count=10,
             min_delta_count=6,
-            max_delta_count=12,
-            maximum_extent_px=max(160, budget.maximum_extent_px),
+            max_delta_count=14,
+            maximum_extent_px=max(192, budget.maximum_extent_px),
             interface_min_px=max(4, budget.interface_min_px),
             interface_max_px=max(48, budget.interface_max_px),
-            minimum_effect_span_px=max(32, budget.minimum_effect_span_px),
+            minimum_effect_span_px=max(40, budget.minimum_effect_span_px),
             minimum_effect_foci=max(2, budget.minimum_effect_foci),
         )
     else:
@@ -4653,7 +4691,7 @@ def _apply_glas_visible_cell_budget(
     return visible, {
         **metadata,
         "pre_scale_budget": budget.__dict__,
-        "policy_id": "glas-visible-cell-effect-budget-v3-feasible",
+        "policy_id": "glas-visible-cell-effect-budget-v4-amplitude",
         "authority": "system_owned_profile_specific_budget",
         "budget": visible.__dict__,
     }
@@ -4666,7 +4704,7 @@ def _apply_panda_profile_cell_budget(
     budget: CellCountExtentBudget,
     metadata: dict[str, Any],
 ) -> tuple[CellCountExtentBudget, dict[str, Any]]:
-    """Keep PANDA cell edits meaningful without over-scaling small patches."""
+    """Raise PANDA visibility while retaining exact patch capacity bounds."""
 
     if (
         case.annotation_profile_id != "panda-gleason-v1"
@@ -4676,22 +4714,27 @@ def _apply_panda_profile_cell_budget(
     meaningful_count = int(metadata.get("skill_minimum_effect_delta_count", 0))
     if meaningful_count <= 0:
         return budget, metadata
+    target_override, minimum_override, maximum_override = (
+        PANDA_CELL_EFFECT_COUNT_OVERRIDES[primitive_id]
+    )
+    executable_capacity = int(
+        metadata.get("selected_zone_executable_capacity", budget.max_delta_count)
+    )
+    executable_capacity = max(meaningful_count, executable_capacity)
+    target_count = min(target_override, executable_capacity)
+    minimum_count = min(target_count, max(meaningful_count, minimum_override))
+    maximum_count = min(maximum_override, executable_capacity)
+    maximum_count = max(target_count, minimum_count, maximum_count)
     calibrated = replace(
         budget,
-        target_delta_count=meaningful_count,
-        min_delta_count=meaningful_count,
-        max_delta_count=max(
-            meaningful_count,
-            min(
-                budget.max_delta_count,
-                int(np.ceil(meaningful_count * 1.5)),
-            ),
-        ),
+        target_delta_count=target_count,
+        min_delta_count=minimum_count,
+        max_delta_count=maximum_count,
     )
     return calibrated, {
         **metadata,
         "pre_profile_budget": budget.__dict__,
-        "policy_id": "panda-profile-cell-effect-budget-v1",
+        "policy_id": "panda-profile-cell-effect-budget-v2-amplitude",
         "authority": "system_owned_profile_specific_budget",
         "budget": calibrated.__dict__,
     }

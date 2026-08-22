@@ -52,20 +52,21 @@ DEFAULT_USER_AUTHORITY_TEXT = (
     "execution → gates 的冻结 shadow replay。"
 )
 JOINT_AREA_BUDGET_BY_PRIMITIVE = {
-    # These are the repository's already exercised cross-organ/PANDA geometry
-    # contracts.  A narrow cord must never inherit a bulk-growth floor.
-    "local-invasive-clearance-v1": (0.04, 0.02, 0.12, 0.02),
-    "stroma-increase-v1": (0.03, 0.02, 0.12, 0.02),
-    "invasive-tumor-footprint-decrease-v1": (0.03, 0.02, 0.12, 0.02),
+    # User-reviewed amplitude pass: preserve every geometry/topology contract
+    # but make the typical tissue footprint clearly visible on a 512 px patch.
+    # A narrow cord still must never inherit a bulk-growth floor.
+    "local-invasive-clearance-v1": (0.06, 0.035, 0.14, 0.035),
+    "stroma-increase-v1": (0.05, 0.03, 0.14, 0.03),
+    "invasive-tumor-footprint-decrease-v1": (0.05, 0.03, 0.14, 0.03),
     # These are local topology edits, not whole-patch tumor-burden edits.
-    # A 1.5% floor remains plainly visible at 512x512 while avoiding the
+    # A 2.5% floor remains local at 512x512 while avoiding the
     # forced bulk cuts/growth that damaged otherwise intact gland units.
-    "residual-tumor-fragmentation-v1": (0.035, 0.015, 0.05, 0.015),
-    "cohesive-boundary-expansion-v1": (0.02, 0.015, 0.06, 0.015),
+    "residual-tumor-fragmentation-v1": (0.045, 0.025, 0.065, 0.025),
+    "cohesive-boundary-expansion-v1": (0.03, 0.02, 0.08, 0.02),
     # One PANDA Pattern-5 cord must be large enough to contain complete
     # source-calibrated nuclei while remaining a single narrow projection.
-    # On a 512x512 patch this is about 786--3,146 pixels, not bulk growth.
-    "infiltrative-nest-cord-extension-v1": (0.0053, 0.003, 0.012, 0.003),
+    # On a 512x512 patch this is about 1,180--4,194 pixels, not bulk growth.
+    "infiltrative-nest-cord-extension-v1": (0.0075, 0.0045, 0.016, 0.0045),
 }
 FROZEN_EXECUTION_INSTRUCTIONS = {
     ("prostate-local-population-modulation", "cell-type-abundance-increase-v1"): (

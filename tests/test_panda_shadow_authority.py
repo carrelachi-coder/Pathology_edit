@@ -355,31 +355,35 @@ class PandaShadowAuthorityTests(unittest.TestCase):
         self.assertEqual(
             _joint_area_budget("infiltrative-nest-cord-extension-v1")
             ["min_fraction"],
-            0.003,
+            0.0045,
         )
         self.assertEqual(
             _joint_area_budget("infiltrative-nest-cord-extension-v1")
             ["max_fraction"],
-            0.012,
+            0.016,
         )
         self.assertEqual(
             _joint_area_budget("local-invasive-clearance-v1")["max_fraction"],
-            0.12,
+            0.14,
+        )
+        self.assertEqual(
+            _joint_area_budget("local-invasive-clearance-v1")["target_fraction"],
+            0.06,
         )
         self.assertEqual(
             _joint_area_budget("residual-tumor-fragmentation-v1")
             ["target_fraction"],
-            0.035,
+            0.045,
         )
         self.assertEqual(
             _joint_area_budget("residual-tumor-fragmentation-v1")
             ["min_fraction"],
-            0.015,
+            0.025,
         )
         self.assertEqual(
             _joint_area_budget("cohesive-boundary-expansion-v1")
             ["target_fraction"],
-            0.02,
+            0.03,
         )
 
     def test_frozen_semantic_intent_binds_reviewed_primitive(self):

@@ -176,6 +176,7 @@ from phase3_joint_edit_refine.tissue_tools import (
 from phase3_joint_edit_refine.workflow import (
     INFILTRATION_BUDGET_PRIMITIVES,
     PANDA_CELL_CAPACITY_FALLBACK_PRIMITIVES,
+    PANDA_CELL_EFFECT_COUNT_OVERRIDES,
     PANDA_CELL_EFFECT_EXTENT_OVERRIDES,
     JointPathologyEditWorkflow,
     JointWorkflowConfig,
@@ -242,15 +243,70 @@ class JointSkillTests(unittest.TestCase):
             metadata={"skill_minimum_effect_delta_count": 2},
         )
 
-        self.assertEqual((budget.min_delta_count, budget.target_delta_count), (2, 2))
-        self.assertEqual(budget.minimum_effect_span_px, 12)
-        self.assertEqual(metadata["policy_id"], "panda-profile-cell-effect-budget-v1")
         self.assertEqual(
-            PANDA_CELL_EFFECT_EXTENT_OVERRIDES[case.primitive_id], (1.5, 0)
+            (budget.min_delta_count, budget.target_delta_count),
+            (4, 6),
+        )
+        self.assertEqual(budget.max_delta_count, 8)
+        self.assertEqual(budget.minimum_effect_span_px, 12)
+        self.assertEqual(
+            metadata["policy_id"],
+            "panda-profile-cell-effect-budget-v2-amplitude",
+        )
+        self.assertEqual(
+            PANDA_CELL_EFFECT_EXTENT_OVERRIDES[case.primitive_id], (3.0, 0)
         )
         self.assertEqual(
             PANDA_CELL_EFFECT_EXTENT_OVERRIDES["cellularity-increase-v1"],
-            (3.0, 1),
+            (4.0, 1),
+        )
+        self.assertEqual(
+            PANDA_CELL_EFFECT_COUNT_OVERRIDES[
+                "cell-type-abundance-decrease-v1"
+            ],
+            (8, 6, 10),
+        )
+
+    def test_panda_cell_type_decrease_uses_a_six_cell_floor(self):
+        case = JointCaseContext(
+            case_id="panda-connective-depletion-budget",
+            instruction="decrease connective tissue cells",
+            source_image_uri="image.png",
+            source_tissue_mask_uri="tissue.png",
+            source_nuclei_mask_uri="nuclei.png",
+            pathology_domain_id="prostate-adenocarcinoma-v1",
+            annotation_profile_id="panda-gleason-v1",
+            cell_observation_profile_id="cellvit-five-class-v1",
+            cell_population_profile_id="prostate-cell-population-v1",
+            primitive_id="cell-type-abundance-decrease-v1",
+            joint_area_budget=None,
+            seed=7,
+            provenance={},
+        )
+        source = CellCountExtentBudget(
+            target_delta_count=2,
+            min_delta_count=2,
+            max_delta_count=3,
+            maximum_extent_px=48,
+            minimum_effect_span_px=24,
+        )
+        budget, _metadata = _apply_panda_profile_cell_budget(
+            case,
+            primitive_id=case.primitive_id,
+            budget=source,
+            metadata={
+                "skill_minimum_effect_delta_count": 2,
+                "selected_zone_executable_capacity": 10,
+            },
+        )
+
+        self.assertEqual(
+            (
+                budget.min_delta_count,
+                budget.target_delta_count,
+                budget.max_delta_count,
+            ),
+            (6, 8, 10),
         )
 
     def test_infiltration_budget_primitives_cover_all_peripheral_additions(self):
