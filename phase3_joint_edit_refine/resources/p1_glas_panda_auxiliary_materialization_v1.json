@@ -431,9 +431,9 @@
   "external_only_structure_ids": [
     "local_clearance_roi"
   ],
-  "manifest_content_sha256": "e1eec442f44f9e3cee9fd8917de0b989ffb72432ff8abd27ffb0afb4660000ae",
+  "manifest_content_sha256": "a7e495abef6ed586acbefa871182bd39cd974f0cb7e69f2943417f0e7bf64b25",
   "producer_source_path": "phase3_joint_edit_refine/auxiliary.py",
-  "producer_source_sha256": "0ffde0afecf275139b69aa18ae2e167df50a392fd48afcb3a9f774ffa5bc54fd",
+  "producer_source_sha256": "11a006f7078bcec19b386222af939e4b6df94400e2fa4ae21fb8d56046994e36",
   "profile_owned_output_count": 0,
   "schema_version": "p1-profile-auxiliary-materialization-v1",
   "visualization_run": false
