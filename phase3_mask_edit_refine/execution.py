@@ -714,6 +714,9 @@ def _prepare_compiler_work(
                     params.get("directional_maximum_width_px", 24.0)
                 ),
                 tip_width_px=float(params.get("directional_tip_width_px", 2.0)),
+                centerline_first=bool(
+                    params.get("directional_centerline_first", False)
+                ),
             )
         if plan.primitive_id == "invasive-tumor-footprint-decrease-v1":
             required_scale = _natural_external_retreat_priority(

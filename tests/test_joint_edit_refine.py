@@ -2253,7 +2253,7 @@ class JointSkillTests(unittest.TestCase):
         )
         self.assertEqual(selected, ("native-raster-cellvit-00001",))
 
-    def test_native_partition_distinguishes_unseeded_from_seeded_residual(self):
+    def test_native_partition_merges_seeded_residual_and_preserves_unseeded(self):
         from scripts.run_glas_primitive_mask_review import (
             _semantic_partition_from_native_seeds,
         )
@@ -2274,10 +2274,38 @@ class JointSkillTests(unittest.TestCase):
             {item["seed_source"] for item in records},
             {
                 "cellvit",
-                "semantic_seeded_residual",
                 "semantic_unseeded",
             },
         )
+        self.assertEqual(len(records), 2)
+        seeded_label = next(
+            int(item["label_id"])
+            for item in records
+            if item["seed_source"] == "cellvit"
+        )
+        self.assertTrue(np.all(labels[3:9, 3:9] == seeded_label))
+        np.testing.assert_array_equal(labels > 0, semantic > 0)
+
+    def test_native_partition_splits_one_contour_across_semantic_components(self):
+        from scripts.run_glas_primitive_mask_review import (
+            _semantic_partition_from_native_seeds,
+        )
+
+        semantic = np.zeros((24, 24), dtype=np.uint8)
+        semantic[3:9, 3:9] = 1
+        semantic[14:20, 14:20] = 1
+        disconnected_seed = np.zeros_like(semantic, dtype=bool)
+        disconnected_seed[4:8, 4:8] = True
+        disconnected_seed[15:19, 15:19] = True
+
+        labels, records, native_count = _semantic_partition_from_native_seeds(
+            semantic,
+            [(1, disconnected_seed)],
+        )
+
+        self.assertEqual(native_count, 2)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(len({int(item["label_id"]) for item in records}), 2)
         np.testing.assert_array_equal(labels > 0, semantic > 0)
 
     def test_glas_immune_decrease_screen_defers_native_count_to_compiler(self):
@@ -3137,6 +3165,60 @@ class JointSkillTests(unittest.TestCase):
             ),
             (1, 4),
         )
+        self.assertEqual(
+            certificate_aligned_cluster_size_range(
+                primitive_id="peritumoral-small-cluster-increase-v1",
+                mechanism_id="melanoma-peritumoral-small-focus",
+                configured_range=(2, 4),
+                packing_certificate={
+                    "passed": True,
+                    "requested_count": 8,
+                    "minimum_center_separation_px": 0.0,
+                },
+                nominal_nucleus_diameter_px=diameter,
+            ),
+            (2, 2),
+        )
+
+    def test_generic_small_cluster_forms_three_compact_pairs(self):
+        shape = (100, 100)
+        legal = np.zeros(shape, dtype=bool)
+        legal[5:-5, 5:-5] = True
+        rows, cols = np.indices(shape)
+        score = -((rows - 50) ** 2 + (cols - 50) ** 2).astype(float)
+        _target, placed, trace = _place_layout(
+            base=np.zeros(shape, dtype=np.uint8),
+            references=(
+                ReferenceNucleusShape(
+                    "ref", 1, np.ones((3, 3), dtype=bool), "test", 9
+                ),
+            ),
+            class_id=1,
+            legal_zone=legal,
+            valid_footprint_region=legal,
+            halo=legal,
+            score=score,
+            requested_count=6,
+            layout_program="small_cluster",
+            cluster_size_range=(2, 2),
+            nominal_nucleus_diameter_px=8.0,
+            orientation_mask=np.zeros(shape, dtype=bool),
+            continuity_region=np.zeros(shape, dtype=bool),
+            continuity_anchor_mask=np.zeros(shape, dtype=bool),
+            continuity_maximum_empty_run_px=0,
+            continuity_minimum_anchor_coverage_fraction=0.0,
+            continuity_preferred_count=0,
+            minimum_effect_span_px=20,
+            minimum_effect_foci=2,
+            seed=1,
+            enforce_small_cluster_group_separation=True,
+            compact_small_cluster=True,
+            allow_immediate_reference_reuse=True,
+        )
+
+        self.assertEqual(placed, 6)
+        group_sizes = Counter(item["cluster_id"] for item in trace)
+        self.assertEqual(sorted(group_sizes.values()), [2, 2, 2])
 
     def test_small_cluster_forms_one_localized_three_focus_hotspot(self):
         shape = (100, 100)
@@ -3353,6 +3435,42 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(certificate.nominal_required_seam_count, 3)
         self.assertEqual(certificate.minimum_safe_seam_count, 2)
         self.assertTrue(certificate.seam_count_fallback_used)
+
+    def test_packing_can_reduce_seam_and_total_to_declared_minimum(self):
+        shape = (24, 24)
+        centers = np.zeros(shape, dtype=bool)
+        for index in range(8):
+            centers[3 + 5 * (index // 4), 3 + 5 * (index % 4)] = True
+        seam = centers.copy()
+        reference = ReferenceNucleusShape(
+            instance_id="complete-ref-1",
+            class_id=1,
+            mask=np.ones((1, 1), dtype=bool),
+            source="semantic_complete_instance",
+            area_px=1,
+        )
+
+        certificate = certify_complete_footprint_packing(
+            source_nuclei=np.zeros(shape, dtype=np.uint8),
+            erased_footprint=np.zeros(shape, dtype=bool),
+            center_region=centers,
+            valid_footprint_region=np.ones(shape, dtype=bool),
+            references_by_class={1: (reference,)},
+            requested_count=13,
+            continuity_region=seam,
+            required_seam_count=10,
+            minimum_seam_count=4,
+            required_seam_class=1,
+            minimum_acceptable_count=4,
+        )
+
+        self.assertTrue(certificate.passed, certificate.failure_reasons)
+        self.assertEqual(certificate.placed_count, 8)
+        self.assertEqual(certificate.requested_count, 8)
+        self.assertEqual(certificate.required_seam_count, 8)
+        self.assertEqual(certificate.minimum_safe_count, 4)
+        self.assertTrue(certificate.seam_count_fallback_used)
+        self.assertTrue(certificate.finite_count_fallback_used)
 
     def test_packing_witness_excludes_locally_unsupported_shape_sizes(self):
         shape = (48, 48)
@@ -3992,6 +4110,27 @@ class JointSkillTests(unittest.TestCase):
             mechanism.cell_program.layout_program_by_primitive,
         )
 
+    def test_lung_inflammatory_decrease_uses_sparse_multifocus_removal(self):
+        repository = JointSkillRepository()
+        mechanism = repository.mechanisms[
+            "lung-local-population-modulation"
+        ]
+        self.assertEqual(
+            mechanism.cell_program.layout_program_by_primitive[
+                "generic-inflammatory-cell-abundance-decrease-v1"
+            ],
+            "single",
+        )
+        primitive = repository.primitives[
+            "generic-inflammatory-cell-abundance-decrease-v1"
+        ]
+        self.assertEqual(
+            primitive.minimum_effect_delta_count_for(
+                "lung-carcinoma-v1"
+            ),
+            6,
+        )
+
     def test_joint_primitive_execution_scope_is_explicit(self):
         repository = JointSkillRepository()
         self.assertEqual(
@@ -4332,6 +4471,16 @@ class JointSkillTests(unittest.TestCase):
                 predicted_pixels=[22_000],
                 desired_max_pixels=20_972,
                 hard_max_pixels=31_457,
+            )
+        )
+        self.assertTrue(
+            _retain_visible_regression_whole_instance_closure(
+                annotation_profile_id="ignite-semantic-v1",
+                primitive_id="infiltrative-nest-cord-extension-v1",
+                fallback_policy="max_feasible_below_target",
+                predicted_pixels=[3_033],
+                desired_max_pixels=2_359,
+                hard_max_pixels=3_932,
             )
         )
 
@@ -7325,7 +7474,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v17"
+                program["compiler_version"], "joint-cell-tool-compiler-v18"
             )
             self.assertEqual(
                 program["policies"]["P"],
@@ -7817,7 +7966,7 @@ class JointWorkflowTests(unittest.TestCase):
                 " ".join(result.abstain_reasons),
             )
 
-    def test_p2_boundary_cord_scatter_and_small_focus_primitives_are_closed(self):
+    def test_p2_boundary_cord_scatter_and_small_focus_respect_annotation_scope(self):
         fixtures = (
             (
                 "ignite-semantic-v1",
@@ -8002,10 +8151,22 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "p2-geometry")
-                self.assertEqual(result.status, "abstained")
-                self.assertIn(
-                    "closed", " ".join(result.abstain_reasons).casefold()
+                if profile_id == "orca-semantic-v1":
+                    self.assertEqual(result.status, "abstained")
+                    self.assertIn(
+                        "closed", " ".join(result.abstain_reasons).casefold()
+                    )
+                    continue
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
                 )
+                if joint_budget is None:
+                    self.assertEqual(result.condition.ledger.tissue_pixels, 0)
+                    self.assertGreaterEqual(
+                        result.condition.ledger.added_nucleus_pixels, 54
+                    )
+                else:
+                    self.assertGreater(result.condition.ledger.tissue_pixels, 0)
 
     def test_puma_scatter_binds_final_footprints_to_explicit_epidermis(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -8060,7 +8221,7 @@ class JointWorkflowTests(unittest.TestCase):
             reason = " ".join(result.abstain_reasons).casefold()
             self.assertIn("junctional", reason)
 
-    def test_p2_lung_and_puma_necrosis_turnover_is_closed(self):
+    def test_p2_lung_and_puma_necrosis_turnover_respects_dataset_scope(self):
         fixtures = (
             (
                 "lung-carcinoma-v1",
@@ -8113,12 +8274,20 @@ class JointWorkflowTests(unittest.TestCase):
                         joint_planner=HeuristicJointPlanner(),
                         critic=_ApprovingJointCritic(),
                     ).run(case, output_root=root / "p2-necrosis")
-                    self.assertEqual(result.status, "abstained")
-                    self.assertIn(
-                        "closed", " ".join(result.abstain_reasons).casefold()
+                    if profile_id == "puma-semantic-v1":
+                        self.assertEqual(result.status, "abstained")
+                        self.assertIn(
+                            "closed", " ".join(result.abstain_reasons).casefold()
+                        )
+                        continue
+                    self.assertEqual(
+                        result.status,
+                        "selected_research",
+                        result.abstain_reasons,
                     )
+                    self.assertGreater(result.condition.ledger.tissue_pixels, 0)
 
-    def test_p2_post_treatment_operational_retreat_is_closed(self):
+    def test_p2_post_treatment_operational_retreat_respects_annotation_scope(self):
         fixtures = (
             (
                 "lung-carcinoma-v1",
@@ -8205,14 +8374,21 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "p2-retreat")
-                self.assertEqual(result.status, "abstained")
-                reason = " ".join(result.abstain_reasons).casefold()
-                self.assertTrue(
-                    "closed" in reason
-                    or "absent from the certified interpretation portfolio" in reason
+                if profile_id == "orca-semantic-v1":
+                    self.assertEqual(result.status, "abstained")
+                    reason = " ".join(result.abstain_reasons).casefold()
+                    self.assertTrue(
+                        "closed" in reason
+                        or "absent from the certified interpretation portfolio"
+                        in reason
+                    )
+                    continue
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
                 )
+                self.assertGreater(result.condition.ledger.tissue_pixels, 0)
 
-    def test_lung_generic_immune_compartment_turnover_is_closed(self):
+    def test_lung_generic_immune_compartment_turnover_executes_both_directions(self):
         for primitive_id in (
             "generic-immune-infiltrate-increase-v1",
             "generic-immune-infiltrate-decrease-v1",
@@ -8245,10 +8421,10 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "lung-immune")
-                self.assertEqual(result.status, "abstained")
-                self.assertIn(
-                    "closed", " ".join(result.abstain_reasons).casefold()
+                self.assertEqual(
+                    result.status, "selected_research", result.abstain_reasons
                 )
+                self.assertGreater(result.condition.ledger.tissue_pixels, 0)
 
     def test_p2_neoplastic_and_generic_inflammatory_abundance_additions_execute(self):
         fixtures = (
@@ -8343,17 +8519,6 @@ class JointWorkflowTests(unittest.TestCase):
                         joint_planner=HeuristicJointPlanner(),
                         critic=_ApprovingJointCritic(),
                     ).run(case, output_root=root / "p2-population")
-                    if (
-                        profile_id == "ignite-semantic-v1"
-                        and primitive_id
-                        == "neoplastic-cell-abundance-increase-v1"
-                    ):
-                        self.assertEqual(result.status, "abstained")
-                        self.assertIn(
-                            "closed",
-                            " ".join(result.abstain_reasons).casefold(),
-                        )
-                        continue
                     self.assertEqual(
                         result.status,
                         "selected_research",
@@ -8510,7 +8675,7 @@ class JointWorkflowTests(unittest.TestCase):
             ).run(case, output_root=root / "cord-no-candidate")
             self.assertEqual(result.status, "abstained")
             reason = " ".join(result.abstain_reasons)
-            self.assertIn("closed", reason.casefold())
+            self.assertIn("interface", reason.casefold())
             self.assertNotIn("deterministic_replan_stalled", reason)
 
     def test_closed_oral_scatter_and_cluster_fail_before_execution(self):

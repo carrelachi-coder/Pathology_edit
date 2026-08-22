@@ -211,16 +211,18 @@
       "program_id": "localized-density-gradient-v1",
       "resolution_mode": "density_field",
       "allowed_anchor_types": [
-        "interface"
+        "interface",
+        "population_peak"
       ],
       "allowed_neighbor_labels": [
         "Stroma",
         "Necrosis",
-        "Immune infiltrate"
+        "Immune infiltrate",
+        "Tumor"
       ],
-      "core_width_cell_diameters": 1.25,
+      "core_width_cell_diameters": 2.5,
       "transition_width_cell_diameters": 6,
-      "outer_reference_width_cell_diameters": 2,
+      "outer_reference_width_cell_diameters": 3,
       "core_removal_weight": 1,
       "transition_removal_weight": 0.45,
       "core_target_removal_fraction": 0.55,
@@ -232,8 +234,8 @@
       "minimum_core_removals": 1,
       "minimum_transition_removals": 1,
       "maximum_new_gap_cell_diameters": 3,
-      "minimum_outer_reference_instances": 3,
-      "minimum_field_area_cell_diameter_squares": 130
+      "minimum_outer_reference_instances": 0,
+      "minimum_field_area_cell_diameter_squares": 6
     },
     "required_checker_ids": [
       "whole_instance_changes",
@@ -253,7 +255,7 @@
       "neoplastic-cell-abundance-increase-v1": "small_cluster",
       "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient",
       "generic-inflammatory-cell-abundance-increase-v1": "small_cluster",
-      "generic-inflammatory-cell-abundance-decrease-v1": "localized_density_gradient",
+      "generic-inflammatory-cell-abundance-decrease-v1": "single",
       "peritumoral-neoplastic-scatter-increase-v1": "single",
       "peritumoral-small-cluster-increase-v1": "small_cluster"
     }

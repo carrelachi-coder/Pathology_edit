@@ -17,12 +17,28 @@
         "cell-type-abundance-increase-v1",
         "cellularity-decrease-v1",
         "cellularity-increase-v1",
-        "generic-inflammatory-cell-abundance-increase-v1"
+        "cohesive-boundary-expansion-v1",
+        "generic-immune-infiltrate-decrease-v1",
+        "generic-immune-infiltrate-increase-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-increase-v1",
+        "infiltrative-nest-cord-extension-v1",
+        "invasive-tumor-footprint-decrease-v1",
+        "necrosis-appearance-v1",
+        "necrosis-resolution-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+        "residual-tumor-fragmentation-v1",
+        "stroma-increase-v1",
+        "tumor-burden-increase-v1"
       ],
       "organ": "lung",
       "pairs": [
         {
           "closed_reason": "IGNITE does not provide a digest-bound lumen or fibrovascular-core map. Acinar/papillary identity cannot be inferred from H&E because execution planning is mask-only.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "lung-acinar-papillary-growth",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025",
@@ -65,7 +81,8 @@
           "status": "closed"
         },
         {
-          "closed_reason": "Immune-compartment decrease produced three 300-second timeouts and one deterministic rejection, while the first three ranked increase cases had zero nuclei-safe interface capacity. The shared tissue-compartment mechanism cannot provide robust five-case execution.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-generic-immune-compartment-turnover",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025"
@@ -96,10 +113,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "Immune-compartment decrease produced three 300-second timeouts and one deterministic rejection, while the first three ranked increase cases had zero nuclei-safe interface capacity. The shared tissue-compartment mechanism cannot provide robust five-case execution.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-generic-immune-compartment-turnover",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025"
@@ -130,10 +148,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "All six mask-ranked appearance cases and all three mask-ranked resolution cases had zero nuclei-safe tissue capacity at the 5% visible-area floor. The shared turnover mechanism cannot execute without cutting complete annotated nuclei under the current authority.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-intratumoral-necrosis-turnover",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025"
@@ -164,10 +183,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "All six mask-ranked appearance cases and all three mask-ranked resolution cases had zero nuclei-safe tissue capacity at the 5% visible-area floor. The shared turnover mechanism cannot execute without cutting complete annotated nuclei under the current authority.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-intratumoral-necrosis-turnover",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025"
@@ -198,10 +218,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": "IGNITE does not provide a digest-bound alveolar framework map. Lepidic growth cannot be executed without risking airspace filling, and H&E inference is prohibited.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "lung-lepidic-growth",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025",
@@ -245,6 +266,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -286,6 +308,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -327,6 +350,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -368,6 +392,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -408,7 +433,8 @@
           "status": "executable_mask_only"
         },
         {
-          "closed_reason": "The first three top IGNITE cases all exceeded the 240-second execution limit without producing a candidate summary. The mature executor cannot provide robust five-case neoplastic addition under the current runtime contract.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -446,10 +472,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "None of six top IGNITE cases selected after corrected mask-component ranking provided a legal tumor zone satisfying complete neoplastic-instance depletion, the local gradient and residual population floors. The primitive cannot provide robust five-case execution.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -487,10 +514,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -531,7 +559,8 @@
           "status": "executable_mask_only"
         },
         {
-          "closed_reason": "None of 12 top IGNITE cases selected after corrected mask-component ranking satisfied the generic inflammatory complete-instance depletion contract. The pair cannot provide robust five-case execution, while the separate cell-type decrease remains executable.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -569,10 +598,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "None of seven top IGNITE Tumor-Stroma interface cases could pack the required ten separated complete neoplastic foci; capacity was typically one or two. Lowering the topology floor would make the edit too small to be meaningful.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -610,10 +640,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "None of six top IGNITE Tumor-Stroma interface cases could pack the required eight separated complete cluster units; observed capacity was one to three. Lowering the topology floor would make the edit too small to be meaningful.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -651,10 +682,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be a mask-authorized local clearance.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "lung-local-tumor-clearance",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025"
@@ -690,7 +722,8 @@
           "status": "closed"
         },
         {
-          "closed_reason": "The first three top IGNITE tumor-interface cases all failed native instance preflight because the hybrid partition could not authorize complete-nucleus removal. The three shared retreat programs are unavailable under the current authority.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-operational-tumor-retreat",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025"
@@ -721,10 +754,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "The first three top IGNITE tumor-interface cases all failed native instance preflight because the hybrid partition could not authorize complete-nucleus removal. The three shared retreat programs are unavailable under the current authority.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-operational-tumor-retreat",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025"
@@ -755,10 +789,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "The first three top IGNITE tumor-interface cases all failed native instance preflight because the hybrid partition could not authorize complete-nucleus removal. The three shared retreat programs are unavailable under the current authority.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-operational-tumor-retreat",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025"
@@ -789,10 +824,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "Corrected mask ranking and 12 top IGNITE retries still produced no executable cohesive interface at a 4% visible-area floor; failures were deterministic replanning stalls or zero nuclei-safe capacity. Both shared growth primitives therefore remain closed.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-solid-squamous-growth",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025",
@@ -830,10 +866,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "Corrected mask ranking and 12 top IGNITE retries still produced no executable cohesive interface at a 4% visible-area floor; failures were deterministic replanning stalls or zero nuclei-safe capacity. Both shared growth primitives therefore remain closed.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-solid-squamous-growth",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025",
@@ -871,10 +908,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": "Void-aware complete-instance containment and separation are implemented and tested; digest-bound native airspace/alveolar inputs and frozen-generator STAS response are not yet validated.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "lung-stas-airspace-spread",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025",
@@ -918,7 +956,8 @@
           "status": "closed"
         },
         {
-          "closed_reason": "The first five corrected-rank IGNITE cases all failed native instance preflight because the hybrid partition could not authorize complete-nucleus removal; one also lacked the required native reference class. Cord extension is unavailable under the current authority.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-stromal-invasive-front",
           "pathology_source_ids": [
             "pathology-lung-cap-v2025",
@@ -956,16 +995,16 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         }
       ],
       "pathology_domain_id": "lung-carcinoma-v1",
       "summary": {
         "catalog_pair_count": 24,
-        "closed_pair_count": 19,
-        "executable_pair_count": 5,
-        "executable_unique_primitive_count": 5,
-        "five_case_review_target_count": 25
+        "closed_pair_count": 4,
+        "executable_pair_count": 20,
+        "executable_unique_primitive_count": 20,
+        "five_case_review_target_count": 100
       }
     },
     {
@@ -976,9 +1015,11 @@
       "annotation_profile_id": "orca-semantic-v1",
       "dataset": "ORCA",
       "executable_unique_primitives": [
+        "cell-type-abundance-decrease-v1",
         "cell-type-abundance-increase-v1",
         "cellularity-decrease-v1",
         "cellularity-increase-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
         "generic-inflammatory-cell-abundance-increase-v1",
         "neoplastic-cell-abundance-decrease-v1",
         "neoplastic-cell-abundance-increase-v1"
@@ -987,6 +1028,7 @@
       "pairs": [
         {
           "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class and cannot certify a physiologically valid receiving substrate for an invasive cord without prohibited H&E interpretation.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-annotation-anchored-cord-extension",
           "pathology_source_ids": [
             "pathology-oral-cap-v2024"
@@ -1022,6 +1064,7 @@
         },
         {
           "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class. A mask-only Planner cannot guarantee that boundary expansion preserves mucosa, muscle, salivary tissue, nerves and vessels.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-cohesive-nest-cord",
           "pathology_source_ids": [
             "pathology-oral-cap-v2024"
@@ -1056,6 +1099,7 @@
         },
         {
           "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class. A mask-only Planner cannot guarantee that boundary expansion preserves mucosa, muscle, salivary tissue, nerves and vessels.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-cohesive-nest-cord",
           "pathology_source_ids": [
             "pathology-oral-cap-v2024"
@@ -1090,6 +1134,7 @@
         },
         {
           "closed_reason": "ORCA Other tissue cannot identify a safe stromal invasive front. Placing carcinoma nuclei outside Tumor would risk mucosa, muscle, salivary, nerve or vascular compartments that are not encoded.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-dispersed-invasive-front",
           "pathology_source_ids": [
             "pathology-oral-cap-v2024"
@@ -1124,6 +1169,7 @@
         },
         {
           "closed_reason": "ORCA Other tissue cannot identify a safe stromal invasive front. Placing carcinoma nuclei outside Tumor would risk mucosa, muscle, salivary, nerve or vascular compartments that are not encoded.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-dispersed-invasive-front",
           "pathology_source_ids": [
             "pathology-oral-cap-v2024"
@@ -1158,6 +1204,7 @@
         },
         {
           "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi, and ORCA has no specific receiving stroma label.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-local-carcinoma-clearance",
           "pathology_source_ids": [
             "pathology-oral-cap-v2024"
@@ -1194,6 +1241,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1234,7 +1282,8 @@
           "status": "executable_mask_only"
         },
         {
-          "closed_reason": "After mask-component-aware reranking, only the one preserved success remained and 11 further top ORCA cases failed the complete-instance depletion, three-band gradient or residual floors. The primitive cannot provide robust five-case execution.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1272,10 +1321,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1317,6 +1367,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1358,6 +1409,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1399,6 +1451,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1440,6 +1493,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1480,7 +1534,8 @@
           "status": "executable_mask_only"
         },
         {
-          "closed_reason": "ORCA binds this intent to the same inflammatory class and complete-instance depletion program as cell-type decrease, which remained 1-of-12 after corrected mask-component ranking. The primitive cannot provide robust five-case execution.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1518,10 +1573,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would overclaim post-treatment physiology from a heterogeneous annotation label.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-operational-tumor-retreat",
           "pathology_source_ids": [
             "pathology-oral-cap-v2024"
@@ -1556,6 +1612,7 @@
         },
         {
           "closed_reason": "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would overclaim post-treatment physiology from a heterogeneous annotation label.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-operational-tumor-retreat",
           "pathology_source_ids": [
             "pathology-oral-cap-v2024"
@@ -1592,10 +1649,10 @@
       "pathology_domain_id": "oral-squamous-cell-carcinoma-v1",
       "summary": {
         "catalog_pair_count": 16,
-        "closed_pair_count": 10,
-        "executable_pair_count": 6,
-        "executable_unique_primitive_count": 6,
-        "five_case_review_target_count": 30
+        "closed_pair_count": 8,
+        "executable_pair_count": 8,
+        "executable_unique_primitive_count": 8,
+        "five_case_review_target_count": 40
       }
     },
     {
@@ -1609,16 +1666,27 @@
       "annotation_profile_id": "puma-semantic-v1",
       "dataset": "PUMA",
       "executable_unique_primitives": [
+        "cell-type-abundance-decrease-v1",
         "cell-type-abundance-increase-v1",
         "cellularity-decrease-v1",
         "cellularity-increase-v1",
+        "cohesive-boundary-expansion-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
         "generic-inflammatory-cell-abundance-increase-v1",
-        "neoplastic-cell-abundance-increase-v1"
+        "invasive-tumor-footprint-decrease-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+        "residual-tumor-fragmentation-v1",
+        "stroma-increase-v1",
+        "tumor-burden-increase-v1"
       ],
       "organ": "skin",
       "pairs": [
         {
-          "closed_reason": "Forty top mask-ranked PUMA patches failed at the 14% visible-area floor, and retries at the 5-8% compartment floor still had zero nuclei-safe interface capacity. The shared cohesive growth executor therefore cannot implement either supported primitive under the current annotations.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-cohesive-nest-sheet",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -1649,10 +1717,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "Forty top mask-ranked PUMA patches failed at the 14% visible-area floor, and retries at the 5-8% compartment floor still had zero nuclei-safe interface capacity. The shared cohesive growth executor therefore cannot implement either supported primitive under the current annotations.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-cohesive-nest-sheet",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -1683,10 +1752,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": "PUMA epidermis labels do not identify a junctional melanoma component. Junctional/pagetoid spread cannot be inferred from H&E by the execution Planner; use the non-diagnostic Tumor-Stroma peritumoral-focus mechanism instead.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "melanoma-discohesive-junctional",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -1723,6 +1793,7 @@
         },
         {
           "closed_reason": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution.",
+          "closure_category": "dataset_case_limited",
           "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -1757,6 +1828,7 @@
         },
         {
           "closed_reason": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution.",
+          "closure_category": "dataset_case_limited",
           "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -1791,6 +1863,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1831,7 +1904,8 @@
           "status": "executable_mask_only"
         },
         {
-          "closed_reason": "After mask-component-aware reranking, only the one preserved success remained and 13 further top PUMA cases failed the complete-instance depletion, three-band gradient or residual floors. The primitive cannot provide robust five-case execution.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1869,10 +1943,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1914,6 +1989,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1955,6 +2031,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -1995,7 +2072,8 @@
           "status": "executable_mask_only"
         },
         {
-          "closed_reason": "None of 12 top PUMA cases selected after corrected mask-component ranking provided a legal tumor zone satisfying complete neoplastic-instance depletion, the local gradient and residual population floors. The primitive cannot provide robust five-case execution.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -2033,10 +2111,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -2077,7 +2156,8 @@
           "status": "executable_mask_only"
         },
         {
-          "closed_reason": "PUMA binds this intent to the same inflammatory class and complete-instance depletion program as cell-type decrease, which remained 1-of-14 after corrected mask-component ranking. The primitive cannot provide robust five-case execution.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
@@ -2115,10 +2195,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
           "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be mask-authorized local clearance.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "melanoma-local-tumor-clearance",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -2154,7 +2235,8 @@
           "status": "closed"
         },
         {
-          "closed_reason": "Top mask-ranked PUMA retries at both the 14% visible-area floor and the 5-8% compartment floor had zero nuclei-safe Tumor-to-Stroma interface capacity. The three shared retreat programs cannot execute without cutting complete annotated nuclei.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-operational-tumor-retreat",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -2185,10 +2267,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "Top mask-ranked PUMA retries at both the 14% visible-area floor and the 5-8% compartment floor had zero nuclei-safe Tumor-to-Stroma interface capacity. The three shared retreat programs cannot execute without cutting complete annotated nuclei.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-operational-tumor-retreat",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -2219,10 +2302,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "Top mask-ranked PUMA retries at both the 14% visible-area floor and the 5-8% compartment floor had zero nuclei-safe Tumor-to-Stroma interface capacity. The three shared retreat programs cannot execute without cutting complete annotated nuclei.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-operational-tumor-retreat",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -2253,10 +2337,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "Representative PUMA Tumor-Stroma boundaries could not reach the minimum four complete scatter foci, while mature small-cluster replay degraded capacity witnesses into singleton foci. Keep both primitives closed until a cluster-aware executor preserves multi-cell topology without lowering the visible-effect floor.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-peritumoral-small-focus",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -2287,10 +2372,11 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         },
         {
-          "closed_reason": "Representative PUMA Tumor-Stroma boundaries could not reach the minimum four complete scatter foci, while mature small-cluster replay degraded capacity witnesses into singleton foci. Keep both primitives closed until a cluster-aware executor preserves multi-cell topology without lowering the visible-effect floor.",
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-peritumoral-small-focus",
           "pathology_source_ids": [
             "pathology-melanoma-cap-v2025"
@@ -2321,16 +2407,16 @@
             "user_roi",
             "auxiliary_masks"
           ],
-          "status": "closed"
+          "status": "executable_mask_only"
         }
       ],
       "pathology_domain_id": "melanoma-v1",
       "summary": {
         "catalog_pair_count": 19,
-        "closed_pair_count": 14,
-        "executable_pair_count": 5,
-        "executable_unique_primitive_count": 5,
-        "five_case_review_target_count": 25
+        "closed_pair_count": 4,
+        "executable_pair_count": 15,
+        "executable_unique_primitive_count": 15,
+        "five_case_review_target_count": 75
       }
     }
   ],
@@ -2361,11 +2447,17 @@
   "schema_version": "lung-oral-skin-mask-only-primitive-audit-v1",
   "visual_review_policy": {
     "absolute_tissue_fallback_floor_fraction": 0.05,
-    "boundary_or_retreat_min_fraction": 0.14,
-    "boundary_or_retreat_target_fraction": 0.19,
+    "boundary_or_retreat_min_fraction": 0.08,
+    "boundary_or_retreat_target_fraction": 0.12,
     "cases_per_executable_organ_primitive": 5,
-    "cell_only_minimum_delta_count": 12,
-    "cell_only_target_delta_count": 20,
+    "cell_only_minimum_delta_count_range": [
+      4,
+      12
+    ],
+    "cell_only_target_delta_count_range": [
+      6,
+      16
+    ],
     "compartment_or_cord_min_fraction": 0.08,
     "compartment_or_cord_target_fraction": 0.12,
     "tiny_effect_action": "reject_case_not_relax_floor"

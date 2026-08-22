@@ -58,6 +58,30 @@ _SEMANTIC_WATERSHED_SOURCES = frozenset(
 )
 
 
+def nucleus_instance_source_is_native(raw: Any) -> bool:
+    """Return whether one instance has destructive whole-instance authority."""
+
+    return _normalize_nucleus_record(raw)["source"] in _NATIVE_NUCLEUS_SOURCES
+
+
+def nucleus_instance_has_destructive_authority(raw: Any) -> bool:
+    """Return whether the frozen masks define one safe whole-instance erasure.
+
+    Besides native instances, an isolated semantic connected component is
+    usable when it is complete and carries no morphology-quality veto. Seeded
+    residuals and generic semantic fallbacks never gain this authority.
+    """
+
+    record = _normalize_nucleus_record(raw)
+    return bool(
+        record["source"] in _NATIVE_NUCLEUS_SOURCES
+        or (
+            record["source"] == "instance_json_semantic_unseeded"
+            and record["complete_reference_eligible"]
+        )
+    )
+
+
 def semantic_gland_component_authority_metadata(
     *,
     source_tissue_mask_sha256: str,
@@ -432,11 +456,11 @@ def validate_mechanism_nucleus_authority(
 ) -> dict[str, Any]:
     """Decide whether one mechanism may consume the observed instance graph.
 
-    A hybrid graph is acceptable to a no-fallback *add-only* mechanism when
-    every required class has at least one complete native reference.  Semantic
-    residuals remain accounting coverage only.  A no-fallback removal program
-    cannot use a hybrid partition because residual instance identity would
-    become destructive authority.
+    A hybrid graph is acceptable when every required class has a complete
+    native reference. Semantic residuals remain frozen accounting coverage;
+    downstream preflight may remove only complete native instances. The old
+    blanket rejection of every hybrid removal incorrectly discarded valid
+    CellViT-native seeds merely because residual semantic coverage also existed.
     """
 
     summary = summarize_nucleus_instance_authority(instances)
@@ -456,8 +480,6 @@ def validate_mechanism_nucleus_authority(
     elif quality == NUCLEUS_AUTHORITY_NATIVE:
         passed = not missing_classes
     elif quality == NUCLEUS_AUTHORITY_HYBRID:
-        if "remove_whole" in actions_set:
-            reasons.append("hybrid_partition_cannot_authorize_removal")
         if missing_classes:
             reasons.append("required_native_reference_class_missing")
         passed = not reasons
@@ -477,6 +499,12 @@ def validate_mechanism_nucleus_authority(
         "minimum_native_per_class": int(minimum_native_per_class),
         "missing_native_reference_classes": missing_classes,
         "actions": sorted(actions_set),
+        "removal_authority": (
+            "complete_native_or_isolated_semantic_instances"
+            if quality == NUCLEUS_AUTHORITY_HYBRID
+            and "remove_whole" in actions_set
+            else "profile_default"
+        ),
         "semantic_residual_role": "coverage_and_accounting_only",
         "reasons": list(dict.fromkeys(reasons)),
     }

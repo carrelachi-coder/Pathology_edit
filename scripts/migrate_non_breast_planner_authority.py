@@ -16,8 +16,6 @@ from typing import Any
 
 BREAST_DOMAIN = "breast-invasive-carcinoma-v1"
 NON_BREAST_MASK_SKILLS = {
-    "glas-gland-v1",
-    "panda-gleason-v1",
     "ignite-semantic-v1",
     "puma-semantic-v1",
     "orca-semantic-v1",
@@ -573,6 +571,10 @@ def _render_capability_matrix(root: Path) -> str:
                     primitive_id=primitive_id,
                     mechanism_id=mechanism.mechanism_id,
                 )
+                closure_category = repository.execution_closure_category(
+                    primitive_id=primitive_id,
+                    mechanism_id=mechanism.mechanism_id,
+                )
                 if closed_reason is not None:
                     status = "closed"
                 elif (
@@ -596,6 +598,7 @@ def _render_capability_matrix(root: Path) -> str:
                             mechanism.representability.required_auxiliary_structures
                         ),
                         "closed_reason": closed_reason,
+                        "closure_category": closure_category,
                     }
                 )
         profiles.append(

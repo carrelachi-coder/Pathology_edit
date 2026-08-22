@@ -33,6 +33,7 @@ from .spatial_contracts import (
     BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS,
     BREAST_SMALL_CLUSTER_MINIMUM_FOCUS_SIZE,
     BREAST_SMALL_CLUSTER_TARGET_FOCUS_COUNT,
+    COMPACT_PAIR_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS,
     CELL_EFFECT_MAXIMUM_FOCUS_DIAMETER_DIAMETERS,
     CELL_EFFECT_MINIMUM_INTER_FOCUS_SEPARATION_DIAMETERS,
     CELL_EFFECT_WITHIN_FOCUS_LINK_DIAMETERS,
@@ -47,7 +48,7 @@ from .spatial_contracts import (
     small_cluster_minimum_anchor_separation_px,
 )
 
-LAYOUT_TOOL_VERSION = "joint-cell-layout-v21"
+LAYOUT_TOOL_VERSION = "joint-cell-layout-v23"
 
 _REFERENCE_SAMPLING_POLICY = (
     "same_class_source_without_replacement_then_calibrated_library_or_"
@@ -71,8 +72,14 @@ _INDEPENDENT_FOCUS_PRIMITIVES = frozenset(
     {
         "peritumoral-neoplastic-scatter-increase-v1",
         "peritumoral-small-cluster-increase-v1",
-    
         "cellularity-increase-v1",
+    }
+)
+
+_COMPACT_PAIR_SMALL_CLUSTER_MECHANISMS = frozenset(
+    {
+        "lung-local-population-modulation",
+        "melanoma-peritumoral-small-focus",
     }
 )
 
@@ -142,6 +149,12 @@ def certificate_aligned_cluster_size_range(
         if strict_breast_cluster
         else SMALL_CLUSTER_TARGET_FOCUS_COUNT
     )
+    if (
+        primitive_id == "peritumoral-small-cluster-increase-v1"
+        and mechanism_id in _COMPACT_PAIR_SMALL_CLUSTER_MECHANISMS
+        and minimum <= 2 <= maximum
+    ):
+        return (2, 2)
     if (
         primitive_id == "peritumoral-small-cluster-increase-v1"
         and minimum <= minimum_focus_size <= maximum
@@ -566,6 +579,24 @@ def generate_cell_layouts(
         # shapes, retained nuclei, P/V and one-pixel collision clearance.
         # Do not let a rough density estimate or greedy ordering lower it.
         requested_count = certified_requested_count
+        if (
+            bundle.primitive.primitive_id
+            == "peritumoral-small-cluster-increase-v1"
+            and bundle.mechanism.mechanism_id
+            in _COMPACT_PAIR_SMALL_CLUSTER_MECHANISMS
+        ):
+            minimum_safe = int(
+                packing_certificate.get(
+                    "minimum_safe_count", certified_requested_count
+                )
+            )
+            complete_pair_focus_counts = tuple(
+                count
+                for count in range(minimum_safe, certified_requested_count + 1)
+                if count % 2 == 0
+            )
+            if complete_pair_focus_counts:
+                requested_count = complete_pair_focus_counts[0]
         if bundle.primitive.scope == "tissue_and_cell":
             biological_desired_count = certified_requested_count
     else:
@@ -574,6 +605,20 @@ def generate_cell_layouts(
         references,
         minimum_count=requested_count,
     )
+    compact_pair_small_cluster = bool(
+        bundle.primitive.primitive_id
+        == "peritumoral-small-cluster-increase-v1"
+        and bundle.mechanism.mechanism_id
+        in _COMPACT_PAIR_SMALL_CLUSTER_MECHANISMS
+    )
+    if compact_pair_small_cluster:
+        meaningful_area_references = tuple(
+            item
+            for item in references
+            if float(item.area_px) >= 0.50 * average_area
+        )
+        if meaningful_area_references:
+            references = meaningful_area_references
     replacement_count = min(replacement_count, requested_count)
     reserve_count = min(reserve_count, max(0, requested_count - replacement_count))
     execution_cluster_size_range = certificate_aligned_cluster_size_range(
@@ -636,6 +681,7 @@ def generate_cell_layouts(
         == "peritumoral-neoplastic-scatter-increase-v1"
     )
     results: list[CellLayoutResult] = []
+    layout_diagnostics: list[dict[str, Any]] = []
     for variant in range(variants):
         if architecture_packing is not None:
             target, core_placed, core_placements = (
@@ -655,6 +701,7 @@ def generate_cell_layouts(
                 )
             )
         else:
+            core_diagnostics: dict[str, Any] = {}
             target, core_placed, core_placements = _place_layout(
                 base=base,
                 references=references,
@@ -689,8 +736,8 @@ def generate_cell_layouts(
                     == "breast-peritumoral-small-cluster"
                 ),
                 compact_small_cluster=(
-                    bundle.annotation_profile.annotation_profile_id
-                    == "glas-gland-v1"
+                    bundle.primitive.primitive_id
+                    == "peritumoral-small-cluster-increase-v1"
                 ),
                 enforce_multisite_population=enforce_multisite_population,
                 certified_witness_centers=(),
@@ -698,6 +745,8 @@ def generate_cell_layouts(
                     bundle.annotation_profile.annotation_profile_id
                     == "glas-gland-v1"
                 ),
+                compact_reference_first=compact_pair_small_cluster,
+                diagnostics=core_diagnostics,
                 seed=seed + variant * 104729,
             )
         halo_score = (
@@ -748,8 +797,8 @@ def generate_cell_layouts(
                 == "breast-peritumoral-small-cluster"
             ),
             compact_small_cluster=(
-                bundle.annotation_profile.annotation_profile_id
-                == "glas-gland-v1"
+                bundle.primitive.primitive_id
+                == "peritumoral-small-cluster-increase-v1"
             ),
             enforce_multisite_population=enforce_multisite_population,
             certified_witness_centers=certified_focus_witness_centers,
@@ -765,6 +814,7 @@ def generate_cell_layouts(
                 bundle.annotation_profile.annotation_profile_id
                 == "glas-gland-v1"
             ),
+            compact_reference_first=compact_pair_small_cluster,
             raw_component_effect_foci=(
                 bundle.annotation_profile.annotation_profile_id
                 == "panda-gleason-v1"
@@ -777,10 +827,19 @@ def generate_cell_layouts(
             seed=seed + variant * 104729 + 8191,
         )
         halo_requested_count = reserve_count
+        halo_diagnostics: dict[str, Any] = {}
         target, halo_placed, halo_placements = _place_layout(
             base=halo_base,
             requested_count=halo_requested_count,
+            diagnostics=halo_diagnostics,
             **halo_layout_kwargs,
+        )
+        layout_diagnostics.append(
+            {
+                "variant": variant,
+                "core": core_diagnostics if architecture_packing is None else {},
+                "halo": halo_diagnostics,
+            }
         )
         if (
             bundle.annotation_profile.annotation_profile_id == "glas-gland-v1"
@@ -823,6 +882,19 @@ def generate_cell_layouts(
             else 0
         )
         if (
+            # The generic packing certificate proves capacity for independent
+            # complete cells only. Replaying it for a pair/cluster/cord would
+            # silently replace the requested grouped morphology with singleton
+            # scatter. Grouped layouts must instead keep their own atomic
+            # placement result and let candidate selection try another site.
+            plan.cell_plan.layout_program_id
+            in {
+                "single",
+                "population_replacement",
+                "boundary_aligned",
+                "dense_sheet",
+            }
+            and
             (
                 bundle.annotation_profile.annotation_profile_id
                 != "glas-gland-v1"
@@ -1028,7 +1100,10 @@ def generate_cell_layouts(
         and bundle.mechanism.coupling.cell_only_target_fraction == 0
     )
     if desired > 0 and maximum_reachable <= 0 and not zero_cell_fallback_allowed:
-        return ()
+        raise JointContractError(
+            "structured layout has zero executable capacity after complete-"
+            f"footprint placement: {layout_diagnostics}"
+        )
     certified: list[CellLayoutResult] = []
     for item in results:
         if int(item.trace.get("resolved_count", 0)) != maximum_reachable:
@@ -2331,6 +2406,7 @@ def _place_layout(
     raw_component_effect_foci=False,
     minimum_effect_focus_separation_diameters=None,
     compact_reference_first=False,
+    diagnostics=None,
 ):
     target = np.asarray(base).copy()
     occupied = target > 0
@@ -2521,6 +2597,9 @@ def _place_layout(
                     if strict_breast_small_cluster
                     else GLAS_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
                     if compact_small_cluster
+                    and minimum_effect_foci >= 3
+                    else BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
+                    if compact_small_cluster
                     else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
                 ),
                 strict_breast_small_cluster=strict_breast_small_cluster,
@@ -2587,6 +2666,7 @@ def _place_layout(
     seam_region = np.asarray(continuity_region, dtype=bool)
     anchor_index = 0
     committed_group_count = 0
+    atomic_group_rollback_count = 0
     allow_reference_reuse = bool(allow_immediate_reference_reuse)
     while placed < requested_count:
         if anchor_index >= len(anchors):
@@ -2671,6 +2751,13 @@ def _place_layout(
             seed=seed,
             compact_small_cluster=(
                 strict_breast_small_cluster or compact_small_cluster
+            ),
+            compact_small_cluster_member_spacing_diameters=(
+                BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS
+                if strict_breast_small_cluster or minimum_effect_foci >= 3
+                else COMPACT_PAIR_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS
+                if compact_small_cluster
+                else SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS
             ),
         )
         if layout_program in {"pair", "small_cluster", "short_cord"}:
@@ -2996,12 +3083,33 @@ def _place_layout(
                 occupied[y0:y1, x0:x1][shape] = False
             del placement_trace[group_start:]
             placed -= actual_cluster_size
+            atomic_group_rollback_count += 1
             continue
         used_reference_digests.update(group_reference_digests)
         for item in placement_trace[group_start:]:
             item["cluster_size"] = actual_cluster_size
         if actual_cluster_size:
             committed_group_count += 1
+    if diagnostics is not None:
+        diagnostics.update(
+            {
+                "executable_center_count": int(len(coords)),
+                "ordered_anchor_count": int(len(anchors)),
+                "requested_count": int(requested_count),
+                "placed_count": int(placed),
+                "planned_small_cluster_group_count": int(
+                    planned_small_cluster_group_count
+                ),
+                "committed_group_count": int(committed_group_count),
+                "atomic_group_rollback_count": int(
+                    atomic_group_rollback_count
+                ),
+                "effective_cluster_range": [
+                    int(effective_cluster_range[0]),
+                    int(effective_cluster_range[1]),
+                ],
+            }
+        )
     return target, placed, placement_trace
 
 
@@ -3866,19 +3974,18 @@ def _continuity_first_anchors(
     preferred = coords[np.asarray(preferred_indices, dtype=int)]
     preferred_set = {tuple(value) for value in preferred.tolist()}
     non_seam_remainder = []
-    seam_remainder = []
     for value in default_order.tolist():
         key = tuple(value)
         if key in preferred_set:
             continue
-        target = (
-            seam_remainder
-            if continuity_region[int(value[0]), int(value[1])]
-            else non_seam_remainder
-        )
-        target.append(value)
+        # The compiled continuity count is a finite seam quota, not merely a
+        # ranking preference. Extra population cells must use the receiving
+        # core away from the seam; otherwise a sparse outer reference can be
+        # turned into an artificial dense rim after tumor retreat.
+        if not continuity_region[int(value[0]), int(value[1])]:
+            non_seam_remainder.append(value)
     remainder = np.asarray(
-        [*non_seam_remainder, *seam_remainder],
+        non_seam_remainder,
         dtype=int,
     )
     return (
@@ -3937,6 +4044,9 @@ def _layout_offsets(
     nominal_nucleus_diameter_px: float,
     seed: int,
     compact_small_cluster: bool = False,
+    compact_small_cluster_member_spacing_diameters: float = (
+        BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS
+    ),
 ) -> tuple[tuple[int, int], ...]:
     lower = max(1, int(cluster_range[0]))
     upper = max(lower, int(cluster_range[1]))
@@ -3982,7 +4092,9 @@ def _layout_offsets(
                 4,
                 round(
                     float(nominal_nucleus_diameter_px)
-                    * BREAST_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS
+                    * float(
+                        compact_small_cluster_member_spacing_diameters
+                    )
                 ),
             )
             half = cluster_spacing / 2.0

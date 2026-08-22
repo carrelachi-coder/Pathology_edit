@@ -28,6 +28,7 @@ from .cell_layouts import (
     independent_focus_minimum_center_separation_px,
 )
 from .instance_authority import build_scene_instance_authority
+from .authority import nucleus_instance_has_destructive_authority
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .packing import certify_complete_footprint_packing
 from .scene import JointSceneAnalysis
@@ -278,7 +279,7 @@ def build_joint_nuclei_preflight(
             scene,
             class_id=class_id,
             allow_calibrated_fallback=(
-                joint_bundle.primitive.scope == "cell_only"
+                scene.reference_shape_authority is not None
             ),
         )
         references_by_class[class_id] = (
@@ -339,7 +340,13 @@ def build_joint_nuclei_preflight(
     for item in scene.cells.instances:
         component = np.asarray(scene.instance_masks[item.instance_id], dtype=bool)
         reason = None
-        if item.touches_border:
+        if (
+            scene.cells.observation_quality
+            == "hybrid_cellvit_seeded_semantic_partition"
+            and not nucleus_instance_has_destructive_authority(item)
+        ):
+            reason = "semantic_residual_not_destructive_authority"
+        elif item.touches_border:
             reason = "patch_boundary_censored_instance"
         elif ndimage.label(
             component, structure=np.ones((3, 3), dtype=bool)
@@ -1255,6 +1262,15 @@ def assess_candidate_cell_feasibility(
             ),
         )
     effective_required_count = max(required_count, required_seam)
+    primitive_minimum_add_count = (
+        int(
+            joint_bundle.primitive.minimum_effect_delta_count_for(
+                case.pathology_domain_id
+            )
+        )
+        if "add" in joint_bundle.mechanism.cell_program.actions
+        else 0
+    )
     packing = certify_complete_footprint_packing(
         source_nuclei=scene.source_nuclei,
         erased_footprint=erased,
@@ -1283,6 +1299,11 @@ def assess_candidate_cell_feasibility(
         required_seam_count=required_seam,
         minimum_seam_count=minimum_seam,
         required_seam_class=preflight.target_cell_class,
+        minimum_acceptable_count=(
+            primitive_minimum_add_count
+            if primitive_minimum_add_count > 0
+            else None
+        ),
         allow_finite_count_fallback=(
             _minimum_architecture_group_count(case, joint_bundle) <= 1
         ),
@@ -1319,7 +1340,7 @@ def assess_candidate_cell_feasibility(
             reasons.append("candidate_has_no_active_planner_anchor")
         elif not np.any(adaptive_seam.continuity_region):
             reasons.append("candidate_has_no_anchor_conditioned_continuity_region")
-        elif seam_capacity <= 0:
+        elif seam_capacity <= 0 and packing.placed_seam_count <= 0:
             reasons.append("candidate_cannot_fit_cell_in_continuity_region")
         elif potential_coverage < adaptive_seam.minimum_anchor_coverage_fraction:
             reasons.append("candidate_anchor_continuity_coverage_below_contract")

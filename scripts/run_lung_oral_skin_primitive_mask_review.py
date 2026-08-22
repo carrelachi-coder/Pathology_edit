@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
+from scipy.spatial import cKDTree
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -35,7 +36,7 @@ from phase3_mask_edit_refine.evidence import load_id_mask, sha256_file
 from phase3_mask_edit_refine.visualization import id_mask_to_rgb
 from scripts.run_glas_primitive_mask_review import _native_authority
 
-SCHEMA_VERSION = "lung-oral-skin-cross-meta-mask-review-v2"
+SCHEMA_VERSION = "lung-oral-skin-cross-meta-mask-review-v4"
 DATASET_CONFIG = {
     "lung": ("IGNITE", "lung-carcinoma-v1", "ignite-semantic-v1", "lung-cellvit-source-first-v1"),
     "oral": ("ORCA", "oral-squamous-cell-carcinoma-v1", "orca-semantic-v1", "oral-scc-cellvit-source-first-v1"),
@@ -82,21 +83,27 @@ PERITUMORAL = frozenset(
     }
 )
 CELL_BUDGETS = {
-    primitive: CellCountExtentBudget(20, 12, 28, 384, 0, 64, 48, 4)
+    primitive: CellCountExtentBudget(16, 12, 24, 384, 0, 64, 48, 4)
     for primitive in LOCAL_CELL
 }
 CELL_BUDGETS.update(
     {
         "cellularity-decrease-v1": CellCountExtentBudget(16, 12, 24, 384, 0, 64, 48, 4),
-        "peritumoral-neoplastic-scatter-increase-v1": CellCountExtentBudget(10, 6, 14, 160, 4, 64, 48, 4),
-        "peritumoral-small-cluster-increase-v1": CellCountExtentBudget(8, 6, 12, 176, 4, 64, 48, 2),
+        "peritumoral-neoplastic-scatter-increase-v1": CellCountExtentBudget(6, 4, 8, 160, 4, 64, 48, 4),
+        # Two compact two-cell foci satisfy the primitive's 2.5-diameter span
+        # contract at the native IGNITE/PUMA scale.  The former 48 px review
+        # override rejected otherwise valid localized interfaces.
+        "peritumoral-small-cluster-increase-v1": CellCountExtentBudget(8, 4, 10, 176, 4, 64, 32, 2),
     }
 )
 LARGE_TISSUE_BUDGET = JointAreaBudget(
-    target_fraction=0.19,
-    min_fraction=0.14,
-    max_fraction=0.24,
-    tissue_min_fraction=0.14,
+    target_fraction=0.12,
+    min_fraction=0.08,
+    max_fraction=0.17,
+    tissue_min_fraction=0.08,
+    minimum_effective_fraction=0.08,
+    fallback_policy="max_feasible_below_target",
+    capacity_floor_policy="lower_to_proven_max_safe",
 )
 COMPARTMENT_TISSUE_BUDGET = JointAreaBudget(
     target_fraction=0.12,
@@ -113,6 +120,21 @@ INTERFACE_TISSUE_BUDGET = JointAreaBudget(
     max_fraction=0.12,
     tissue_min_fraction=0.05,
     minimum_effective_fraction=0.04,
+    fallback_policy="max_feasible_below_target",
+    capacity_floor_policy="lower_to_proven_max_safe",
+)
+CORD_TISSUE_BUDGET = JointAreaBudget(
+    # A connected invasive cord is intentionally narrow.  Reusing the broad
+    # compartment budget made every topology-safe cord fail a 5% tissue floor
+    # even when its elongated extension was clearly visible.  Keep the target
+    # near the topology-safe narrow-footprint scale so candidate compilation
+    # does not spend minutes chasing a broad fill that would no longer be a
+    # cord.
+    target_fraction=0.009,
+    min_fraction=0.004,
+    max_fraction=0.015,
+    tissue_min_fraction=0.004,
+    minimum_effective_fraction=0.004,
     fallback_policy="max_feasible_below_target",
     capacity_floor_policy="lower_to_proven_max_safe",
 )
@@ -204,6 +226,28 @@ def _metrics(row: dict[str, str]) -> dict[str, Any]:
         class_id: int(ndimage.label(nuclei == class_id)[1])
         for class_id in range(1, 6)
     }
+    local_counts_radius_64 = {}
+    for class_id in range(1, 6):
+        labels, count = ndimage.label(
+            nuclei == class_id,
+            structure=np.ones((3, 3), dtype=np.uint8),
+        )
+        centers = np.asarray(
+            ndimage.center_of_mass(
+                np.ones_like(labels, dtype=np.uint8),
+                labels,
+                range(1, count + 1),
+            ),
+            dtype=float,
+        )
+        local_counts_radius_64[class_id] = (
+            max(
+                (len(items) for items in cKDTree(centers).query_ball_point(centers, 64.0)),
+                default=0,
+            )
+            if centers.size
+            else 0
+        )
     areas = {int(label): int(np.count_nonzero(tissue == label)) for label in np.unique(tissue)}
     contacts = {}
     for left in range(1, 8):
@@ -212,14 +256,44 @@ def _metrics(row: dict[str, str]) -> dict[str, Any]:
             contacts[f"{left}:{right}"] = int(np.count_nonzero(boundary & (tissue == right)))
     occupied = ndimage.binary_dilation(nuclei > 0, iterations=2)
     free = {label: int(np.count_nonzero((tissue == label) & ~occupied)) for label in areas}
+    tumor_distance = ndimage.distance_transform_edt(tissue != 1)
+    peritumoral_free_stroma = (
+        (tissue == 2)
+        & ~occupied
+        & (tumor_distance >= 4.0)
+        & (tumor_distance <= 64.0)
+    )
+    local_labels, local_count = ndimage.label(
+        peritumoral_free_stroma,
+        structure=np.ones((3, 3), dtype=np.uint8),
+    )
+    local_sizes = np.bincount(local_labels.ravel(), minlength=local_count + 1)
+    if local_count:
+        largest_label = int(np.argmax(local_sizes[1:]) + 1)
+        rows, cols = np.where(local_labels == largest_label)
+        largest_area = int(local_sizes[largest_label])
+        largest_span = float(
+            np.hypot(int(rows.max()) - int(rows.min()), int(cols.max()) - int(cols.min()))
+        )
+    else:
+        largest_area = 0
+        largest_span = 0.0
     return {
         **row,
         "shape": list(tissue.shape),
         "areas": {str(k): v for k, v in areas.items()},
         "free": {str(k): v for k, v in free.items()},
+        "peritumoral_free_stroma": {
+            "area": int(np.count_nonzero(peritumoral_free_stroma)),
+            "largest_component_area": largest_area,
+            "largest_component_span_px": largest_span,
+        },
         "counts": {str(k): v for k, v in counts.items()},
         "component_counts": {
             str(k): v for k, v in component_counts.items()
+        },
+        "local_counts_radius_64": {
+            str(k): v for k, v in local_counts_radius_64.items()
         },
         "contacts": contacts,
     }
@@ -251,6 +325,11 @@ def _eligible_score(organ: str, primitive: str, row: dict[str, Any]) -> tuple[bo
             if target_class
             else sum(map(int, row[component_field].values()))
         )
+        local_count = (
+            _value(row, "local_counts_radius_64", target_class)
+            if target_class and "local_counts_radius_64" in row
+            else class_count
+        )
         decrease = primitive.endswith("decrease-v1")
         free = sum(map(int, row["free"].values()))
         if target_class == 1:
@@ -259,13 +338,17 @@ def _eligible_score(organ: str, primitive: str, row: dict[str, Any]) -> tuple[bo
             # the densest source population.  The previous density-heavy rank
             # systematically selected saturated ORCA tumor rasters.
             free = _value(row, "free", 1)
-        eligible = class_count >= (16 if decrease else 4) and (decrease or free >= 8192)
+        eligible = (
+            class_count >= (16 if decrease else 4)
+            and (not decrease or local_count >= 12)
+            and (decrease or free >= 8192)
+        )
         # Prefer masks with many distinct observable nuclei components; free
         # area is a secondary packing signal.  Pixel-area-dominant ranking
         # selected a few merged semantic blobs and repeatedly failed native
         # instance authority despite apparently large nuclei-mask area.
         if decrease:
-            score = min(class_count, 64) * 8192 + free
+            score = min(local_count, 64) * 1_000_000 + min(class_count, 128) * 8192 + free
         else:
             score = (
                 min(class_count, 48) * 8192
@@ -276,13 +359,24 @@ def _eligible_score(organ: str, primitive: str, row: dict[str, Any]) -> tuple[bo
     if primitive in PERITUMORAL:
         class_one = _value(row, "counts", 1)
         free_stroma = _value(row, "free", 2)
+        local = row.get("peritumoral_free_stroma") or {}
+        local_area = int(local.get("area", free_stroma))
+        local_component = int(local.get("largest_component_area", local_area))
+        local_span = float(local.get("largest_component_span_px", 0.0))
         return (
-            class_one >= 6 and tumor_stroma >= 512 and free_stroma >= 8192,
+            class_one >= 6
+            and tumor_stroma >= 128
+            and local_area >= 1024
+            and local_component >= 512
+            and local_span >= 32.0,
             # Independent peritumoral foci need a long receiving interface and
-            # free host capacity; dense source tumor alone does not provide
-            # either.  Keep the screen mask-only and rank those two observable
-            # execution resources directly.
-            500 * tumor_stroma + 10 * free_stroma + min(class_one, 64) * 50,
+            # connected free host capacity near that interface; global stroma
+            # area is a poor proxy.  This ranking remains mask-only.
+            100_000 * min(local_span, 128.0)
+            + 100 * local_component
+            + 10 * local_area
+            + 50 * tumor_stroma
+            + min(class_one, 64) * 50,
         )
     if primitive.startswith("generic-immune-infiltrate-"):
         source = 2 if primitive.endswith("increase-v1") else 4
@@ -295,17 +389,30 @@ def _eligible_score(organ: str, primitive: str, row: dict[str, Any]) -> tuple[bo
     if primitive == "necrosis-resolution-v1":
         necrosis = _value(row, "areas", 3)
         return (_contact(row, 1, 3) >= 96 and necrosis >= int(0.08 * total_pixels), necrosis + 30 * _contact(row, 1, 3))
-    if primitive in {"tumor-burden-increase-v1", "cohesive-boundary-expansion-v1", "infiltrative-nest-cord-extension-v1"}:
+    if primitive == "infiltrative-nest-cord-extension-v1":
+        local = row.get("peritumoral_free_stroma") or {}
+        local_area = int(local.get("area", _value(row, "free", 2)))
+        local_component = int(local.get("largest_component_area", local_area))
+        local_span = float(local.get("largest_component_span_px", 0.0))
+        return (
+            tumor_stroma >= 128
+            and local_component >= 1024
+            and local_span >= 48.0,
+            100_000 * min(local_span, 192.0)
+            + 100 * local_component
+            + 10 * local_area
+            + 50 * tumor_stroma,
+        )
+    if primitive in {"tumor-burden-increase-v1", "cohesive-boundary-expansion-v1"}:
         minimum = 0.05 if (
             organ == "lung"
             and primitive in {"tumor-burden-increase-v1", "cohesive-boundary-expansion-v1"}
         ) else 0.08 if (
-            primitive == "infiltrative-nest-cord-extension-v1"
-            or (organ == "skin" and primitive == "cohesive-boundary-expansion-v1")
+            organ == "skin" and primitive == "cohesive-boundary-expansion-v1"
         ) else 0.14
         return (tumor_stroma >= 128 and stroma >= int(minimum * total_pixels), stroma + 40 * tumor_stroma)
     if primitive in {"invasive-tumor-footprint-decrease-v1", "stroma-increase-v1", "residual-tumor-fragmentation-v1"}:
-        minimum = 0.08 if organ == "skin" else 0.14
+        minimum = 0.08
         return (tumor_stroma >= 128 and tumor >= int(minimum * total_pixels), tumor + 40 * tumor_stroma)
     raise ValueError(primitive)
 
@@ -334,11 +441,12 @@ def _case(
             "tumor-burden-increase-v1",
             "cohesive-boundary-expansion-v1",
         }
+        else CORD_TISSUE_BUDGET
+        if primitive == "infiltrative-nest-cord-extension-v1"
         else COMPARTMENT_TISSUE_BUDGET
         if (
             primitive.startswith("generic-immune-")
             or primitive.startswith("necrosis-")
-            or primitive == "infiltrative-nest-cord-extension-v1"
             or (evaluation.organ == "skin" and primitive == "cohesive-boundary-expansion-v1")
             or (
                 evaluation.organ == "skin"
@@ -354,11 +462,11 @@ def _case(
     ) if tissue_primitive else None
     intent = _semantic_intent(evaluation)
     cell_budget = CELL_BUDGETS.get(primitive)
-    if evaluation.organ in {"oral", "skin"} and primitive in {
-        "cell-type-abundance-decrease-v1",
-        "generic-inflammatory-cell-abundance-decrease-v1",
-    }:
-        cell_budget = CellCountExtentBudget(8, 6, 12, 384, 0, 64, 48, 3)
+    if primitive == "generic-inflammatory-cell-abundance-decrease-v1" or (
+        evaluation.organ in {"oral", "skin"}
+        and primitive == "cell-type-abundance-decrease-v1"
+    ):
+        cell_budget = CellCountExtentBudget(10, 6, 14, 384, 0, 64, 48, 3)
     provenance = {
         "source_image_sha256": sha256_file(row["source_image"]),
         "source_tissue_mask_sha256": sha256_file(row["source_tissue_mask"]),
@@ -403,7 +511,14 @@ def _case(
 
 
 def _run_case(payload: dict[str, Any], evaluation: Evaluation, args: argparse.Namespace) -> dict[str, Any]:
-    case_root = args.output_dir / "runs" / evaluation.organ / evaluation.primitive_id / payload["case_id"]
+    case_root = (
+        args.output_dir
+        / "runs"
+        / SCHEMA_VERSION
+        / evaluation.organ
+        / evaluation.primitive_id
+        / payload["case_id"]
+    )
     manifest = case_root / "manifest.json"
     _write_json(manifest, [payload])
     library = args.nuclei_instance_library
@@ -562,6 +677,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for row in metrics:
             eligible, score = _eligible_score(evaluation.organ, evaluation.primitive_id, row)
             if eligible:
+                if evaluation.primitive_id in {
+                    "cohesive-boundary-expansion-v1",
+                    "infiltrative-nest-cord-extension-v1",
+                    "peritumoral-neoplastic-scatter-increase-v1",
+                    "peritumoral-small-cluster-increase-v1",
+                    "tumor-burden-increase-v1",
+                }:
+                    cached_native = native_cache.get(str(row["sample_id"])) or {}
+                    cached_metrics = (
+                        (cached_native.get("validation") or {}).get("metrics") or {}
+                    )
+                    reference_counts = (
+                        cached_metrics.get("native_complete_reference_count_by_class")
+                        or {}
+                    )
+                    if cached_native and int(reference_counts.get("1", 0)) <= 0:
+                        continue
+                    score += 200_000 * min(
+                        int(reference_counts.get("1", 0)), 64
+                    )
                 ranked.append((score, row))
         ranked.sort(key=lambda item: (-item[0], item[1]["sample_id"]))
         selected = [
@@ -575,6 +710,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             for item in all_attempts
             if item.get("primitive_id") == evaluation.primitive_id
         }
+        if args.retry_failed:
+            # Re-run previously rejected samples after an executor repair,
+            # while retaining already selected cases and avoiding duplicates.
+            attempted_samples = {
+                str(item.get("sample_id")) for item in selected
+            }
         new_attempts = 0
         for rank_index, (_score, row) in enumerate(ranked, start=1):
             if row["sample_id"] in attempted_samples:
@@ -672,6 +813,7 @@ def main() -> int:
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--refresh-metrics", action="store_true")
+    parser.add_argument("--retry-failed", action="store_true")
     args = parser.parse_args()
     result = run(args)
     print(json.dumps({key: value for key, value in result.items() if key != "reviews"}, indent=2))

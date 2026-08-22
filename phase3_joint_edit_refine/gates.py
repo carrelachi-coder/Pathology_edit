@@ -3560,8 +3560,13 @@ def _cellularity_depletion_gradient(c):
     passed = bool(
         c.plan.cell_plan.spatial_anchor_type in skill.allowed_anchor_types
         and c.plan.cell_plan.spatial_anchor_observation
-        and c.plan.cell_plan.interface_ids
-        and c.plan.cell_plan.anchor_ids
+        and (
+            c.plan.cell_plan.spatial_anchor_type == "population_peak"
+            or (
+                c.plan.cell_plan.interface_ids
+                and c.plan.cell_plan.anchor_ids
+            )
+        )
         and np.any(anchor)
         and authority_ids_known
         and trace_authority_matches
@@ -3583,7 +3588,7 @@ def _cellularity_depletion_gradient(c):
         "cellularity_depletion_gradient",
         passed,
         (
-            "interface-anchored core/transition depletion preserves its outer reference"
+            "mask-anchored core/transition depletion preserves its outer reference"
             if passed
             else "localized cellularity reduction is unanchored, abrupt or over-depleted"
         ),
@@ -3886,7 +3891,8 @@ def _mechanism_realization(c):
             str(action).startswith("remove")
             for action in c.plan.cell_plan.actions
         )
-        and layout == "localized_density_gradient"
+        and c.executable_contract.cell_program.baseline_mode
+        == "selective_remove"
         and removed_trace_ids
         and removed_trace_ids
         == tuple(c.candidate.ledger.removed_instance_ids)

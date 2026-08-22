@@ -387,6 +387,40 @@ class JointSkillRepository:
                 "execution scope closes unknown mechanisms: "
                 + ", ".join(sorted(unknown_closed))
             )
+        mechanism_categories = self.execution_scope.get(
+            "closed_mechanism_categories", {}
+        )
+        pair_categories = self.execution_scope.get(
+            "closed_pair_categories", {}
+        )
+        allowed_categories = {
+            "annotation_limited",
+            "dataset_case_limited",
+            "implementation_defect",
+            "superseded_mechanism",
+        }
+        for name, categories, closed_ids in (
+            ("mechanism", mechanism_categories, set(closed_mechanisms)),
+            (
+                "pair",
+                pair_categories,
+                set(self.execution_scope.get("closed_pairs", {})),
+            ),
+        ):
+            if not isinstance(categories, dict) or not all(
+                isinstance(item_id, str)
+                and category in allowed_categories
+                for item_id, category in categories.items()
+            ):
+                raise JointContractError(
+                    f"closed {name} categories contain an invalid value"
+                )
+            unknown_categories = set(categories) - closed_ids
+            if unknown_categories:
+                raise JointContractError(
+                    f"closed {name} categories reference open IDs: "
+                    + ", ".join(sorted(unknown_categories))
+                )
         closed_pairs = self.execution_scope.get("closed_pairs", {})
         if not isinstance(closed_pairs, dict) or not all(
             isinstance(pair_id, str)
@@ -557,6 +591,19 @@ class JointSkillRepository:
             mechanism_id
         )
         return str(reason) if reason else None
+
+    def execution_closure_category(
+        self, *, primitive_id: str, mechanism_id: str
+    ) -> str | None:
+        """Return the typed reason an unavailable pair remains closed."""
+
+        if mechanism_id in self.execution_scope.get("closed_mechanisms", {}):
+            return self.execution_scope.get(
+                "closed_mechanism_categories", {}
+            ).get(mechanism_id)
+        return self.execution_scope.get("closed_pair_categories", {}).get(
+            f"{mechanism_id}::{primitive_id}"
+        )
 
     def execution_selection_reason(
         self, *, primitive_id: str, mechanism_id: str

@@ -10,6 +10,11 @@
   "allowed_quota_roles": ["within_total_quota"],
   "host_tissue_labels": [],
   "target_cell_classes": [1],
+  "cell_effect_contract": {
+    "minimum_delta_count": 4,
+    "minimum_span_cell_diameters": 0.0,
+    "minimum_foci": 1
+  },
   "tissue_topology_contract": {
     "geometry_mode": "interface_front",
     "allow_source_component_resolution": false,

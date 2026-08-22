@@ -11,6 +11,7 @@ from phase3_joint_edit_refine.authority import (
     NUCLEUS_AUTHORITY_HYBRID,
     bind_gland_instance_authority_provenance,
     gland_instance_authority_status,
+    nucleus_instance_has_destructive_authority,
     semantic_gland_component_authority_metadata,
     summarize_nucleus_instance_authority,
     validate_mechanism_nucleus_authority,
@@ -161,7 +162,7 @@ def test_add_only_no_fallback_mechanism_accepts_hybrid_native_references():
     assert result["observation_quality"] == NUCLEUS_AUTHORITY_HYBRID
 
 
-def test_removal_no_fallback_mechanism_rejects_hybrid_partition():
+def test_removal_no_fallback_mechanism_uses_native_subset_of_hybrid_partition():
     instances = (
         _instance("native-1", class_id=1, source="instance_json_cellvit_seed"),
         _instance(
@@ -178,8 +179,35 @@ def test_removal_no_fallback_mechanism_rejects_hybrid_partition():
         actions=("retain", "remove_whole"),
     )
 
-    assert result["passed"] is False
-    assert "hybrid_partition_cannot_authorize_removal" in result["reasons"]
+    assert result["passed"] is True
+    assert (
+        result["removal_authority"]
+        == "complete_native_or_isolated_semantic_instances"
+    )
+    assert result["reasons"] == []
+
+
+def test_only_complete_isolated_semantic_components_gain_erasure_authority():
+    complete = _instance(
+        "semantic-1",
+        class_id=2,
+        source="instance_json_semantic_unseeded",
+    )
+    censored = _instance(
+        "semantic-2",
+        class_id=2,
+        source="instance_json_semantic_unseeded",
+        complete=False,
+    )
+    residual = _instance(
+        "semantic-3",
+        class_id=2,
+        source="instance_json_semantic_seeded_residual",
+    )
+
+    assert nucleus_instance_has_destructive_authority(complete) is True
+    assert nucleus_instance_has_destructive_authority(censored) is False
+    assert nucleus_instance_has_destructive_authority(residual) is False
 
 
 def test_native_authority_floor_rejects_low_seed_coverage_and_missing_class1():

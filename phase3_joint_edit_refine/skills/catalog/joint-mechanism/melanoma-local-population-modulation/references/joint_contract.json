@@ -173,28 +173,30 @@
       "program_id": "localized-density-gradient-v1",
       "resolution_mode": "density_field",
       "allowed_anchor_types": [
-        "interface"
+        "interface",
+        "population_peak"
       ],
       "allowed_neighbor_labels": [
         "Stroma",
-        "Necrosis"
+        "Necrosis",
+        "Tumor"
       ],
-      "core_width_cell_diameters": 1.25,
-      "transition_width_cell_diameters": 3,
-      "outer_reference_width_cell_diameters": 1.5,
+      "core_width_cell_diameters": 2.5,
+      "transition_width_cell_diameters": 6,
+      "outer_reference_width_cell_diameters": 3,
       "core_removal_weight": 1,
       "transition_removal_weight": 0.45,
       "core_target_removal_fraction": 0.55,
       "transition_start_removal_fraction": 0.42,
-      "transition_end_removal_fraction": 0.1,
-      "transition_subband_count": 4,
+      "transition_end_removal_fraction": 0.06,
+      "transition_subband_count": 6,
       "minimum_core_residual_fraction": 0.4,
       "minimum_transition_residual_fraction": 0.5,
       "minimum_core_removals": 1,
       "minimum_transition_removals": 1,
       "maximum_new_gap_cell_diameters": 3,
-      "minimum_outer_reference_instances": 3,
-      "minimum_field_area_cell_diameter_squares": 60
+      "minimum_outer_reference_instances": 0,
+      "minimum_field_area_cell_diameter_squares": 48
     },
     "required_checker_ids": [
       "whole_instance_changes",

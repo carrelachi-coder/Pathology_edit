@@ -320,6 +320,37 @@ def _certify_tissue_candidate_set(
             contract=contract,
             scene=joint_scene,
             preflight=nuclei_preflight,
+            minimum_acceptable_add_count=(
+                joint_bundle.primitive.minimum_effect_delta_count_for(
+                    case.pathology_domain_id
+                )
+                if "add" in joint_bundle.mechanism.cell_program.actions
+                and joint_bundle.primitive.minimum_effect_delta_count_for(
+                    case.pathology_domain_id
+                )
+                > 0
+                else None
+            ),
+            allow_final_capacity_refinement=(
+                case.annotation_profile_id
+                in {
+                    "glas-gland-v1",
+                    "panda-gleason-v1",
+                    "ignite-semantic-v1",
+                    "orca-semantic-v1",
+                    "puma-semantic-v1",
+                }
+            ),
+            relax_group_preflight=(
+                case.annotation_profile_id
+                in {
+                    "glas-gland-v1",
+                    "panda-gleason-v1",
+                    "ignite-semantic-v1",
+                    "orca-semantic-v1",
+                    "puma-semantic-v1",
+                }
+            ),
         )
         cell_by_id[candidate.candidate_id] = cell_report
         if not cell_report.passed:

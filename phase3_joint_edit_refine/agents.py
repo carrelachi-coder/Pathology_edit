@@ -748,7 +748,13 @@ class OpenAIMultimodalJointPlanner:
             for anchor in scene.tissue.graph.anchor_segments
             if anchor.interface_id in bound_interfaces
         }
-        if (not local_population or anchored_depletion) and (
+        if (
+            not local_population
+            or (
+                anchored_depletion
+                and cell_plan.spatial_anchor_type == "interface"
+            )
+        ) and (
             not cell_plan.anchor_ids or set(cell_plan.anchor_ids) - set(known_anchors)
         ):
             raise JointContractError(

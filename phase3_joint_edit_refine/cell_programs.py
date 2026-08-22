@@ -8,16 +8,18 @@ from itertools import pairwise
 
 import numpy as np
 from scipy import ndimage
+from scipy.spatial import cKDTree
 
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import CandidateMask
 
+from .authority import nucleus_instance_has_destructive_authority
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v17"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v18"
 DEPLETION_FIELD_AREA_RASTER_TOLERANCE = 0.05
 QUALIFIED_RESIDUAL_MINIMUM_AREA_RATIO = 0.05
 IMMUNE_RESIDUAL_MINIMUM_AREA_RATIO = 0.10
@@ -435,6 +437,8 @@ class CellToolProgramCompiler:
                     scene=scene,
                     component=component,
                     component_id=cell.core_zone.removeprefix("pop:component:"),
+                    spatial_anchor_type=cell.spatial_anchor_type,
+                    cell_classes=cell.allowed_cell_classes,
                     interface_ids=cell.interface_ids,
                     anchor_ids=cell.anchor_ids,
                     allowed_neighbor_labels=depletion.allowed_neighbor_labels,
@@ -453,7 +457,12 @@ class CellToolProgramCompiler:
                     ),
                     maximize_outer_reference=(
                         bundle.annotation_profile.annotation_profile_id
-                        == "glas-gland-v1"
+                        in {
+                            "glas-gland-v1",
+                            "ignite-semantic-v1",
+                            "orca-semantic-v1",
+                            "puma-semantic-v1",
+                        }
                     ),
                 )
                 center_region = depletion_core | depletion_transition
@@ -801,17 +810,23 @@ class CellToolProgramCompiler:
             erasure = np.zeros_like(tissue_change)
             for item in scene.cells.instances:
                 if (
-                    not _is_biological_instance(item)
+                    not nucleus_instance_has_destructive_authority(item)
                     or item.instance_id in protected_ids
                     or item.touches_border
                     or item.completeness_status != "complete"
                     or item.quality_flags
-                    or not _instance_center_is_in_region(item, receiving_region)
                 ):
                     continue
                 component = np.asarray(
                     scene.instance_masks[item.instance_id], dtype=bool
                 )
+                # Tissue transitions own every complete removable instance
+                # whose footprint intersects T.  Requiring the centroid to
+                # lie in the receiving field left boundary-straddling source
+                # nuclei partially embedded in the new tissue label; the
+                # executable contract then (correctly) rejected them as an
+                # incompatible retained population.  Whole-instance closure
+                # and candidate feasibility already bound any spill outside T.
                 if np.any(component & tissue_change):
                     erasure |= component
         else:
@@ -960,6 +975,8 @@ class CellToolProgramCompiler:
         scene: JointSceneAnalysis,
         component: np.ndarray,
         component_id: str,
+        spatial_anchor_type: str,
+        cell_classes: tuple[int, ...],
         interface_ids: tuple[str, ...],
         anchor_ids: tuple[str, ...],
         allowed_neighbor_labels: tuple[str, ...],
@@ -972,35 +989,80 @@ class CellToolProgramCompiler:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Compile an interface-inward three-band cellularity field."""
 
-        anchor = CellToolProgramCompiler._validated_anchor_mask(
-            scene=scene,
-            interface_ids=interface_ids,
-            anchor_ids=anchor_ids,
-        )
-        interfaces = {
-            item.interface_id: item for item in scene.tissue.graph.interfaces
-        }
-        allowed = set(allowed_neighbor_labels)
-        for interface_id in interface_ids:
-            interface = interfaces.get(interface_id)
-            if interface is None:
-                raise JointContractError(
-                    f"Planner selected unknown depletion interface {interface_id}"
-                )
-            if interface.source_component_id == component_id:
-                neighbor = interface.target_label
-            elif interface.target_component_id == component_id:
-                neighbor = interface.source_label
-            else:
-                raise JointContractError(
-                    "depletion interface does not touch the selected component"
-                )
-            if neighbor not in allowed:
-                raise JointContractError(
-                    f"depletion neighbor {neighbor!r} is not skill-authorized"
-                )
-        distance = ndimage.distance_transform_edt(~anchor)
         component = np.asarray(component, dtype=bool)
+        if spatial_anchor_type == "population_peak":
+            eligible = []
+            allowed_classes = set(cell_classes)
+            for item in scene.cells.instances:
+                row = int(round(item.centroid_xy[1]))
+                col = int(round(item.centroid_xy[0]))
+                if (
+                    item.class_id in allowed_classes
+                    and item.completeness_status == "complete"
+                    and not item.touches_border
+                    and not item.quality_flags
+                    and 0 <= row < component.shape[0]
+                    and 0 <= col < component.shape[1]
+                    and component[row, col]
+                ):
+                    eligible.append((item.instance_id, row, col))
+            if not eligible:
+                raise JointContractError(
+                    "population-peak depletion has no complete target-class nucleus"
+                )
+            points = np.asarray(
+                [(row, col) for _instance_id, row, col in eligible],
+                dtype=float,
+            )
+            radius = max(
+                3.0 * float(diameter_px),
+                (
+                    float(core_width_cell_diameters)
+                    + float(transition_width_cell_diameters)
+                )
+                * float(diameter_px),
+            )
+            neighborhoods = cKDTree(points).query_ball_point(points, radius)
+            peak_index = min(
+                range(len(eligible)),
+                key=lambda index: (
+                    -len(neighborhoods[index]),
+                    eligible[index][0],
+                ),
+            )
+            _instance_id, row, col = eligible[peak_index]
+            anchor = np.zeros_like(component, dtype=bool)
+            anchor[row, col] = True
+        else:
+            anchor = CellToolProgramCompiler._validated_anchor_mask(
+                scene=scene,
+                interface_ids=interface_ids,
+                anchor_ids=anchor_ids,
+            )
+            interfaces = {
+                item.interface_id: item
+                for item in scene.tissue.graph.interfaces
+            }
+            allowed = set(allowed_neighbor_labels)
+            for interface_id in interface_ids:
+                interface = interfaces.get(interface_id)
+                if interface is None:
+                    raise JointContractError(
+                        f"Planner selected unknown depletion interface {interface_id}"
+                    )
+                if interface.source_component_id == component_id:
+                    neighbor = interface.target_label
+                elif interface.target_component_id == component_id:
+                    neighbor = interface.source_label
+                else:
+                    raise JointContractError(
+                        "depletion interface does not touch the selected component"
+                    )
+                if neighbor not in allowed:
+                    raise JointContractError(
+                        f"depletion neighbor {neighbor!r} is not skill-authorized"
+                    )
+        distance = ndimage.distance_transform_edt(~anchor)
         maximum_observed_distance = float(
             np.max(distance[component], initial=0.0)
         )

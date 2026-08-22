@@ -60,6 +60,7 @@ _PANDA_GROWTH_ARCHITECTURE_PRIMITIVES = frozenset(
 
 def _tissue_portfolio_allows_anchor_diversification(
     primitive_id: str,
+    annotation_profile_id: str = "",
 ) -> bool:
     """Return whether preferred anchors can change the compiled tissue plan."""
 
@@ -67,6 +68,16 @@ def _tissue_portfolio_allows_anchor_diversification(
     # tumor-stroma interface.  Its tissue Planner ignores a preferred single
     # anchor, so enumerating every anchor here only recompiles the identical
     # full-interface plan before SHA-based deduplication.
+    if (
+        annotation_profile_id in {"ignite-semantic-v1", "puma-semantic-v1"}
+        and primitive_id
+        in {
+            "invasive-tumor-footprint-decrease-v1",
+            "stroma-increase-v1",
+            "residual-tumor-fragmentation-v1",
+        }
+    ):
+        return False
     return primitive_id != "residual-tumor-fragmentation-v1"
 
 
@@ -694,7 +705,8 @@ class CandidateFeasibilityCompiler:
             ((), ()),
         ]
         if _tissue_portfolio_allows_anchor_diversification(
-            tissue_case.primitive_id
+            tissue_case.primitive_id,
+            tissue_case.annotation_profile_id,
         ):
             for preferred_interface in feasible:
                 preflight_item = nuclei_preflight.interface(preferred_interface)
@@ -789,12 +801,8 @@ class CandidateFeasibilityCompiler:
                 for _score, interface_id, anchor_id in ranked_anchors[:6]
             ]
             maximum_candidates = 1 if revoked_candidate_ids else 2
-        if (
-            tissue_case.annotation_profile_id == "panda-gleason-v1"
-            and tissue_case.primitive_id
-            == "infiltrative-nest-cord-extension-v1"
-        ):
-            # Some PANDA fronts expose hundreds of anchors.  Rank the sealed
+        if tissue_case.primitive_id == "infiltrative-nest-cord-extension-v1":
+            # Cord fronts can expose hundreds of anchors.  Rank the sealed
             # mask/nucleus preflight witnesses by complete-shape and seam-fit
             # capacity so the compiler tries the strongest sectors first,
             # instead of spending the replay timeout on raster-order anchors.
@@ -974,8 +982,7 @@ class CandidateFeasibilityCompiler:
         errors: list[str] = []
         attempt_limit = (
             1
-            if tissue_case.annotation_profile_id == "panda-gleason-v1"
-            and tissue_case.primitive_id
+            if tissue_case.primitive_id
             == "infiltrative-nest-cord-extension-v1"
             else self.maximum_attempts
         )
@@ -1008,11 +1015,8 @@ class CandidateFeasibilityCompiler:
                     and compiled.resolved_area.used_fallback
                     and feedback.get("stage") != "tissue_area_underfill"
                     and not _is_subcomponent_raster_tail(compiled)
-                    and not (
-                        tissue_case.annotation_profile_id == "panda-gleason-v1"
-                        and tissue_case.primitive_id
-                        == "infiltrative-nest-cord-extension-v1"
-                    )
+                    and tissue_case.primitive_id
+                    != "infiltrative-nest-cord-extension-v1"
                 ):
                     # A maximum over one selected interface set is not yet a
                     # global maximum over the frozen preflight portfolio.
@@ -1047,6 +1051,7 @@ class CandidateFeasibilityCompiler:
                     ),
                 )
                 executable_artifacts: list[tuple[str, str, Any, Any]] = []
+                executor_gate_failures: list[dict[str, Any]] = []
                 for family, executor in zip(
                     tools.allowed_joint_families,
                     tools.allowed_concrete_executors,
@@ -1066,7 +1071,6 @@ class CandidateFeasibilityCompiler:
                         compiled_replay_parts=parts,
                         compiled_replay_audit=replay,
                     )
-                    passing = []
                     for candidate in candidates:
                         report = self.gates.run(
                             GateContext(
@@ -1080,16 +1084,36 @@ class CandidateFeasibilityCompiler:
                             )
                         )
                         if report.passed:
-                            passing.append((candidate, report))
-                    if not passing:
-                        continue
-                    candidate, report = passing[0]
-                    executable_artifacts.append(
-                        (family, executor, candidate, report)
-                    )
+                            executable_artifacts.append(
+                                (family, executor, candidate, report)
+                            )
+                            break
+                        executor_gate_failures.append(
+                            {
+                                "executor": executor,
+                                "candidate_id": candidate.candidate_id,
+                                "failed_checks": [
+                                    {
+                                        "check_id": item.check_id,
+                                        "detail": item.detail,
+                                        "metrics": item.metrics,
+                                    }
+                                    for item in report.checks
+                                    if not item.passed and item.severity == "hard"
+                                ],
+                            }
+                        )
+                    if executable_artifacts:
+                        break
                 if not executable_artifacts:
                     raise JointContractError(
-                        "compiled tissue plan has no concrete executor that passes all tissue hard gates"
+                        "compiled tissue plan has no concrete executor that "
+                        "passes all tissue hard gates: "
+                        + json.dumps(
+                            executor_gate_failures[:8],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
                     )
                 # Each witness binds exactly one candidate/tool pair. The
                 # portfolio builder invokes this compiler per anchor; exposing

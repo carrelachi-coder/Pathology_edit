@@ -346,8 +346,60 @@ def certify_complete_footprint_packing(
         footprint_union=footprint_union,
         failure_reasons=tuple(reasons),
     )
+    if set(reasons) == {
+        "exact_seam_packing_capacity_shortfall",
+        "exact_complete_footprint_packing_capacity_shortfall",
+    }:
+        declared_total_minimum = (
+            max(
+                1 if requested else 0,
+                min(requested, max(0, int(minimum_acceptable_count))),
+            )
+            if minimum_acceptable_count is not None
+            else max(
+                1 if requested else 0,
+                int(np.ceil(0.80 * requested)),
+                int(np.ceil(requested - np.sqrt(requested))),
+            )
+        )
+        # Every placement in ``certificate`` is already a complete,
+        # non-overlapping, V-contained footprint. When both nominal quotas
+        # exceed capacity, that achieved witness is itself the exact safe
+        # fallback; re-running the greedy packer with smaller quotas can
+        # reorder shapes and discard a valid witness.
+        if (
+            allow_finite_count_fallback
+            and placed_seam >= seam_minimum
+            and len(placements) >= declared_total_minimum
+        ):
+            return replace(
+                certificate,
+                requested_count=len(placements),
+                minimum_safe_count=max(
+                    declared_total_minimum, seam_minimum
+                ),
+                finite_count_fallback_used=(
+                    len(placements) < requested
+                ),
+                required_seam_count=placed_seam,
+                minimum_safe_seam_count=seam_minimum,
+                seam_count_fallback_used=True,
+                class_requested_counts={
+                    key: int(value)
+                    for key, value in class_counts.items()
+                    if value
+                },
+                passed=True,
+                failure_reasons=(),
+            )
     if (
-        set(reasons) == {"exact_seam_packing_capacity_shortfall"}
+        "exact_seam_packing_capacity_shortfall" in reasons
+        and set(reasons).issubset(
+            {
+                "exact_seam_packing_capacity_shortfall",
+                "exact_complete_footprint_packing_capacity_shortfall",
+            }
+        )
         and seam_minimum <= placed_seam < seam_required
     ):
         safe = certify_complete_footprint_packing(
@@ -363,7 +415,11 @@ def certify_complete_footprint_packing(
             class_request_weights=class_request_weights,
             continuity_region=continuity_region,
             required_seam_count=placed_seam,
-            minimum_seam_count=placed_seam,
+            # Keep the originally certified lower bound. Re-packing with a
+            # smaller nominal seam can choose a different valid footprint
+            # order, so freezing the first achieved count here can reject an
+            # otherwise valid member of the same declared interval.
+            minimum_seam_count=seam_minimum,
             required_seam_class=required_seam_class,
             minimum_acceptable_count=minimum_acceptable_count,
             minimum_center_separation_px=minimum_center_separation_px,

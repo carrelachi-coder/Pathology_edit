@@ -49,6 +49,7 @@ def _depletion_anchor_binding_sha256(
     *,
     case: JointCaseContext,
     zone_id: str,
+    anchor_type: str,
     interface_ids: tuple[str, ...],
     anchor_ids: tuple[str, ...],
 ) -> str:
@@ -66,6 +67,7 @@ def _depletion_anchor_binding_sha256(
             "source_nuclei_mask_sha256"
         ),
         "zone_id": zone_id,
+        "anchor_type": anchor_type,
         "interface_ids": list(interface_ids),
         "anchor_ids": list(anchor_ids),
     }
@@ -87,6 +89,7 @@ class CompilerOwnedDepletionAnchor:
     """Typed mask-graph anchor capability unavailable through case provenance."""
 
     zone_id: str
+    anchor_type: str
     interface_ids: tuple[str, ...]
     anchor_ids: tuple[str, ...]
     binding_sha256: str
@@ -100,16 +103,19 @@ class CompilerOwnedDepletionAnchor:
         zone_id: str,
         interface_ids: Sequence[str],
         anchor_ids: Sequence[str],
+        anchor_type: str = "interface",
     ) -> CompilerOwnedDepletionAnchor:
         interfaces = tuple(str(value) for value in interface_ids)
         anchors = tuple(str(value) for value in anchor_ids)
         return cls(
             zone_id=str(zone_id),
+            anchor_type=str(anchor_type),
             interface_ids=interfaces,
             anchor_ids=anchors,
             binding_sha256=_depletion_anchor_binding_sha256(
                 case=case,
                 zone_id=str(zone_id),
+                anchor_type=str(anchor_type),
                 interface_ids=interfaces,
                 anchor_ids=anchors,
             ),
@@ -124,6 +130,7 @@ class CompilerOwnedDepletionAnchor:
         expected = _depletion_anchor_binding_sha256(
             case=case,
             zone_id=self.zone_id,
+            anchor_type=self.anchor_type,
             interface_ids=self.interface_ids,
             anchor_ids=self.anchor_ids,
         )
@@ -1031,14 +1038,19 @@ class HeuristicJointPlanner:
                         "compiler-owned depletion anchor belongs to another population zone"
                     )
                 raw_anchor = {
-                    "type": "interface",
+                    "type": compiler_owned_depletion_anchor.anchor_type,
                     "interface_ids": list(
                         compiler_owned_depletion_anchor.interface_ids
                     ),
                     "anchor_ids": list(
                         compiler_owned_depletion_anchor.anchor_ids
                     ),
-                    "observation": "compiler-issued deterministic mask-graph adjacency",
+                    "observation": (
+                        "compiler-issued deterministic mask-only population peak"
+                        if compiler_owned_depletion_anchor.anchor_type
+                        == "population_peak"
+                        else "compiler-issued deterministic mask-graph adjacency"
+                    ),
                     "confidence": 1.0,
                 }
             if depletion is None or not isinstance(raw_anchor, Mapping):
@@ -1064,45 +1076,51 @@ class HeuristicJointPlanner:
                 raw_anchor.get("observation", "")
             ).strip()
             confidence = float(raw_anchor.get("confidence", 0.0))
-            interfaces = {
-                item.interface_id: item for item in scene.tissue.graph.interfaces
-            }
-            anchors = {
-                item.anchor_segment_id: item
-                for item in scene.tissue.graph.anchor_segments
-            }
-            if not interface_ids or set(interface_ids) - set(interfaces):
-                raise JointContractError(
-                    "depletion Planner selected an empty or unknown interface"
-                )
-            if not anchor_ids or set(anchor_ids) - set(anchors):
-                raise JointContractError(
-                    "depletion Planner selected an empty or unknown anchor"
-                )
-            detached = [
-                value
-                for value in anchor_ids
-                if anchors[value].interface_id not in interface_ids
-            ]
-            if detached:
-                raise JointContractError(
-                    "depletion anchors are detached from the selected interface"
-                )
-            selected_component = zone.tissue_component_id
-            neighbor_labels = set()
-            for interface_id in interface_ids:
-                interface = interfaces[interface_id]
-                if interface.source_component_id == selected_component:
-                    neighbor_labels.add(interface.target_label)
-                elif interface.target_component_id == selected_component:
-                    neighbor_labels.add(interface.source_label)
-                else:
+            if spatial_anchor_type == "interface":
+                interfaces = {
+                    item.interface_id: item
+                    for item in scene.tissue.graph.interfaces
+                }
+                anchors = {
+                    item.anchor_segment_id: item
+                    for item in scene.tissue.graph.anchor_segments
+                }
+                if not interface_ids or set(interface_ids) - set(interfaces):
                     raise JointContractError(
-                        "depletion interface does not touch the selected population component"
+                        "depletion Planner selected an empty or unknown interface"
                     )
-            if neighbor_labels - set(depletion.allowed_neighbor_labels):
+                if not anchor_ids or set(anchor_ids) - set(anchors):
+                    raise JointContractError(
+                        "depletion Planner selected an empty or unknown anchor"
+                    )
+                detached = [
+                    value
+                    for value in anchor_ids
+                    if anchors[value].interface_id not in interface_ids
+                ]
+                if detached:
+                    raise JointContractError(
+                        "depletion anchors are detached from the selected interface"
+                    )
+                selected_component = zone.tissue_component_id
+                neighbor_labels = set()
+                for interface_id in interface_ids:
+                    interface = interfaces[interface_id]
+                    if interface.source_component_id == selected_component:
+                        neighbor_labels.add(interface.target_label)
+                    elif interface.target_component_id == selected_component:
+                        neighbor_labels.add(interface.source_label)
+                    else:
+                        raise JointContractError(
+                            "depletion interface does not touch the selected population component"
+                        )
+                if neighbor_labels - set(depletion.allowed_neighbor_labels):
+                    raise JointContractError(
+                        "depletion interface neighbor is not allowed by the mechanism skill"
+                    )
+            elif interface_ids or anchor_ids:
                 raise JointContractError(
-                    "depletion interface neighbor is not allowed by the mechanism skill"
+                    "population-peak depletion cannot claim interface anchors"
                 )
             if (
                 not spatial_anchor_observation

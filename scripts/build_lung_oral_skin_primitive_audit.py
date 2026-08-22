@@ -61,6 +61,10 @@ def build() -> dict:
                     primitive_id=primitive_id,
                     mechanism_id=mechanism.mechanism_id,
                 )
+                closure_category = repository.execution_closure_category(
+                    primitive_id=primitive_id,
+                    mechanism_id=mechanism.mechanism_id,
+                )
                 pairs.append(
                     {
                         "primitive_id": primitive_id,
@@ -70,6 +74,7 @@ def build() -> dict:
                             "closed" if reason else "executable_mask_only"
                         ),
                         "closed_reason": reason,
+                        "closure_category": closure_category,
                         "required_observation_sources": list(
                             mechanism.planner_policy.allowed_observation_sources
                         ),
@@ -139,13 +144,13 @@ def build() -> dict:
         },
         "visual_review_policy": {
             "cases_per_executable_organ_primitive": 5,
-            "boundary_or_retreat_target_fraction": 0.19,
-            "boundary_or_retreat_min_fraction": 0.14,
+            "boundary_or_retreat_target_fraction": 0.12,
+            "boundary_or_retreat_min_fraction": 0.08,
             "compartment_or_cord_target_fraction": 0.12,
             "compartment_or_cord_min_fraction": 0.08,
             "absolute_tissue_fallback_floor_fraction": 0.05,
-            "cell_only_minimum_delta_count": 12,
-            "cell_only_target_delta_count": 20,
+            "cell_only_minimum_delta_count_range": [4, 12],
+            "cell_only_target_delta_count_range": [6, 16],
             "tiny_effect_action": "reject_case_not_relax_floor",
         },
         "organs": organs,
@@ -166,7 +171,17 @@ def _validate(payload: dict) -> None:
             if item["status"] == "closed":
                 if not item["closed_reason"]:
                     raise ValueError("closed pair lacks reason")
+                if item["closure_category"] not in {
+                    "annotation_limited",
+                    "dataset_case_limited",
+                }:
+                    raise ValueError(
+                        "target-organ implementation defect must be repaired, "
+                        f"not closed: {item}"
+                    )
                 continue
+            if item["closure_category"] is not None:
+                raise ValueError("open pair retains a closure category")
             if item["required_auxiliary_structures"]:
                 raise ValueError(
                     f"open pair still requires unavailable auxiliary authority: {item}"

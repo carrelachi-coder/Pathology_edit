@@ -1078,6 +1078,7 @@ def _install_primitives(writer: Writer) -> None:
                 "minimum_delta_count_by_pathology_domain", {}
             ).update(
                 {
+                    "lung-carcinoma-v1": 6,
                     "oral-squamous-cell-carcinoma-v1": 6,
                     "melanoma-v1": 6,
                 }
@@ -1638,7 +1639,27 @@ def refine(root: Path, *, check: bool) -> list[Path]:
             ),
         }
     )
-    execution_scope.setdefault("closed_mechanisms", {}).update(
+    # Runtime failures are implementation defects, not annotation closures.
+    # Keep these pairs visible to the compiler while their executors are
+    # repaired and validated; only missing mask authority may remain closed.
+    implementation_pairs = {
+        "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1",
+        "lung-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
+        "lung-local-population-modulation::neoplastic-cell-abundance-decrease-v1",
+        "lung-local-population-modulation::neoplastic-cell-abundance-increase-v1",
+        "lung-local-population-modulation::peritumoral-neoplastic-scatter-increase-v1",
+        "lung-local-population-modulation::peritumoral-small-cluster-increase-v1",
+        "oral-scc-local-population-modulation::cell-type-abundance-decrease-v1",
+        "oral-scc-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
+        "melanoma-local-population-modulation::cell-type-abundance-decrease-v1",
+        "melanoma-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
+        "melanoma-local-population-modulation::neoplastic-cell-abundance-decrease-v1",
+    }
+    for pair_id in implementation_pairs:
+        closed_pairs.pop(pair_id, None)
+
+    closed_mechanisms = execution_scope.setdefault("closed_mechanisms", {})
+    closed_mechanisms.update(
         {
             "lung-acinar-papillary-growth": (
                 "IGNITE does not provide a digest-bound lumen or fibrovascular-core map. "
@@ -1733,6 +1754,46 @@ def refine(root: Path, *, check: bool) -> list[Path]:
             ),
         }
     )
+    implementation_mechanisms = {
+        "lung-generic-immune-compartment-turnover",
+        "lung-intratumoral-necrosis-turnover",
+        "lung-operational-tumor-retreat",
+        "lung-solid-squamous-growth",
+        "lung-stromal-invasive-front",
+        "melanoma-cohesive-nest-sheet",
+        "melanoma-operational-tumor-retreat",
+        "melanoma-peritumoral-small-focus",
+    }
+    for mechanism_id in implementation_mechanisms:
+        closed_mechanisms.pop(mechanism_id, None)
+
+    target_closure_categories = {
+        "lung-acinar-papillary-growth": "annotation_limited",
+        "lung-lepidic-growth": "annotation_limited",
+        "lung-local-tumor-clearance": "annotation_limited",
+        "lung-stas-airspace-spread": "annotation_limited",
+        "melanoma-discohesive-junctional": "annotation_limited",
+        "melanoma-intratumoral-necrosis-turnover": "dataset_case_limited",
+        "melanoma-local-tumor-clearance": "annotation_limited",
+        "oral-scc-annotation-anchored-cord-extension": "annotation_limited",
+        "oral-scc-cohesive-nest-cord": "annotation_limited",
+        "oral-scc-dispersed-invasive-front": "annotation_limited",
+        "oral-scc-local-carcinoma-clearance": "annotation_limited",
+        "oral-scc-operational-tumor-retreat": "annotation_limited",
+    }
+    categories = execution_scope.setdefault("closed_mechanism_categories", {})
+    target_prefixes = ("lung-", "melanoma-", "oral-scc-")
+    for mechanism_id in tuple(categories):
+        if mechanism_id.startswith(target_prefixes):
+            categories.pop(mechanism_id, None)
+    categories.update(target_closure_categories)
+    execution_scope["closed_pair_categories"] = {
+        pair_id: category
+        for pair_id, category in execution_scope.get(
+            "closed_pair_categories", {}
+        ).items()
+        if pair_id in closed_pairs
+    }
     writer.json(execution_scope_path, execution_scope)
 
     # P1: complete PANDA cell-only dispersion and post-treatment residual scope.
@@ -1818,6 +1879,40 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     _add_local_cell_primitives(lung_local, include_generic_inflammatory=True)
     _cell_only_dispersion(lung_local, host_label="Stroma", include_cluster=True)
     _remove_mixed_scope_dispersion_checks(lung_local)
+    # Lung inflammatory nuclei often occupy a sparse alveolar-interstitial
+    # field.  A bounded multi-focus whole-instance decrement remains
+    # meaningful without inventing a dense radial core/transition gradient.
+    lung_local["cell_program"]["layout_program_by_primitive"][
+        "generic-inflammatory-cell-abundance-decrease-v1"
+    ] = "single"
+    lung_local["cell_program"]["cellularity_depletion_contract"][
+        "minimum_field_area_cell_diameter_squares"
+    ] = 6
+    lung_local["cell_program"]["cellularity_depletion_contract"][
+        "outer_reference_width_cell_diameters"
+    ] = 3
+    lung_local["cell_program"]["cellularity_depletion_contract"][
+        "minimum_outer_reference_instances"
+    ] = 0
+    lung_local["cell_program"]["cellularity_depletion_contract"][
+        "allowed_neighbor_labels"
+    ] = _ordered_union(
+        lung_local["cell_program"]["cellularity_depletion_contract"][
+            "allowed_neighbor_labels"
+        ],
+        ["Tumor"],
+    )
+    lung_local["cell_program"]["cellularity_depletion_contract"][
+        "allowed_anchor_types"
+    ] = _ordered_union(
+        lung_local["cell_program"]["cellularity_depletion_contract"][
+            "allowed_anchor_types"
+        ],
+        ["population_peak"],
+    )
+    lung_local["cell_program"]["cellularity_depletion_contract"][
+        "core_width_cell_diameters"
+    ] = 2.5
     _write_contract(writer, lung_local)
     lung_retreat = _contract(root, "lung-operational-tumor-retreat")
     _retreat_transform(lung_retreat)
@@ -1893,6 +1988,39 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     )
     melanoma_local = _contract(root, "melanoma-local-population-modulation")
     _add_local_cell_primitives(melanoma_local, include_generic_inflammatory=True)
+    melanoma_local["cell_program"]["cellularity_depletion_contract"][
+        "minimum_field_area_cell_diameter_squares"
+    ] = 48
+    melanoma_local["cell_program"]["cellularity_depletion_contract"][
+        "outer_reference_width_cell_diameters"
+    ] = 3
+    melanoma_local["cell_program"]["cellularity_depletion_contract"][
+        "minimum_outer_reference_instances"
+    ] = 0
+    melanoma_local["cell_program"]["cellularity_depletion_contract"][
+        "allowed_neighbor_labels"
+    ] = _ordered_union(
+        melanoma_local["cell_program"]["cellularity_depletion_contract"][
+            "allowed_neighbor_labels"
+        ],
+        ["Tumor"],
+    )
+    melanoma_local["cell_program"]["cellularity_depletion_contract"].update(
+        transition_width_cell_diameters=6,
+        transition_subband_count=6,
+        transition_end_removal_fraction=0.06,
+    )
+    melanoma_local["cell_program"]["cellularity_depletion_contract"][
+        "allowed_anchor_types"
+    ] = _ordered_union(
+        melanoma_local["cell_program"]["cellularity_depletion_contract"][
+            "allowed_anchor_types"
+        ],
+        ["population_peak"],
+    )
+    melanoma_local["cell_program"]["cellularity_depletion_contract"][
+        "core_width_cell_diameters"
+    ] = 2.5
     _write_contract(writer, melanoma_local)
 
     # P2 ORCA.
@@ -1962,6 +2090,39 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         include_generic_inflammatory=True,
         generic_host_labels=("Tumor", "Other tissue"),
     )
+    oral_local["cell_program"]["cellularity_depletion_contract"][
+        "minimum_field_area_cell_diameter_squares"
+    ] = 48
+    oral_local["cell_program"]["cellularity_depletion_contract"][
+        "outer_reference_width_cell_diameters"
+    ] = 3
+    oral_local["cell_program"]["cellularity_depletion_contract"][
+        "minimum_outer_reference_instances"
+    ] = 0
+    oral_local["cell_program"]["cellularity_depletion_contract"][
+        "allowed_neighbor_labels"
+    ] = _ordered_union(
+        oral_local["cell_program"]["cellularity_depletion_contract"][
+            "allowed_neighbor_labels"
+        ],
+        ["Tumor"],
+    )
+    oral_local["cell_program"]["cellularity_depletion_contract"].update(
+        transition_width_cell_diameters=6,
+        transition_subband_count=6,
+        transition_end_removal_fraction=0.06,
+    )
+    oral_local["cell_program"]["cellularity_depletion_contract"][
+        "allowed_anchor_types"
+    ] = _ordered_union(
+        oral_local["cell_program"]["cellularity_depletion_contract"][
+            "allowed_anchor_types"
+        ],
+        ["population_peak"],
+    )
+    oral_local["cell_program"]["cellularity_depletion_contract"][
+        "core_width_cell_diameters"
+    ] = 2.5
     _write_contract(writer, _sanitize_orca_language(oral_local))
 
     _new_mechanism(
