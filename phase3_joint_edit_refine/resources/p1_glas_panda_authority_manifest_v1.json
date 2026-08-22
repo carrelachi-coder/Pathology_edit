@@ -4,9 +4,9 @@
   "api_used": false,
   "authority_erratum_manifest": "phase3_joint_edit_refine/resources/p1_glas_panda_authority_erratum_v1.json",
   "authority_erratum_manifest_sha256": "40dd60878f942adcc19f9d58c59b4ab8bffb2460060eadfcb15330edb5fa97c4",
-  "authority_materializer_code_commit": "010df567c25be93a18749b774020ceb73049dd76",
+  "authority_materializer_code_commit": "507ff27eec104050a3c7ebaf9d36a6799d29d68d",
   "authority_records": "p1_glas_panda_authority_records_v1.jsonl",
-  "authority_records_sha256": "ac8e0e9bad90fedefe5eb65a4e6cda79816eabeab09e11920270afc2ab7971c9",
+  "authority_records_sha256": "f9f399b6383cfbe732a6d615939afd31080858ee466c3bd78cbfd62157ec869b",
   "auxiliary_materialization_manifest": "p1_glas_panda_auxiliary_materialization_v1.json",
   "auxiliary_materialization_manifest_sha256": "6c308e5e43447942c60e7b964340cc609a84e62be04fbea084ba1e45c14dbf5d",
   "before_after_counts": {
@@ -40,7 +40,7 @@
     }
   },
   "candidate_preflight_records": "p1_glas_panda_candidate_preflight_v1.jsonl",
-  "candidate_preflight_records_sha256": "415f8260e74dc063f3b250f555e0248738cb11afc836e5b557e19d8862826ca3",
+  "candidate_preflight_records_sha256": "d2f2059ec7c7cf2048c5eda596150d48082cd110c05f6f0b27ae8a4ba94fa9cc",
   "eligible_for_later_visualization_count": 0,
   "evaluation_count": 22,
   "execution_status": "blocked_pending_authority_and_surviving_certificates",
@@ -52,12 +52,12 @@
   "full_case_status_table": "p1_glas_panda_preflight_status_v1.tsv",
   "full_case_status_table_sha256": "5c860ce0b112297ebfa76ddc1f12599c426b7c885b267daf445d229973136440",
   "generated_he_run": false,
-  "manifest_content_sha256": "b4a4dce175b393702ae9a2a131da84098b8d91357ef0e5dcad4a08ffa195c2b6",
+  "manifest_content_sha256": "10ad13a1a3073757077c987b40a5f60a53206ea3a3facedb98d6822d172b805b",
   "planner_called": false,
   "production_status": "shadow_only",
   "runtime_authority": {
     "all_required_runtime_assets_verified": false,
-    "authority_materializer_code_commit": "010df567c25be93a18749b774020ceb73049dd76",
+    "authority_materializer_code_commit": "507ff27eec104050a3c7ebaf9d36a6799d29d68d",
     "code_assets": [
       {
         "file_sha256": "0b9157dd0a635c0cd9b183a512b03d40877bbefe1d1ef779993851d8834e7b11",
@@ -84,7 +84,7 @@
         "path": "phase3_joint_edit_refine/portfolio_authority.py"
       },
       {
-        "file_sha256": "c43509565a268342c698cf28c29a960bdd998727f81193eb8262fe4db272d1cd",
+        "file_sha256": "eae1faacdfe7d93fc5e574bb86e1d07f7cd1b13cf3f2ec7e2d4faf52a22c24c4",
         "path": "phase3_joint_edit_refine/workflow.py"
       },
       {
@@ -210,8 +210,8 @@
       "instance_library_sha256",
       "mature_probnet_checkpoint_sha256"
     ],
-    "runtime_authority_sha256": "9621ad78bfc995d92b50d0a29ce144bc551d2ab1b9977a5878d2cabf1bcf9c54",
-    "runtime_code_set_sha256": "ecddf4137c85e4ce8aa7b68df36a4e1bdf639c5e59f34c4294f0297e5ee82193",
+    "runtime_authority_sha256": "9a6d8e0baa6e006c2f797ff7e11e8812b5e97a2672e7e650bbbe88112a6641ff",
+    "runtime_code_set_sha256": "3ceba66c203fd0f0472a32d925320d518fcbd013d4e5b5849ea5f11a4f030fc9",
     "runtime_input_manifest_sha256": "0ac4264b47925f302bb978fd63e3f7c0b027eccdc3f3f5161f24b826e8904cf6",
     "schema_version": "p1-runtime-authority-materialization-v1",
     "selection_runtime_authority": {
