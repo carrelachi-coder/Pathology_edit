@@ -538,6 +538,14 @@ def build_joint_nuclei_preflight(
         # still compiled by the tool program, while the skill-owned ratio is
         # the audited hard depth/span maximum shared with the mask gate.
         front_contract = joint_bundle.mechanism.tissue_program.front
+        maximum_band_px = int(front_contract.maximum_band_px)
+        if (
+            case.annotation_profile_id == "panda-gleason-v1"
+            and case.primitive_id
+            == "infiltrative-nest-cord-extension-v1"
+            and allocation.tissue_floor_pixels < 3146
+        ):
+            maximum_band_px = min(maximum_band_px, 64)
         if effective_allow_source_resolution:
             # Resolution may consume any safe part of a source compartment,
             # including its final pixels. Its executable depth is therefore
@@ -555,12 +563,12 @@ def build_joint_nuclei_preflight(
             # Closed intratumoral compartments are edited from their complete
             # boundary. A single raster segment's contact length is not the
             # biological span and must not cap radial/component turnover.
-            depth_cap = int(front_contract.maximum_band_px)
+            depth_cap = maximum_band_px
         else:
             depth_cap = max(
                 1,
                 min(
-                    front_contract.maximum_band_px,
+                    maximum_band_px,
                     int(
                         np.floor(
                             interface.contact_pixels

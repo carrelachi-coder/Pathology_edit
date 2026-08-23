@@ -367,6 +367,13 @@ class PandaShadowAuthorityTests(unittest.TestCase):
             ["target_fraction"],
             0.018,
         )
+        cord_bundle = JointSkillRepository().mechanisms[
+            "prostate-pattern-5-infiltrative-front"
+        ]
+        self.assertEqual(
+            cord_bundle.tissue_program.front.maximum_band_px,
+            144,
+        )
         self.assertEqual(
             _joint_area_budget("local-invasive-clearance-v1")["max_fraction"],
             0.14,

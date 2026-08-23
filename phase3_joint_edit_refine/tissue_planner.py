@@ -1355,11 +1355,20 @@ class MultiInterfaceResearchTissuePlanner:
                         + directional_tip_width_px,
                     )
                 )
+                directional_depth_cap = depth_cap
+                if (
+                    case.annotation_profile_id == "panda-gleason-v1"
+                    and hard_min_pixels < 3146
+                ):
+                    # Preserve the validated compact-cord envelope for small
+                    # edits. The longer Breast-scale band is used only when
+                    # the requested area genuinely requires that reach.
+                    directional_depth_cap = min(directional_depth_cap, 64.0)
                 peak = float(
                     np.clip(
                         np.ceil(estimated_directional_depth * 1.18),
                         4,
-                        depth_cap,
+                        directional_depth_cap,
                     )
                 )
             else:

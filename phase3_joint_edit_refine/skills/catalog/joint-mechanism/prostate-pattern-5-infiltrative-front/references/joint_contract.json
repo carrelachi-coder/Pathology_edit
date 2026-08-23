@@ -69,7 +69,7 @@
       "taper_fraction": 0.42,
       "lobe_count": 1,
       "noise_depth_ratio": 0.02,
-      "maximum_band_px": 64,
+      "maximum_band_px": 144,
       "maximum_depth_span_ratio": 4.0,
       "maximum_boundary_compactness": 14.0,
       "directional_sector_required": true,
