@@ -27,6 +27,7 @@ PRIMITIVE_GENERATION_CONTEXT_MAX_EXTRA_FRACTIONS = {
     # needs more generator-only collagen context than a compact semantic edit
     # so the Inpaint boundary does not trace the cellular support itself.
     "invasive-cord-formation-v1": 1.5,
+    "infiltrative-nest-cord-extension-v1": 1.5,
 }
 
 

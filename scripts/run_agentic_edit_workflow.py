@@ -330,6 +330,32 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_agentic_routing_context(
+    inputs: Mapping[str, Any],
+) -> dict[str, Any]:
+    tissue_changed = bool(
+        np.any(inputs["reference_tissue"] != inputs["target_tissue"])
+    )
+    nuclei_changed = bool(
+        np.any(inputs["reference_nuclei"] != inputs["target_nuclei"])
+    )
+    scope = "nuclei" if nuclei_changed and not tissue_changed else "tissue"
+    primitive_id = inputs["generation_region_policy"].get("primitive_id")
+    primitive_name = str(primitive_id or "").lower()
+    cell_only_direction = None
+    if scope == "nuclei":
+        if "decrease" in primitive_name:
+            cell_only_direction = "decrease"
+        elif "increase" in primitive_name:
+            cell_only_direction = "increase"
+    return {
+        "routing_change_region": inputs["semantic_change_region"],
+        "routing_change_scope": scope,
+        "routing_cell_only_direction": cell_only_direction,
+        "routing_edit_primitive_id": primitive_id,
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     inputs = _load_and_validate_inputs(args)
@@ -728,6 +754,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return result
 
+    routing_context = _resolve_agentic_routing_context(inputs)
+
     workflow = run_agentic_workflow(
         reference_tissue_mask=inputs["reference_tissue"],
         target_tissue_mask=inputs["target_tissue"],
@@ -741,6 +769,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         routing_decision=(
             None if joint_handoff is None else joint_handoff["routing_decision"]
         ),
+        **routing_context,
     )
 
     final_path = output_dir / "generated_image.png"
@@ -796,6 +825,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             np.array_equal(
                 inputs["semantic_change_region"],
                 inputs["reference_tissue"] != inputs["target_tissue"],
+            )
+        ),
+        "semantic_matches_joint_difference": bool(
+            np.array_equal(
+                inputs["semantic_change_region"],
+                (inputs["reference_tissue"] != inputs["target_tissue"])
+                | (inputs["reference_nuclei"] != inputs["target_nuclei"]),
             )
         ),
         "generation_context_policy": inputs["generation_region_policy"],

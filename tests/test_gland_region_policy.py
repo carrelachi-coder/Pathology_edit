@@ -125,6 +125,22 @@ def test_cord_primitive_retains_a_larger_stromal_context_budget():
     assert int(np.count_nonzero(bounded)) == semantic_pixels * 5 // 2
 
 
+def test_current_infiltrative_cord_retains_larger_context_budget():
+    semantic = np.zeros((128, 128), dtype=bool)
+    semantic[60:68, 28:100] = True
+    candidate = np.ones_like(semantic)
+
+    bounded, metadata = bound_generation_context_region(
+        semantic,
+        candidate,
+        primitive_id="infiltrative-nest-cord-extension-v1",
+    )
+
+    semantic_pixels = int(np.count_nonzero(semantic))
+    assert metadata["max_extra_fraction"] == 1.5
+    assert int(np.count_nonzero(bounded)) == semantic_pixels * 5 // 2
+
+
 def test_glas_large_union_preserves_the_complete_connected_component():
     source = np.full((128, 128), 2, dtype=np.uint8)
     source[8:120, 8:120] = 12

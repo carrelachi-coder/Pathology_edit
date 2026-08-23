@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
 from scripts.build_online_generation_review_panels import (
     draw_semantic_generation_boundaries,
+    preflight_records,
     resolve_records,
 )
 
@@ -96,3 +99,43 @@ def test_resolve_records_reads_context_policy_from_pipeline_summary(tmp_path):
         (generation_dir / "pipeline_summary.json").resolve()
     )
     assert len(records[0]["selected_image_sha256"]) == 64
+
+
+def test_preflight_accepts_exact_nuclei_only_joint_difference(tmp_path):
+    image_paths = {}
+    for name in (
+        "source_image",
+        "source_tissue_mask",
+        "source_nuclei_mask",
+        "target_tissue_mask",
+        "target_nuclei_mask",
+        "semantic_change_region",
+        "generation_change_region",
+        "selected_image",
+    ):
+        array = np.zeros((8, 8), dtype=np.uint8)
+        if name == "target_nuclei_mask":
+            array[3:5, 3:5] = 1
+        elif name == "semantic_change_region":
+            array[3:5, 3:5] = 255
+        elif name == "generation_change_region":
+            array[2:6, 2:6] = 255
+        path = tmp_path / f"{name}.png"
+        Image.fromarray(array).save(path)
+        image_paths[name] = str(path)
+
+    json_paths = {}
+    for name in ("agentic_workflow", "pipeline_summary", "generation_report"):
+        path = tmp_path / f"{name}.json"
+        path.write_text("{}", encoding="utf-8")
+        json_paths[name] = str(path)
+
+    record = {"case_id": "nuclei_only", **image_paths, **json_paths}
+    for key, value in {**image_paths, **json_paths}.items():
+        record[f"{key}_sha256"] = hashlib.sha256(
+            Path(value).read_bytes()
+        ).hexdigest()
+
+    result = preflight_records([record])
+
+    assert result["passed"] is True
