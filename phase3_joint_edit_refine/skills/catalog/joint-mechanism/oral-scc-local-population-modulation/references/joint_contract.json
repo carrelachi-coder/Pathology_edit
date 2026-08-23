@@ -7,9 +7,7 @@
     "cellularity-increase-v1",
     "cellularity-decrease-v1",
     "neoplastic-cell-abundance-increase-v1",
-    "neoplastic-cell-abundance-decrease-v1",
-    "generic-inflammatory-cell-abundance-increase-v1",
-    "generic-inflammatory-cell-abundance-decrease-v1"
+    "neoplastic-cell-abundance-decrease-v1"
   ],
   "version": "1.0.0-draft",
   "review_status": "draft",
@@ -92,26 +90,6 @@
         ],
         "target_labels": [
           "Tumor"
-        ]
-      },
-      "generic-inflammatory-cell-abundance-increase-v1": {
-        "source_labels": [
-          "Tumor",
-          "Other tissue"
-        ],
-        "target_labels": [
-          "Tumor",
-          "Other tissue"
-        ]
-      },
-      "generic-inflammatory-cell-abundance-decrease-v1": {
-        "source_labels": [
-          "Tumor",
-          "Other tissue"
-        ],
-        "target_labels": [
-          "Tumor",
-          "Other tissue"
         ]
       }
     },
@@ -203,9 +181,7 @@
       "cellularity-increase-v1": "single",
       "cellularity-decrease-v1": "localized_density_gradient",
       "neoplastic-cell-abundance-increase-v1": "small_cluster",
-      "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient",
-      "generic-inflammatory-cell-abundance-increase-v1": "small_cluster",
-      "generic-inflammatory-cell-abundance-decrease-v1": "localized_density_gradient"
+      "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient"
     }
   },
   "coupling_contract": {

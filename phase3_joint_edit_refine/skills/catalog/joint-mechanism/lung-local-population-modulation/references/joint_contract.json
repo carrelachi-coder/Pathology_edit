@@ -8,8 +8,6 @@
     "cellularity-decrease-v1",
     "neoplastic-cell-abundance-increase-v1",
     "neoplastic-cell-abundance-decrease-v1",
-    "generic-inflammatory-cell-abundance-increase-v1",
-    "generic-inflammatory-cell-abundance-decrease-v1",
     "peritumoral-neoplastic-scatter-increase-v1",
     "peritumoral-small-cluster-increase-v1"
   ],
@@ -118,30 +116,6 @@
         ],
         "target_labels": [
           "Tumor"
-        ]
-      },
-      "generic-inflammatory-cell-abundance-increase-v1": {
-        "source_labels": [
-          "Tumor",
-          "Stroma",
-          "Other tissue"
-        ],
-        "target_labels": [
-          "Tumor",
-          "Stroma",
-          "Other tissue"
-        ]
-      },
-      "generic-inflammatory-cell-abundance-decrease-v1": {
-        "source_labels": [
-          "Tumor",
-          "Stroma",
-          "Other tissue"
-        ],
-        "target_labels": [
-          "Tumor",
-          "Stroma",
-          "Other tissue"
         ]
       },
       "peritumoral-neoplastic-scatter-increase-v1": {
@@ -254,8 +228,6 @@
       "cellularity-decrease-v1": "localized_density_gradient",
       "neoplastic-cell-abundance-increase-v1": "small_cluster",
       "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient",
-      "generic-inflammatory-cell-abundance-increase-v1": "small_cluster",
-      "generic-inflammatory-cell-abundance-decrease-v1": "single",
       "peritumoral-neoplastic-scatter-increase-v1": "single",
       "peritumoral-small-cluster-increase-v1": "small_cluster"
     }

@@ -115,8 +115,6 @@ SIMPLE_INSTRUCTION_BY_PRIMITIVE = {
     "cohesive-boundary-expansion-v1": "Expand the tumor boundary locally.",
     "generic-immune-infiltrate-decrease-v1": "Decrease the generic immune infiltrate.",
     "generic-immune-infiltrate-increase-v1": "Increase the generic immune infiltrate.",
-    "generic-inflammatory-cell-abundance-decrease-v1": "Decrease generic inflammatory-cell abundance in the selected region.",
-    "generic-inflammatory-cell-abundance-increase-v1": "Increase generic inflammatory-cell abundance in the selected region.",
     "infiltrative-nest-cord-extension-v1": "Add a narrow connected tumor cord.",
     "invasive-front-expansion-v1": "Expand the invasive front.",
     "invasive-tumor-footprint-decrease-v1": "Simulate a post-treatment response by decreasing tumor area.",

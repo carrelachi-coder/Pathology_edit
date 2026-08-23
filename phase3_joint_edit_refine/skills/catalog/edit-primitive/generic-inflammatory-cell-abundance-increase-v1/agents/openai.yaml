@@ -1,4 +1,0 @@
-interface:
-  display_name: "Generic inflammatory-cell abundance increase"
-  short_description: "Change generic class-2 nuclei only"
-  default_prompt: "Use $generic-inflammatory-cell-abundance-increase-v1 only for a certified mask-defined component."

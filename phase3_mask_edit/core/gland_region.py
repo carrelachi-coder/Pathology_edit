@@ -33,13 +33,11 @@ PRIMITIVE_GENERATION_CONTEXT_MAX_EXTRA_FRACTIONS = {
     # so the image model removes the peripheral chromatin rim instead of
     # preserving a conspicuous ring around the cleared semantic mask.
     "cell-type-abundance-decrease-v1": 2.0,
-    "generic-inflammatory-cell-abundance-decrease-v1": 2.0,
     "neoplastic-cell-abundance-decrease-v1": 2.0,
     "cellularity-decrease-v1": 2.0,
 }
 PRIMITIVE_GENERATION_CONTEXT_MINIMUM_DILATION_PIXELS = {
     "cell-type-abundance-decrease-v1": 4,
-    "generic-inflammatory-cell-abundance-decrease-v1": 4,
     "neoplastic-cell-abundance-decrease-v1": 4,
     "cellularity-decrease-v1": 4,
 }

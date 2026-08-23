@@ -49,8 +49,6 @@ INSTRUCTIONS = {
     "cellularity-decrease-v1": "Decrease local cellularity.",
     "neoplastic-cell-abundance-increase-v1": "Increase neoplastic cells.",
     "neoplastic-cell-abundance-decrease-v1": "Decrease neoplastic cells.",
-    "generic-inflammatory-cell-abundance-increase-v1": "Increase generic inflammatory-cell abundance.",
-    "generic-inflammatory-cell-abundance-decrease-v1": "Decrease generic inflammatory-cell abundance.",
     "tumor-burden-increase-v1": "Increase tumor burden.",
     "cohesive-boundary-expansion-v1": "Expand the tumor boundary locally.",
     "generic-immune-infiltrate-increase-v1": "Increase the generic immune infiltrate.",
@@ -72,16 +70,8 @@ LOCAL_CELL = frozenset(
         "cellularity-decrease-v1",
         "neoplastic-cell-abundance-increase-v1",
         "neoplastic-cell-abundance-decrease-v1",
-        "generic-inflammatory-cell-abundance-increase-v1",
-        "generic-inflammatory-cell-abundance-decrease-v1",
     }
 )
-GENERIC_CLASS2_ALIAS_GROUPS = {
-    "cell-type-abundance-decrease-v1": "generic-class2-decrease",
-    "generic-inflammatory-cell-abundance-decrease-v1": "generic-class2-decrease",
-    "cell-type-abundance-increase-v1": "generic-class2-increase",
-    "generic-inflammatory-cell-abundance-increase-v1": "generic-class2-increase",
-}
 PERITUMORAL = frozenset(
     {
         "peritumoral-neoplastic-scatter-increase-v1",
@@ -321,7 +311,7 @@ def _eligible_score(organ: str, primitive: str, row: dict[str, Any]) -> tuple[bo
     total_cells = sum(map(int, row["counts"].values()))
     if primitive in LOCAL_CELL:
         target_class = 1 if primitive.startswith("neoplastic-") else 2 if (
-            primitive.startswith("cell-type-") or primitive.startswith("generic-inflammatory-")
+            primitive.startswith("cell-type-")
         ) else None
         component_field = (
             "component_counts" if "component_counts" in row else "counts"
@@ -468,10 +458,10 @@ def _case(
     ) if tissue_primitive else None
     intent = _semantic_intent(evaluation)
     cell_budget = CELL_BUDGETS.get(primitive)
-    if primitive in {
-        "cell-type-abundance-decrease-v1",
-        "generic-inflammatory-cell-abundance-decrease-v1",
-    } and evaluation.organ in {"oral", "skin"}:
+    if (
+        primitive == "cell-type-abundance-decrease-v1"
+        and evaluation.organ in {"oral", "skin"}
+    ):
         # ORCA/PUMA class-2 effects remain focal generic inflammatory density
         # decreases. Ten-to-twenty-two complete instances make the edit
         # reviewable while the radial contract retains a residual population.
@@ -481,14 +471,6 @@ def _case(
         and evaluation.organ == "lung"
     ):
         cell_budget = CellCountExtentBudget(16, 12, 24, 384, 0, 96, 64, 3)
-    elif (
-        primitive == "generic-inflammatory-cell-abundance-decrease-v1"
-        and evaluation.organ == "lung"
-    ):
-        # After reserving the five cell-type alias cases, remaining IGNITE
-        # components have less complete class-2 capacity.  Keep the frozen
-        # six-instance floor instead of closing a mask-realizable alias.
-        cell_budget = CellCountExtentBudget(10, 6, 14, 384, 0, 64, 48, 3)
     provenance = {
         "source_image_sha256": sha256_file(row["source_image"]),
         "source_tissue_mask_sha256": sha256_file(row["source_tissue_mask"]),
@@ -688,17 +670,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if review_path.is_file()
         else {}
     )
-    # Cell-type and generic-inflammatory aliases resolve to the same observable
-    # class-2 operation in these profiles.  Reserve reviewed samples across
-    # aliases so the five-case review does not publish the same edit twice.
-    reserved_alias_samples: dict[str, set[str]] = defaultdict(set)
-    for reviewed_primitive, reviewed in reviews.items():
-        group = GENERIC_CLASS2_ALIAS_GROUPS.get(reviewed_primitive)
-        if group:
-            reserved_alias_samples[group].update(
-                str(case["sample_id"])
-                for case in reviewed.get("cases") or ()
-            )
     for evaluation in evaluations:
         prior_review = reviews.get(evaluation.primitive_id) or {}
         if (
@@ -707,13 +678,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ):
             continue
         ranked = []
-        alias_group = GENERIC_CLASS2_ALIAS_GROUPS.get(evaluation.primitive_id)
         for row in metrics:
-            if (
-                alias_group
-                and row["sample_id"] in reserved_alias_samples[alias_group]
-            ):
-                continue
             eligible, score = _eligible_score(evaluation.organ, evaluation.primitive_id, row)
             if eligible:
                 if evaluation.primitive_id in {
@@ -822,10 +787,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         board = args.output_dir / "boards" / evaluation.organ / f"{evaluation.primitive_id}.png"
         cases = _render(evaluation, selected, board)
         reviews[evaluation.primitive_id] = {"mechanism_id": evaluation.mechanism_id, "board": str(board), "cases": cases}
-        if alias_group:
-            reserved_alias_samples[alias_group].update(
-                str(case["sample_id"]) for case in cases
-            )
         _write_json(review_path, {"schema_version": SCHEMA_VERSION, "organ": args.organ, "reviews": reviews})
     complete = sum(
         len((reviews.get(item.primitive_id) or {}).get("cases") or [])

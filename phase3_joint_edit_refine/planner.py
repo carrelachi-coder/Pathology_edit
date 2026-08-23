@@ -39,8 +39,6 @@ LOCAL_POPULATION_PRIMITIVES = frozenset(
         "cellularity-increase-v1",
         "neoplastic-cell-abundance-decrease-v1",
         "neoplastic-cell-abundance-increase-v1",
-        "generic-inflammatory-cell-abundance-decrease-v1",
-        "generic-inflammatory-cell-abundance-increase-v1",
     }
 )
 
@@ -931,7 +929,6 @@ class HeuristicJointPlanner:
             (
                 "cell-type-abundance-",
                 "neoplastic-cell-abundance-",
-                "generic-inflammatory-cell-abundance-",
             )
         )
         host = set(bundle.primitive.host_tissue_labels)

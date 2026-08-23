@@ -273,13 +273,6 @@ def _oral_scatter_transform(contract: dict[str, Any]) -> None:
 
 def _add_local_cell_primitives(
     contract: dict[str, Any],
-    *,
-    include_generic_inflammatory: bool,
-    generic_host_labels: tuple[str, ...] = (
-        "Tumor",
-        "Stroma",
-        "Other tissue",
-    ),
 ) -> None:
     label_contracts = {
         "neoplastic-cell-abundance-increase-v1": {
@@ -295,17 +288,6 @@ def _add_local_cell_primitives(
         "neoplastic-cell-abundance-increase-v1": "small_cluster",
         "neoplastic-cell-abundance-decrease-v1": "localized_density_gradient",
     }
-    if include_generic_inflammatory:
-        for direction, layout in (
-            ("increase", "small_cluster"),
-            ("decrease", "localized_density_gradient"),
-        ):
-            primitive = f"generic-inflammatory-cell-abundance-{direction}-v1"
-            label_contracts[primitive] = {
-                "source_labels": list(generic_host_labels),
-                "target_labels": list(generic_host_labels),
-            }
-            layouts[primitive] = layout
     _add_primitives(contract, label_contracts=label_contracts, layouts=layouts)
 
 
@@ -1075,68 +1057,6 @@ def _install_primitives(writer: Writer) -> None:
     )
     writer.json(class_decrease_path, class_decrease)
 
-    for direction in ("increase", "decrease"):
-        primitive_id = f"generic-inflammatory-cell-abundance-{direction}-v1"
-        source_id = f"neoplastic-cell-abundance-{direction}-v1"
-        source_dir = writer.root / PRIMITIVES / source_id
-        contract = _load(source_dir / "references" / "primitive_contract.json")
-        contract["primitive_id"] = primitive_id
-        contract["summary"] = (
-            f"{direction.title()} only observable generic class-2 inflammatory "
-            "nuclei in an existing mask-defined tissue component without "
-            "creating an immune tissue label or subtype claim."
-        )
-        contract["host_tissue_labels"] = [
-            "Tumor",
-            "Stroma",
-            "Other tissue",
-            "Normal epithelium",
-        ]
-        contract["target_cell_classes"] = [2]
-        if direction == "decrease":
-            contract["cell_effect_contract"].setdefault(
-                "minimum_delta_count_by_pathology_domain", {}
-            ).update(
-                {
-                    "lung-carcinoma-v1": 6,
-                    "oral-squamous-cell-carcinoma-v1": 10,
-                    "melanoma-v1": 10,
-                }
-            )
-        base = PRIMITIVES / primitive_id
-        writer.json(base / "references" / "primitive_contract.json", contract)
-        evidence = _load(source_dir / "references" / "evidence.json")
-        evidence["skill_id"] = primitive_id
-        for record in evidence["records"]:
-            record["evidence_id"] = record["evidence_id"].replace(
-                source_id, primitive_id
-            )
-        evidence["pathology_fact_policy"] = (
-            "Class-2 means only the configured generic inflammatory observation; "
-            "no immune subtype, TIL score, response or prognosis is authorized."
-        )
-        writer.json(base / "references" / "evidence.json", evidence)
-        writer.text(
-            base / "SKILL.md",
-            "---\n"
-            f"name: {primitive_id}\n"
-            "description: Change generic inflammatory class-2 abundance in one certified tissue component without changing tissue semantics.\n"
-            "---\n\n"
-            f"# Generic inflammatory-cell abundance {direction}\n\n"
-            "Read `references/primitive_contract.json`. Operate only on complete "
-            "class-2 instances in a compiler-certified component. Do not create "
-            "an immune tissue region or claim a subtype, TIL score, response, "
-            "prognosis or clinical benefit.\n",
-        )
-        writer.text(
-            base / "agents" / "openai.yaml",
-            "interface:\n"
-            f'  display_name: "Generic inflammatory-cell abundance {direction}"\n'
-            '  short_description: "Change generic class-2 nuclei only"\n'
-            f'  default_prompt: "Use ${primitive_id} only for a certified mask-defined component."\n',
-        )
-
-
 def _melanoma_small_focus_transform(contract: dict[str, Any]) -> None:
     """Keep attempted stromal focus programs explicit for fail-closed audit."""
 
@@ -1586,32 +1506,18 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     writer.json(fragmentation_path, fragmentation)
     execution_scope_path = CATALOG / "execution-scope-v1.json"
     execution_scope = _load(root / execution_scope_path)
-    execution_scope["executable_primitives"] = _ordered_union(
-        execution_scope["executable_primitives"],
-        [
-            "generic-inflammatory-cell-abundance-increase-v1",
-            "generic-inflammatory-cell-abundance-decrease-v1",
-        ],
-    )
     closed_pairs = execution_scope.setdefault("closed_pairs", {})
     # Re-open the temporary empirical closures after replacing the old
     # pixel-area-dominant meta ranking with mask-component-aware ranking.
     for pair_id in (
         "oral-scc-local-population-modulation::cell-type-abundance-decrease-v1",
         "oral-scc-local-population-modulation::cellularity-increase-v1",
-        "oral-scc-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
         "melanoma-local-population-modulation::cell-type-abundance-decrease-v1",
-        "melanoma-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
         "melanoma-local-population-modulation::neoplastic-cell-abundance-decrease-v1",
     ):
         closed_pairs.pop(pair_id, None)
     closed_pairs.update(
         {
-            "lung-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1": (
-                "None of 12 top IGNITE cases selected after corrected mask-component ranking satisfied the "
-                "generic inflammatory complete-instance depletion contract. The pair cannot provide robust "
-                "five-case execution, while the separate cell-type decrease remains executable."
-            ),
             "lung-local-population-modulation::neoplastic-cell-abundance-decrease-v1": (
                 "None of six top IGNITE cases selected after corrected mask-component ranking provided a legal "
                 "tumor zone satisfying complete neoplastic-instance depletion, the local gradient and residual "
@@ -1637,20 +1543,10 @@ def refine(root: Path, *, check: bool) -> list[Path]:
                 "top ORCA cases failed the complete-instance depletion, three-band gradient or residual floors. "
                 "The primitive cannot provide robust five-case execution."
             ),
-            "oral-scc-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1": (
-                "ORCA binds this intent to the same inflammatory class and complete-instance depletion program "
-                "as cell-type decrease, which remained 1-of-12 after corrected mask-component ranking. The "
-                "primitive cannot provide robust five-case execution."
-            ),
             "melanoma-local-population-modulation::cell-type-abundance-decrease-v1": (
                 "After mask-component-aware reranking, only the one preserved success remained and 13 further "
                 "top PUMA cases failed the complete-instance depletion, three-band gradient or residual floors. "
                 "The primitive cannot provide robust five-case execution."
-            ),
-            "melanoma-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1": (
-                "PUMA binds this intent to the same inflammatory class and complete-instance depletion program "
-                "as cell-type decrease, which remained 1-of-14 after corrected mask-component ranking. The "
-                "primitive cannot provide robust five-case execution."
             ),
             "melanoma-local-population-modulation::neoplastic-cell-abundance-decrease-v1": (
                 "None of 12 top PUMA cases selected after corrected mask-component ranking provided a legal "
@@ -1664,15 +1560,12 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     # repaired and validated; only missing mask authority may remain closed.
     implementation_pairs = {
         "lung-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1",
-        "lung-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
         "lung-local-population-modulation::neoplastic-cell-abundance-decrease-v1",
         "lung-local-population-modulation::neoplastic-cell-abundance-increase-v1",
         "lung-local-population-modulation::peritumoral-neoplastic-scatter-increase-v1",
         "lung-local-population-modulation::peritumoral-small-cluster-increase-v1",
         "oral-scc-local-population-modulation::cell-type-abundance-decrease-v1",
-        "oral-scc-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
         "melanoma-local-population-modulation::cell-type-abundance-decrease-v1",
-        "melanoma-local-population-modulation::generic-inflammatory-cell-abundance-decrease-v1",
         "melanoma-local-population-modulation::neoplastic-cell-abundance-decrease-v1",
     }
     for pair_id in implementation_pairs:
@@ -1914,15 +1807,9 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ),
     )
     lung_local = _contract(root, "lung-local-population-modulation")
-    _add_local_cell_primitives(lung_local, include_generic_inflammatory=True)
+    _add_local_cell_primitives(lung_local)
     _cell_only_dispersion(lung_local, host_label="Stroma", include_cluster=True)
     _remove_mixed_scope_dispersion_checks(lung_local)
-    # Lung inflammatory nuclei often occupy a sparse alveolar-interstitial
-    # field.  A bounded multi-focus whole-instance decrement remains
-    # meaningful without inventing a dense radial core/transition gradient.
-    lung_local["cell_program"]["layout_program_by_primitive"][
-        "generic-inflammatory-cell-abundance-decrease-v1"
-    ] = "single"
     lung_local["cell_program"]["cellularity_depletion_contract"][
         "minimum_field_area_cell_diameter_squares"
     ] = 6
@@ -2026,7 +1913,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ),
     )
     melanoma_local = _contract(root, "melanoma-local-population-modulation")
-    _add_local_cell_primitives(melanoma_local, include_generic_inflammatory=True)
+    _add_local_cell_primitives(melanoma_local)
     melanoma_local["cell_program"]["cellularity_depletion_contract"][
         "minimum_field_area_cell_diameter_squares"
     ] = 48
@@ -2129,11 +2016,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ),
     )
     oral_local = _contract(root, "oral-scc-local-population-modulation")
-    _add_local_cell_primitives(
-        oral_local,
-        include_generic_inflammatory=True,
-        generic_host_labels=("Tumor", "Other tissue"),
-    )
+    _add_local_cell_primitives(oral_local)
     oral_local["cell_program"]["cellularity_depletion_contract"][
         "minimum_field_area_cell_diameter_squares"
     ] = 48

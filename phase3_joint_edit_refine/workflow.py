@@ -3469,8 +3469,6 @@ class JointPathologyEditWorkflow:
             "cellularity-increase-v1",
             "neoplastic-cell-abundance-decrease-v1",
             "neoplastic-cell-abundance-increase-v1",
-            "generic-inflammatory-cell-abundance-decrease-v1",
-            "generic-inflammatory-cell-abundance-increase-v1",
         }
         if local_population:
             component_labels = {
@@ -3489,7 +3487,6 @@ class JointPathologyEditWorkflow:
                 (
                     "cell-type-abundance-",
                     "neoplastic-cell-abundance-",
-                    "generic-inflammatory-cell-abundance-",
                 )
             )
             zones = [
@@ -4800,8 +4797,6 @@ def _apply_profile_visible_cell_budget(
         "cellularity-decrease-v1",
         "neoplastic-cell-abundance-increase-v1",
         "neoplastic-cell-abundance-decrease-v1",
-        "generic-inflammatory-cell-abundance-increase-v1",
-        "generic-inflammatory-cell-abundance-decrease-v1",
     }
     if primitive_id in local_population:
         minimum = max(1, int(minimum_delta_count))
@@ -5022,9 +5017,7 @@ def _derive_local_population_budget(
             "cell-only budget requires observation-profile class resolution"
         )
     class_ids = tuple(sorted({int(value) for value in resolved}))
-    abundance = primitive_id.startswith(
-        ("cell-type-abundance-", "generic-inflammatory-cell-abundance-")
-    )
+    abundance = primitive_id.startswith("cell-type-abundance-")
     if abundance and len(class_ids) != 1:
         raise JointContractError(
             "cell abundance budget requires exactly one observable class"

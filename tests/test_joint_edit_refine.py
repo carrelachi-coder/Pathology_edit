@@ -4238,27 +4238,6 @@ class JointSkillTests(unittest.TestCase):
             mechanism.cell_program.layout_program_by_primitive,
         )
 
-    def test_lung_inflammatory_decrease_uses_sparse_multifocus_removal(self):
-        repository = JointSkillRepository()
-        mechanism = repository.mechanisms[
-            "lung-local-population-modulation"
-        ]
-        self.assertEqual(
-            mechanism.cell_program.layout_program_by_primitive[
-                "generic-inflammatory-cell-abundance-decrease-v1"
-            ],
-            "single",
-        )
-        primitive = repository.primitives[
-            "generic-inflammatory-cell-abundance-decrease-v1"
-        ]
-        self.assertEqual(
-            primitive.minimum_effect_delta_count_for(
-                "lung-carcinoma-v1"
-            ),
-            6,
-        )
-
     def test_joint_primitive_execution_scope_is_explicit(self):
         repository = JointSkillRepository()
         self.assertEqual(
@@ -4270,8 +4249,6 @@ class JointSkillTests(unittest.TestCase):
                 "cellularity-increase-v1",
                 "generic-immune-infiltrate-decrease-v1",
                 "generic-immune-infiltrate-increase-v1",
-                "generic-inflammatory-cell-abundance-decrease-v1",
-                "generic-inflammatory-cell-abundance-increase-v1",
                 "cohesive-boundary-expansion-v1",
                 "invasive-cord-formation-v1",
                 "infiltrative-nest-cord-extension-v1",
@@ -8600,7 +8577,7 @@ class JointWorkflowTests(unittest.TestCase):
                 )
                 self.assertGreater(result.condition.ledger.tissue_pixels, 0)
 
-    def test_p2_neoplastic_and_generic_inflammatory_abundance_additions_execute(self):
+    def test_p2_neoplastic_and_cell_type_abundance_additions_execute(self):
         fixtures = (
             (
                 "lung-carcinoma-v1",
@@ -8637,7 +8614,7 @@ class JointWorkflowTests(unittest.TestCase):
         ) in fixtures:
             for primitive_id, target_class in (
                 ("neoplastic-cell-abundance-increase-v1", 1),
-                ("generic-inflammatory-cell-abundance-increase-v1", 2),
+                ("cell-type-abundance-increase-v1", 2),
             ):
                 with (
                     self.subTest(profile=profile_id, primitive=primitive_id),

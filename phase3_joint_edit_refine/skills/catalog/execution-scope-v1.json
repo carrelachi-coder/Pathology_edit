@@ -23,9 +23,7 @@
     "necrosis-resolution-v1",
     "stroma-increase-v1",
     "tumor-burden-increase-v1",
-    "residual-tumor-fragmentation-v1",
-    "generic-inflammatory-cell-abundance-increase-v1",
-    "generic-inflammatory-cell-abundance-decrease-v1"
+    "residual-tumor-fragmentation-v1"
   ],
   "closed_primitives": {
     "architecture-progression-v1": "Mask-side fine-label transition and native-pattern/lumen postconditions are implemented and tested; frozen-generator architecture response and pathology review are not yet validated.",

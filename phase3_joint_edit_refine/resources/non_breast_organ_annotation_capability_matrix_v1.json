@@ -557,30 +557,6 @@
           "closed_reason": null,
           "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
-          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Increase generic inflammatory-cell abundance in the selected region."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "lung-local-population-modulation",
-          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Decrease generic inflammatory-cell abundance in the selected region."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
@@ -854,30 +830,6 @@
           "status": "conditionally_supported"
         },
         {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "melanoma-local-population-modulation",
-          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Increase generic inflammatory-cell abundance in the selected region."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "melanoma-local-population-modulation",
-          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Decrease generic inflammatory-cell abundance in the selected region."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
           "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be mask-authorized local clearance.",
           "closure_category": "annotation_limited",
           "mechanism_id": "melanoma-local-tumor-clearance",
@@ -1135,30 +1087,6 @@
           "required_auxiliary_structures": [],
           "simple_instructions": [
             "Decrease neoplastic cells."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "oral-scc-local-population-modulation",
-          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Increase generic inflammatory-cell abundance in the selected region."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "oral-scc-local-population-modulation",
-          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Decrease generic inflammatory-cell abundance in the selected region."
           ],
           "status": "conditionally_supported"
         },
