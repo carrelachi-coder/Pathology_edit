@@ -32,6 +32,7 @@ from scipy import ndimage
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from controlnet_train.data.common import default_prompt_for_dataset
 from controlnet_train.inference import (
     DEFAULT_CROSS_V1_CHECKPOINT,
     DEFAULT_INPAINT_CHECKPOINT,
@@ -46,7 +47,9 @@ from controlnet_train.inference import (
     validate_production_controlnet_checkpoint,
     validate_production_pix2pix_checkpoint,
 )
-from controlnet_train.data.common import default_prompt_for_dataset
+from controlnet_train.inference.composite import (
+    source_exact_generation_composite,
+)
 from inpaint_cells.generate import (
     DEFAULT_SAMPLING_CONCENTRATION_Z_THRESHOLD,
     DEFAULT_SAMPLING_FEEDBACK_ATTEMPTS,
@@ -56,6 +59,13 @@ from inpaint_cells.generate import (
     DEFAULT_SAMPLING_FEEDBACK_GAMMA_UP_FACTOR,
 )
 from inpaint_cells.sampling_policy import widen_locally_thin_mask
+from phase3_mask_edit.core.gland_region import (
+    GLAS_WHOLE_GLAND_CELL_REGION_POLICY,
+    SEMANTIC_CELL_DELETION_REGION_POLICY,
+    SEMANTIC_NUCLEI_GENERATION_REGION_POLICY,
+    bound_generation_context_region,
+    glas_whole_gland_generation_region,
+)
 from phase3_mask_edit.core.mask_io import (
     load_change_region,
     load_id_mask,
@@ -63,13 +73,6 @@ from phase3_mask_edit.core.mask_io import (
     save_id_mask,
     save_metadata,
     save_rgb_mask,
-)
-from phase3_mask_edit.core.gland_region import (
-    GLAS_WHOLE_GLAND_CELL_REGION_POLICY,
-    SEMANTIC_CELL_DELETION_REGION_POLICY,
-    SEMANTIC_NUCLEI_GENERATION_REGION_POLICY,
-    bound_generation_context_region,
-    glas_whole_gland_generation_region,
 )
 from phase3_mask_edit.parser.api_parser import ApiParserConfig, parse_prompts_with_api
 from phase3_mask_edit.parser.qwen_local_parser import (
@@ -1176,13 +1179,22 @@ def _run_generation_stage(
         )
         generated = output_dir / "generated_image.png"
         raw_generated = output_dir / "generated_image_raw.png"
+        precomposite_generated = output_dir / "generated_image_precomposite.png"
         raw_image.save(raw_generated)
+        image.save(precomposite_generated)
+        image, composite_info = source_exact_generation_composite(
+            reference_image,
+            image,
+            change_region,
+        )
         image.save(generated)
         info = {
             "generation_mode": args.generation_mode,
             "status": "generated",
             "generated_image": str(generated),
             "raw_generated_image": str(raw_generated),
+            "precomposite_generated_image": str(precomposite_generated),
+            "source_exact_generation_composite": composite_info,
             "controlnet_output_dir": str(output_dir / "controlnet_cross_v1_no_ip"),
             "selected_mode": selected_mode,
             "change_ratio": change_ratio,
@@ -1234,12 +1246,19 @@ def _run_generation_stage(
     generated = output_dir / "generated_image.png"
     raw_generated = output_dir / "generated_image_raw.png"
     result.image.save(raw_generated)
-    result.image.save(generated)
+    composited_image, composite_info = source_exact_generation_composite(
+        reference_image,
+        result.image,
+        change_region,
+    )
+    composited_image.save(generated)
     info = {
         "generation_mode": args.generation_mode,
         "status": "generated",
         "generated_image": str(generated),
         "raw_generated_image": str(raw_generated),
+        "precomposite_generated_image": str(raw_generated),
+        "source_exact_generation_composite": composite_info,
         "controlnet_output_dir": str(controlnet_dir),
         "selected_mode": selected_mode,
         "change_ratio": result.change_ratio,

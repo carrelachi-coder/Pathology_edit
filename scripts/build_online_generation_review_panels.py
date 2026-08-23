@@ -237,21 +237,38 @@ def preflight_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             continue
         source = _load_mask(record["source_tissue_mask"])
         target = _load_mask(record["target_tissue_mask"])
+        source_nuclei = _load_mask(record["source_nuclei_mask"])
+        target_nuclei = _load_mask(record["target_nuclei_mask"])
         semantic = _load_mask(record["semantic_change_region"]) > 0
         generation = _load_mask(record["generation_change_region"]) > 0
-        shapes = {source.shape, target.shape, semantic.shape, generation.shape}
+        shapes = {
+            source.shape,
+            target.shape,
+            source_nuclei.shape,
+            target_nuclei.shape,
+            semantic.shape,
+            generation.shape,
+        }
         if len(shapes) != 1:
             failures.append(f"{case_id}: mask shape mismatch")
             continue
-        exact_semantic = source != target
-        if not np.array_equal(semantic, exact_semantic):
-            failures.append(f"{case_id}: semantic region is not exact tissue diff")
+        exact_semantic = (source != target) | (source_nuclei != target_nuclei)
+        if np.any(exact_semantic & ~semantic):
+            failures.append(
+                f"{case_id}: semantic region misses direct tissue/nuclei diff pixels"
+            )
         if np.any(semantic & ~generation):
             failures.append(f"{case_id}: generation region misses semantic pixels")
         observed.append(
             {
                 "case_id": case_id,
                 "semantic_pixels": int(np.count_nonzero(semantic)),
+                "direct_joint_diff_pixels": int(
+                    np.count_nonzero(exact_semantic)
+                ),
+                "instance_aware_extra_semantic_pixels": int(
+                    np.count_nonzero(semantic & ~exact_semantic)
+                ),
                 "generation_pixels": int(np.count_nonzero(generation)),
                 "generation_to_semantic_ratio": float(
                     np.count_nonzero(generation)
