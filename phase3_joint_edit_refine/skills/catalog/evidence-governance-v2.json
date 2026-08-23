@@ -300,9 +300,6 @@
       "pathology-breast-cap-invasive-resection-v4.11.0.0",
       "pathology-breast-invasive-compartment-study-2010"
     ],
-    "breast-infiltrative-nest-cord-extension": [
-      "pathology-breast-invasive-compartment-study-2010"
-    ],
     "breast-peritumoral-neoplastic-scatter": [
       "pathology-breast-invasive-compartment-study-2010",
       "pathology-breast-tumor-budding-review-2018"

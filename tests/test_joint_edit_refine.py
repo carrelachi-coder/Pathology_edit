@@ -1057,7 +1057,7 @@ class JointSkillTests(unittest.TestCase):
     def test_narrow_cord_compiler_rejects_organic_v2(self):
         program = compile_tissue_tool_program(
             primitive_id="infiltrative-nest-cord-extension-v1",
-            mechanism_id="breast-infiltrative-nest-cord-extension",
+            mechanism_id="prostate-pattern-5-infiltrative-front",
             mechanism_allowed_families=(
                 "interface_band_sdf",
                 "topology_safe_morphology",
@@ -1084,13 +1084,13 @@ class JointSkillTests(unittest.TestCase):
         with self.assertRaisesRegex(JointContractError, "unmapped"):
             compile_tissue_tool_program(
                 primitive_id="infiltrative-nest-cord-extension-v1",
-                mechanism_id="breast-infiltrative-nest-cord-extension",
+                mechanism_id="prostate-pattern-5-infiltrative-front",
                 mechanism_allowed_families=("unknown-family",),
                 primitive_allowed_executors=("directional_tapered_projection",),
             )
         program = compile_tissue_tool_program(
             primitive_id="infiltrative-nest-cord-extension-v1",
-            mechanism_id="breast-infiltrative-nest-cord-extension",
+            mechanism_id="prostate-pattern-5-infiltrative-front",
             mechanism_allowed_families=("directional_tapered_projection",),
             primitive_allowed_executors=("directional_tapered_projection",),
         )
@@ -1298,8 +1298,8 @@ class JointSkillTests(unittest.TestCase):
                 "breast-annotation-anchored-boundary-growth",
                 "tissue_and_cell",
             ),
-            "infiltrative-nest-cord-extension-v1": (
-                "breast-infiltrative-nest-cord-extension",
+            "invasive-cord-formation-v1": (
+                "breast-cell-seeded-invasive-cord",
                 "tissue_and_cell",
             ),
             "peritumoral-neoplastic-scatter-increase-v1": (
@@ -4089,8 +4089,8 @@ class JointSkillTests(unittest.TestCase):
 
     def test_inventory_has_six_domains_and_four_independent_axes(self):
         repository = JointSkillRepository()
-        self.assertEqual(len(repository.mechanisms), 51)
-        self.assertEqual(len(repository.primitives), 29)
+        self.assertEqual(len(repository.mechanisms), 50)
+        self.assertEqual(len(repository.primitives), 27)
         self.assertEqual(len(repository.annotation_profiles), 6)
         self.assertEqual(len(repository.cell_observation_profiles), 1)
         self.assertEqual(len(repository.cell_population_profiles), 6)
@@ -7214,8 +7214,8 @@ class JointWorkflowTests(unittest.TestCase):
                 case = replace(
                     case,
                     case_id="online-forged-" + label.replace(" ", "-"),
-                    instruction="infiltrative-nest-cord-extension-v1",
-                    primitive_id="infiltrative-nest-cord-extension-v1",
+                    instruction="invasive-cord-formation-v1",
+                    primitive_id="invasive-cord-formation-v1",
                     joint_area_budget=JointAreaBudget(
                         target_fraction=0.025,
                         min_fraction=0.01,
@@ -7224,12 +7224,8 @@ class JointWorkflowTests(unittest.TestCase):
                     ),
                     provenance={
                         **case.provenance,
-                        "joint_mechanism_id": (
-                            "breast-infiltrative-nest-cord-extension"
-                        ),
-                        "joint_primitive_id": (
-                            "infiltrative-nest-cord-extension-v1"
-                        ),
+                        "joint_mechanism_id": "breast-cell-seeded-invasive-cord",
+                        "joint_primitive_id": "invasive-cord-formation-v1",
                     },
                 )
                 result = JointPathologyEditWorkflow(
@@ -7252,18 +7248,6 @@ class JointWorkflowTests(unittest.TestCase):
                     min_fraction=0.10,
                     max_fraction=0.14,
                     tissue_min_fraction=0.10,
-                    relative_tolerance=0.05,
-                ),
-                None,
-            ),
-            (
-                "infiltrative-nest-cord-extension-v1",
-                "breast-infiltrative-nest-cord-extension",
-                JointAreaBudget(
-                    target_fraction=0.025,
-                    min_fraction=0.01,
-                    max_fraction=0.04,
-                    tissue_min_fraction=0.01,
                     relative_tolerance=0.05,
                 ),
                 None,

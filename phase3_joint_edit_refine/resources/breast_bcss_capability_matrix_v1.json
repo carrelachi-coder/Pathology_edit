@@ -174,38 +174,6 @@
       ]
     },
     {
-      "primitive_id": "infiltrative-nest-cord-extension-v1",
-      "mechanism_id": "breast-infiltrative-nest-cord-extension",
-      "scenarios": [
-        "direct_edit",
-        "invasion_progression",
-        "disease_progression",
-        "post_treatment_progression"
-      ],
-      "simple_instructions": [
-        "Extend the tumor locally as a narrow cord.",
-        "Add a narrow connected tumor extension."
-      ],
-      "tissue_action": "a narrow tapered fine-1 extension attached to a certified external Tumor 1/Stroma 2 boundary",
-      "nuclei_action": "whole-instance turnover and Mature ProbNet class-1 regeneration with a boundary-aligned seam contract",
-      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate.",
-      "execution_scope": "tissue_and_cell",
-      "support_status": "conditionally_supported",
-      "production_status": "shadow_only",
-      "required_conditions": [
-        "certified external boundary",
-        "directional space for a narrow extension",
-        "a local joint-area budget compatible with narrow-cord geometry",
-        "complete class-1 shape authority",
-        "postcondition-compatible width and elongation"
-      ],
-      "forbidden_claims": [
-        "histologic cord diagnosis",
-        "single-file carcinoma",
-        "invasion speed"
-      ]
-    },
-    {
       "primitive_id": "peritumoral-tumor-nest-formation-v1",
       "mechanism_id": "breast-peritumoral-tumor-nest",
       "scenarios": [

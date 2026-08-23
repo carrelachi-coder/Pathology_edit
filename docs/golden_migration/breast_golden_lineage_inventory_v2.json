@@ -165,14 +165,13 @@
   "current_ids_without_uploaded_manifest_proof": [
     "tumor-burden-increase-v1",
     "cohesive-boundary-expansion-v1",
-    "infiltrative-nest-cord-extension-v1",
     "cellularity-decrease-v1"
   ],
   "critical_revision_from_v1": "codex/fix-cellularity-ledger-20260813 is no longer classified as candidate-only. The newly uploaded 25-case manifest makes it a mandatory golden source line.",
   "prohibited_shortcuts": [
     "Do not apply the continuity-quota v8 patch that lowers the cord certificate to the current two-cell execution.",
     "Do not merge source branches wholesale over cell_layouts.py, feasibility.py, gates.py, tissue_planner.py, workflow.py, or generator routing.",
-    "Do not collapse invasive-cord-formation-v1 into infiltrative-nest-cord-extension-v1 without fixed-case equivalence evidence.",
+    "Use invasive-cord-formation-v1 as the sole canonical Breast cord primitive; the lower-distinction Breast infiltrative-nest-cord binding is retired.",
     "Do not collapse peritumoral-tumor-nest-formation-v1 into peritumoral-small-cluster-increase-v1.",
     "Do not treat evaluator_uncertain or needs_review as automatically validated."
   ]

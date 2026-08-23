@@ -1,4 +1,0 @@
-interface:
-  display_name: "breast-infiltrative-nest-cord-extension"
-  short_description: "Plan a narrow certified Breast boundary extension."
-  default_prompt: "Treat $breast-infiltrative-nest-cord-extension as retired audit history; route Breast cord and detached nest intent to their separate current mechanisms."

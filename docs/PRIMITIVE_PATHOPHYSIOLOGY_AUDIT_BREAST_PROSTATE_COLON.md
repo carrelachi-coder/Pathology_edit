@@ -6,13 +6,13 @@
 ## 结论口径
 
 - 这里的 primitive 是受标注约束的反事实形态编辑，不等于从一张小 patch 直接推断患者真实的纵向疾病进展、疗效或预后。
-- 当前启用的 42 个 organ × mechanism 项中，没有两项是“目标类别、宿主区域、组织转换、空间布局和后条件均相同”的无条件完全重复操作。
+- 当前启用的 41 个 organ × mechanism 项中，没有两项是“目标类别、宿主区域、组织转换、空间布局和后条件均相同”的无条件完全重复操作。
 - 3 个关闭项应继续关闭：Colon/GLaS `tumor-burden-increase-v1`、Prostate/PANDA `architecture-progression-v1`、Prostate Pattern 3 的 `cohesive-boundary-expansion-v1`。
-- 需要重点治理的条件性重叠有四类：
-  1. Breast 的两种 cord primitive 临床含义过近；实际编译顺序不同，但目录层面的区分度偏低。
-  2. Breast `cell-type-abundance-*` 若允许显式选择 neoplastic class，会与 `neoplastic-cell-abundance-*` 条件性重叠；应把 neoplastic 指令统一路由到后者。
-  3. 三个器官的 `cellularity-*` 若落在单一细胞类别 patch，可能退化成 `cell-type-abundance-*`；应要求多类别组成或明确记录退化。
-  4. Colon 的 scatter 与 small-cluster 都属于 tumor budding 生物学谱系，但分别控制单细胞与 2–4 细胞簇，操作并不相同。
+- Breast 的低区分度 `infiltrative-nest-cord-extension-v1` 绑定已移除，统一保留 cell-first `invasive-cord-formation-v1`。
+- 仍需重点治理的条件性重叠有三类：
+  1. Breast `cell-type-abundance-*` 若允许显式选择 neoplastic class，会与 `neoplastic-cell-abundance-*` 条件性重叠；应把 neoplastic 指令统一路由到后者。
+  2. 三个器官的 `cellularity-*` 若落在单一细胞类别 patch，可能退化成 `cell-type-abundance-*`；应要求多类别组成或明确记录退化。
+  3. Colon 的 scatter 与 small-cluster 都属于 tumor budding 生物学谱系，但分别控制单细胞与 2–4 细胞簇，操作并不相同。
 
 ## 病理依据
 
@@ -31,8 +31,7 @@
 |---|---|---|---|---|---|
 | Breast | `tumor-burden-increase-v1` | 条件支持 / shadow | 未治疗进展或治疗后进展导致浸润癌总体占据面积增加 | 从认证外边界把 BCSS Stroma 2 转为 Tumor 1，并重建完整 class-1 肿瘤细胞 | **中**：与 cohesive expansion 共用边界生长机制，但本项以总体 burden/面积为终点；不完全重复 |
 | Breast | `cohesive-boundary-expansion-v1` | 条件支持 / shadow | 黏连性肿瘤前沿局部推进 | 浅表、连续、多叶状 Stroma 2→Tumor 1 扩张，伴整实例细胞替换 | **中高**：强调局部前沿几何；区别于更广义 tumor burden |
-| Breast | `invasive-cord-formation-v1` | 条件支持 / shadow | 狭窄肿瘤细胞 cord 向间质延伸，模拟浸润形态 | 先排布至少 6 个 class-1 细胞，主体 1–2 细胞宽，再从细胞轮廓派生 Tumor 支持 | **中低**：与下一项病理含义很近；本项是 cell-first 且宽度/细胞数约束更强 |
-| Breast | `infiltrative-nest-cord-extension-v1` | 条件支持 / shadow | 从既有肿瘤边界形成锥形浸润突起 | 先生成窄而渐细的 Tumor 组织投影，再用 ProbNet 重建 class-1 细胞 | **低**：与 invasive-cord 目录语义近似；建议合并为一个 cord primitive 加 layout mode，或强制 nest-anchor 后再保留 |
+| Breast | `invasive-cord-formation-v1` | 条件支持 / shadow | 狭窄肿瘤细胞 cord 向间质延伸，模拟浸润形态 | 先排布至少 6 个 class-1 细胞，主体 1–2 细胞宽，再从细胞轮廓派生 Tumor 支持 | **高**：作为唯一 Breast cord primitive；区别于脱离的较大 nest、2–4 细胞小簇和单细胞 scatter |
 | Breast | `peritumoral-tumor-nest-formation-v1` | 条件支持 / shadow | 邻近间质内形成较大的脱离肿瘤岛 | 新建 1 个不规则、脱离的 Tumor 1 岛，填入 6–12 个完整 class-1 细胞 | **高**：有组织标签且 ≥6 细胞；区别于 ≤4 细胞 bud/cluster 和单细胞 scatter |
 | Breast | `peritumoral-neoplastic-scatter-increase-v1` | 条件支持 / shadow | 浸润前沿离散单细胞播散 | 组织标签不变；只在 Tumor 外侧认证 Stroma 环带加入分离的完整 class-1 单细胞 | **高**：single-cell；区别于小簇和带 Tumor 组织岛的 nest |
 | Breast | `peritumoral-small-cluster-increase-v1` | 条件支持 / shadow | 浸润前沿多个小型 tumor buds | 组织标签不变；外侧环带形成多个 2–4 个 class-1 细胞的紧凑小簇 | **中高**：与 scatter 同属 budding 谱系，但布局和每灶细胞数不同 |
@@ -80,11 +79,9 @@
 | 相关组 | 是否“完全一致” | 判断 |
 |---|---:|---|
 | Breast tumor burden vs cohesive boundary expansion | 否 | 共享边界生长家族，但面积目标和局部几何不同 |
-| Breast invasive cord vs infiltrative nest/cord | 否，但区分度低 | cell-first 与 tissue-first 不同；目录语义建议合并或增加 nest-anchor 硬约束 |
 | Breast/各器官 cell-type abundance vs neoplastic abundance | 条件性 | 当显式类别为 class-1 时会重叠；应由解析器统一路由到 neoplastic primitive |
 | 各器官 cellularity vs cell-type abundance | 条件性 | 多类别时不同；单类别 patch 会退化，需 gate 或显式审计标记 |
 | Breast/Prostate footprint decrease vs fragmentation | 否 | 连续外沿退缩 vs 内部 breakup 后的多灶残余 |
 | Breast footprint decrease vs stroma increase | 否，但共享转换 | 都可 Tumor→Stroma；前者定义退缩几何，后者定义间质替代机制/界面 |
 | Prostate Pattern 4 vs Pattern 5 cohesive expansion | 否 | 复用执行家族，但 fine label、成腺/非成腺结构和 lumen 后条件不同 |
 | Colon scatter vs small cluster | 否，但同一疾病构型谱系 | 单细胞 vs 2–4 细胞簇；可保留为形态控制，也可合并为 budding + layout |
-

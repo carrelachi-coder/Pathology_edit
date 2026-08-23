@@ -19,7 +19,6 @@
   "conditional_mechanisms": [
     "breast-annotation-anchored-boundary-growth",
     "breast-cell-seeded-invasive-cord",
-    "breast-infiltrative-nest-cord-extension",
     "breast-peritumoral-tumor-nest",
     "breast-peritumoral-neoplastic-scatter",
     "breast-peritumoral-small-cluster",
@@ -42,7 +41,6 @@
   "mechanism_editable_source_fine_ids": {
     "breast-annotation-anchored-boundary-growth": [2],
     "breast-cell-seeded-invasive-cord": [2],
-    "breast-infiltrative-nest-cord-extension": [2],
     "breast-peritumoral-tumor-nest": [2],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [2],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [4],
@@ -56,7 +54,6 @@
   "mechanism_editable_target_fine_ids": {
     "breast-annotation-anchored-boundary-growth": [1],
     "breast-cell-seeded-invasive-cord": [1],
-    "breast-infiltrative-nest-cord-extension": [1],
     "breast-peritumoral-tumor-nest": [1],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-increase-v1": [4],
     "breast-generic-immune-compartment-turnover::generic-immune-infiltrate-decrease-v1": [2],

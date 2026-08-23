@@ -90,7 +90,6 @@ BASE_REQUIRED_CHECKS = (
 MECHANISM_POSTCONDITION_IDS = (
     "breast-annotation-anchored-boundary-growth",
     "breast-cell-seeded-invasive-cord",
-    "breast-infiltrative-nest-cord-extension",
     "breast-peritumoral-tumor-nest",
     "breast-peritumoral-neoplastic-scatter",
     "breast-peritumoral-small-cluster",

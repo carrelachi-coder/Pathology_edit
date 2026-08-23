@@ -34,7 +34,7 @@
   "legacy_primitives_not_yet_joint": {},
   "closed_pairs": {},
   "closed_mechanisms": {
-    "breast-cohesive-nst-front": "Breast execution no longer asks a general visual LLM to recognize a histologic invasive front. Use breast-annotation-anchored-boundary-growth or breast-infiltrative-nest-cord-extension.",
+    "breast-cohesive-nst-front": "Breast execution no longer asks a general visual LLM to recognize a histologic invasive front. Use breast-annotation-anchored-boundary-growth or the canonical breast-cell-seeded-invasive-cord.",
     "breast-discohesive-single-file": "Breast execution no longer asks a general visual LLM to diagnose single-file morphology. Use breast-peritumoral-neoplastic-scatter for the mask-executable cell-only representation.",
     "colorectal-gland-forming-front": "GLaS lacks explicit stromal authority and the attempted H&E/mask-derived gland-unit producer could not reliably distinguish lumen, mucin, necrosis and cleft. Keep tissue-level malignant-gland growth closed.",
     "lung-acinar-papillary-growth": "IGNITE does not provide a digest-bound lumen or fibrovascular-core map. Acinar/papillary identity cannot be inferred from H&E because execution planning is mask-only.",

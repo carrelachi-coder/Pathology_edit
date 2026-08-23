@@ -2074,7 +2074,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
 
     _new_mechanism(
         writer,
-        template_id="breast-infiltrative-nest-cord-extension",
+        template_id="lung-stromal-invasive-front",
         mechanism_id="oral-scc-annotation-anchored-cord-extension",
         domain_id="oral-squamous-cell-carcinoma-v1",
         transform=_oral_cord_transform,
