@@ -476,11 +476,19 @@ def _case(
         # decreases. Ten-to-twenty-two complete instances make the edit
         # reviewable while the radial contract retains a residual population.
         cell_budget = CellCountExtentBudget(16, 10, 22, 384, 0, 96, 64, 3)
-    elif primitive in {
-        "cell-type-abundance-decrease-v1",
-        "generic-inflammatory-cell-abundance-decrease-v1",
-    } and evaluation.organ == "lung":
+    elif (
+        primitive == "cell-type-abundance-decrease-v1"
+        and evaluation.organ == "lung"
+    ):
         cell_budget = CellCountExtentBudget(16, 12, 24, 384, 0, 96, 64, 3)
+    elif (
+        primitive == "generic-inflammatory-cell-abundance-decrease-v1"
+        and evaluation.organ == "lung"
+    ):
+        # After reserving the five cell-type alias cases, remaining IGNITE
+        # components support a visible but slightly smaller complete-instance
+        # decrease.  Eight instances avoids closing a mask-realizable alias.
+        cell_budget = CellCountExtentBudget(12, 8, 18, 384, 0, 96, 64, 3)
     provenance = {
         "source_image_sha256": sha256_file(row["source_image"]),
         "source_tissue_mask_sha256": sha256_file(row["source_tissue_mask"]),

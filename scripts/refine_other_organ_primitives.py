@@ -1098,7 +1098,7 @@ def _install_primitives(writer: Writer) -> None:
                 "minimum_delta_count_by_pathology_domain", {}
             ).update(
                 {
-                    "lung-carcinoma-v1": 12,
+                    "lung-carcinoma-v1": 8,
                     "oral-squamous-cell-carcinoma-v1": 10,
                     "melanoma-v1": 10,
                 }
