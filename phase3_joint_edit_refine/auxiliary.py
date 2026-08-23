@@ -26,7 +26,7 @@ from .authority import (
 from .models import JointCaseContext, JointContractError
 from .lumen_observer import observe_luminal_spaces
 
-AUXILIARY_PRODUCER_VERSION = "joint-annotation-aware-auxiliary-v5"
+AUXILIARY_PRODUCER_VERSION = "joint-annotation-aware-auxiliary-v6"
 
 
 @dataclass(frozen=True)
@@ -193,14 +193,38 @@ def materialize_profile_auxiliaries(
                     architecture = np.isin(
                         source_tissue, specification.fine_ids
                     )
-                    wall = ndimage.binary_dilation(
+                    wall_seed = ndimage.binary_dilation(
                         lumen,
                         structure=_disk(radius),
                     ) & architecture
+                    # A partial protected band is insufficient: the unmasked
+                    # outer pixels of the same epithelial component can still
+                    # be shaved.  Promote every lumen-associated seed to its
+                    # complete connected Tumor component.  Consequently a
+                    # generic retreat can operate only on truly lumen-free
+                    # solid components; gland-bearing components are atomic
+                    # and remain pixel-stable.
+                    labeled_architecture, _ = ndimage.label(
+                        architecture,
+                        structure=np.ones((3, 3), dtype=bool),
+                    )
+                    protected_unit_ids = np.unique(
+                        labeled_architecture[wall_seed]
+                    )
+                    protected_unit_ids = protected_unit_ids[
+                        protected_unit_ids > 0
+                    ]
+                    wall = np.isin(
+                        labeled_architecture,
+                        protected_unit_ids,
+                    )
                     mask = lumen | wall
                     details = {
                         **observation.to_metadata(),
                         "gland_wall_radius_px": radius,
+                        "protected_gland_unit_component_count": int(
+                            len(protected_unit_ids)
+                        ),
                         "protected_lumen_pixels": int(
                             np.count_nonzero(lumen)
                         ),
@@ -209,7 +233,7 @@ def materialize_profile_auxiliaries(
                         ),
                     }
                     protection_semantics = (
-                        "lumen_plus_cell_scale_epithelial_wall_protection"
+                        "lumen_plus_complete_connected_epithelial_unit_protection"
                     )
                 elif (
                     specification.producer_kind

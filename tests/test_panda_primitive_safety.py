@@ -87,6 +87,8 @@ def test_panda_auxiliary_separates_lumen_wall_and_external_stroma(tmp_path) -> N
     radius = np.sqrt((rows - 64) ** 2 + (cols - 64) ** 2)
     tissue = np.full(shape, 2, dtype=np.uint8)
     tissue[(radius >= 25) & (radius <= 38)] = 9
+    solid_island = (rows - 105) ** 2 + (cols - 25) ** 2 <= 8**2
+    tissue[solid_island] = 10
     image = np.full((*shape, 3), (210, 155, 180), dtype=np.uint8)
     image[radius < 25] = (245, 225, 232)
     image[(radius >= 25) & (radius <= 38)] = (180, 90, 135)
@@ -142,6 +144,7 @@ def test_panda_auxiliary_separates_lumen_wall_and_external_stroma(tmp_path) -> N
     # The full synthetic epithelial ring, including its outermost edge, is
     # protected against partial gland-wall thinning.
     assert np.all(wall[(radius >= 25) & (radius <= 38)])
+    assert not np.any(wall[solid_island])
     assert external[105, 105]
     assert not external[64, 64]
     assert not external[5, 5]
