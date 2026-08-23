@@ -141,6 +141,29 @@ def test_current_infiltrative_cord_retains_larger_context_budget():
     assert int(np.count_nonzero(bounded)) == semantic_pixels * 5 // 2
 
 
+def test_cell_decrease_freezes_a_four_pixel_cleanup_collar():
+    semantic = np.zeros((64, 64), dtype=bool)
+    semantic[28:36, 28:36] = True
+    candidate = np.ones_like(semantic)
+
+    bounded, metadata = bound_generation_context_region(
+        semantic,
+        candidate,
+        primitive_id="cell-type-abundance-decrease-v1",
+    )
+
+    required = np.zeros_like(semantic)
+    required[24:40, 24:40] = True
+    assert generation_context_max_extra_fraction(
+        "cell-type-abundance-decrease-v1"
+    ) == 2.0
+    assert metadata["minimum_dilation_pixels"] == 4
+    assert np.all(bounded[required])
+    assert np.all(bounded[semantic])
+    assert metadata["required_dilation_extra_pixels"] == 192
+    assert int(np.count_nonzero(bounded)) == int(np.count_nonzero(required))
+
+
 def test_glas_large_union_preserves_the_complete_connected_component():
     source = np.full((128, 128), 2, dtype=np.uint8)
     source[8:120, 8:120] = 12

@@ -10,6 +10,7 @@ from scripts.build_lung_oral_skin_primitive_audit import build
 from scripts.run_lung_oral_skin_primitive_mask_review import (
     CELL_BUDGETS,
     CORD_TISSUE_BUDGET,
+    GENERIC_CLASS2_ALIAS_GROUPS,
     INTERFACE_TISSUE_BUDGET,
     _eligible_score,
 )
@@ -177,6 +178,30 @@ def test_oral_cell_decrease_has_visible_but_residual_preserving_contract():
     assert depletion.transition_end_removal_fraction == 0.10
     assert depletion.minimum_core_residual_fraction == 0.32
     assert depletion.minimum_transition_residual_fraction == 0.45
+
+
+def test_skin_cell_decrease_is_visible_and_alias_cases_are_reserved():
+    repository = JointSkillRepository()
+    for primitive_id in (
+        "cell-type-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+    ):
+        primitive = repository.primitives[primitive_id]
+        assert primitive.minimum_effect_delta_count_for("melanoma-v1") == 10
+    depletion = repository.mechanisms[
+        "melanoma-local-population-modulation"
+    ].cell_program.cellularity_depletion
+    assert depletion is not None
+    assert depletion.core_width_cell_diameters == 4
+    assert depletion.transition_width_cell_diameters == 8
+    assert depletion.core_target_removal_fraction == 0.65
+    assert depletion.minimum_core_residual_fraction == 0.32
+    assert (
+        GENERIC_CLASS2_ALIAS_GROUPS["cell-type-abundance-decrease-v1"]
+        == GENERIC_CLASS2_ALIAS_GROUPS[
+            "generic-inflammatory-cell-abundance-decrease-v1"
+        ]
+    )
 
 
 def test_peritumoral_review_ranking_uses_local_connected_mask_capacity():

@@ -28,6 +28,20 @@ PRIMITIVE_GENERATION_CONTEXT_MAX_EXTRA_FRACTIONS = {
     # so the Inpaint boundary does not trace the cellular support itself.
     "invasive-cord-formation-v1": 1.5,
     "infiltrative-nest-cord-extension-v1": 1.5,
+    # Nucleus annotations commonly cover less than the full hematoxylin-stained
+    # footprint.  Cell-removal generation therefore needs a wider local collar
+    # so the image model removes the peripheral chromatin rim instead of
+    # preserving a conspicuous ring around the cleared semantic mask.
+    "cell-type-abundance-decrease-v1": 2.0,
+    "generic-inflammatory-cell-abundance-decrease-v1": 2.0,
+    "neoplastic-cell-abundance-decrease-v1": 2.0,
+    "cellularity-decrease-v1": 2.0,
+}
+PRIMITIVE_GENERATION_CONTEXT_MINIMUM_DILATION_PIXELS = {
+    "cell-type-abundance-decrease-v1": 4,
+    "generic-inflammatory-cell-abundance-decrease-v1": 4,
+    "neoplastic-cell-abundance-decrease-v1": 4,
+    "cellularity-decrease-v1": 4,
 }
 
 
@@ -78,10 +92,30 @@ def bound_generation_context_region(
     candidate_pixels = int(np.count_nonzero(candidate))
     candidate_extra = candidate & ~semantic
     candidate_extra_pixels = int(np.count_nonzero(candidate_extra))
+    minimum_dilation_pixels = int(
+        PRIMITIVE_GENERATION_CONTEXT_MINIMUM_DILATION_PIXELS.get(
+            str(primitive_id or "").strip().lower(),
+            0,
+        )
+    )
+    required_context = semantic.copy()
+    if minimum_dilation_pixels and semantic_pixels:
+        required_context = (
+            ndimage.binary_dilation(
+                semantic,
+                structure=np.ones((3, 3), dtype=bool),
+                iterations=minimum_dilation_pixels,
+            )
+            & candidate
+        )
+    required_extra_pixels = int(
+        np.count_nonzero(required_context & ~semantic)
+    )
     extra_budget = (
         max(
             int(min_extra_pixels),
             int(np.floor(float(max_extra_fraction) * semantic_pixels)),
+            required_extra_pixels,
         )
         if semantic_pixels
         else 0
@@ -92,9 +126,14 @@ def bound_generation_context_region(
     if not capped:
         bounded = candidate.copy()
     else:
-        bounded = semantic.copy()
+        # Freeze the primitive-specific minimum collar first, then spend any
+        # remaining bounded budget in stable distance order.  Counting the
+        # collar in the budget without freezing it could drop diagonal rim
+        # pixels at equal-distance ties and recreate a partial H&E ring.
+        bounded = required_context.copy()
         distance_to_semantic = ndimage.distance_transform_edt(~semantic)
-        coordinates = np.argwhere(candidate_extra)
+        optional_extra = candidate_extra & ~bounded
+        coordinates = np.argwhere(optional_extra)
         distances = distance_to_semantic[
             coordinates[:, 0],
             coordinates[:, 1],
@@ -106,8 +145,13 @@ def bound_generation_context_region(
                 distances,
             )
         )
-        keep = coordinates[order[:retained_extra_pixels]]
-        bounded[keep[:, 0], keep[:, 1]] = True
+        remaining_budget = max(
+            0,
+            retained_extra_pixels - required_extra_pixels,
+        )
+        keep = coordinates[order[:remaining_budget]]
+        if len(keep):
+            bounded[keep[:, 0], keep[:, 1]] = True
 
     return bounded, {
         "policy": "bounded_generation_context_v2",
@@ -118,6 +162,8 @@ def bound_generation_context_region(
         "candidate_pixels": candidate_pixels,
         "candidate_extra_pixels": candidate_extra_pixels,
         "extra_budget_pixels": int(extra_budget),
+        "minimum_dilation_pixels": minimum_dilation_pixels,
+        "required_dilation_extra_pixels": required_extra_pixels,
         "retained_extra_pixels": int(retained_extra_pixels),
         "generation_pixels": int(np.count_nonzero(bounded)),
         "capped": bool(capped),

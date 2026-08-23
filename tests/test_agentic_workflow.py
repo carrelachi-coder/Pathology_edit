@@ -86,6 +86,38 @@ class AgenticRoutingTests(unittest.TestCase):
         self.assertEqual(route.primary_mode, "inpaint")
         self.assertNotEqual(route.primary_mode, "noop")
 
+    def test_nuclei_only_decrease_routes_to_expanded_context_inpaint(self):
+        tissue = np.ones((32, 32), dtype=np.uint8)
+        source_nuclei = np.zeros((32, 32), dtype=np.uint8)
+        source_nuclei[12:20, 12:20] = 2
+        target_nuclei = np.zeros_like(source_nuclei)
+        semantic = source_nuclei != target_nuclei
+
+        routing = _resolve_agentic_routing_context(
+            {
+                "reference_tissue": tissue,
+                "target_tissue": tissue.copy(),
+                "reference_nuclei": source_nuclei,
+                "target_nuclei": target_nuclei,
+                "semantic_change_region": semantic,
+                "generation_region_policy": {
+                    "primitive_id": "cell-type-abundance-decrease-v1"
+                },
+            }
+        )
+        route = route_agentic_edit_request(
+            tissue,
+            tissue,
+            change_region=routing["routing_change_region"],
+            change_scope=routing["routing_change_scope"],
+            cell_only_direction=routing["routing_cell_only_direction"],
+            edit_primitive_id=routing["routing_edit_primitive_id"],
+        )
+
+        self.assertEqual(route.primary_mode, "inpaint")
+        self.assertEqual(route.candidate_modes, ("inpaint", "cross"))
+        self.assertIn("full stained nucleus footprint", route.reason)
+
     def test_cellvit_zero_detection_signal_is_explicit(self):
         self.assertTrue(
             _detector_reported_zero_cells(

@@ -1070,7 +1070,7 @@ def _install_primitives(writer: Writer) -> None:
             # complete instances makes a focal density decrease reviewable
             # without converting it into near-total immune clearance.
             "oral-squamous-cell-carcinoma-v1": 10,
-            "melanoma-v1": 6,
+            "melanoma-v1": 10,
         }
     )
     writer.json(class_decrease_path, class_decrease)
@@ -1098,9 +1098,9 @@ def _install_primitives(writer: Writer) -> None:
                 "minimum_delta_count_by_pathology_domain", {}
             ).update(
                 {
-                    "lung-carcinoma-v1": 6,
-                    "oral-squamous-cell-carcinoma-v1": 6,
-                    "melanoma-v1": 6,
+                    "lung-carcinoma-v1": 12,
+                    "oral-squamous-cell-carcinoma-v1": 10,
+                    "melanoma-v1": 10,
                 }
             )
         base = PRIMITIVES / primitive_id
@@ -2028,9 +2028,17 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ["Tumor"],
     )
     melanoma_local["cell_program"]["cellularity_depletion_contract"].update(
-        transition_width_cell_diameters=6,
+        # PUMA class-2 depletion must be a visible local density change, not a
+        # handful of nearly imperceptible nuclei.  The retained residual and
+        # outer reference still prohibit near-total inflammatory clearance.
+        core_width_cell_diameters=4,
+        transition_width_cell_diameters=8,
         transition_subband_count=6,
-        transition_end_removal_fraction=0.06,
+        core_target_removal_fraction=0.65,
+        transition_start_removal_fraction=0.50,
+        transition_end_removal_fraction=0.10,
+        minimum_core_residual_fraction=0.32,
+        minimum_transition_residual_fraction=0.45,
     )
     melanoma_local["cell_program"]["cellularity_depletion_contract"][
         "allowed_anchor_types"
@@ -2040,9 +2048,6 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ],
         ["population_peak"],
     )
-    melanoma_local["cell_program"]["cellularity_depletion_contract"][
-        "core_width_cell_diameters"
-    ] = 2.5
     _write_contract(writer, melanoma_local)
 
     # P2 ORCA.

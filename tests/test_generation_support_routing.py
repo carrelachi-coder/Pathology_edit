@@ -58,3 +58,21 @@ def test_explicit_threshold_override_remains_supported() -> None:
 
     assert route.mode == "cross"
     assert route.force_cross is True
+
+
+def test_cell_only_decrease_defaults_to_inpaint_with_cross_fallback() -> None:
+    manifest = {
+        "primitive_id": "cell-type-abundance-decrease-v1",
+        "ledger": {
+            "tissue_fraction": 0.0,
+            "cell_fraction": 0.04,
+            "joint_fraction": 0.04,
+            "generation_support_fraction": 0.10,
+        },
+    }
+
+    route = route_joint_handoff(manifest)
+
+    assert route.mode == "inpaint"
+    assert route.force_cross is False
+    assert "full stained nucleus footprint" in route.reason

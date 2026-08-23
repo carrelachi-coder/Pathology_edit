@@ -76,6 +76,12 @@ LOCAL_CELL = frozenset(
         "generic-inflammatory-cell-abundance-decrease-v1",
     }
 )
+GENERIC_CLASS2_ALIAS_GROUPS = {
+    "cell-type-abundance-decrease-v1": "generic-class2-decrease",
+    "generic-inflammatory-cell-abundance-decrease-v1": "generic-class2-decrease",
+    "cell-type-abundance-increase-v1": "generic-class2-increase",
+    "generic-inflammatory-cell-abundance-increase-v1": "generic-class2-increase",
+}
 PERITUMORAL = frozenset(
     {
         "peritumoral-neoplastic-scatter-increase-v1",
@@ -462,20 +468,19 @@ def _case(
     ) if tissue_primitive else None
     intent = _semantic_intent(evaluation)
     cell_budget = CELL_BUDGETS.get(primitive)
-    if (
-        evaluation.organ == "oral"
-        and primitive == "cell-type-abundance-decrease-v1"
-    ):
-        # The ORCA class-2 effect must remain a focal generic inflammatory
-        # density decrease, but six tiny instances was not visually useful.
-        # Keep a residual radial population while requesting a reviewable
-        # ten-to-twenty-two complete-instance change across a broader field.
+    if primitive in {
+        "cell-type-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+    } and evaluation.organ in {"oral", "skin"}:
+        # ORCA/PUMA class-2 effects remain focal generic inflammatory density
+        # decreases. Ten-to-twenty-two complete instances make the edit
+        # reviewable while the radial contract retains a residual population.
         cell_budget = CellCountExtentBudget(16, 10, 22, 384, 0, 96, 64, 3)
-    elif primitive == "generic-inflammatory-cell-abundance-decrease-v1" or (
-        evaluation.organ == "skin"
-        and primitive == "cell-type-abundance-decrease-v1"
-    ):
-        cell_budget = CellCountExtentBudget(10, 6, 14, 384, 0, 64, 48, 3)
+    elif primitive in {
+        "cell-type-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+    } and evaluation.organ == "lung":
+        cell_budget = CellCountExtentBudget(16, 12, 24, 384, 0, 96, 64, 3)
     provenance = {
         "source_image_sha256": sha256_file(row["source_image"]),
         "source_tissue_mask_sha256": sha256_file(row["source_tissue_mask"]),
@@ -675,6 +680,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if review_path.is_file()
         else {}
     )
+    # Cell-type and generic-inflammatory aliases resolve to the same observable
+    # class-2 operation in these profiles.  Reserve reviewed samples across
+    # aliases so the five-case review does not publish the same edit twice.
+    reserved_alias_samples: dict[str, set[str]] = defaultdict(set)
+    for reviewed_primitive, reviewed in reviews.items():
+        group = GENERIC_CLASS2_ALIAS_GROUPS.get(reviewed_primitive)
+        if group:
+            reserved_alias_samples[group].update(
+                str(case["sample_id"])
+                for case in reviewed.get("cases") or ()
+            )
     for evaluation in evaluations:
         prior_review = reviews.get(evaluation.primitive_id) or {}
         if (
@@ -683,7 +699,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ):
             continue
         ranked = []
+        alias_group = GENERIC_CLASS2_ALIAS_GROUPS.get(evaluation.primitive_id)
         for row in metrics:
+            if (
+                alias_group
+                and row["sample_id"] in reserved_alias_samples[alias_group]
+            ):
+                continue
             eligible, score = _eligible_score(evaluation.organ, evaluation.primitive_id, row)
             if eligible:
                 if evaluation.primitive_id in {
@@ -792,6 +814,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         board = args.output_dir / "boards" / evaluation.organ / f"{evaluation.primitive_id}.png"
         cases = _render(evaluation, selected, board)
         reviews[evaluation.primitive_id] = {"mechanism_id": evaluation.mechanism_id, "board": str(board), "cases": cases}
+        if alias_group:
+            reserved_alias_samples[alias_group].update(
+                str(case["sample_id"]) for case in cases
+            )
         _write_json(review_path, {"schema_version": SCHEMA_VERSION, "organ": args.organ, "reviews": reviews})
     complete = sum(
         len((reviews.get(item.primitive_id) or {}).get("cases") or [])

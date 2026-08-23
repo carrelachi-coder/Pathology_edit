@@ -26,9 +26,9 @@
     "minimum_span_cell_diameters": 6.0,
     "minimum_foci": 0,
     "minimum_delta_count_by_pathology_domain": {
-      "lung-carcinoma-v1": 6,
-      "oral-squamous-cell-carcinoma-v1": 6,
-      "melanoma-v1": 6
+      "lung-carcinoma-v1": 12,
+      "oral-squamous-cell-carcinoma-v1": 10,
+      "melanoma-v1": 10
     }
   },
   "required_checker_ids": [
