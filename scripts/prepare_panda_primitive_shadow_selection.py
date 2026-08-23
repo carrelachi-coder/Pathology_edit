@@ -198,6 +198,32 @@ def _component_metrics(region: np.ndarray) -> tuple[int, int, int]:
     return int(count), int(areas.max(initial=0)), int(np.count_nonzero(areas >= 256))
 
 
+def _solid_tumor_component_metrics(tumor: np.ndarray) -> tuple[int, int, int]:
+    """Return a mask-only shortlist proxy for lumen-free solid tumor.
+
+    This is only a ranking proxy: the aligned H&E/nucleus lumen observer owns
+    the later execution veto.  Components with a substantial enclosed hole are
+    excluded here so the expensive native-instance stage samples genuinely
+    solid candidates instead of repeatedly selecting gland rings.
+    """
+
+    labeled, count = ndimage.label(tumor, structure=STRUCTURE_8)
+    solid = np.zeros_like(tumor, dtype=bool)
+    solid_count = 0
+    largest = 0
+    for component_id in range(1, int(count) + 1):
+        component = labeled == component_id
+        holes = ndimage.binary_fill_holes(component) & ~component
+        if int(np.count_nonzero(holes)) >= 128:
+            continue
+        area = int(np.count_nonzero(component))
+        solid |= component
+        solid_count += 1
+        largest = max(largest, area)
+    contact = solid & ndimage.binary_dilation(~tumor, structure=STRUCTURE_8)
+    return solid_count, largest, int(np.count_nonzero(contact))
+
+
 def _tissue_metrics(path: Path) -> dict[str, Any]:
     tissue = _mask(path)
     if tissue.shape != (512, 512):
@@ -226,6 +252,7 @@ def _tissue_metrics(path: Path) -> dict[str, Any]:
     )
     tumor = np.isin(tissue, TUMOR_FINE_IDS)
     tumor_components = _component_metrics(tumor)
+    solid_tumor_components = _solid_tumor_component_metrics(tumor)
     height, width = tissue.shape
     y0, y1 = height // 8, height - height // 8
     x0, x1 = width // 8, width - width // 8
@@ -257,6 +284,9 @@ def _tissue_metrics(path: Path) -> dict[str, Any]:
         "p5_largest_component_pixels": p5_components[1],
         "tumor_component_count": tumor_components[0],
         "tumor_largest_component_pixels": tumor_components[1],
+        "solid_tumor_component_count": solid_tumor_components[0],
+        "solid_tumor_largest_component_pixels": solid_tumor_components[1],
+        "solid_tumor_stroma_contact_pixels": solid_tumor_components[2],
         "tumor_pixels": int(np.count_nonzero(tumor)),
         "stroma_pixels": int(pixels.get(2, 0)),
         "fixed_central_roi": {
@@ -295,7 +325,11 @@ def _coarse_group_scores(metrics: dict[str, Any]) -> dict[str, float]:
             + 4 * p5_edge
         ),
         "p5_scatter": float(annulus + 12 * p5_edge + 0.25 * p5_area),
-        "retreat": float(min(tumor, stroma) + 20 * max(p4_edge, p5_edge)),
+        "retreat": float(
+            4 * int(metrics["solid_tumor_largest_component_pixels"])
+            + 40 * int(metrics["solid_tumor_stroma_contact_pixels"])
+            + 0.25 * min(tumor, stroma)
+        ),
         "fragmentation": float(
             200000
             - abs(int(metrics["tumor_largest_component_pixels"]) - 70000)
@@ -347,9 +381,9 @@ def _coarse_eligible(group: str, metrics: dict[str, Any]) -> bool:
         )
     if group == "retreat":
         return (
-            int(fine["10"]) >= 50000
-            and stroma >= 50000
-            and metrics["p5_stroma_contact_pixels"] >= 512
+            int(metrics["solid_tumor_largest_component_pixels"]) >= 10000
+            and stroma >= 30000
+            and int(metrics["solid_tumor_stroma_contact_pixels"]) >= 256
         )
     if group == "fragmentation":
         # PANDA owns a 3% selected-component visibility floor.  Even the

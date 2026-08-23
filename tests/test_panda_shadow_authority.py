@@ -35,6 +35,7 @@ from scripts.prepare_panda_primitive_shadow_selection import (
     _fill_distinct_overlap_minimized,
     _minimum_feasible_max_cases_per_slide,
     _parse_evaluation_count_overrides as _parse_selection_count_overrides,
+    _solid_tumor_component_metrics,
 )
 from scripts.run_panda_primitive_shadow_replay import (
     _compiled_review_candidate,
@@ -307,6 +308,18 @@ class PandaShadowAuthorityTests(unittest.TestCase):
         self.assertTrue(_coarse_eligible("fragmentation", metrics))
         metrics["tumor_largest_component_pixels"] = 19000
         self.assertFalse(_coarse_eligible("fragmentation", metrics))
+
+    def test_footprint_shortlist_prefers_lumen_free_tumor_components(self):
+        rows, cols = np.ogrid[:128, :128]
+        solid = (rows - 28) ** 2 + (cols - 28) ** 2 <= 16**2
+        gland = (
+            ((rows - 86) ** 2 + (cols - 86) ** 2 <= 28**2)
+            & ((rows - 86) ** 2 + (cols - 86) ** 2 >= 13**2)
+        )
+        count, largest, contact = _solid_tumor_component_metrics(solid | gland)
+        self.assertEqual(count, 1)
+        self.assertEqual(largest, int(np.count_nonzero(solid)))
+        self.assertGreater(contact, 0)
 
     def test_full_replay_requires_exact_frozen_ranker_assets(self):
         evidence = [
