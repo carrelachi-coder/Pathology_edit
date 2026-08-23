@@ -459,6 +459,12 @@ def main() -> int:
     for board_index, (key, group) in enumerate(sorted(grouped.items()), start=1):
         if len(group) != 5 and args.expected_count == 105:
             failures.append(f"{key}: expected five cases, found {len(group)}")
+        source_hashes = [item["assets"]["source"]["sha256"] for item in group]
+        selected_hashes = [item["assets"]["selected"]["sha256"] for item in group]
+        if len(source_hashes) != len(set(source_hashes)):
+            failures.append(f"{key}: duplicate source panels")
+        if len(selected_hashes) != len(set(selected_hashes)):
+            failures.append(f"{key}: duplicate selected-generation panels")
         board_path = output / "attempt_review_boards" / f"{board_index:02d}_{slug('_'.join(map(str, key)))}.jpg"
         render_attempt_board(group, board_path)
         board_records.append(

@@ -63,6 +63,29 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def duplicate_source_groups(
+    rows: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    """Return exact source-image collisions within one primitive panel."""
+
+    grouped: dict[str, list[str]] = {}
+    for row in rows:
+        key = "::".join(
+            (
+                str(row["dataset"]),
+                str(row["category"]),
+                str(row["primitive_id"]),
+                str(row["source_image_sha256"]),
+            )
+        )
+        grouped.setdefault(key, []).append(str(row["case_id"]))
+    return {
+        digest: case_ids
+        for digest, case_ids in grouped.items()
+        if len(case_ids) > 1
+    }
+
+
 def panda_cases(base_path: Path, footprint_path: Path) -> list[dict[str, Any]]:
     base = read_json(base_path)
     footprint = read_json(footprint_path)
@@ -199,6 +222,7 @@ def main() -> int:
                 "instruction": " ".join(handoff.get("render_expectations") or ()),
                 "joint_generation_handoff": str(manifest_path),
                 "source_image": str(source_assets["image"]),
+                "source_image_sha256": sha256(Path(source_assets["image"])),
                 "source_tissue_mask": str(source_assets["tissue"]),
                 "source_nuclei_mask": str(source_assets["nuclei"]),
                 "target_tissue_mask": str(handoff_paths["target_tissue_mask"]),
@@ -225,6 +249,15 @@ def main() -> int:
             str(item["case_id"]),
         )
     )
+    duplicate_sources = duplicate_source_groups(promoted)
+    if duplicate_sources:
+        details = "; ".join(
+            ", ".join(case_ids)
+            for case_ids in duplicate_sources.values()
+        )
+        raise RuntimeError(
+            "Duplicate source images within a primitive panel: " + details
+        )
     manifest = {
         "schema_version": "panda-glas-online-generation-cohort-v1",
         "mask_code_commit": "46dbfabdf905423524d126f5dc81e696ca581e4e",
@@ -263,6 +296,7 @@ def main() -> int:
                 for row in promoted
             ),
             "generation_cohort_sha256": sha256(manifest_path),
+            "all_source_images_unique_within_primitive": True,
         },
     )
     print(json.dumps({"status": "completed", "manifest": str(manifest_path), "cases": len(promoted)}))
