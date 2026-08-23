@@ -486,9 +486,9 @@ def _case(
         and evaluation.organ == "lung"
     ):
         # After reserving the five cell-type alias cases, remaining IGNITE
-        # components support a visible but slightly smaller complete-instance
-        # decrease.  Eight instances avoids closing a mask-realizable alias.
-        cell_budget = CellCountExtentBudget(12, 8, 18, 384, 0, 96, 64, 3)
+        # components have less complete class-2 capacity.  Keep the frozen
+        # six-instance floor instead of closing a mask-realizable alias.
+        cell_budget = CellCountExtentBudget(10, 6, 14, 384, 0, 64, 48, 3)
     provenance = {
         "source_image_sha256": sha256_file(row["source_image"]),
         "source_tissue_mask_sha256": sha256_file(row["source_tissue_mask"]),
