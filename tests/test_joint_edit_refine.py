@@ -76,6 +76,7 @@ from phase3_joint_edit_refine.gates import (
     _fine_pattern_preserved,
     _mechanism_realization,
     _nearest_reference_area_ratio,
+    _panda_pattern3_pixels_unchanged,
     _recorded_instance_areas_by_class,
     _reference_shape_integrity,
     audit_added_class1_foci,
@@ -213,6 +214,17 @@ def _sha(path: Path) -> str:
 
 
 class JointSkillTests(unittest.TestCase):
+    def test_panda_retreat_protects_pattern3_but_allows_pattern4_and_5(self):
+        source = np.asarray([[8, 9, 10, 2]], dtype=np.uint8)
+        allowed = np.asarray([[8, 2, 2, 2]], dtype=np.uint8)
+        changed_pattern3 = np.asarray([[2, 2, 2, 2]], dtype=np.uint8)
+        self.assertTrue(
+            _panda_pattern3_pixels_unchanged(source, allowed)
+        )
+        self.assertFalse(
+            _panda_pattern3_pixels_unchanged(source, changed_pattern3)
+        )
+
     def test_panda_profile_keeps_primitive_count_and_extent_distinct(self):
         case = JointCaseContext(
             case_id="panda-budget",

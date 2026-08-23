@@ -4221,11 +4221,11 @@ def _mechanism_specific_postcondition(
                     & stroma_before
                 )
             )
-            unrequested_pattern_pixels_unchanged = bool(
-                np.array_equal(
-                    source[np.isin(source, (8, 9))],
-                    target[np.isin(source, (8, 9))],
-                )
+            # Operational retreat explicitly authorizes Pattern 4/5 (fine
+            # IDs 9/10) to become Stroma.  Only Pattern 3 (fine ID 8) is an
+            # unrequested Gleason pattern here and must remain pixel-exact.
+            unrequested_pattern_pixels_unchanged = (
+                _panda_pattern3_pixels_unchanged(source, target)
             )
             subchecks["pattern5_to_explicit_stroma_only"] = (
                 only_pattern5_to_stroma
@@ -4233,7 +4233,7 @@ def _mechanism_specific_postcondition(
             subchecks["existing_stroma_interface_anchor"] = (
                 connected_to_existing_stroma
             )
-            subchecks["pattern3_pattern4_pixel_exact"] = (
+            subchecks["pattern3_pixel_exact"] = (
                 unrequested_pattern_pixels_unchanged
             )
 
@@ -4449,6 +4449,21 @@ def _residual_fragmentation_topology(c):
                 int(value) for value in np.unique(source[change])
             ),
         },
+    )
+
+
+def _panda_pattern3_pixels_unchanged(
+    source: np.ndarray,
+    target: np.ndarray,
+) -> bool:
+    """Pattern 3 is protected while retreat may consume Pattern 4/5."""
+
+    pattern3 = np.asarray(source) == 8
+    return bool(
+        np.array_equal(
+            np.asarray(source)[pattern3],
+            np.asarray(target)[pattern3],
+        )
     )
 
 
