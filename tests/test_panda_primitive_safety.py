@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 from PIL import Image
 from scipy import ndimage
 
 from phase3_joint_edit_refine.auxiliary import materialize_profile_auxiliaries
+from phase3_joint_edit_refine.feasibility import _minimum_architecture_group_count
 from phase3_joint_edit_refine.gates import (
     audit_directional_extension_raster,
 )
@@ -64,6 +67,18 @@ def test_pattern5_organic_cord_is_long_rounded_and_cell_scale() -> None:
     assert audit["longitudinal_span_px"] >= 5 * 12
     assert 0.45 <= audit["tip_to_neck_width_ratio"] <= 0.90
     assert audit["maximum_width_px"] >= 12
+
+
+def test_pattern5_infiltrative_cord_requires_multiple_complete_cells() -> None:
+    case = SimpleNamespace(
+        primitive_id="infiltrative-nest-cord-extension-v1"
+    )
+    bundle = SimpleNamespace(
+        mechanism=SimpleNamespace(
+            cell_program=SimpleNamespace(cluster_size_range=(2, 6))
+        )
+    )
+    assert _minimum_architecture_group_count(case, bundle) == 2
 
 
 def test_panda_auxiliary_separates_lumen_wall_and_external_stroma(tmp_path) -> None:

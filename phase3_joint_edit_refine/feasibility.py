@@ -1792,6 +1792,7 @@ def _minimum_architecture_group_count(case, bundle) -> int:
 
     if case.primitive_id not in {
         "invasive-cord-formation-v1",
+        "infiltrative-nest-cord-extension-v1",
         "peritumoral-tumor-nest-formation-v1",
     }:
         return 1

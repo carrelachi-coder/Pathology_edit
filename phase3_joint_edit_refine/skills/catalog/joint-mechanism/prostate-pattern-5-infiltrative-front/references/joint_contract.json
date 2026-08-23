@@ -98,8 +98,8 @@
       12
     ],
     "cluster_size_range": [
-      6,
-      14
+      2,
+      6
     ],
     "required_checker_ids": [
       "whole_instance_changes",
