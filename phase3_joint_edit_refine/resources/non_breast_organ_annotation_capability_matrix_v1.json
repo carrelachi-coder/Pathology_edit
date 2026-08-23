@@ -687,18 +687,6 @@
           "closed_reason": null,
           "closure_category": null,
           "mechanism_id": "lung-solid-squamous-growth",
-          "primitive_id": "tumor-burden-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Increase tumor burden."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "lung-solid-squamous-growth",
           "primitive_id": "cohesive-boundary-expansion-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
@@ -775,18 +763,6 @@
     {
       "annotation_profile_id": "puma-semantic-v1",
       "capabilities": [
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "melanoma-cohesive-nest-sheet",
-          "primitive_id": "tumor-burden-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Increase tumor burden."
-          ],
-          "status": "conditionally_supported"
-        },
         {
           "closed_reason": null,
           "closure_category": null,

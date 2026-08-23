@@ -4023,7 +4023,21 @@ class JointSkillTests(unittest.TestCase):
         )
         for mechanism_id in growth_mechanism_ids:
             mechanism = repository.mechanisms[mechanism_id]
-            self.assertIn("tumor-burden-increase-v1", mechanism.supported_primitives)
+            if mechanism_id in {
+                "lung-solid-squamous-growth",
+                "melanoma-cohesive-nest-sheet",
+            }:
+                self.assertNotIn(
+                    "tumor-burden-increase-v1", mechanism.supported_primitives
+                )
+                self.assertIn(
+                    "cohesive-boundary-expansion-v1",
+                    mechanism.supported_primitives,
+                )
+            else:
+                self.assertIn(
+                    "tumor-burden-increase-v1", mechanism.supported_primitives
+                )
             self.assertNotIn(
                 "tumor-burden-decrease-v1", mechanism.supported_primitives
             )

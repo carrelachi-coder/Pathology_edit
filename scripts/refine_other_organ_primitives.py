@@ -376,6 +376,23 @@ def _generic_boundary_growth(contract: dict[str, Any], *, host: str) -> None:
     _add_policy_checks(contract, ["external_boundary_binding"])
 
 
+def _remove_redundant_tumor_burden_growth(contract: dict[str, Any]) -> None:
+    """Keep one unambiguous external-boundary growth primitive per organ."""
+
+    primitive_id = "tumor-burden-increase-v1"
+    contract["supported_primitives"] = [
+        item
+        for item in contract["supported_primitives"]
+        if item != primitive_id
+    ]
+    contract["tissue_program"]["primitive_label_contracts"].pop(
+        primitive_id, None
+    )
+    contract["cell_program"]["layout_program_by_primitive"].pop(
+        primitive_id, None
+    )
+
+
 def _cord(contract: dict[str, Any], *, host: str) -> None:
     contract["supported_primitives"] = ["infiltrative-nest-cord-extension-v1"]
     contract["summary"] = (
@@ -426,7 +443,7 @@ def _cord(contract: dict[str, Any], *, host: str) -> None:
         "taper_fraction": 0.42,
         "lobe_count": 1,
         "noise_depth_ratio": 0.02,
-        "maximum_band_px": 64,
+        "maximum_band_px": 96,
         "maximum_depth_span_ratio": 4.0,
         "maximum_boundary_compactness": 14.0,
         "directional_sector_required": True,
@@ -1851,6 +1868,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     # P2 IGNITE.
     lung_growth = _contract(root, "lung-solid-squamous-growth")
     _generic_boundary_growth(lung_growth, host="Stroma")
+    _remove_redundant_tumor_burden_growth(lung_growth)
     _write_contract(writer, lung_growth)
     _write_shadow_skill(
         writer,
@@ -1931,6 +1949,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     # P2 PUMA.
     melanoma_growth = _contract(root, "melanoma-cohesive-nest-sheet")
     _generic_boundary_growth(melanoma_growth, host="Stroma")
+    _remove_redundant_tumor_burden_growth(melanoma_growth)
     _write_contract(writer, melanoma_growth)
     _write_shadow_skill(
         writer,

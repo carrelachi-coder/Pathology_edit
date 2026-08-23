@@ -31,8 +31,7 @@
         "peritumoral-neoplastic-scatter-increase-v1",
         "peritumoral-small-cluster-increase-v1",
         "residual-tumor-fragmentation-v1",
-        "stroma-increase-v1",
-        "tumor-burden-increase-v1"
+        "stroma-increase-v1"
       ],
       "organ": "lung",
       "pairs": [
@@ -848,48 +847,6 @@
               "verification_status": "verified"
             }
           ],
-          "primitive_id": "tumor-burden-increase-v1",
-          "primitive_scope": "tissue_and_cell",
-          "prohibited_observation_sources": [
-            "source_he_for_execution",
-            "unannotated_histology_inference"
-          ],
-          "required_auxiliary_structures": [],
-          "required_observation_sources": [
-            "instruction",
-            "semantic_intent",
-            "tissue_mask",
-            "nuclei_mask",
-            "scene_graph",
-            "candidate_certificate",
-            "skill_rules",
-            "user_roi",
-            "auxiliary_masks"
-          ],
-          "status": "executable_mask_only"
-        },
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "lung-solid-squamous-growth",
-          "pathology_source_ids": [
-            "pathology-lung-cap-v2025",
-            "pathology-lung-iaslc-2011"
-          ],
-          "pathology_sources": [
-            {
-              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
-              "title": "CAP Protocol for Lung Carcinoma",
-              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
-              "verification_status": "verified"
-            },
-            {
-              "locator": "Lepidic, acinar, papillary, micropapillary and solid architectural patterns",
-              "title": "IASLC/ATS/ERS lung adenocarcinoma classification",
-              "uri": "https://pubmed.ncbi.nlm.nih.gov/21252716/",
-              "verification_status": "verified"
-            }
-          ],
           "primitive_id": "cohesive-boundary-expansion-v1",
           "primitive_scope": "tissue_and_cell",
           "prohibited_observation_sources": [
@@ -1000,11 +957,11 @@
       ],
       "pathology_domain_id": "lung-carcinoma-v1",
       "summary": {
-        "catalog_pair_count": 24,
+        "catalog_pair_count": 23,
         "closed_pair_count": 4,
-        "executable_pair_count": 20,
-        "executable_unique_primitive_count": 20,
-        "five_case_review_target_count": 100
+        "executable_pair_count": 19,
+        "executable_unique_primitive_count": 19,
+        "five_case_review_target_count": 95
       }
     },
     {
@@ -1679,46 +1636,10 @@
         "peritumoral-neoplastic-scatter-increase-v1",
         "peritumoral-small-cluster-increase-v1",
         "residual-tumor-fragmentation-v1",
-        "stroma-increase-v1",
-        "tumor-burden-increase-v1"
+        "stroma-increase-v1"
       ],
       "organ": "skin",
       "pairs": [
-        {
-          "closed_reason": null,
-          "closure_category": null,
-          "mechanism_id": "melanoma-cohesive-nest-sheet",
-          "pathology_source_ids": [
-            "pathology-melanoma-cap-v2025"
-          ],
-          "pathology_sources": [
-            {
-              "locator": "Invasive growth, microsatellite and regression definitions",
-              "title": "CAP Protocol for Invasive Melanoma Biopsy",
-              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
-              "verification_status": "verified"
-            }
-          ],
-          "primitive_id": "tumor-burden-increase-v1",
-          "primitive_scope": "tissue_and_cell",
-          "prohibited_observation_sources": [
-            "source_he_for_execution",
-            "unannotated_histology_inference"
-          ],
-          "required_auxiliary_structures": [],
-          "required_observation_sources": [
-            "instruction",
-            "semantic_intent",
-            "tissue_mask",
-            "nuclei_mask",
-            "scene_graph",
-            "candidate_certificate",
-            "skill_rules",
-            "user_roi",
-            "auxiliary_masks"
-          ],
-          "status": "executable_mask_only"
-        },
         {
           "closed_reason": null,
           "closure_category": null,
@@ -2412,11 +2333,11 @@
       ],
       "pathology_domain_id": "melanoma-v1",
       "summary": {
-        "catalog_pair_count": 19,
+        "catalog_pair_count": 18,
         "closed_pair_count": 4,
-        "executable_pair_count": 15,
-        "executable_unique_primitive_count": 15,
-        "five_case_review_target_count": 75
+        "executable_pair_count": 14,
+        "executable_unique_primitive_count": 14,
+        "five_case_review_target_count": 70
       }
     }
   ],

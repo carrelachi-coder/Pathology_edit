@@ -28,9 +28,9 @@ def test_frozen_audit_matches_catalog_and_classifies_every_pair():
     frozen = json.loads(AUDIT_PATH.read_text(encoding="utf-8"))
     assert frozen == build()
     expected = {
-        "lung": (24, 20, 4),
+        "lung": (23, 19, 4),
         "oral": (16, 8, 8),
-        "skin": (19, 15, 4),
+        "skin": (18, 14, 4),
     }
     for organ in frozen["organs"]:
         summary = organ["summary"]
@@ -53,6 +53,11 @@ def test_frozen_audit_matches_catalog_and_classifies_every_pair():
             for item in organ["pairs"]
             if item["status"] == "closed"
         } <= {"annotation_limited", "dataset_case_limited"}
+        if organ["organ"] in {"lung", "skin"}:
+            assert (
+                "tumor-burden-increase-v1"
+                not in organ["executable_unique_primitives"]
+            )
 
 
 def test_open_pairs_have_verified_pathology_sources_and_no_auxiliary_gap():
