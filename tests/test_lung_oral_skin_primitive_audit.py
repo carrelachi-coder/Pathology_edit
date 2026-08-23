@@ -171,11 +171,12 @@ def test_oral_cell_decrease_has_visible_but_residual_preserving_contract():
     assert depletion is not None
     assert depletion.core_width_cell_diameters == 4
     assert depletion.transition_width_cell_diameters == 8
-    assert depletion.core_target_removal_fraction == 0.68
-    assert depletion.transition_start_removal_fraction == 0.55
-    assert depletion.transition_end_removal_fraction == 0.12
-    assert depletion.minimum_core_residual_fraction == 0.30
-    assert depletion.minimum_transition_residual_fraction == 0.42
+    assert depletion.transition_subband_count == 6
+    assert depletion.core_target_removal_fraction == 0.65
+    assert depletion.transition_start_removal_fraction == 0.50
+    assert depletion.transition_end_removal_fraction == 0.10
+    assert depletion.minimum_core_residual_fraction == 0.32
+    assert depletion.minimum_transition_residual_fraction == 0.45
 
 
 def test_peritumoral_review_ranking_uses_local_connected_mask_capacity():

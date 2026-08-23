@@ -2136,12 +2136,14 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         # subtype, immune-exclusion, response, or prognostic interpretation.
         core_width_cell_diameters=4,
         transition_width_cell_diameters=8,
-        transition_subband_count=8,
-        core_target_removal_fraction=0.68,
-        transition_start_removal_fraction=0.55,
-        transition_end_removal_fraction=0.12,
-        minimum_core_residual_fraction=0.30,
-        minimum_transition_residual_fraction=0.42,
+        # Six subbands retain a smooth readable gradient without making sparse
+        # ORCA fields fail on fractional whole-instance quotas.
+        transition_subband_count=6,
+        core_target_removal_fraction=0.65,
+        transition_start_removal_fraction=0.50,
+        transition_end_removal_fraction=0.10,
+        minimum_core_residual_fraction=0.32,
+        minimum_transition_residual_fraction=0.45,
     )
     oral_local["cell_program"]["cellularity_depletion_contract"][
         "allowed_anchor_types"
