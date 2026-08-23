@@ -34,12 +34,40 @@
     "tumor-burden-decrease-v1": "A growth mechanism cannot be inverted into treatment response or regression. This primitive remains closed until a domain-specific, evidence-backed response mechanism and frozen-generator capability are validated."
   },
   "legacy_primitives_not_yet_joint": {},
+  "closed_pairs": {},
   "closed_mechanisms": {
     "breast-cohesive-nst-front": "Breast execution no longer asks a general visual LLM to recognize a histologic invasive front. Use breast-annotation-anchored-boundary-growth or breast-infiltrative-nest-cord-extension.",
     "breast-discohesive-single-file": "Breast execution no longer asks a general visual LLM to diagnose single-file morphology. Use breast-peritumoral-neoplastic-scatter for the mask-executable cell-only representation.",
     "colorectal-gland-forming-front": "GLaS lacks explicit stromal authority and the attempted H&E/mask-derived gland-unit producer could not reliably distinguish lumen, mucin, necrosis and cleft. Keep tissue-level malignant-gland growth closed.",
-    "prostate-pattern-3-growth": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist."
+    "lung-acinar-papillary-growth": "IGNITE does not provide a digest-bound lumen or fibrovascular-core map. Acinar/papillary identity cannot be inferred from H&E because execution planning is mask-only.",
+    "lung-lepidic-growth": "IGNITE does not provide a digest-bound alveolar framework map. Lepidic growth cannot be executed without risking airspace filling, and H&E inference is prohibited.",
+    "lung-local-tumor-clearance": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be a mask-authorized local clearance.",
+    "lung-stas-airspace-spread": "STAS requires explicit alveolar/airspace authority. The current IGNITE bundle has no digest-bound airspace map, so mask-only execution must fail closed.",
+    "melanoma-discohesive-junctional": "PUMA epidermis labels do not identify a junctional melanoma component. Junctional/pagetoid spread cannot be inferred from H&E by the execution Planner; use the non-diagnostic Tumor-Stroma peritumoral-focus mechanism instead.",
+    "melanoma-local-tumor-clearance": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be mask-authorized local clearance.",
+    "oral-scc-annotation-anchored-cord-extension": "ORCA Other tissue is a heterogeneous non-carcinoma class and cannot certify a physiologically valid receiving substrate for an invasive cord without prohibited H&E interpretation.",
+    "oral-scc-cohesive-nest-cord": "ORCA Other tissue is a heterogeneous non-carcinoma class. A mask-only Planner cannot guarantee that boundary expansion preserves mucosa, muscle, salivary tissue, nerves and vessels.",
+    "oral-scc-dispersed-invasive-front": "ORCA Other tissue cannot identify a safe stromal invasive front. Placing carcinoma nuclei outside Tumor would risk mucosa, muscle, salivary, nerve or vascular compartments that are not encoded.",
+    "oral-scc-local-carcinoma-clearance": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi, and ORCA has no specific receiving stroma label.",
+    "oral-scc-operational-tumor-retreat": "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would overclaim post-treatment physiology from a heterogeneous annotation label.",
+    "prostate-pattern-3-growth": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist.",
+    "melanoma-intratumoral-necrosis-turnover": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution."
   },
   "policy": "fail_closed",
-  "review_status": "implementation_scoped"
+  "review_status": "implementation_scoped",
+  "closed_mechanism_categories": {
+    "lung-acinar-papillary-growth": "annotation_limited",
+    "lung-lepidic-growth": "annotation_limited",
+    "lung-local-tumor-clearance": "annotation_limited",
+    "lung-stas-airspace-spread": "annotation_limited",
+    "melanoma-discohesive-junctional": "annotation_limited",
+    "melanoma-intratumoral-necrosis-turnover": "dataset_case_limited",
+    "melanoma-local-tumor-clearance": "annotation_limited",
+    "oral-scc-annotation-anchored-cord-extension": "annotation_limited",
+    "oral-scc-cohesive-nest-cord": "annotation_limited",
+    "oral-scc-dispersed-invasive-front": "annotation_limited",
+    "oral-scc-local-carcinoma-clearance": "annotation_limited",
+    "oral-scc-operational-tumor-retreat": "annotation_limited"
+  },
+  "closed_pair_categories": {}
 }

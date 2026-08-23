@@ -25,7 +25,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .skills.repository import JointSkillBundle
 
-EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v10"
+EXECUTABLE_CONTRACT_VERSION = "joint-executable-contract-v11"
 
 POPULATION_DISPOSITIONS = frozenset(
     {
@@ -632,6 +632,18 @@ class ExecutableJointContractCompiler:
         )
         observation_classes = set(bundle.cell_observation_profile.class_ids)
         forbidden_classes = tuple(sorted(observation_classes - set(allowed_classes)))
+        # ``allowed_classes`` governs newly generated nuclei. Existing
+        # pixel-frozen nuclei have a separate, broader compatibility rule:
+        # an inflammatory or stromal nucleus already observed in a receiving
+        # field may remain through a tumor-boundary transition even when the
+        # current edit only requests new neoplastic cells.
+        retained_compatible_classes = set(allowed_classes)
+        if target_label is not None:
+            retained_compatible_classes.update(
+                bundle.cell_observation_profile.tissue_compatible_classes.get(
+                    target_label, ()
+                )
+            )
         host_ids = _resolve_target_host_fine_ids(
             target_label=target_label,
             primitive_host_labels=bundle.primitive.host_tissue_labels,
@@ -813,7 +825,7 @@ class ExecutableJointContractCompiler:
                 population_transition_ledger[item.instance_id] = disposition
             elif intersects_tissue_change and item.instance_id in protected:
                 if (
-                    item.class_id not in set(allowed_classes)
+                    item.class_id not in retained_compatible_classes
                     and not _protected_population_may_cross_tissue_change(
                         tissue_geometry_mode=(
                             bundle.primitive.tissue_geometry_mode
@@ -827,9 +839,14 @@ class ExecutableJointContractCompiler:
                     "retain_pixel_exact"
                 )
             elif intersects_tissue_change:
-                if item.class_id not in set(allowed_classes):
+                if item.class_id not in retained_compatible_classes:
                     raise JointContractError(
-                        "tissue change contains an incompatible population that is neither erased nor protected"
+                        "tissue change contains an incompatible population that "
+                        "is neither erased nor protected: "
+                        f"instance={item.instance_id}, class={item.class_id}, "
+                        f"complete={item.completeness_status}, "
+                        f"touches_border={item.touches_border}, "
+                        f"quality_flags={list(item.quality_flags)}"
                     )
                 population_transition_ledger[item.instance_id] = (
                     "retain_complete_instance"

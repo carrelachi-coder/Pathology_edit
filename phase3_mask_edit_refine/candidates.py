@@ -499,6 +499,9 @@ def _prepare_interfaces(
                     shape_mode=str(
                         params.get("directional_shape_mode", "linear_taper")
                     ),
+                    centerline_first=bool(
+                        params.get("directional_centerline_first", False)
+                    ),
                 )
             )
             ownership_envelope &= directional_envelope
@@ -779,6 +782,7 @@ def compile_directional_tapered_projection_field(
     maximum_width_px: float,
     tip_width_px: float,
     shape_mode: str = "linear_taper",
+    centerline_first: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compile one mask-owned, outward, tapered projection.
 
@@ -806,8 +810,10 @@ def compile_directional_tapered_projection_field(
     parent_center = parent_coordinates.mean(axis=0)
 
     # Order the selected boundary sector along its dominant axis and use its
-    # median as the single attachment point.  The normal is annotation-owned:
-    # it points from the parent component centroid through that attachment.
+    # median as the single attachment point.  Estimate the outward normal from
+    # the local signed-distance gradient.  A parent-centroid vector is not a
+    # valid boundary normal on irregular or concave tumors and can turn an
+    # intended cord into a broad tangential strip.
     centered = coordinates - coordinates.mean(axis=0)
     if coordinates.shape[0] > 1:
         _, _, vh = np.linalg.svd(centered, full_matrices=False)
@@ -817,8 +823,39 @@ def compile_directional_tapered_projection_field(
     else:
         pivot = coordinates[0].astype(float)
         tangent = np.asarray((0.0, 1.0), dtype=float)
-    normal = pivot - parent_center
+    if centerline_first:
+        signed_distance = (
+            ndimage.distance_transform_edt(~parent)
+            - ndimage.distance_transform_edt(parent)
+        )
+        gradient_row, gradient_col = np.gradient(signed_distance)
+        local_radius = max(3.0, min(12.0, 0.5 * float(maximum_width_px)))
+        local = coordinates[
+            np.linalg.norm(coordinates.astype(float) - pivot, axis=1)
+            <= local_radius
+        ]
+        local = local if local.size else coordinates
+        local_gradients = np.column_stack(
+            (
+                gradient_row[local[:, 0], local[:, 1]],
+                gradient_col[local[:, 0], local[:, 1]],
+            )
+        )
+        local_norms = np.linalg.norm(local_gradients, axis=1)
+        local_gradients = local_gradients[local_norms > 1e-6]
+        if local_gradients.size:
+            local_gradients /= np.linalg.norm(local_gradients, axis=1)[:, None]
+            normal = np.mean(local_gradients, axis=0)
+        else:
+            normal = pivot - parent_center
+    else:
+        # Preserve the established geometry for existing panels.  The local
+        # boundary-normal correction is part of the lung cord mode only.
+        normal = pivot - parent_center
     normal_norm = float(np.linalg.norm(normal))
+    if normal_norm <= 1e-6:
+        normal = pivot - parent_center
+        normal_norm = float(np.linalg.norm(normal))
     if normal_norm <= 1e-6:
         normal = np.asarray((-tangent[1], tangent[0]), dtype=float)
     else:
@@ -873,18 +910,67 @@ def compile_directional_tapered_projection_field(
         )
     else:
         lateral = np.abs(signed_lateral)
-        local_width = neck_width + (tip_width - neck_width) * np.power(progress, 0.72)
+        taper_power = 1.6 if centerline_first else 0.72
+        local_width = neck_width + (tip_width - neck_width) * np.power(
+            progress, taper_power
+        )
         projection = (
             legal
             & (longitudinal >= -1.0)
             & (longitudinal <= depth)
             & (lateral <= 0.5 * local_width)
         )
-        priority = np.where(
-            projection,
-            np.maximum(longitudinal, 0.0) + 0.08 * lateral,
-            np.inf,
-        )
+        if centerline_first:
+            # Establish longitudinal extent and two source-scaled seam pockets
+            # before widening the remainder of the IGNITE cord envelope.
+            core_half_width = max(2.0, 0.08 * neck_width)
+            core_priority = np.where(
+                lateral <= np.minimum(core_half_width, 0.5 * local_width),
+                0.10 * lateral + 0.01 * np.maximum(longitudinal, 0.0),
+                np.inf,
+            )
+            pocket_longitudinal_radius = max(8.0, 0.35 * neck_width)
+            pocket_lateral_radius = max(6.0, 0.40 * neck_width)
+            pocket_distance = np.sqrt(
+                np.square(
+                    np.maximum(longitudinal, 0.0)
+                    / pocket_longitudinal_radius
+                )
+                + np.square(lateral / pocket_lateral_radius)
+            )
+            pocket_priority = np.where(
+                pocket_distance <= 1.0,
+                0.15 + 0.65 * pocket_distance,
+                np.inf,
+            )
+            chain_center = 0.48 * depth
+            chain_longitudinal_radius = max(7.0, 0.30 * neck_width)
+            chain_lateral_radius = max(6.0, 0.38 * neck_width)
+            chain_distance = np.sqrt(
+                np.square(
+                    (longitudinal - chain_center)
+                    / chain_longitudinal_radius
+                )
+                + np.square(lateral / chain_lateral_radius)
+            )
+            chain_pocket_priority = np.where(
+                chain_distance <= 1.0,
+                0.20 + 0.60 * chain_distance,
+                np.inf,
+            )
+            remainder_priority = 1.0 + lateral + 0.01 * np.maximum(
+                longitudinal, 0.0
+            )
+            priority_value = np.minimum(
+                np.minimum(
+                    np.minimum(core_priority, pocket_priority),
+                    chain_pocket_priority,
+                ),
+                remainder_priority,
+            )
+        else:
+            priority_value = np.maximum(longitudinal, 0.0) + 0.08 * lateral
+        priority = np.where(projection, priority_value, np.inf)
     return projection, priority
 
 

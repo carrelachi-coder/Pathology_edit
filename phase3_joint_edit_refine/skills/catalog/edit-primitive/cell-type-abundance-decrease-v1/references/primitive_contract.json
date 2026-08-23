@@ -6,17 +6,34 @@
   "summary": "Decrease one explicitly resolved observable cell class as an interface-anchored density gradient using complete-instance removal.",
   "tissue_action": "forbidden",
   "budget_mode": "count_extent",
-  "allowed_baseline_modes": ["selective_remove"],
-  "allowed_quota_roles": ["explicit_decrement"],
-  "host_tissue_labels": ["Tumor", "Stroma", "Other tissue", "Normal epithelium", "Immune infiltrate"],
+  "allowed_baseline_modes": [
+    "selective_remove"
+  ],
+  "allowed_quota_roles": [
+    "explicit_decrement"
+  ],
+  "host_tissue_labels": [
+    "Tumor",
+    "Stroma",
+    "Other tissue",
+    "Normal epithelium",
+    "Immune infiltrate"
+  ],
   "target_cell_classes": [],
   "cell_effect_contract": {
     "minimum_delta_count": 12,
     "minimum_delta_count_by_pathology_domain": {
-      "prostate-adenocarcinoma-v1": 2
+      "prostate-adenocarcinoma-v1": 2,
+      "oral-squamous-cell-carcinoma-v1": 10,
+      "melanoma-v1": 10
     },
     "minimum_span_cell_diameters": 6.0,
     "minimum_foci": 0
   },
-  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_population_density", "cellularity_depletion_gradient"]
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "local_population_density",
+    "cellularity_depletion_gradient"
+  ]
 }

@@ -717,6 +717,9 @@ def _prepare_compiler_work(
                 shape_mode=str(
                     params.get("directional_shape_mode", "linear_taper")
                 ),
+                centerline_first=bool(
+                    params.get("directional_centerline_first", False)
+                ),
             )
         if plan.primitive_id == "invasive-tumor-footprint-decrease-v1":
             required_scale = _natural_external_retreat_priority(

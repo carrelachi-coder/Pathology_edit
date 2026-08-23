@@ -6,6 +6,7 @@
       "capabilities": [
         {
           "closed_reason": "GLaS lacks explicit stromal authority and the attempted H&E/mask-derived gland-unit producer could not reliably distinguish lumen, mucin, necrosis and cleft. Keep tissue-level malignant-gland growth closed.",
+          "closure_category": null,
           "mechanism_id": "colorectal-gland-forming-front",
           "primitive_id": "tumor-burden-increase-v1",
           "production_status": "shadow_only",
@@ -19,6 +20,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "colorectal-local-population-modulation",
           "primitive_id": "cell-type-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -30,6 +32,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "colorectal-local-population-modulation",
           "primitive_id": "cell-type-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -41,6 +44,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "colorectal-local-population-modulation",
           "primitive_id": "cellularity-increase-v1",
           "production_status": "shadow_only",
@@ -52,6 +56,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "colorectal-local-population-modulation",
           "primitive_id": "cellularity-decrease-v1",
           "production_status": "shadow_only",
@@ -63,6 +68,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "colorectal-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -74,6 +80,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "colorectal-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -85,6 +92,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "colorectal-tumor-budding-front",
           "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "production_status": "shadow_only",
@@ -100,6 +108,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "colorectal-tumor-budding-front",
           "primitive_id": "peritumoral-small-cluster-increase-v1",
           "production_status": "shadow_only",
@@ -156,6 +165,7 @@
       "capabilities": [
         {
           "closed_reason": "Mask-side fine-label transition and native-pattern/lumen postconditions are implemented and tested; frozen-generator architecture response and pathology review are not yet validated.",
+          "closure_category": null,
           "mechanism_id": "prostate-gleason-architecture-progression",
           "primitive_id": "architecture-progression-v1",
           "production_status": "shadow_only",
@@ -170,28 +180,31 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-local-population-modulation",
           "primitive_id": "cell-type-abundance-increase-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Increase immune cells in the selected region."
+            "Increase connective tissue cells in the selected region."
           ],
           "status": "conditionally_supported"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-local-population-modulation",
           "primitive_id": "cell-type-abundance-decrease-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [],
           "simple_instructions": [
-            "Decrease immune cells in the selected region."
+            "Decrease connective tissue cells in the selected region."
           ],
           "status": "conditionally_supported"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-local-population-modulation",
           "primitive_id": "cellularity-increase-v1",
           "production_status": "shadow_only",
@@ -203,6 +216,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-local-population-modulation",
           "primitive_id": "cellularity-decrease-v1",
           "production_status": "shadow_only",
@@ -214,6 +228,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -225,6 +240,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -236,6 +252,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-local-tumor-clearance",
           "primitive_id": "local-invasive-clearance-v1",
           "production_status": "shadow_only",
@@ -250,6 +267,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-operational-tumor-retreat",
           "primitive_id": "invasive-tumor-footprint-decrease-v1",
           "production_status": "shadow_only",
@@ -263,6 +281,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-operational-tumor-retreat",
           "primitive_id": "residual-tumor-fragmentation-v1",
           "production_status": "shadow_only",
@@ -276,6 +295,7 @@
         },
         {
           "closed_reason": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist.",
+          "closure_category": null,
           "mechanism_id": "prostate-pattern-3-growth",
           "primitive_id": "cohesive-boundary-expansion-v1",
           "production_status": "shadow_only",
@@ -283,12 +303,13 @@
             "native_pattern_and_lumen_map"
           ],
           "simple_instructions": [
-            "Expand a separated Pattern-3 gland-unit boundary."
+            "Expand the tumor boundary locally."
           ],
           "status": "closed"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-pattern-4-growth",
           "primitive_id": "cohesive-boundary-expansion-v1",
           "production_status": "shadow_only",
@@ -302,6 +323,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-pattern-5-growth",
           "primitive_id": "cohesive-boundary-expansion-v1",
           "production_status": "shadow_only",
@@ -315,6 +337,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-pattern-5-infiltrative-front",
           "primitive_id": "infiltrative-nest-cord-extension-v1",
           "production_status": "shadow_only",
@@ -328,6 +351,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "prostate-pattern-5-peripheral-scatter",
           "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "production_status": "shadow_only",
@@ -382,7 +406,8 @@
       "annotation_profile_id": "ignite-semantic-v1",
       "capabilities": [
         {
-          "closed_reason": null,
+          "closed_reason": "IGNITE does not provide a digest-bound lumen or fibrovascular-core map. Acinar/papillary identity cannot be inferred from H&E because execution planning is mask-only.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "lung-acinar-papillary-growth",
           "primitive_id": "tumor-burden-increase-v1",
           "production_status": "shadow_only",
@@ -392,10 +417,11 @@
           "simple_instructions": [
             "Increase tumor burden."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-generic-immune-compartment-turnover",
           "primitive_id": "generic-immune-infiltrate-increase-v1",
           "production_status": "shadow_only",
@@ -407,6 +433,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-generic-immune-compartment-turnover",
           "primitive_id": "generic-immune-infiltrate-decrease-v1",
           "production_status": "shadow_only",
@@ -418,6 +445,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-intratumoral-necrosis-turnover",
           "primitive_id": "necrosis-appearance-v1",
           "production_status": "shadow_only",
@@ -429,6 +457,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-intratumoral-necrosis-turnover",
           "primitive_id": "necrosis-resolution-v1",
           "production_status": "shadow_only",
@@ -439,7 +468,8 @@
           "status": "conditionally_supported"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "IGNITE does not provide a digest-bound alveolar framework map. Lepidic growth cannot be executed without risking airspace filling, and H&E inference is prohibited.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "lung-lepidic-growth",
           "primitive_id": "tumor-burden-increase-v1",
           "production_status": "shadow_only",
@@ -449,10 +479,11 @@
           "simple_instructions": [
             "Increase tumor burden."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "cell-type-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -464,6 +495,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "cell-type-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -475,6 +507,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "cellularity-increase-v1",
           "production_status": "shadow_only",
@@ -486,6 +519,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "cellularity-decrease-v1",
           "production_status": "shadow_only",
@@ -497,6 +531,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -508,6 +543,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -519,6 +555,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -530,6 +567,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -541,6 +579,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "production_status": "shadow_only",
@@ -552,6 +591,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-local-population-modulation",
           "primitive_id": "peritumoral-small-cluster-increase-v1",
           "production_status": "shadow_only",
@@ -562,7 +602,8 @@
           "status": "conditionally_supported"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be a mask-authorized local clearance.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "lung-local-tumor-clearance",
           "primitive_id": "local-invasive-clearance-v1",
           "production_status": "shadow_only",
@@ -572,10 +613,11 @@
           "simple_instructions": [
             "Clear tumor in this local ROI."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-operational-tumor-retreat",
           "primitive_id": "stroma-increase-v1",
           "production_status": "shadow_only",
@@ -587,6 +629,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-operational-tumor-retreat",
           "primitive_id": "invasive-tumor-footprint-decrease-v1",
           "production_status": "shadow_only",
@@ -598,6 +641,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-operational-tumor-retreat",
           "primitive_id": "residual-tumor-fragmentation-v1",
           "production_status": "shadow_only",
@@ -609,17 +653,7 @@
         },
         {
           "closed_reason": null,
-          "mechanism_id": "lung-solid-squamous-growth",
-          "primitive_id": "tumor-burden-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Increase tumor burden."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-solid-squamous-growth",
           "primitive_id": "cohesive-boundary-expansion-v1",
           "production_status": "shadow_only",
@@ -631,6 +665,7 @@
         },
         {
           "closed_reason": "Void-aware complete-instance containment and separation are implemented and tested; digest-bound native airspace/alveolar inputs and frozen-generator STAS response are not yet validated.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "lung-stas-airspace-spread",
           "primitive_id": "structural-void-spread-v1",
           "production_status": "shadow_only",
@@ -645,6 +680,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "lung-stromal-invasive-front",
           "primitive_id": "infiltrative-nest-cord-extension-v1",
           "production_status": "shadow_only",
@@ -697,17 +733,7 @@
       "capabilities": [
         {
           "closed_reason": null,
-          "mechanism_id": "melanoma-cohesive-nest-sheet",
-          "primitive_id": "tumor-burden-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [],
-          "simple_instructions": [
-            "Increase tumor burden."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-cohesive-nest-sheet",
           "primitive_id": "cohesive-boundary-expansion-v1",
           "production_status": "shadow_only",
@@ -718,7 +744,8 @@
           "status": "conditionally_supported"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "PUMA epidermis labels do not identify a junctional melanoma component. Junctional/pagetoid spread cannot be inferred from H&E by the execution Planner; use the non-diagnostic Tumor-Stroma peritumoral-focus mechanism instead.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "melanoma-discohesive-junctional",
           "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "production_status": "shadow_only",
@@ -728,10 +755,11 @@
           "simple_instructions": [
             "Add scattered tumor cells near the tumor boundary."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution.",
+          "closure_category": "dataset_case_limited",
           "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
           "primitive_id": "necrosis-appearance-v1",
           "production_status": "shadow_only",
@@ -739,10 +767,11 @@
           "simple_instructions": [
             "Increase tumor necrosis."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution.",
+          "closure_category": "dataset_case_limited",
           "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
           "primitive_id": "necrosis-resolution-v1",
           "production_status": "shadow_only",
@@ -750,10 +779,11 @@
           "simple_instructions": [
             "Reduce tumor necrosis."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "primitive_id": "cell-type-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -765,6 +795,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "primitive_id": "cell-type-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -776,6 +807,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "primitive_id": "cellularity-increase-v1",
           "production_status": "shadow_only",
@@ -787,6 +819,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "primitive_id": "cellularity-decrease-v1",
           "production_status": "shadow_only",
@@ -798,6 +831,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -809,6 +843,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -820,6 +855,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -831,6 +867,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-local-population-modulation",
           "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -841,7 +878,8 @@
           "status": "conditionally_supported"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be mask-authorized local clearance.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "melanoma-local-tumor-clearance",
           "primitive_id": "local-invasive-clearance-v1",
           "production_status": "shadow_only",
@@ -851,10 +889,11 @@
           "simple_instructions": [
             "Clear tumor in this local ROI."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-operational-tumor-retreat",
           "primitive_id": "invasive-tumor-footprint-decrease-v1",
           "production_status": "shadow_only",
@@ -866,6 +905,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-operational-tumor-retreat",
           "primitive_id": "stroma-increase-v1",
           "production_status": "shadow_only",
@@ -877,6 +917,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-operational-tumor-retreat",
           "primitive_id": "residual-tumor-fragmentation-v1",
           "production_status": "shadow_only",
@@ -888,6 +929,19 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-peritumoral-small-focus",
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "production_status": "shadow_only",
+          "required_auxiliary_structures": [],
+          "simple_instructions": [
+            "Add scattered tumor cells near the tumor boundary."
+          ],
+          "status": "conditionally_supported"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "melanoma-peritumoral-small-focus",
           "primitive_id": "peritumoral-small-cluster-increase-v1",
           "production_status": "shadow_only",
@@ -939,7 +993,8 @@
       "annotation_profile_id": "orca-semantic-v1",
       "capabilities": [
         {
-          "closed_reason": null,
+          "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class and cannot certify a physiologically valid receiving substrate for an invasive cord without prohibited H&E interpretation.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-annotation-anchored-cord-extension",
           "primitive_id": "infiltrative-nest-cord-extension-v1",
           "production_status": "shadow_only",
@@ -947,10 +1002,11 @@
           "simple_instructions": [
             "Add a narrow connected tumor cord."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class. A mask-only Planner cannot guarantee that boundary expansion preserves mucosa, muscle, salivary tissue, nerves and vessels.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-cohesive-nest-cord",
           "primitive_id": "tumor-burden-increase-v1",
           "production_status": "shadow_only",
@@ -958,10 +1014,11 @@
           "simple_instructions": [
             "Increase tumor burden."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class. A mask-only Planner cannot guarantee that boundary expansion preserves mucosa, muscle, salivary tissue, nerves and vessels.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-cohesive-nest-cord",
           "primitive_id": "cohesive-boundary-expansion-v1",
           "production_status": "shadow_only",
@@ -969,10 +1026,11 @@
           "simple_instructions": [
             "Expand the tumor boundary locally."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "ORCA Other tissue cannot identify a safe stromal invasive front. Placing carcinoma nuclei outside Tumor would risk mucosa, muscle, salivary, nerve or vascular compartments that are not encoded.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-dispersed-invasive-front",
           "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
           "production_status": "shadow_only",
@@ -980,10 +1038,11 @@
           "simple_instructions": [
             "Add scattered tumor cells near the tumor boundary."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "ORCA Other tissue cannot identify a safe stromal invasive front. Placing carcinoma nuclei outside Tumor would risk mucosa, muscle, salivary, nerve or vascular compartments that are not encoded.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-dispersed-invasive-front",
           "primitive_id": "peritumoral-small-cluster-increase-v1",
           "production_status": "shadow_only",
@@ -991,10 +1050,11 @@
           "simple_instructions": [
             "Add peritumoral small tumor-cell clusters."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi, and ORCA has no specific receiving stroma label.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-local-carcinoma-clearance",
           "primitive_id": "local-invasive-clearance-v1",
           "production_status": "shadow_only",
@@ -1004,10 +1064,11 @@
           "simple_instructions": [
             "Clear tumor in this local ROI."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "primitive_id": "cell-type-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -1019,6 +1080,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "primitive_id": "cell-type-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -1030,6 +1092,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "primitive_id": "cellularity-increase-v1",
           "production_status": "shadow_only",
@@ -1041,6 +1104,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "primitive_id": "cellularity-decrease-v1",
           "production_status": "shadow_only",
@@ -1052,6 +1116,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -1063,6 +1128,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "primitive_id": "neoplastic-cell-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -1074,6 +1140,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
           "production_status": "shadow_only",
@@ -1085,6 +1152,7 @@
         },
         {
           "closed_reason": null,
+          "closure_category": null,
           "mechanism_id": "oral-scc-local-population-modulation",
           "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
           "production_status": "shadow_only",
@@ -1095,7 +1163,8 @@
           "status": "conditionally_supported"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would overclaim post-treatment physiology from a heterogeneous annotation label.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-operational-tumor-retreat",
           "primitive_id": "invasive-tumor-footprint-decrease-v1",
           "production_status": "shadow_only",
@@ -1103,10 +1172,11 @@
           "simple_instructions": [
             "Simulate a post-treatment response by decreasing tumor area."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         },
         {
-          "closed_reason": null,
+          "closed_reason": "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would overclaim post-treatment physiology from a heterogeneous annotation label.",
+          "closure_category": "annotation_limited",
           "mechanism_id": "oral-scc-operational-tumor-retreat",
           "primitive_id": "residual-tumor-fragmentation-v1",
           "production_status": "shadow_only",
@@ -1114,7 +1184,7 @@
           "simple_instructions": [
             "Simulate post-treatment residual disease by fragmenting residual tumor into controlled foci."
           ],
-          "status": "conditionally_supported"
+          "status": "closed"
         }
       ],
       "pathology_domain_id": "oral-squamous-cell-carcinoma-v1",

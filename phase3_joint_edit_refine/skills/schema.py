@@ -1048,7 +1048,7 @@ def _cellularity_depletion_contract(
             f"{mechanism_id}.cellularity_depletion_contract must be a mapping"
         )
     anchors = _strings(value, "allowed_anchor_types")
-    if set(anchors) - {"interface"}:
+    if set(anchors) - {"interface", "population_peak"}:
         raise JointContractError(
             f"{mechanism_id} contains an unsupported depletion anchor type"
         )
@@ -1128,9 +1128,9 @@ def _cellularity_depletion_contract(
         raise JointContractError(
             f"{mechanism_id} transition_subband_count must lie in [2,8]"
         )
-    if minimum_outer < 1:
+    if minimum_outer < 0:
         raise JointContractError(
-            f"{mechanism_id} depletion needs at least one outer reference instance"
+            f"{mechanism_id} minimum_outer_reference_instances must be non-negative"
         )
     resolution_mode = str(value.get("resolution_mode", "density_field"))
     if resolution_mode != "density_field":

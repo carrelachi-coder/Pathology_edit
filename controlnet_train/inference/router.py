@@ -35,7 +35,7 @@ class AgenticRoutingConfig:
     distributed_component_threshold: int = 8
     distributed_bbox_fraction: float = 0.60
     enable_gray_zone_dual_run: bool = True
-    cell_only_decrease_cross_first: bool = True
+    cell_only_decrease_cross_first: bool = False
     cell_only_increase_inpaint_first: bool = True
     generic_immune_decrease_cross_first: bool = True
 
@@ -246,6 +246,23 @@ def route_agentic_edit_request(
                     "cell-only decrease; start with Cross-v1 to preserve "
                     "nucleus-scale structure without local inpaint blur, with "
                     "inpaint retained as the bounded preservation fallback"
+                ),
+                features=features,
+            )
+        if cell_only_direction == "decrease":
+            candidates = (
+                ("inpaint", "cross")
+                if config.enable_gray_zone_dual_run
+                else ("inpaint",)
+            )
+            return AgenticRoutingDecision(
+                primary_mode="inpaint",
+                candidate_modes=candidates,
+                confidence=0.90,
+                reason=(
+                    "cell-only decrease; use inpaint over the expanded "
+                    "mask-derived context to remove the full stained nucleus "
+                    "footprint, with Cross-v1 retained as fallback"
                 ),
                 features=features,
             )

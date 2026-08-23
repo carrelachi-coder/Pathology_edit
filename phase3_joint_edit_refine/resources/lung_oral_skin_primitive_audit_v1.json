@@ -1,0 +1,2442 @@
+{
+  "organs": [
+    {
+      "annotation_labels": [
+        "Blood vessel",
+        "Immune infiltrate",
+        "Necrosis",
+        "Normal epithelium",
+        "Other tissue",
+        "Stroma",
+        "Tumor"
+      ],
+      "annotation_profile_id": "ignite-semantic-v1",
+      "dataset": "IGNITE",
+      "executable_unique_primitives": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "cohesive-boundary-expansion-v1",
+        "generic-immune-infiltrate-decrease-v1",
+        "generic-immune-infiltrate-increase-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-increase-v1",
+        "infiltrative-nest-cord-extension-v1",
+        "invasive-tumor-footprint-decrease-v1",
+        "necrosis-appearance-v1",
+        "necrosis-resolution-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+        "residual-tumor-fragmentation-v1",
+        "stroma-increase-v1"
+      ],
+      "organ": "lung",
+      "pairs": [
+        {
+          "closed_reason": "IGNITE does not provide a digest-bound lumen or fibrovascular-core map. Acinar/papillary identity cannot be inferred from H&E because execution planning is mask-only.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "lung-acinar-papillary-growth",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025",
+            "pathology-lung-iaslc-2011"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Lepidic, acinar, papillary, micropapillary and solid architectural patterns",
+              "title": "IASLC/ATS/ERS lung adenocarcinoma classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/21252716/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "tumor-burden-increase-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [
+            "lumen_or_fibrovascular_core_map"
+          ],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-generic-immune-compartment-turnover",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "generic-immune-infiltrate-increase-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-generic-immune-compartment-turnover",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "generic-immune-infiltrate-decrease-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-intratumoral-necrosis-turnover",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "necrosis-appearance-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-intratumoral-necrosis-turnover",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "necrosis-resolution-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": "IGNITE does not provide a digest-bound alveolar framework map. Lepidic growth cannot be executed without risking airspace filling, and H&E inference is prohibited.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "lung-lepidic-growth",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025",
+            "pathology-lung-iaslc-2011"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Lepidic, acinar, papillary, micropapillary and solid architectural patterns",
+              "title": "IASLC/ATS/ERS lung adenocarcinoma classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/21252716/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "tumor-burden-increase-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [
+            "alveolar_structure_map"
+          ],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cellularity-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cellularity-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "peritumoral-small-cluster-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be a mask-authorized local clearance.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "lung-local-tumor-clearance",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "local-invasive-clearance-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-operational-tumor-retreat",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "stroma-increase-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-operational-tumor-retreat",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-operational-tumor-retreat",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-solid-squamous-growth",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025",
+            "pathology-lung-iaslc-2011"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Lepidic, acinar, papillary, micropapillary and solid architectural patterns",
+              "title": "IASLC/ATS/ERS lung adenocarcinoma classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/21252716/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cohesive-boundary-expansion-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": "Void-aware complete-instance containment and separation are implemented and tested; digest-bound native airspace/alveolar inputs and frozen-generator STAS response are not yet validated.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "lung-stas-airspace-spread",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025",
+            "pathology-lung-stas-2015"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Micropapillary clusters, solid nests or single cells beyond the tumor edge in air spaces",
+              "title": "Tumor spread through air spaces in lung adenocarcinoma",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/25629637/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "structural-void-spread-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [
+            "alveolar_structure_map",
+            "airspace_void_map"
+          ],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "lung-stromal-invasive-front",
+          "pathology_source_ids": [
+            "pathology-lung-cap-v2025",
+            "pathology-lung-iaslc-2011"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasion, lepidic growth and spread through air spaces definitions",
+              "title": "CAP Protocol for Lung Carcinoma",
+              "uri": "https://documents.cap.org/protocols/Lung_5.1.0.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Lepidic, acinar, papillary, micropapillary and solid architectural patterns",
+              "title": "IASLC/ATS/ERS lung adenocarcinoma classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/21252716/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "infiltrative-nest-cord-extension-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        }
+      ],
+      "pathology_domain_id": "lung-carcinoma-v1",
+      "summary": {
+        "catalog_pair_count": 23,
+        "closed_pair_count": 4,
+        "executable_pair_count": 19,
+        "executable_unique_primitive_count": 19,
+        "five_case_review_target_count": 95
+      }
+    },
+    {
+      "annotation_labels": [
+        "Other tissue",
+        "Tumor"
+      ],
+      "annotation_profile_id": "orca-semantic-v1",
+      "dataset": "ORCA",
+      "executable_unique_primitives": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-increase-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1"
+      ],
+      "organ": "oral",
+      "pairs": [
+        {
+          "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class and cannot certify a physiologically valid receiving substrate for an invasive cord without prohibited H&E interpretation.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "oral-scc-annotation-anchored-cord-extension",
+          "pathology_source_ids": [
+            "pathology-oral-cap-v2024"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "infiltrative-nest-cord-extension-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference",
+            "general_vlm_invasive_pattern_diagnosis"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class. A mask-only Planner cannot guarantee that boundary expansion preserves mucosa, muscle, salivary tissue, nerves and vessels.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "oral-scc-cohesive-nest-cord",
+          "pathology_source_ids": [
+            "pathology-oral-cap-v2024"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "tumor-burden-increase-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": "ORCA Other tissue is a heterogeneous non-carcinoma class. A mask-only Planner cannot guarantee that boundary expansion preserves mucosa, muscle, salivary tissue, nerves and vessels.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "oral-scc-cohesive-nest-cord",
+          "pathology_source_ids": [
+            "pathology-oral-cap-v2024"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cohesive-boundary-expansion-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": "ORCA Other tissue cannot identify a safe stromal invasive front. Placing carcinoma nuclei outside Tumor would risk mucosa, muscle, salivary, nerve or vascular compartments that are not encoded.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "oral-scc-dispersed-invasive-front",
+          "pathology_source_ids": [
+            "pathology-oral-cap-v2024"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": "ORCA Other tissue cannot identify a safe stromal invasive front. Placing carcinoma nuclei outside Tumor would risk mucosa, muscle, salivary, nerve or vascular compartments that are not encoded.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "oral-scc-dispersed-invasive-front",
+          "pathology_source_ids": [
+            "pathology-oral-cap-v2024"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "peritumoral-small-cluster-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi, and ORCA has no specific receiving stroma label.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "oral-scc-local-carcinoma-clearance",
+          "pathology_source_ids": [
+            "pathology-oral-cap-v2024"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "local-invasive-clearance-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cellularity-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cellularity-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "oral-scc-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would overclaim post-treatment physiology from a heterogeneous annotation label.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "oral-scc-operational-tumor-retreat",
+          "pathology_source_ids": [
+            "pathology-oral-cap-v2024"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would overclaim post-treatment physiology from a heterogeneous annotation label.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "oral-scc-operational-tumor-retreat",
+          "pathology_source_ids": [
+            "pathology-oral-cap-v2024"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
+              "title": "CAP Protocol for Oral Cavity Carcinoma",
+              "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        }
+      ],
+      "pathology_domain_id": "oral-squamous-cell-carcinoma-v1",
+      "summary": {
+        "catalog_pair_count": 16,
+        "closed_pair_count": 8,
+        "executable_pair_count": 8,
+        "executable_unique_primitive_count": 8,
+        "five_case_review_target_count": 40
+      }
+    },
+    {
+      "annotation_labels": [
+        "Blood vessel",
+        "Necrosis",
+        "Normal epithelium",
+        "Stroma",
+        "Tumor"
+      ],
+      "annotation_profile_id": "puma-semantic-v1",
+      "dataset": "PUMA",
+      "executable_unique_primitives": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "cohesive-boundary-expansion-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-increase-v1",
+        "invasive-tumor-footprint-decrease-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+        "residual-tumor-fragmentation-v1",
+        "stroma-increase-v1"
+      ],
+      "organ": "skin",
+      "pairs": [
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-cohesive-nest-sheet",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cohesive-boundary-expansion-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": "PUMA epidermis labels do not identify a junctional melanoma component. Junctional/pagetoid spread cannot be inferred from H&E by the execution Planner; use the non-diagnostic Tumor-Stroma peritumoral-focus mechanism instead.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "melanoma-discohesive-junctional",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [
+            "epidermis_or_junction_map"
+          ],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution.",
+          "closure_category": "dataset_case_limited",
+          "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "necrosis-appearance-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution.",
+          "closure_category": "dataset_case_limited",
+          "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "necrosis-resolution-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cell-type-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cell-type-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cellularity-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "cellularity-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "neoplastic-cell-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "generic-inflammatory-cell-abundance-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-local-population-modulation",
+          "pathology_source_ids": [
+            "pathology-cellvit-five-class-taxonomy-2024",
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Pan-cancer nucleus-instance taxonomy supporting neoplastic, inflammatory, connective, dead and epithelial observation classes; these classes authorize only generic local population edits, not disease subtype or prognosis claims",
+              "title": "CellViT: Vision Transformers for precise cell segmentation and classification",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/38507894/",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "generic-inflammatory-cell-abundance-decrease-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi; automatic ROI invention would not be mask-authorized local clearance.",
+          "closure_category": "annotation_limited",
+          "mechanism_id": "melanoma-local-tumor-clearance",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "local-invasive-clearance-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [
+            "local_clearance_roi"
+          ],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "closed"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-operational-tumor-retreat",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "invasive-tumor-footprint-decrease-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-operational-tumor-retreat",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "stroma-increase-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-operational-tumor-retreat",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "residual-tumor-fragmentation-v1",
+          "primitive_scope": "tissue_and_cell",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-peritumoral-small-focus",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "peritumoral-neoplastic-scatter-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        },
+        {
+          "closed_reason": null,
+          "closure_category": null,
+          "mechanism_id": "melanoma-peritumoral-small-focus",
+          "pathology_source_ids": [
+            "pathology-melanoma-cap-v2025"
+          ],
+          "pathology_sources": [
+            {
+              "locator": "Invasive growth, microsatellite and regression definitions",
+              "title": "CAP Protocol for Invasive Melanoma Biopsy",
+              "uri": "https://documents.cap.org/documents/New-Cancer-Protocols-March-2025/Skin.Inv_Melanoma.Bx_1.1.0.0.REL.CAPCP.pdf",
+              "verification_status": "verified"
+            }
+          ],
+          "primitive_id": "peritumoral-small-cluster-increase-v1",
+          "primitive_scope": "cell_only",
+          "prohibited_observation_sources": [
+            "source_he_for_execution",
+            "unannotated_histology_inference"
+          ],
+          "required_auxiliary_structures": [],
+          "required_observation_sources": [
+            "instruction",
+            "semantic_intent",
+            "tissue_mask",
+            "nuclei_mask",
+            "scene_graph",
+            "candidate_certificate",
+            "skill_rules",
+            "user_roi",
+            "auxiliary_masks"
+          ],
+          "status": "executable_mask_only"
+        }
+      ],
+      "pathology_domain_id": "melanoma-v1",
+      "summary": {
+        "catalog_pair_count": 18,
+        "closed_pair_count": 4,
+        "executable_pair_count": 14,
+        "executable_unique_primitive_count": 14,
+        "five_case_review_target_count": 70
+      }
+    }
+  ],
+  "planner_authority": {
+    "allowed_rasters": [
+      "source_tissue_semantic_panel",
+      "source_tissue_component_panel",
+      "source_interface_anchor_panel",
+      "source_tissue_nuclei_panel",
+      "candidate_mask_condition_board"
+    ],
+    "compiler_owned": [
+      "pixels",
+      "coordinates",
+      "areas",
+      "counts",
+      "geometry",
+      "layouts",
+      "parameter_values"
+    ],
+    "forbidden_rasters": [
+      "source_he",
+      "reference_he",
+      "generated_he"
+    ],
+    "llm_decision_scope": "select only compiler-certified primitive/mechanism, interface, anchor, tissue-plan and cell-plan candidate IDs"
+  },
+  "schema_version": "lung-oral-skin-mask-only-primitive-audit-v1",
+  "visual_review_policy": {
+    "absolute_tissue_fallback_floor_fraction": 0.05,
+    "boundary_or_retreat_min_fraction": 0.08,
+    "boundary_or_retreat_target_fraction": 0.12,
+    "cases_per_executable_organ_primitive": 5,
+    "cell_only_minimum_delta_count_range": [
+      4,
+      12
+    ],
+    "cell_only_target_delta_count_range": [
+      6,
+      16
+    ],
+    "compartment_or_cord_min_fraction": 0.08,
+    "compartment_or_cord_target_fraction": 0.12,
+    "tiny_effect_action": "reject_case_not_relax_floor"
+  }
+}

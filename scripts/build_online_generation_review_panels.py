@@ -34,7 +34,7 @@ from scripts.build_g2_600_review_panels import (
 )
 
 TILE_SIZE = 512
-HEADER_HEIGHT = 176
+HEADER_HEIGHT = 140
 LABEL_HEIGHT = 36
 PANEL_TITLES = (
     "Source H&E",
@@ -164,6 +164,9 @@ def resolve_records(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "semantic_matches_tissue_difference": bool(
                     change_regions.get("semantic_matches_tissue_difference")
                 ),
+                "semantic_matches_joint_difference": bool(
+                    change_regions.get("semantic_matches_joint_difference")
+                ),
                 "selected_model": str(
                     selected.get("requested_mode")
                     or workflow.get("image_generation_provenance", {}).get(
@@ -277,7 +280,7 @@ def preflight_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             }
         )
     return {
-        "schema_version": "online-generation-review-preflight-v1",
+        "schema_version": "online-generation-review-preflight-v2",
         "passed": not failures,
         "case_count": len(records),
         "failure_count": len(failures),
@@ -450,7 +453,7 @@ header{position:sticky;top:0;background:#fff;padding:12px 18px;border-bottom:1px
 main{padding:16px}article{background:#fff;margin:0 0 18px;padding:10px;border:1px solid #bbb}
 h1,h2{margin:0 0 8px}h2{font-size:16px}img{display:block;width:100%;height:auto}
 </style></head><body><header><h1>Online Generator review panels</h1>
-<div>Yellow: semantic tissue change. Cyan: generator-only support boundary.</div></header>
+<div>Yellow: semantic tissue+nuclei change. Cyan: generator-only support boundary.</div></header>
 <main>""" + "\n".join(cards) + "</main></body></html>"
     path.write_text(document, encoding="utf-8")
 

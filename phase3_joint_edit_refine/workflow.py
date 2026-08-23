@@ -449,8 +449,7 @@ class JointPathologyEditWorkflow:
             schema = self.mask_skills.annotation_schema(case.annotation_profile_id)
             reference_shape_authority = None
             if (
-                case.cell_count_extent_budget is not None
-                and self.cell_executor is not None
+                self.cell_executor is not None
                 and hasattr(self.cell_executor, "config")
             ):
                 resolved_classes = tuple(
@@ -468,6 +467,19 @@ class JointPathologyEditWorkflow:
                     or "peritumoral" in case.primitive_id
                 ):
                     resolved_classes = (1,)
+                primitive_contract = self.joint_skills.primitives.get(
+                    case.primitive_id
+                )
+                if primitive_contract is not None:
+                    resolved_classes = tuple(
+                        sorted(
+                            set(resolved_classes)
+                            | set(primitive_contract.target_cell_classes)
+                            | set(
+                                primitive_contract.required_source_clearance_classes
+                            )
+                        )
+                    )
                 if not resolved_classes:
                     resolved_classes = (1, 2, 3, 4, 5)
                 reference_shape_authority = (
@@ -1691,9 +1703,9 @@ class JointPathologyEditWorkflow:
                         # hard gate except the preferred joint interval, and
                         # its smallest complete-instance closure remains
                         # inside the declared hard range. Certify that batch
-                        # directly for the two visible-regression primitives;
+                        # directly for the hard-range-safe visible structure;
                         # shrinking and recompiling the tissue edit would
-                        # weaken the intended footprint or destroy a valid
+                        # weaken the intended footprint/cord or destroy a valid
                         # fragmentation seam merely to chase a soft target.
                         joint_area_feedback_count += 1
                         if activate_rebalance_exhausted_area_fallback():
@@ -2178,6 +2190,17 @@ class JointPathologyEditWorkflow:
                 budget, budget_metadata = _apply_glas_visible_cell_budget(
                     candidate_case,
                     primitive_id=primitive_id,
+                    budget=budget,
+                    metadata=budget_metadata,
+                )
+                budget, budget_metadata = _apply_profile_visible_cell_budget(
+                    candidate_case,
+                    primitive_id=primitive_id,
+                    minimum_delta_count=(
+                        primitive_contract.minimum_effect_delta_count_for(
+                            candidate_case.pathology_domain_id
+                        )
+                    ),
                     budget=budget,
                     metadata=budget_metadata,
                 )
@@ -3362,17 +3385,18 @@ class JointPathologyEditWorkflow:
             )
             if references:
                 references_by_class[int(class_id)] = tuple(references)
+        primitive_minimum_add_count = int(
+            bundle.primitive.minimum_effect_delta_count_for(
+                case.pathology_domain_id
+            )
+        )
         minimum_acceptable_count = (
             max(
-                int(budget.min_delta_count),
-                int(
-                    bundle.primitive.minimum_effect_delta_count_for(
-                        case.pathology_domain_id
-                    )
-                ),
+                int(budget.min_delta_count) if budget is not None else 0,
+                primitive_minimum_add_count,
             )
-            if budget is not None
-            and is_addition
+            if is_addition
+            and (budget is not None or primitive_minimum_add_count > 0)
             else None
         )
         certified = certify_compiled_cell_program_feasibility(
@@ -3385,17 +3409,37 @@ class JointPathologyEditWorkflow:
             minimum_acceptable_add_count=minimum_acceptable_count,
             allow_final_capacity_refinement=(
                 case.annotation_profile_id
-                in {"glas-gland-v1", "panda-gleason-v1"}
+                in {
+                    "glas-gland-v1",
+                    "panda-gleason-v1",
+                    "ignite-semantic-v1",
+                    "orca-semantic-v1",
+                    "puma-semantic-v1",
+                }
             ),
             relax_group_preflight=(
                 case.annotation_profile_id
-                in {"glas-gland-v1", "panda-gleason-v1"}
+                in {
+                    "glas-gland-v1",
+                    "panda-gleason-v1",
+                    "ignite-semantic-v1",
+                    "orca-semantic-v1",
+                    "puma-semantic-v1",
+                }
             ),
         )
         if not certified.passed:
+            packing = certified.exact_packing_certificate or {}
             raise JointContractError(
                 "cell-only exact packing preflight failed before execution: "
                 + ", ".join(certified.reasons)
+                + (
+                    f" [placed={packing.get('placed_count', 0)}/"
+                    f"requested={packing.get('requested_count', 0)}, "
+                    f"center_pixels={packing.get('center_region_pixels', 0)}, "
+                    f"minimum_separation_px="
+                    f"{packing.get('minimum_center_separation_px', 0)}]"
+                )
             )
         # NOTE: Premature witness spatial audit (effect_span / effect_foci)
         # was here but was removed.  The packing certificate's distance-based
@@ -3499,6 +3543,26 @@ class JointPathologyEditWorkflow:
             for zone in candidate_zones:
                 provenance = {"joint_population_zone_id": zone.zone_id}
                 if requires_depletion_anchor:
+                    if (
+                        depletion is not None
+                        and "population_peak"
+                        in depletion.allowed_anchor_types
+                    ):
+                        variants.append(
+                            {
+                                **provenance,
+                                "cellularity_depletion_anchor": {
+                                    "type": "population_peak",
+                                    "interface_ids": [],
+                                    "anchor_ids": [],
+                                    "observation": (
+                                        "deterministic mask-only local "
+                                        "population-density peak"
+                                    ),
+                                    "confidence": 1.0,
+                                },
+                            }
+                        )
                     touching = [
                         interface
                         for interface in scene.tissue.graph.interfaces
@@ -3705,7 +3769,12 @@ class JointPathologyEditWorkflow:
                 == "prostate-pattern-5-peripheral-scatter"
             )
             exhaustive_peritumoral = bool(
-                case.annotation_profile_id == "glas-gland-v1"
+                case.annotation_profile_id
+                in {
+                    "glas-gland-v1",
+                    "ignite-semantic-v1",
+                    "puma-semantic-v1",
+                }
                 and case.primitive_id
                 in {
                     "peritumoral-neoplastic-scatter-increase-v1",
@@ -3755,11 +3824,11 @@ class JointPathologyEditWorkflow:
                                 "joint_anchor_ids": list(grouped_anchors),
                             }
                         )
-            if prostate_scatter:
-                # PANDA may split one Pattern-5 outer boundary across several
-                # adjacent Stroma components.  Scatter belongs to the selected
-                # tumor component's complete external boundary, so certify
-                # that union before its local sub-arcs.
+            if prostate_scatter or exhaustive_peritumoral:
+                # A semantic mask may split one tumor outer boundary across
+                # several adjacent host components. Scatter/cluster edits
+                # belong to that tumor component's complete external boundary,
+                # so certify the union before its local sub-arcs.
                 interfaces_by_tumor: dict[str, list[Any]] = defaultdict(list)
                 for interface in interfaces_to_consider:
                     tumor_component_id = (
@@ -3872,6 +3941,9 @@ class JointPathologyEditWorkflow:
                 compiler_anchor = CompilerOwnedDepletionAnchor.issue(
                     case=candidate_case,
                     zone_id=str(candidate_case.provenance["joint_population_zone_id"]),
+                    anchor_type=str(
+                        compiler_anchor_payload.get("type", "interface")
+                    ),
                     interface_ids=compiler_anchor_payload.get(
                         "interface_ids", ()
                     ),
@@ -4043,7 +4115,7 @@ class JointPathologyEditWorkflow:
                             == "breast-peritumoral-small-cluster"
                             else GLAS_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
                             if case.annotation_profile_id == "glas-gland-v1"
-                            else SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS
+                            else BREAST_SMALL_CLUSTER_MINIMUM_ANCHOR_SEPARATION_DIAMETERS
                         ),
                         strict_breast_small_cluster=(
                             bundle.mechanism.mechanism_id
@@ -4340,6 +4412,11 @@ def _retain_visible_regression_whole_instance_closure(
                     "cohesive-boundary-expansion-v1",
                 }
             )
+            or (
+                annotation_profile_id == "ignite-semantic-v1"
+                and primitive_id
+                == "infiltrative-nest-cord-extension-v1"
+            )
         )
         and fallback_policy == "max_feasible_below_target"
         and values
@@ -4606,9 +4683,8 @@ def _apply_glas_visible_cell_budget(
     """Apply the reviewed post-7c6 GLaS saliency budgets.
 
     Explicit manifest budgets remain authoritative because this helper is used
-    only after the workflow derives a missing budget.  Sparse cases that cannot
-    reach the new minimum fail deterministic preflight rather than presenting a
-    tiny edit as success.
+    only after the workflow derives a missing budget. Sparse cases fail
+    deterministic preflight instead of presenting a tiny edit as success.
     """
 
     if case.annotation_profile_id != "glas-gland-v1":
@@ -4695,6 +4771,80 @@ def _apply_glas_visible_cell_budget(
         **metadata,
         "pre_scale_budget": budget.__dict__,
         "policy_id": "glas-visible-cell-effect-budget-v4-amplitude",
+        "authority": "system_owned_profile_specific_budget",
+        "budget": visible.__dict__,
+    }
+
+
+def _apply_profile_visible_cell_budget(
+    case: JointCaseContext,
+    *,
+    primitive_id: str,
+    minimum_delta_count: int,
+    budget: CellCountExtentBudget,
+    metadata: dict[str, Any],
+) -> tuple[CellCountExtentBudget, dict[str, Any]]:
+    """Apply reviewed visibility floors to the non-Breast mask profiles."""
+
+    if case.annotation_profile_id not in {
+        "ignite-semantic-v1",
+        "orca-semantic-v1",
+        "puma-semantic-v1",
+    }:
+        return budget, metadata
+
+    local_population = {
+        "cell-type-abundance-increase-v1",
+        "cell-type-abundance-decrease-v1",
+        "cellularity-increase-v1",
+        "cellularity-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "generic-inflammatory-cell-abundance-increase-v1",
+        "generic-inflammatory-cell-abundance-decrease-v1",
+    }
+    if primitive_id in local_population:
+        minimum = max(1, int(minimum_delta_count))
+        target = minimum + 4
+        visible = CellCountExtentBudget(
+            target_delta_count=target,
+            min_delta_count=minimum,
+            max_delta_count=target + 8,
+            maximum_extent_px=max(384, budget.maximum_extent_px),
+            interface_min_px=0,
+            interface_max_px=max(48, budget.interface_max_px),
+            minimum_effect_span_px=0,
+            minimum_effect_foci=0,
+        )
+    elif primitive_id == "peritumoral-neoplastic-scatter-increase-v1":
+        visible = CellCountExtentBudget(
+            target_delta_count=6,
+            min_delta_count=4,
+            max_delta_count=8,
+            maximum_extent_px=max(144, budget.maximum_extent_px),
+            interface_min_px=max(4, budget.interface_min_px),
+            interface_max_px=max(48, budget.interface_max_px),
+            minimum_effect_span_px=max(32, budget.minimum_effect_span_px),
+            minimum_effect_foci=max(4, budget.minimum_effect_foci),
+        )
+    elif primitive_id == "peritumoral-small-cluster-increase-v1":
+        visible = CellCountExtentBudget(
+            target_delta_count=8,
+            min_delta_count=6,
+            max_delta_count=10,
+            maximum_extent_px=max(160, budget.maximum_extent_px),
+            interface_min_px=max(4, budget.interface_min_px),
+            interface_max_px=max(48, budget.interface_max_px),
+            minimum_effect_span_px=max(32, budget.minimum_effect_span_px),
+            minimum_effect_foci=max(2, budget.minimum_effect_foci),
+        )
+    else:
+        return budget, metadata
+
+    return visible, {
+        **metadata,
+        "pre_scale_budget": budget.__dict__,
+        "policy_id": "mask-review-visible-cell-effect-budget-v4",
         "authority": "system_owned_profile_specific_budget",
         "budget": visible.__dict__,
     }

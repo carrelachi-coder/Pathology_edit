@@ -573,7 +573,11 @@ class CellEditPlan:
             raise JointContractError("allowed cell classes must use internal IDs 1..5")
         if not self.supporting_rule_ids:
             raise JointContractError("cell plan must cite supporting joint rules")
-        if self.spatial_anchor_type not in {"not_applicable", "interface"}:
+        if self.spatial_anchor_type not in {
+            "not_applicable",
+            "interface",
+            "population_peak",
+        }:
             raise JointContractError("unsupported cell spatial anchor type")
         if self.spatial_anchor_type == "interface":
             if not self.interface_ids or not self.anchor_ids:
@@ -583,6 +587,15 @@ class CellEditPlan:
             if not self.spatial_anchor_observation:
                 raise JointContractError(
                     "interface-anchored cell plan requires a visible observation"
+                )
+        if self.spatial_anchor_type == "population_peak":
+            if self.interface_ids or self.anchor_ids:
+                raise JointContractError(
+                    "population-peak cell plan cannot claim interface anchors"
+                )
+            if not self.spatial_anchor_observation:
+                raise JointContractError(
+                    "population-peak cell plan requires a mask-derived observation"
                 )
 
     @classmethod

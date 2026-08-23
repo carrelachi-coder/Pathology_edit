@@ -28,7 +28,7 @@ from .models import JointContractError
 class JointGeneratorRoutingConfig:
     inpaint_max_generation_support_fraction: float = 0.12
     force_cross_min_generation_support_fraction: float = 0.50
-    cell_only_decrease_cross_first: bool = True
+    cell_only_decrease_cross_first: bool = False
     cell_only_increase_inpaint_first: bool = True
     generic_immune_decrease_cross_first: bool = True
 
@@ -93,6 +93,13 @@ def route_joint_handoff(manifest: dict[str, Any], *, config: JointGeneratorRouti
             False,
             "cell-only decrease starts with Cross-v1; "
             "inpaint remains the agentic fallback",
+        )
+    elif cell_only_decrease:
+        mode, force_cross, reason = (
+            "inpaint",
+            False,
+            "cell-only decrease uses expanded-context inpaint to clear the "
+            "full stained nucleus footprint; Cross-v1 remains fallback",
         )
     elif cell_only_increase and config.cell_only_increase_inpaint_first:
         mode, force_cross, reason = (

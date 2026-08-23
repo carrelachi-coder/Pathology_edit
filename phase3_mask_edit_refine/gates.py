@@ -588,6 +588,11 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
         context.plan.tool_program.parameter_ranges.get("tissue_geometry_mode")
         == "residual_fragmentation"
     )
+    directional_centerline_first = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "directional_centerline_first", False
+        )
+    )
     if isinstance(replay, dict):
         replay_parts = context.candidate.tool_trace.get("parts", ())
         replay_expected = {
@@ -632,6 +637,11 @@ def _check_execution_contract_fidelity(context: GateContext) -> GateCheck:
                 "tissue_geometry_mode"
             )
             == "annotation_anchored_narrow_connected_extension"
+        )
+        directional_centerline_first = bool(
+            context.plan.tool_program.parameter_ranges.get(
+                "directional_centerline_first", False
+            )
         )
         effective_min_coverage = (
             max(0.02, execution.min_anchor_coverage_fraction)
@@ -1523,6 +1533,11 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
             "fragmentation_full_selected_component_support", False
         )
     )
+    directional_centerline_first = bool(
+        context.plan.tool_program.parameter_ranges.get(
+            "directional_centerline_first", False
+        )
+    )
     max_ratio = min(
         6.0
         if directional_projection
@@ -1539,7 +1554,11 @@ def _check_depth_span_ratio(context: GateContext) -> GateCheck:
     depth_supported = bool(
         full_fragmentation_component_support or max_depth <= band_max + 1e-6
     )
-    passed = depth_supported and ratio <= max_ratio
+    # A source-scaled narrow IGNITE cord is intentionally deep relative to its
+    # attachment span; its dedicated raster audit owns the shape ratio.
+    passed = depth_supported and (
+        directional_centerline_first or ratio <= max_ratio
+    )
     return _result(
         "depth_span_ratio",
         passed,

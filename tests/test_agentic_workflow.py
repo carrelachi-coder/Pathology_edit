@@ -27,6 +27,7 @@ from scripts.run_agentic_edit_workflow import (
     _generation_backend_mode,
     _load_and_validate_inputs,
     _prepare_verification_runtime,
+    _resolve_agentic_routing_context,
     _selected_image_generation_provenance,
     _run_segmentator,
     _validate_image_generation_contract,
@@ -52,6 +53,71 @@ from controlnet_train.cli.eval_controlnet_flux_cross_v1 import (
 
 
 class AgenticRoutingTests(unittest.TestCase):
+    def test_cli_routes_nuclei_only_increase_instead_of_noop(self):
+        tissue = np.ones((16, 16), dtype=np.uint8)
+        source_nuclei = np.zeros((16, 16), dtype=np.uint8)
+        target_nuclei = source_nuclei.copy()
+        target_nuclei[6:10, 6:10] = 1
+        semantic = source_nuclei != target_nuclei
+
+        routing = _resolve_agentic_routing_context(
+            {
+                "reference_tissue": tissue,
+                "target_tissue": tissue.copy(),
+                "reference_nuclei": source_nuclei,
+                "target_nuclei": target_nuclei,
+                "semantic_change_region": semantic,
+                "generation_region_policy": {
+                    "primitive_id": "cellularity-increase-v1"
+                },
+            }
+        )
+
+        self.assertEqual(routing["routing_change_scope"], "nuclei")
+        self.assertEqual(routing["routing_cell_only_direction"], "increase")
+        route = route_agentic_edit_request(
+            tissue,
+            tissue,
+            change_region=routing["routing_change_region"],
+            change_scope=routing["routing_change_scope"],
+            cell_only_direction=routing["routing_cell_only_direction"],
+            edit_primitive_id=routing["routing_edit_primitive_id"],
+        )
+        self.assertEqual(route.primary_mode, "inpaint")
+        self.assertNotEqual(route.primary_mode, "noop")
+
+    def test_nuclei_only_decrease_routes_to_expanded_context_inpaint(self):
+        tissue = np.ones((32, 32), dtype=np.uint8)
+        source_nuclei = np.zeros((32, 32), dtype=np.uint8)
+        source_nuclei[12:20, 12:20] = 2
+        target_nuclei = np.zeros_like(source_nuclei)
+        semantic = source_nuclei != target_nuclei
+
+        routing = _resolve_agentic_routing_context(
+            {
+                "reference_tissue": tissue,
+                "target_tissue": tissue.copy(),
+                "reference_nuclei": source_nuclei,
+                "target_nuclei": target_nuclei,
+                "semantic_change_region": semantic,
+                "generation_region_policy": {
+                    "primitive_id": "cell-type-abundance-decrease-v1"
+                },
+            }
+        )
+        route = route_agentic_edit_request(
+            tissue,
+            tissue,
+            change_region=routing["routing_change_region"],
+            change_scope=routing["routing_change_scope"],
+            cell_only_direction=routing["routing_cell_only_direction"],
+            edit_primitive_id=routing["routing_edit_primitive_id"],
+        )
+
+        self.assertEqual(route.primary_mode, "inpaint")
+        self.assertEqual(route.candidate_modes, ("inpaint", "cross"))
+        self.assertIn("full stained nucleus footprint", route.reason)
+
     def test_cellvit_zero_detection_signal_is_explicit(self):
         self.assertTrue(
             _detector_reported_zero_cells(

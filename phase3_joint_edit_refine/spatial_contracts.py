@@ -9,6 +9,7 @@ SMALL_CLUSTER_MAXIMUM_FOCUS_SIZE = 4
 # Members of one budding-like focus must remain visibly adjacent.  Separate
 # foci use the wider independent-focus graph distance below.
 SMALL_CLUSTER_MEMBER_RADIUS_DIAMETERS = 1.05
+COMPACT_PAIR_SMALL_CLUSTER_MEMBER_SPACING_DIAMETERS = 0.90
 SMALL_CLUSTER_WITHIN_FOCUS_LINK_DIAMETERS = 1.35
 SMALL_CLUSTER_MAXIMUM_FOCUS_DIAMETER_DIAMETERS = 2.25
 SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS = 1.6
@@ -141,5 +142,8 @@ def small_cluster_minimum_anchor_separation_px(
     nominal = max(1.0, float(nominal_nucleus_diameter_px))
     return (
         2.0 * small_cluster_member_spacing_px(nominal)
-        + small_cluster_within_focus_link_px(nominal)
+        + max(
+            small_cluster_within_focus_link_px(nominal),
+            SMALL_CLUSTER_BETWEEN_FOCUS_SEPARATION_DIAMETERS * nominal,
+        )
     )

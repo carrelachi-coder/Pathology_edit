@@ -387,6 +387,66 @@ class JointSkillRepository:
                 "execution scope closes unknown mechanisms: "
                 + ", ".join(sorted(unknown_closed))
             )
+        mechanism_categories = self.execution_scope.get(
+            "closed_mechanism_categories", {}
+        )
+        pair_categories = self.execution_scope.get(
+            "closed_pair_categories", {}
+        )
+        allowed_categories = {
+            "annotation_limited",
+            "dataset_case_limited",
+            "implementation_defect",
+            "superseded_mechanism",
+        }
+        for name, categories, closed_ids in (
+            ("mechanism", mechanism_categories, set(closed_mechanisms)),
+            (
+                "pair",
+                pair_categories,
+                set(self.execution_scope.get("closed_pairs", {})),
+            ),
+        ):
+            if not isinstance(categories, dict) or not all(
+                isinstance(item_id, str)
+                and category in allowed_categories
+                for item_id, category in categories.items()
+            ):
+                raise JointContractError(
+                    f"closed {name} categories contain an invalid value"
+                )
+            unknown_categories = set(categories) - closed_ids
+            if unknown_categories:
+                raise JointContractError(
+                    f"closed {name} categories reference open IDs: "
+                    + ", ".join(sorted(unknown_categories))
+                )
+        closed_pairs = self.execution_scope.get("closed_pairs", {})
+        if not isinstance(closed_pairs, dict) or not all(
+            isinstance(pair_id, str)
+            and isinstance(reason, str)
+            and bool(reason.strip())
+            for pair_id, reason in closed_pairs.items()
+        ):
+            raise JointContractError(
+                "closed pair scope must map mechanism::primitive IDs to reasons"
+            )
+        for pair_id in closed_pairs:
+            parts = pair_id.split("::")
+            if len(parts) != 2:
+                raise JointContractError(
+                    f"invalid closed execution pair ID: {pair_id}"
+                )
+            mechanism_id, primitive_id = parts
+            mechanism = self.mechanisms.get(mechanism_id)
+            if mechanism is None or primitive_id not in self.primitives:
+                raise JointContractError(
+                    f"execution scope closes unknown pair: {pair_id}"
+                )
+            if primitive_id not in mechanism.supported_primitives:
+                raise JointContractError(
+                    f"execution scope closes unsupported pair: {pair_id}"
+                )
         semantic_intents = self.execution_scope.get("semantic_intents", {})
         if not isinstance(semantic_intents, dict):
             raise JointContractError("semantic intent scope must be a mapping")
@@ -532,6 +592,19 @@ class JointSkillRepository:
         )
         return str(reason) if reason else None
 
+    def execution_closure_category(
+        self, *, primitive_id: str, mechanism_id: str
+    ) -> str | None:
+        """Return the typed reason an unavailable pair remains closed."""
+
+        if mechanism_id in self.execution_scope.get("closed_mechanisms", {}):
+            return self.execution_scope.get(
+                "closed_mechanism_categories", {}
+            ).get(mechanism_id)
+        return self.execution_scope.get("closed_pair_categories", {}).get(
+            f"{mechanism_id}::{primitive_id}"
+        )
+
     def execution_selection_reason(
         self, *, primitive_id: str, mechanism_id: str
     ) -> str | None:
@@ -555,6 +628,11 @@ class JointSkillRepository:
             return mechanism_reason
         if primitive_id not in mechanism.supported_primitives:
             return "joint mechanism does not support the selected primitive"
+        pair_reason = self.execution_scope.get("closed_pairs", {}).get(
+            f"{mechanism_id}::{primitive_id}"
+        )
+        if pair_reason:
+            return str(pair_reason)
         return None
 
     def _load_mechanisms(self) -> dict[str, JointMechanismSkill]:

@@ -24,7 +24,12 @@
   "cell_effect_contract": {
     "minimum_delta_count": 12,
     "minimum_span_cell_diameters": 6.0,
-    "minimum_foci": 0
+    "minimum_foci": 0,
+    "minimum_delta_count_by_pathology_domain": {
+      "lung-carcinoma-v1": 6,
+      "oral-squamous-cell-carcinoma-v1": 10,
+      "melanoma-v1": 10
+    }
   },
   "required_checker_ids": [
     "primitive_semantics",

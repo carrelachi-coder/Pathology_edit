@@ -31,7 +31,6 @@ from phase3_joint_edit_refine.auxiliary import materialize_profile_auxiliaries
 from phase3_joint_edit_refine.models import CellCountExtentBudget, JointCaseContext
 from phase3_joint_edit_refine.nuclei import (
     _local_contour,
-    _semantic_instance_labels,
     iter_instances,
     load_native_instances,
     load_nuclei_mask,
@@ -44,7 +43,7 @@ from phase3_mask_edit_refine.visualization import id_mask_to_rgb
 
 SCHEMA_VERSION = "glas-cross-meta-primitive-mask-review-v3"
 NATIVE_PARTITION_ALGORITHM = (
-    "cellvit-clipped-semantic-exact-raster-partition-v3"
+    "cellvit-seeded-semantic-exact-raster-partition-v7"
 )
 GRADE_BY_FINE_ID = {
     5: "normal",
@@ -429,6 +428,7 @@ def _native_authority(
 ) -> dict[str, Any]:
     sample_id = str(row["sample_id"])
     cached = cache.get(sample_id)
+    root = output_root / "native_authority" / sample_id
     if (
         isinstance(cached, dict)
         and Path(str(cached.get("cells_json"))).is_file()
@@ -436,8 +436,35 @@ def _native_authority(
         == NATIVE_PARTITION_ALGORITHM
     ):
         return cached
-    root = output_root / "native_authority" / sample_id
     output_mask = root / "cellvit_native_mask.png"
+    cached_raw = (
+        Path(str(cached.get("raw_cells_json")))
+        if isinstance(cached, dict) and cached.get("raw_cells_json")
+        else None
+    )
+    if cached_raw is not None and cached_raw.is_file() and output_mask.is_file():
+        semantic = Path(str(row["source_nuclei_mask"]))
+        bound_cells = root / "semantic_bound_native_cells.json"
+        binding = _bind_native_geometry(
+            raw_cells_json=cached_raw,
+            semantic_path=semantic,
+            output_path=bound_cells,
+        )
+        validation = _validate_native_authority(bound_cells, semantic)
+        if validation["status"] == "verified":
+            rebound = {
+                "status": "verified",
+                "cells_json": str(bound_cells.resolve()),
+                "cells_json_sha256": sha256_file(bound_cells),
+                "raw_cells_json": str(cached_raw.resolve()),
+                "raw_cells_json_sha256": sha256_file(cached_raw),
+                "cellvit_mask": str(output_mask.resolve()),
+                "cellvit_mask_sha256": sha256_file(output_mask),
+                "class_binding": binding,
+                "validation": validation,
+            }
+            cache[sample_id] = rebound
+            return rebound
     summary_path = output_mask.with_suffix(".cellvit_single_patch.json")
     command = [
         sys.executable,
@@ -594,11 +621,17 @@ def _semantic_partition_from_native_seeds(
     semantic: np.ndarray,
     accepted_components: list[tuple[int, np.ndarray]],
 ) -> tuple[np.ndarray, list[dict[str, int | str]], int]:
-    """Preserve clipped CellViT shapes and partition all residual semantics."""
+    """Use CellViT seeds to partition complete semantic nucleus instances.
+
+    A CellViT contour is only a seed after clipping to the frozen semantic
+    class.  Remaining pixels in the same semantic connected component belong
+    to that seeded instance (or are split between multiple seeds by nearest
+    seed).  Only components with no CellViT seed remain semantic-unseeded.
+    """
 
     semantic = np.asarray(semantic, dtype=np.uint8)
     label_map = np.zeros(semantic.shape, dtype=np.int32)
-    records: list[dict[str, int | str]] = []
+    seed_records: dict[int, dict[str, int | str]] = {}
     next_label = 0
     native_seed_count = 0
     for class_id, component in accepted_components:
@@ -607,52 +640,63 @@ def _semantic_partition_from_native_seeds(
             & (semantic == int(class_id))
             & (label_map == 0)
         )
-        if np.count_nonzero(clipped) < 3:
-            continue
-        next_label += 1
-        label_map[clipped] = next_label
-        records.append(
-            {"label_id": next_label, "type": int(class_id), "seed_source": "cellvit"}
+        clipped_parts, clipped_count = ndimage.label(
+            clipped,
+            structure=np.ones((3, 3), dtype=np.uint8),
         )
-        native_seed_count += 1
-    for class_id in range(1, 6):
-        semantic_instances, _ = _semantic_instance_labels(
-            semantic == class_id
-        )
-        seeded_semantic_ids = {
-            int(value)
-            for value in np.unique(
-                semantic_instances[
-                    (semantic == class_id) & (label_map > 0)
-                ]
-            )
-            if int(value) > 0
-        }
-        residual = (semantic == class_id) & (label_map == 0)
-        fallback, fallback_count = _semantic_instance_labels(residual)
-        for fallback_id in range(1, fallback_count + 1):
-            component = fallback == fallback_id
-            if not np.any(component):
+        for clipped_id in range(1, clipped_count + 1):
+            clipped_part = clipped_parts == clipped_id
+            if np.count_nonzero(clipped_part) < 3:
                 continue
             next_label += 1
-            label_map[component] = next_label
-            component_semantic_ids = {
-                int(value)
-                for value in np.unique(semantic_instances[component])
-                if int(value) > 0
+            label_map[clipped_part] = next_label
+            seed_records[next_label] = {
+                "label_id": next_label,
+                "type": int(class_id),
+                "seed_source": "cellvit",
             }
-            seed_source = (
-                "semantic_seeded_residual"
-                if component_semantic_ids & seeded_semantic_ids
-                else "semantic_unseeded"
+            native_seed_count += 1
+    records: list[dict[str, int | str]] = []
+    for class_id in range(1, 6):
+        semantic_instances, semantic_count = ndimage.label(
+            semantic == class_id,
+            structure=np.ones((3, 3), dtype=np.uint8),
+        )
+        for semantic_id in range(1, semantic_count + 1):
+            component = semantic_instances == semantic_id
+            seed_labels = sorted(
+                int(value)
+                for value in np.unique(label_map[component])
+                if int(value) > 0
             )
-            records.append(
-                {
-                    "label_id": next_label,
-                    "type": class_id,
-                    "seed_source": seed_source,
-                }
-            )
+            if not seed_labels:
+                next_label += 1
+                label_map[component] = next_label
+                records.append(
+                    {
+                        "label_id": next_label,
+                        "type": class_id,
+                        "seed_source": "semantic_unseeded",
+                    }
+                )
+                continue
+            if len(seed_labels) == 1:
+                label_map[component] = seed_labels[0]
+            else:
+                rows, cols = np.nonzero(component)
+                y0, y1 = int(rows.min()), int(rows.max()) + 1
+                x0, x1 = int(cols.min()), int(cols.max()) + 1
+                local_component = component[y0:y1, x0:x1]
+                local_labels = label_map[y0:y1, x0:x1]
+                seeds = local_component & np.isin(local_labels, seed_labels)
+                nearest = ndimage.distance_transform_edt(
+                    ~seeds,
+                    return_distances=False,
+                    return_indices=True,
+                )
+                nearest_labels = local_labels[tuple(nearest)]
+                local_labels[local_component] = nearest_labels[local_component]
+            records.extend(seed_records[label_id] for label_id in seed_labels)
     if not np.array_equal(label_map > 0, semantic > 0):
         raise ValueError("CellViT-seeded partition does not cover semantic foreground")
     return label_map, records, native_seed_count

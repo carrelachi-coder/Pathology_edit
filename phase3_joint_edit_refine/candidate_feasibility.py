@@ -60,6 +60,7 @@ _PANDA_GROWTH_ARCHITECTURE_PRIMITIVES = frozenset(
 
 def _tissue_portfolio_allows_anchor_diversification(
     primitive_id: str,
+    annotation_profile_id: str = "",
 ) -> bool:
     """Return whether preferred anchors can change the compiled tissue plan."""
 
@@ -67,6 +68,16 @@ def _tissue_portfolio_allows_anchor_diversification(
     # tumor-stroma interface.  Its tissue Planner ignores a preferred single
     # anchor, so enumerating every anchor here only recompiles the identical
     # full-interface plan before SHA-based deduplication.
+    if (
+        annotation_profile_id in {"ignite-semantic-v1", "puma-semantic-v1"}
+        and primitive_id
+        in {
+            "invasive-tumor-footprint-decrease-v1",
+            "stroma-increase-v1",
+            "residual-tumor-fragmentation-v1",
+        }
+    ):
+        return False
     return primitive_id != "residual-tumor-fragmentation-v1"
 
 
@@ -694,7 +705,8 @@ class CandidateFeasibilityCompiler:
             ((), ()),
         ]
         if _tissue_portfolio_allows_anchor_diversification(
-            tissue_case.primitive_id
+            tissue_case.primitive_id,
+            tissue_case.annotation_profile_id,
         ):
             for preferred_interface in feasible:
                 preflight_item = nuclei_preflight.interface(preferred_interface)
@@ -789,12 +801,8 @@ class CandidateFeasibilityCompiler:
                 for _score, interface_id, anchor_id in ranked_anchors[:6]
             ]
             maximum_candidates = 1 if revoked_candidate_ids else 2
-        if (
-            tissue_case.annotation_profile_id == "panda-gleason-v1"
-            and tissue_case.primitive_id
-            == "infiltrative-nest-cord-extension-v1"
-        ):
-            # Some PANDA fronts expose hundreds of anchors.  Rank the sealed
+        if tissue_case.primitive_id == "infiltrative-nest-cord-extension-v1":
+            # Cord fronts can expose hundreds of anchors.  Rank the sealed
             # mask/nucleus preflight witnesses by complete-shape and seam-fit
             # capacity so the compiler tries the strongest sectors first,
             # instead of spending the replay timeout on raster-order anchors.
@@ -974,8 +982,7 @@ class CandidateFeasibilityCompiler:
         errors: list[str] = []
         attempt_limit = (
             1
-            if tissue_case.annotation_profile_id == "panda-gleason-v1"
-            and tissue_case.primitive_id
+            if tissue_case.primitive_id
             == "infiltrative-nest-cord-extension-v1"
             else self.maximum_attempts
         )
@@ -1012,12 +1019,13 @@ class CandidateFeasibilityCompiler:
                         tissue_case.annotation_profile_id == "panda-gleason-v1"
                         and tissue_case.primitive_id
                         in {
-                            "infiltrative-nest-cord-extension-v1",
                             "invasive-tumor-footprint-decrease-v1",
                             "stroma-increase-v1",
                             "cohesive-boundary-expansion-v1",
                         }
                     )
+                    and tissue_case.primitive_id
+                    != "infiltrative-nest-cord-extension-v1"
                 ):
                     # A maximum over one selected interface set is not yet a
                     # global maximum over the frozen preflight portfolio.
@@ -1070,9 +1078,9 @@ class CandidateFeasibilityCompiler:
                         plan=family_plan,
                         bundle=tissue_bundle,
                         seed=tissue_case.seed,
-                        compiled_replay_parts=parts,
-                        compiled_replay_audit=replay,
-                    )
+                    compiled_replay_parts=parts,
+                    compiled_replay_audit=replay,
+                )
                     passing = []
                     for candidate in candidates:
                         report = self.gates.run(

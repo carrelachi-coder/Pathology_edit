@@ -912,6 +912,20 @@ class MultiInterfaceResearchTissuePlanner:
             directional_tip_width_px = float(
                 np.clip(0.72 * reference_equivalent_diameter, 3.0, 22.0)
             )
+        elif (
+            case.annotation_profile_id == "ignite-semantic-v1"
+            and case.primitive_id == "infiltrative-nest-cord-extension-v1"
+        ):
+            # The IGNITE cord must be wide enough for one complete native
+            # neoplastic nucleus at the seam.  The historical 24 px cap was
+            # narrower than the observed source-calibrated footprints and
+            # produced a tissue-only cord that cell execution could not fill.
+            directional_maximum_width_px = float(
+                np.clip(1.5 * reference_equivalent_diameter, 12.0, 40.0)
+            )
+            directional_tip_width_px = float(
+                np.clip(0.12 * reference_equivalent_diameter, 2.0, 5.0)
+            )
         else:
             directional_maximum_width_px = float(
                 np.clip(4.0 * reference_equivalent_diameter, 8.0, 24.0)
@@ -1569,6 +1583,12 @@ class MultiInterfaceResearchTissuePlanner:
                         if directional_projection
                         and case.annotation_profile_id == "panda-gleason-v1"
                         else "linear_taper"
+                    ),
+                    "directional_centerline_first": bool(
+                        directional_projection
+                        and case.annotation_profile_id == "ignite-semantic-v1"
+                        and case.primitive_id
+                        == "infiltrative-nest-cord-extension-v1"
                     ),
                     "editable_source_fine_ids": list(
                         joint_bundle.annotation_profile.mechanism_editable_source_fine_ids.get(
