@@ -15,7 +15,8 @@
       ],
       "source_ids": [
         "pathology-cellvit-five-class-taxonomy-2024",
-        "pathology-oral-cap-v2024"
+        "pathology-oral-cap-v2024",
+        "pathology-oral-immune-spatial-2021"
       ],
       "production_eligible": false
     },

@@ -1202,7 +1202,8 @@
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
-            "pathology-oral-cap-v2024"
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
           ],
           "pathology_sources": [
             {
@@ -1215,6 +1216,12 @@
               "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
               "title": "CAP Protocol for Oral Cavity Carcinoma",
               "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
               "verification_status": "verified"
             }
           ],
@@ -1244,7 +1251,8 @@
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
-            "pathology-oral-cap-v2024"
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
           ],
           "pathology_sources": [
             {
@@ -1257,6 +1265,12 @@
               "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
               "title": "CAP Protocol for Oral Cavity Carcinoma",
               "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
               "verification_status": "verified"
             }
           ],
@@ -1286,7 +1300,8 @@
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
-            "pathology-oral-cap-v2024"
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
           ],
           "pathology_sources": [
             {
@@ -1299,6 +1314,12 @@
               "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
               "title": "CAP Protocol for Oral Cavity Carcinoma",
               "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
               "verification_status": "verified"
             }
           ],
@@ -1328,7 +1349,8 @@
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
-            "pathology-oral-cap-v2024"
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
           ],
           "pathology_sources": [
             {
@@ -1341,6 +1363,12 @@
               "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
               "title": "CAP Protocol for Oral Cavity Carcinoma",
               "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
               "verification_status": "verified"
             }
           ],
@@ -1370,7 +1398,8 @@
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
-            "pathology-oral-cap-v2024"
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
           ],
           "pathology_sources": [
             {
@@ -1383,6 +1412,12 @@
               "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
               "title": "CAP Protocol for Oral Cavity Carcinoma",
               "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
               "verification_status": "verified"
             }
           ],
@@ -1412,7 +1447,8 @@
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
-            "pathology-oral-cap-v2024"
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
           ],
           "pathology_sources": [
             {
@@ -1425,6 +1461,12 @@
               "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
               "title": "CAP Protocol for Oral Cavity Carcinoma",
               "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
               "verification_status": "verified"
             }
           ],
@@ -1454,7 +1496,8 @@
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
-            "pathology-oral-cap-v2024"
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
           ],
           "pathology_sources": [
             {
@@ -1467,6 +1510,12 @@
               "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
               "title": "CAP Protocol for Oral Cavity Carcinoma",
               "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
               "verification_status": "verified"
             }
           ],
@@ -1496,7 +1545,8 @@
           "mechanism_id": "oral-scc-local-population-modulation",
           "pathology_source_ids": [
             "pathology-cellvit-five-class-taxonomy-2024",
-            "pathology-oral-cap-v2024"
+            "pathology-oral-cap-v2024",
+            "pathology-oral-immune-spatial-2021"
           ],
           "pathology_sources": [
             {
@@ -1509,6 +1559,12 @@
               "locator": "Squamous differentiation, invasion and pattern-of-invasion sections",
               "title": "CAP Protocol for Oral Cavity Carcinoma",
               "uri": "https://documents.cap.org/protocols/HN.Oral_4.1.1.0.REL_CAPCP.pdf",
+              "verification_status": "verified"
+            },
+            {
+              "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+              "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+              "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
               "verification_status": "verified"
             }
           ],

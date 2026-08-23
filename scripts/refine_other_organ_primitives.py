@@ -1066,7 +1066,10 @@ def _install_primitives(writer: Writer) -> None:
         "minimum_delta_count_by_pathology_domain", {}
     ).update(
         {
-            "oral-squamous-cell-carcinoma-v1": 6,
+            # ORCA class 2 is a generic inflammatory observation.  Ten
+            # complete instances makes a focal density decrease reviewable
+            # without converting it into near-total immune clearance.
+            "oral-squamous-cell-carcinoma-v1": 10,
             "melanoma-v1": 6,
         }
     )
@@ -2127,9 +2130,18 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ["Tumor"],
     )
     oral_local["cell_program"]["cellularity_depletion_contract"].update(
-        transition_width_cell_diameters=6,
-        transition_subband_count=6,
-        transition_end_removal_fraction=0.06,
+        # A wider, stronger center-to-periphery gradient represents an
+        # observable immune-cell-poor field while preserving both a residual
+        # population and an unedited outer reference.  ORCA cannot support a
+        # subtype, immune-exclusion, response, or prognostic interpretation.
+        core_width_cell_diameters=4,
+        transition_width_cell_diameters=8,
+        transition_subband_count=8,
+        core_target_removal_fraction=0.68,
+        transition_start_removal_fraction=0.55,
+        transition_end_removal_fraction=0.12,
+        minimum_core_residual_fraction=0.30,
+        minimum_transition_residual_fraction=0.42,
     )
     oral_local["cell_program"]["cellularity_depletion_contract"][
         "allowed_anchor_types"
@@ -2139,10 +2151,19 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ],
         ["population_peak"],
     )
-    oral_local["cell_program"]["cellularity_depletion_contract"][
-        "core_width_cell_diameters"
-    ] = 2.5
     _write_contract(writer, _sanitize_orca_language(oral_local))
+    oral_local_evidence_path = (
+        MECHANISMS
+        / "oral-scc-local-population-modulation"
+        / "references"
+        / "evidence.json"
+    )
+    oral_local_evidence = _load(writer.root / oral_local_evidence_path)
+    oral_local_evidence["records"][0]["source_ids"] = _ordered_union(
+        oral_local_evidence["records"][0]["source_ids"],
+        ["pathology-oral-immune-spatial-2021"],
+    )
+    writer.json(oral_local_evidence_path, oral_local_evidence)
 
     _new_mechanism(
         writer,
@@ -2344,6 +2365,18 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         ),
         "verification_status": "verified",
     }
+    governance["sources"]["pathology-oral-immune-spatial-2021"] = {
+        "category": "pathology_fact",
+        "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+        "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+        "locator": (
+            "Primary oral-tongue SCC study measuring distinct lymphocyte densities "
+            "and spatial distributions in tumor and stroma at the invasive margin "
+            "and tumor center. The editor uses only the existence of localized "
+            "density variation and makes no immune-subtype or prognostic claim."
+        ),
+        "verification_status": "verified",
+    }
     governance["mechanism_pathology_sources"].update(
         {
             "lung-local-population-modulation": [
@@ -2366,6 +2399,7 @@ def refine(root: Path, *, check: bool) -> list[Path]:
             "oral-scc-local-population-modulation": [
                 "pathology-cellvit-five-class-taxonomy-2024",
                 "pathology-oral-cap-v2024",
+                "pathology-oral-immune-spatial-2021",
             ],
             "oral-scc-annotation-anchored-cord-extension": ["pathology-oral-cap-v2024"],
             "oral-scc-local-carcinoma-clearance": ["pathology-oral-cap-v2024"],

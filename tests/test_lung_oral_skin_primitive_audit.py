@@ -160,6 +160,24 @@ def test_small_cluster_review_budget_matches_two_compact_native_foci():
     assert budget.minimum_effect_span_px == 32
 
 
+def test_oral_cell_decrease_has_visible_but_residual_preserving_contract():
+    repository = JointSkillRepository()
+    primitive = repository.primitives["cell-type-abundance-decrease-v1"]
+    assert primitive.minimum_effect_delta_count_for(
+        "oral-squamous-cell-carcinoma-v1"
+    ) == 10
+    mechanism = repository.mechanisms["oral-scc-local-population-modulation"]
+    depletion = mechanism.cell_program.cellularity_depletion
+    assert depletion is not None
+    assert depletion.core_width_cell_diameters == 4
+    assert depletion.transition_width_cell_diameters == 8
+    assert depletion.core_target_removal_fraction == 0.68
+    assert depletion.transition_start_removal_fraction == 0.55
+    assert depletion.transition_end_removal_fraction == 0.12
+    assert depletion.minimum_core_residual_fraction == 0.30
+    assert depletion.minimum_transition_residual_fraction == 0.42
+
+
 def test_peritumoral_review_ranking_uses_local_connected_mask_capacity():
     row = {
         "shape": [512, 512],

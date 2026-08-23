@@ -286,6 +286,13 @@
       "uri": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7502685/",
       "locator": "The primary human breast-carcinoma study documents both thick multilayered IDC strands and thinner multicellular files within stromal microtracks. The executor therefore enlarges cord length and cell count while retaining a narrow, variable caliber instead of converting the edit into a broad sheet.",
       "verification_status": "verified"
+    },
+    "pathology-oral-immune-spatial-2021": {
+      "category": "pathology_fact",
+      "title": "B-cell clusters at the invasive margin associate with longer survival in early-stage oral-tongue cancer patients",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/33643695/",
+      "locator": "Primary oral-tongue SCC study measuring distinct lymphocyte densities and spatial distributions in tumor and stroma at the invasive margin and tumor center. The editor uses only the existence of localized density variation and makes no immune-subtype or prognostic claim.",
+      "verification_status": "verified"
     }
   },
   "mechanism_pathology_sources": {
@@ -395,7 +402,8 @@
     ],
     "oral-scc-local-population-modulation": [
       "pathology-cellvit-five-class-taxonomy-2024",
-      "pathology-oral-cap-v2024"
+      "pathology-oral-cap-v2024",
+      "pathology-oral-immune-spatial-2021"
     ],
     "prostate-gleason-architecture-progression": [
       "pathology-prostate-isup-2014",

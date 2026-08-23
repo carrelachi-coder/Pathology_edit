@@ -462,8 +462,17 @@ def _case(
     ) if tissue_primitive else None
     intent = _semantic_intent(evaluation)
     cell_budget = CELL_BUDGETS.get(primitive)
-    if primitive == "generic-inflammatory-cell-abundance-decrease-v1" or (
-        evaluation.organ in {"oral", "skin"}
+    if (
+        evaluation.organ == "oral"
+        and primitive == "cell-type-abundance-decrease-v1"
+    ):
+        # The ORCA class-2 effect must remain a focal generic inflammatory
+        # density decrease, but six tiny instances was not visually useful.
+        # Keep a residual radial population while requesting a reviewable
+        # ten-to-twenty-two complete-instance change across a broader field.
+        cell_budget = CellCountExtentBudget(16, 10, 22, 384, 0, 96, 64, 3)
+    elif primitive == "generic-inflammatory-cell-abundance-decrease-v1" or (
+        evaluation.organ == "skin"
         and primitive == "cell-type-abundance-decrease-v1"
     ):
         cell_budget = CellCountExtentBudget(10, 6, 14, 384, 0, 64, 48, 3)
