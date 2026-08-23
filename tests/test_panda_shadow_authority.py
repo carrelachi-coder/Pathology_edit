@@ -410,6 +410,14 @@ class PandaShadowAuthorityTests(unittest.TestCase):
             ["target_fraction"],
             0.03,
         )
+        footprint_budget = _joint_area_budget(
+            "invasive-tumor-footprint-decrease-v1"
+        )
+        self.assertEqual(footprint_budget["target_fraction"], 0.05)
+        self.assertEqual(footprint_budget["min_fraction"], 0.03)
+        self.assertEqual(footprint_budget["max_fraction"], 0.14)
+        self.assertEqual(footprint_budget["tissue_min_fraction"], 0.03)
+        self.assertEqual(footprint_budget["relative_tolerance"], 0.80)
 
     def test_frozen_semantic_intent_binds_reviewed_primitive(self):
         metadata, digest = _semantic_intent(

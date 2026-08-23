@@ -247,13 +247,22 @@ def _joint_area_budget(primitive_id: str) -> dict[str, Any]:
         raise ValueError(
             f"no frozen joint-area budget for tissue primitive {primitive_id}"
         ) from exc
+    # Tumour retreat keeps its 3--5% tissue geometry, but removing every
+    # intersected nucleus as a complete instance can make the joint union
+    # materially larger.  Let that closure fit inside the existing 14% hard
+    # ceiling without relaxing the tissue floor or changing the edit itself.
+    relative_tolerance = (
+        0.80
+        if primitive_id == "invasive-tumor-footprint-decrease-v1"
+        else 0.02
+    )
     return {
         "target_fraction": target,
         "min_fraction": minimum,
         "max_fraction": maximum,
         "tissue_min_fraction": tissue_minimum,
         "basis": "whole_patch",
-        "relative_tolerance": 0.02,
+        "relative_tolerance": relative_tolerance,
         "fallback_policy": "max_feasible_below_target",
         "capacity_floor_policy": "strict",
         "minimum_effective_fraction": 0.0,

@@ -218,12 +218,16 @@ def main() -> int:
     parser.add_argument("--tile-size", type=int, default=256)
     args = parser.parse_args()
     replay = json.loads(args.replay_manifest.read_text(encoding="utf-8"))
-    if replay.get("freeze_status") != (
-        "frozen_complete_authority_candidate_execution_gates_passed"
-    ):
+    if replay.get("freeze_status") not in {
+        "frozen_complete_authority_candidate_execution_gates_passed",
+        "frozen_complete_targeted_candidate_execution_gates_passed",
+    }:
         raise ValueError("PANDA replay is not complete and frozen")
     evaluations = list(replay.get("frozen_evaluations") or ())
-    if len(evaluations) != int(replay.get("evaluation_count", -1)):
+    expected_count = int(
+        replay.get("requested_evaluation_count", replay.get("evaluation_count", -1))
+    )
+    if len(evaluations) != expected_count:
         raise ValueError("PANDA replay evaluation count is inconsistent")
     output = args.output_dir.resolve()
     boards = []
