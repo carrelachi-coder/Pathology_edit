@@ -500,14 +500,27 @@ def main() -> int:
     for row in qualified_rows:
         grouped[int(row["evaluation_index"])].append(row)
     expected_evaluations = int(authority["evaluation_count"])
+    requested_indices = (
+        set(range(expected_evaluations))
+        if not args.evaluation_indices
+        else {
+            int(value.strip())
+            for value in args.evaluation_indices.split(",")
+            if value.strip()
+        }
+    )
+    if not requested_indices or not requested_indices.issubset(
+        set(range(expected_evaluations))
+    ):
+        raise ValueError("evaluation indices are empty or outside authority range")
     diversity_by_evaluation = {
         int(item["evaluation_index"]): dict(item["final_diversity_policy"])
         for item in authority["evaluations"]
     }
-    if set(grouped) != set(range(expected_evaluations)):
-        raise ValueError("one or more evaluations have no compiled candidates")
+    if set(grouped) != requested_indices:
+        raise ValueError("one or more requested evaluations have no compiled candidates")
     short = [
-        index for index, rows in grouped.items() if len(rows) < 5
+        index for index in sorted(requested_indices) if len(grouped[index]) < 5
     ]
     if short:
         raise ValueError(
@@ -578,21 +591,8 @@ def main() -> int:
             ],
             policy=diversity_by_evaluation[index],
         )
-    for index in range(expected_evaluations):
+    for index in sorted(requested_indices):
         refresh_selection(index)
-    requested_indices = (
-        set(range(expected_evaluations))
-        if not args.evaluation_indices
-        else {
-            int(value.strip())
-            for value in args.evaluation_indices.split(",")
-            if value.strip()
-        }
-    )
-    if not requested_indices or not requested_indices.issubset(
-        set(range(expected_evaluations))
-    ):
-        raise ValueError("evaluation indices are empty or outside authority range")
     for evaluation_index in sorted(requested_indices):
         selected_by_evaluation[evaluation_index].sort(
             key=lambda item: int(item["candidate_pool_rank"])
@@ -667,11 +667,11 @@ def main() -> int:
             print(json.dumps(record, ensure_ascii=False, sort_keys=True), flush=True)
     freeze_complete = all(
         len(selected_by_evaluation[index]) >= 5
-        for index in range(expected_evaluations)
+        for index in requested_indices
     )
     frozen_evaluations = []
     if freeze_complete:
-        for index in range(expected_evaluations):
+        for index in sorted(requested_indices):
             selected = selected_by_evaluation[index][:5]
             slides = [str(item["source_slide_id"]) for item in selected]
             samples = [str(item["source_sample_id"]) for item in selected]
@@ -719,7 +719,11 @@ def main() -> int:
     summary = {
         "schema_version": SCHEMA_VERSION,
         "freeze_status": (
-            "frozen_complete_authority_candidate_execution_gates_passed"
+            (
+                "frozen_complete_authority_candidate_execution_gates_passed"
+                if requested_indices == set(range(expected_evaluations))
+                else "frozen_complete_targeted_candidate_execution_gates_passed"
+            )
             if freeze_complete
             else "incomplete_not_frozen"
         ),
@@ -734,6 +738,8 @@ def main() -> int:
             sha256_file(ledger_path) if ledger_path.is_file() else None
         ),
         "evaluation_count": expected_evaluations,
+        "requested_evaluation_indices": sorted(requested_indices),
+        "requested_evaluation_count": len(requested_indices),
         "frozen_case_count": sum(
             len(item["frozen_cases"]) for item in frozen_evaluations
         ),
