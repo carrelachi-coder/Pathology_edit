@@ -1,8 +1,8 @@
 {
   "api_used": false,
   "capability_matrix": "phase3_joint_edit_refine/resources/non_breast_organ_annotation_capability_matrix_v1.json",
-  "capability_matrix_sha256": "0e7fc8ff54b860f0f900cd62e2e172a16550c58ecfd7f4b0e57eb374d98dfa3c",
-  "evaluation_count": 22,
+  "capability_matrix_sha256": "c9dcc53e5039b0c4544704f6fc3ad8084246123e261b9af40fdd6ebbfa384493",
+  "evaluation_count": 21,
   "evaluations": [
     {
       "annotation_profile_id": "glas-gland-v1",
@@ -1876,134 +1876,6 @@
     {
       "annotation_profile_id": "panda-gleason-v1",
       "case_count": 5,
-      "evaluation_id": "panda-gleason-v1::prostate-operational-tumor-retreat::stroma-increase-v1",
-      "execution_status": "blocked_pending_independent_review_and_authority_preflight",
-      "instruction": "Simulate a post-treatment response by increasing operational stroma.",
-      "mechanism_id": "prostate-operational-tumor-retreat",
-      "pathology_domain_id": "prostate-adenocarcinoma-v1",
-      "primitive_id": "stroma-increase-v1",
-      "required_auxiliary_structures": [
-        "gland_unit_wall_map"
-      ],
-      "selected_cases": [
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_401_prostate_tumor_increase_6593461ec7",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-operational-tumor-retreat",
-          "joint_primitive_id": "stroma-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "missing_source_asset_digests": [],
-          "profile_producible_auxiliary_structures": [
-            "gland_unit_wall_map"
-          ],
-          "seed": 42,
-          "source_case_record_sha256": "8dcb272a010a7dd9bddfa004a883a7476067471affebb4d632bb5c6b0e59dedc",
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
-          "source_image_sha256": "853bc3bebf7f5ff87b8655a01f856f619cdd6f43363fd5ce53111f10eecc56fa",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
-          "source_nuclei_mask_sha256": "cfacdfe0f0e2f144c33cb797b2ca069d1fee0d12be7a381abdab38777e7ddc0e",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0841bb278823ec53920d723881c7afd9_y512_x6400_py512_px1536.png",
-          "source_tissue_mask_sha256": "d91b4e7dd1d927b3d1ae5745f8db03dd68bfe1b97fcc1616cf80843d857f595e"
-        },
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_402_prostate_tumor_increase_4b9c1b89ec",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-operational-tumor-retreat",
-          "joint_primitive_id": "stroma-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "missing_source_asset_digests": [],
-          "profile_producible_auxiliary_structures": [
-            "gland_unit_wall_map"
-          ],
-          "seed": 42,
-          "source_case_record_sha256": "cf5e03fd23fe092b379952da04af1dbdef1110e3b7c60146091d3b00204ac1fc",
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
-          "source_image_sha256": "28286f7474ee115dea1c01e53f054c01d6dffd61e5fbe0cbadb4dc01dde2cf5d",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
-          "source_nuclei_mask_sha256": "76bc8a2c4bf01d8b7754ce5e1f3da312e92c03831874cb22e7ac1b5d327669df",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1024_px2304.png",
-          "source_tissue_mask_sha256": "27e3f70d695bfa0454a241eaf792aff68bb7ecde9d270eb45ca160f8c1399426"
-        },
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_403_prostate_tumor_increase_81666c18a1",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-operational-tumor-retreat",
-          "joint_primitive_id": "stroma-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "missing_source_asset_digests": [],
-          "profile_producible_auxiliary_structures": [
-            "gland_unit_wall_map"
-          ],
-          "seed": 42,
-          "source_case_record_sha256": "848c2d080f3dc379ba7667b4f0077fe78f56472db8db53835eed4b002b456242",
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
-          "source_image_sha256": "6c7284324d172e4a5b892583c307e783e2148a616bf26af9ad1c329f6ade00b1",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
-          "source_nuclei_mask_sha256": "b988f1e2074efba2fe61c5df7604e6141354b39b57db3924fc1df2db514fd32c",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1792.png",
-          "source_tissue_mask_sha256": "d3457cdd26e6711f74820dd61af228d5e5be958bf491c0922086b217843e346d"
-        },
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_404_prostate_tumor_increase_20d3a0a4a7",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-operational-tumor-retreat",
-          "joint_primitive_id": "stroma-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "missing_source_asset_digests": [],
-          "profile_producible_auxiliary_structures": [
-            "gland_unit_wall_map"
-          ],
-          "seed": 42,
-          "source_case_record_sha256": "cb5c753d0802a26e4ce3643b38ec1441a7daf10a0a0fbfe2ccd19ffda8380a08",
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
-          "source_image_sha256": "e33412de42ff8af5eebb09b1de002970ec05ea58cdf8662fe7053418a039acf2",
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
-          "source_nuclei_mask_sha256": "178a824875a40484b258f0e18a834b6f168c063bd6fd5cda0daf286452919512",
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0beac47a5319a85fe10af9cc1c114f09_y26368_x9216_py1536_px0.png",
-          "source_tissue_mask_sha256": "c9c726b300289ea089728e90e28f8a62acc3f5dbd63ddd3e3c420ffba9609fad"
-        },
-        {
-          "available_auxiliary_structures": [],
-          "case_id": "g2_405_prostate_tumor_increase_1f72f9c4ad",
-          "execution_allowed": false,
-          "fixed_case_no_replacement": true,
-          "joint_mechanism_id": "prostate-operational-tumor-retreat",
-          "joint_primitive_id": "stroma-increase-v1",
-          "missing_required_auxiliary_structures": [],
-          "missing_source_asset_digests": [
-            "source_image_sha256",
-            "source_nuclei_mask_sha256"
-          ],
-          "profile_producible_auxiliary_structures": [
-            "gland_unit_wall_map"
-          ],
-          "seed": 42,
-          "source_case_record_sha256": "0ecd69db0698a81f679771a509b25ef8c5b964aca459527c56af3bf6fa37ebba",
-          "source_image": "/data/wqx/flowedit/data/PANDA_PATCHES/images/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
-          "source_image_sha256": null,
-          "source_nuclei_instances": null,
-          "source_nuclei_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/nuclei_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
-          "source_nuclei_mask_sha256": null,
-          "source_tissue_mask": "/data/wqx/flowedit/data/PANDA_PATCHES/tissue_masks/0fcc5673242af956da6637881d14c414_y5120_x1536_py1792_px1792.png",
-          "source_tissue_mask_sha256": "8690d0293b5902696fbbe1f3b786fd57b06d3f7d89a9cc921b274bbf0b486fdb"
-        }
-      ]
-    },
-    {
-      "annotation_profile_id": "panda-gleason-v1",
-      "case_count": 5,
       "evaluation_id": "panda-gleason-v1::prostate-operational-tumor-retreat::invasive-tumor-footprint-decrease-v1",
       "execution_status": "blocked_pending_independent_review_and_authority_preflight",
       "instruction": "Simulate a post-treatment response by decreasing tumor area.",
@@ -2784,7 +2656,7 @@
     "generator_checkpoint_sha256": null,
     "instance_library_sha256": null,
     "mature_probnet_checkpoint_sha256": "8efc4c0100fb0f013e70c64a8a01718ce5d6a2b2646af72878adf5e7726ee2d8",
-    "selection_generator_sha256": "a1e4ba0be22033c9850b7e4dd5e070c593e35a9d179c39f07e43d1a48cc16782"
+    "selection_generator_sha256": "14bb64b3bf9f95f048f2b8c51312e9ba0faf257159b189a3651308ef981e9a52"
   },
   "schema_version": "p1-glas-panda-meta-eval-selection-v1",
   "selection_policy": {

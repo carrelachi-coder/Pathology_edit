@@ -400,11 +400,12 @@ class PandaShadowAuthorityTests(unittest.TestCase):
 
     def test_frozen_semantic_intent_binds_reviewed_primitive(self):
         metadata, digest = _semantic_intent(
-            "Increase stroma and decrease invasive tumor footprint.",
-            "stroma-increase-v1",
+            "Reduce tumor burden.",
+            "invasive-tumor-footprint-decrease-v1",
         )
         self.assertEqual(
-            metadata["selected_primitive_id"], "stroma-increase-v1"
+            metadata["selected_primitive_id"],
+            "invasive-tumor-footprint-decrease-v1",
         )
         self.assertEqual(digest, canonical_metadata_sha256(metadata))
 

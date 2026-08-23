@@ -56,7 +56,6 @@ JOINT_AREA_BUDGET_BY_PRIMITIVE = {
     # but make the typical tissue footprint clearly visible on a 512 px patch.
     # A narrow cord still must never inherit a bulk-growth floor.
     "local-invasive-clearance-v1": (0.06, 0.035, 0.14, 0.035),
-    "stroma-increase-v1": (0.05, 0.03, 0.14, 0.03),
     "invasive-tumor-footprint-decrease-v1": (0.05, 0.03, 0.14, 0.03),
     # These are local topology edits, not whole-patch tumor-burden edits.
     # A 2.5% floor remains local at 512x512 while avoiding the
@@ -94,9 +93,6 @@ FROZEN_EXECUTION_INSTRUCTIONS = {
     ): "Decrease neoplastic cells.",
     ("prostate-local-tumor-clearance", "local-invasive-clearance-v1"): (
         "Clear tumor in this local ROI."
-    ),
-    ("prostate-operational-tumor-retreat", "stroma-increase-v1"): (
-        "Simulate a post-treatment response by increasing operational stroma."
     ),
     (
         "prostate-operational-tumor-retreat",

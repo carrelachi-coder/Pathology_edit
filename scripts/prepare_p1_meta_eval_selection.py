@@ -298,8 +298,8 @@ def validate_selection(
         payload.get("evaluation_count", -1)
     ):
         raise ValueError("P1 meta-eval evaluation count is inconsistent")
-    if len(evaluations) != 22:
-        raise ValueError("P1 meta-eval must contain exactly 22 evaluations")
+    if len(evaluations) != 21:
+        raise ValueError("P1 meta-eval must contain exactly 21 evaluations")
     expected_case_ids_by_profile: dict[str, tuple[str, ...]] = {}
     evaluation_ids: set[str] = set()
     for evaluation in evaluations:

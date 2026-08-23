@@ -1580,6 +1580,23 @@ def refine(root: Path, *, check: bool) -> list[Path]:
     )
     prostate_retreat = _contract(root, "prostate-operational-tumor-retreat")
     _retreat_transform(prostate_retreat)
+    prostate_retreat["supported_primitives"] = [
+        item
+        for item in prostate_retreat["supported_primitives"]
+        if item != "stroma-increase-v1"
+    ]
+    prostate_retreat["tissue_program"]["primitive_label_contracts"].pop(
+        "stroma-increase-v1", None
+    )
+    prostate_retreat["cell_program"]["layout_program_by_primitive"].pop(
+        "stroma-increase-v1", None
+    )
+    prostate_retreat["representability_contract"].update(
+        {
+            "required_auxiliary_structures": ["gland_unit_wall_map"],
+            "protected_auxiliary_structures": ["gland_unit_wall_map"],
+        }
+    )
     _write_contract(writer, prostate_retreat)
     _write_shadow_skill(
         writer,

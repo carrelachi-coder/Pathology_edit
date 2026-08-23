@@ -26,7 +26,7 @@ from .authority import (
 from .models import JointCaseContext, JointContractError
 from .lumen_observer import observe_luminal_spaces
 
-AUXILIARY_PRODUCER_VERSION = "joint-annotation-aware-auxiliary-v4"
+AUXILIARY_PRODUCER_VERSION = "joint-annotation-aware-auxiliary-v5"
 
 
 @dataclass(frozen=True)
@@ -179,13 +179,15 @@ def materialize_profile_auxiliaries(
                     specification.producer_kind
                     == "annotation_aware_gland_wall_protection"
                 ):
-                    # One operational gland unit is its protected luminal
-                    # space plus the immediately adjacent annotated epithelial
-                    # wall.  The band is cell-scale and can reach a crop edge;
-                    # it therefore protects both closed and truncated glands.
+                    # Protect the complete lumen-associated epithelial band,
+                    # not just its inner edge.  The former 1.15-cell-diameter
+                    # band allowed retreat edits to shave the outer part of a
+                    # gland wall.  Three cell diameters conservatively cover
+                    # the full epithelial thickness while leaving genuinely
+                    # solid, lumen-distant tumor fronts editable.
                     radius = max(
                         2,
-                        int(round(1.15 * observation.nominal_cell_diameter_px)),
+                        int(round(3.0 * observation.nominal_cell_diameter_px)),
                     )
                     lumen = observation.protected_space
                     architecture = np.isin(

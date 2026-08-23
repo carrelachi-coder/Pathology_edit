@@ -756,7 +756,7 @@ class JointSkillTests(unittest.TestCase):
             if item["mechanism_id"]
             == "prostate-operational-tumor-retreat"
         )
-        treatment["instruction"] = "Increase operational stroma after treatment."
+        treatment["instruction"] = "Reduce tumor burden."
         with self.assertRaisesRegex(ValueError, "post-treatment binding"):
             validate_selection(invalid_treatment)
 
@@ -4046,7 +4046,7 @@ class JointSkillTests(unittest.TestCase):
                     primitive_id="stroma-increase-v1",
                 )
             ],
-            ["prostate-operational-tumor-retreat"],
+            [],
         )
 
     def test_evidence_authorities_are_explicit_and_non_interchangeable(self):
@@ -10687,10 +10687,10 @@ class OtherOrganIndependentReviewBlockerTests(unittest.TestCase):
         selection = json.loads(selection_path.read_text(encoding="utf-8"))
         source = json.loads(source_path.read_text(encoding="utf-8"))
         validate_selection(selection)
-        self.assertEqual(selection["evaluation_count"], 22)
+        self.assertEqual(selection["evaluation_count"], 21)
         self.assertEqual(
             sum(len(item["selected_cases"]) for item in selection["evaluations"]),
-            110,
+            105,
         )
         self.assertEqual(
             selection["source_manifest"],

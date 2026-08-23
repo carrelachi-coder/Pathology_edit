@@ -139,6 +139,9 @@ def test_panda_auxiliary_separates_lumen_wall_and_external_stroma(tmp_path) -> N
 
     assert lumen[64, 64]
     assert wall[64, 64] and wall[64, 94]
+    # The full synthetic epithelial ring, including its outermost edge, is
+    # protected against partial gland-wall thinning.
+    assert np.all(wall[(radius >= 25) & (radius <= 38)])
     assert external[105, 105]
     assert not external[64, 64]
     assert not external[5, 5]

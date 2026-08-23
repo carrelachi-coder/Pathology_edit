@@ -98,11 +98,6 @@ EVALUATIONS = (
     ),
     EvaluationSpec(
         "prostate-operational-tumor-retreat",
-        "stroma-increase-v1",
-        "After treatment, increase operational stroma as annotated tumor retreats.",
-    ),
-    EvaluationSpec(
-        "prostate-operational-tumor-retreat",
         "invasive-tumor-footprint-decrease-v1",
         "After treatment, decrease the annotated invasive tumor footprint.",
     ),

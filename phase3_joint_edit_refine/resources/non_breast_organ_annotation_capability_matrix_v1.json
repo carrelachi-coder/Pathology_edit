@@ -251,19 +251,6 @@
         {
           "closed_reason": null,
           "mechanism_id": "prostate-operational-tumor-retreat",
-          "primitive_id": "stroma-increase-v1",
-          "production_status": "shadow_only",
-          "required_auxiliary_structures": [
-            "gland_unit_wall_map"
-          ],
-          "simple_instructions": [
-            "Simulate a post-treatment response by increasing operational stroma."
-          ],
-          "status": "conditionally_supported"
-        },
-        {
-          "closed_reason": null,
-          "mechanism_id": "prostate-operational-tumor-retreat",
           "primitive_id": "invasive-tumor-footprint-decrease-v1",
           "production_status": "shadow_only",
           "required_auxiliary_structures": [
