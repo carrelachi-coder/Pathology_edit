@@ -1358,7 +1358,7 @@ class MultiInterfaceResearchTissuePlanner:
                 directional_depth_cap = depth_cap
                 if (
                     case.annotation_profile_id == "panda-gleason-v1"
-                    and hard_min_pixels < 3146
+                    and hard_min_pixels < 2622
                 ):
                     # Preserve the validated compact-cord envelope for small
                     # edits. The longer Breast-scale band is used only when

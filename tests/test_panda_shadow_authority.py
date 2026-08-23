@@ -355,7 +355,7 @@ class PandaShadowAuthorityTests(unittest.TestCase):
         self.assertEqual(
             _joint_area_budget("infiltrative-nest-cord-extension-v1")
             ["min_fraction"],
-            0.012,
+            0.010,
         )
         self.assertEqual(
             _joint_area_budget("infiltrative-nest-cord-extension-v1")

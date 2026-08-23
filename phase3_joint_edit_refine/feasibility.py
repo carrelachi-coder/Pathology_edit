@@ -543,7 +543,7 @@ def build_joint_nuclei_preflight(
             case.annotation_profile_id == "panda-gleason-v1"
             and case.primitive_id
             == "infiltrative-nest-cord-extension-v1"
-            and allocation.tissue_floor_pixels < 3146
+            and allocation.tissue_floor_pixels < 2622
         ):
             maximum_band_px = min(maximum_band_px, 64)
         if effective_allow_source_resolution:
