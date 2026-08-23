@@ -445,7 +445,7 @@ header{position:sticky;top:0;background:#fff;padding:12px 18px;border-bottom:1px
 main{padding:16px}article{background:#fff;margin:0 0 18px;padding:10px;border:1px solid #bbb}
 h1,h2{margin:0 0 8px}h2{font-size:16px}img{display:block;width:100%;height:auto}
 </style></head><body><header><h1>Online Generator review panels</h1>
-<div>Yellow: semantic tissue change. Cyan: generator-only support boundary.</div></header>
+<div>Yellow: semantic tissue+nuclei change. Cyan: generator-only support boundary.</div></header>
 <main>""" + "\n".join(cards) + "</main></body></html>"
     path.write_text(document, encoding="utf-8")
 
