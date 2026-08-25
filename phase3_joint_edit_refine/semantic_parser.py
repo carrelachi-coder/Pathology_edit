@@ -873,7 +873,7 @@ def bind_semantic_intent(
     )
     manifest_primitive = payload.get("primitive_id")
     if (
-        annotation_profile_id == "panda-gleason-v1"
+        annotation_profile_id in {"panda-gleason-v1", "bcss-semantic-v1"}
         and manifest_primitive == RETIRED_TUMOR_BURDEN_INCREASE_PRIMITIVE_ID
     ):
         provenance = dict(payload.get("provenance") or {})
@@ -945,13 +945,13 @@ def _normalize_profile_specific_legacy_primitives(
     *,
     annotation_profile_id: str,
 ) -> SemanticEditIntent:
-    """Retire duplicate PANDA burden execution without touching Breast.
+    """Retire duplicate PANDA and Breast burden execution.
 
     The parser may retain the historical wording as language compatibility,
-    but PANDA executes the concrete cohesive boundary operation only.
+    but these profiles execute the concrete cohesive boundary operation only.
     """
 
-    if annotation_profile_id != "panda-gleason-v1":
+    if annotation_profile_id not in {"panda-gleason-v1", "bcss-semantic-v1"}:
         return intent
     normalized: list[PrimitiveHypothesis] = []
     seen: set[str] = set()
@@ -971,7 +971,7 @@ def _normalize_profile_specific_legacy_primitives(
                 priority=len(normalized),
                 rationale=(
                     hypothesis.rationale
-                    + "; PANDA resolves the retired generic burden alias to "
+                    + "; this annotation profile resolves the retired generic burden alias to "
                     "a concrete cohesive boundary expansion"
                     if hypothesis.primitive_id
                     == RETIRED_TUMOR_BURDEN_INCREASE_PRIMITIVE_ID

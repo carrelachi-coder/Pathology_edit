@@ -242,6 +242,35 @@ class ClinicalScenarioParserTests(unittest.TestCase):
             "tumor-burden-increase-v1",
         )
 
+    def test_breast_retires_generic_burden_alias_but_keeps_language_compatibility(self):
+        raw = {
+            "case_id": "breast-retired-burden",
+            "instruction": "increase tumor burden",
+            "primitive_id": "tumor-burden-increase-v1",
+            "source_image_uri": "/tmp/image.png",
+            "source_tissue_mask_uri": "/tmp/tissue.png",
+            "source_nuclei_mask_uri": "/tmp/nuclei.png",
+            "pathology_domain_id": "breast-invasive-carcinoma-v1",
+            "annotation_profile_id": "bcss-semantic-v1",
+            "cell_observation_profile_id": "cellvit-five-class-v1",
+            "cell_population_profile_id": "breast-cellvit-source-first-v1",
+            "seed": 42,
+            "provenance": {
+                "source_image_sha256": "image-digest",
+                "source_tissue_mask_sha256": "tissue-digest",
+                "source_nuclei_mask_sha256": "nuclei-digest",
+            },
+        }
+
+        case, intent = bind_semantic_intent(raw, RuleBasedSemanticParser())
+
+        self.assertEqual(case.primitive_id, "cohesive-boundary-expansion-v1")
+        self.assertEqual(intent.primitive_id, "cohesive-boundary-expansion-v1")
+        self.assertEqual(
+            case.provenance["retired_primitive_alias"],
+            "tumor-burden-increase-v1",
+        )
+
     def test_infiltration_rules_do_not_collide_with_abundance(self):
         parser = RuleBasedSemanticParser()
         for instruction in (

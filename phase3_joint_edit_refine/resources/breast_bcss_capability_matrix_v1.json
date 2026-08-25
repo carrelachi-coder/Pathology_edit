@@ -80,36 +80,6 @@
   },
   "capabilities": [
     {
-      "primitive_id": "tumor-burden-increase-v1",
-      "mechanism_id": "breast-annotation-anchored-boundary-growth",
-      "scenarios": [
-        "direct_edit",
-        "disease_progression",
-        "post_treatment_progression"
-      ],
-      "simple_instructions": [
-        "Increase tumor burden.",
-        "Make this tumor occupy more tissue."
-      ],
-      "tissue_action": "operational Stroma 2 to invasive Tumor 1 through a certified external boundary",
-      "nuclei_action": "remove complete incompatible source instances and regenerate complete class-1 neoplastic instances with a boundary-aligned seam",
-      "planner_role": "The LLM ranks compiler-certified immutable tissue candidates and selects only a candidate ID, an allowed tool family, and supporting skill preference IDs. The selected certificate already binds every interface, component, anchor, parameter value and range, area, depth, and geometry; the LLM cannot alter the certificate.",
-      "execution_scope": "tissue_and_cell",
-      "support_status": "conditionally_supported",
-      "production_status": "shadow_only",
-      "required_conditions": [
-        "existing external Tumor 1/operational Stroma 2 boundary",
-        "deterministic external-boundary certificate",
-        "adequate tissue and complete-instance capacity",
-        "no protected fine identity in the edit band"
-      ],
-      "forbidden_claims": [
-        "histologic invasive-front recognition",
-        "specific breast carcinoma subtype",
-        "desmoplastic reaction"
-      ]
-    },
-    {
       "primitive_id": "cohesive-boundary-expansion-v1",
       "mechanism_id": "breast-annotation-anchored-boundary-growth",
       "scenarios": [
@@ -663,6 +633,10 @@
     }
   ],
   "closed_or_render_only": [
+    {
+      "capability": "tumor-burden-increase-v1",
+      "reason": "retired for Breast as a duplicate public binding; cohesive-boundary-expansion-v1 performs the same certified Stroma-to-Tumor boundary operation and edit magnitude expresses the requested burden change"
+    },
     {
       "capability": "generic tumor-burden-decrease-v1",
       "reason": "deprecated for Breast; regression is represented by the explicit invasive-footprint, residual-fragmentation, local-clearance, or neoplastic-depletion contracts"

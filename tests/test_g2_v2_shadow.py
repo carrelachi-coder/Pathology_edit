@@ -26,7 +26,8 @@ class G2V2ShadowTests(unittest.TestCase):
                 ("breast", "BCSS", "breast-invasive-carcinoma-v1", "bcss-semantic-v1", "breast-cellvit-source-first-v1", "breast-annotation-anchored-boundary-growth"),
                 ("lung", "IGNITE", "lung-carcinoma-v1", "ignite-semantic-v1", "lung-cellvit-source-first-v1", "lung-solid-squamous-growth"),
             ):
-                for primitive in ("tumor-burden-increase-v1",) * 2:
+                primitive = "cohesive-boundary-expansion-v1"
+                for primitive in (primitive,) * 2:
                     cases.append(
                         _case(
                             index,
@@ -121,7 +122,7 @@ def _case(index, *, organ, dataset, domain, annotation, population, mechanism, p
     instruction = (
         "increase tumor burden"
         if primitive == "tumor-burden-increase-v1"
-        else "decrease tumor burden"
+        else "expand the tumor boundary locally"
     )
     semantic = (
         {
@@ -137,7 +138,10 @@ def _case(index, *, organ, dataset, domain, annotation, population, mechanism, p
             "subject": "tumor-burden",
             "direction": (
                 "increase"
-                if primitive == "tumor-burden-increase-v1"
+                if primitive in {
+                    "tumor-burden-increase-v1",
+                    "cohesive-boundary-expansion-v1",
+                }
                 else "decrease"
             ),
             "explicit_cell_class": None,

@@ -2,7 +2,6 @@
   "mechanism_id": "breast-annotation-anchored-boundary-growth",
   "pathology_domain_id": "breast-invasive-carcinoma-v1",
   "supported_primitives": [
-    "tumor-burden-increase-v1",
     "cohesive-boundary-expansion-v1"
   ],
   "version": "1.0.0-draft",
@@ -79,14 +78,6 @@
     "mode": "annotation_anchored_external_boundary_displacement",
     "target_component_merge_policy": "selected_only",
     "primitive_label_contracts": {
-      "tumor-burden-increase-v1": {
-        "source_labels": [
-          "Stroma"
-        ],
-        "target_labels": [
-          "Tumor"
-        ]
-      },
       "cohesive-boundary-expansion-v1": {
         "source_labels": [
           "Stroma"
@@ -148,7 +139,6 @@
       "boundary_aligned"
     ],
     "layout_program_by_primitive": {
-      "tumor-burden-increase-v1": "boundary_aligned",
       "cohesive-boundary-expansion-v1": "boundary_aligned"
     },
     "core_policy": "replace_complete_instances_in_tissue_change",

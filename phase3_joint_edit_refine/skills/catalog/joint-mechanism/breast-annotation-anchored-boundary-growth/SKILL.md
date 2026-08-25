@@ -1,6 +1,6 @@
 ---
 name: breast-annotation-anchored-boundary-growth
-description: Plan broad or cohesive Breast tumor growth from BCSS semantic masks and deterministic external-boundary certificates, without H&E-based front recognition.
+description: Plan cohesive Breast tumor-boundary growth from BCSS semantic masks and deterministic external-boundary certificates, without H&E-based front recognition.
 ---
 
 # Breast Annotation-Anchored Boundary Growth

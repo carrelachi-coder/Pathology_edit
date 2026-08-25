@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the shadow-only non-Breast organ/annotation primitive lattice.
+"""Install the shadow-only organ/annotation primitive lattice.
 
 The catalog is deliberately data driven.  This maintenance command keeps the
 large set of profile/mechanism contracts deterministic and provides ``--check``
@@ -1708,6 +1708,17 @@ def refine(root: Path, *, check: bool) -> list[Path]:
         if pair_id in closed_pairs
     }
     writer.json(execution_scope_path, execution_scope)
+
+    # Breast uses one concrete external-boundary growth operation.  Overall
+    # tumor burden is a measurement outcome; edit magnitude belongs to the
+    # cohesive-boundary primitive instead of a duplicate public binding.
+    for mechanism_id in (
+        "breast-annotation-anchored-boundary-growth",
+        "breast-cohesive-nst-front",
+    ):
+        breast_growth = _contract(root, mechanism_id)
+        _remove_redundant_tumor_burden_growth(breast_growth)
+        _write_contract(writer, breast_growth)
 
     # P1: complete PANDA cell-only dispersion and post-treatment residual scope.
     prostate_local = _contract(root, "prostate-local-population-modulation")

@@ -4137,6 +4137,8 @@ class JointSkillTests(unittest.TestCase):
             if (
                 mechanism.pathology_domain_id == "prostate-adenocarcinoma-v1"
                 or mechanism_id in {
+                "breast-annotation-anchored-boundary-growth",
+                "breast-cohesive-nst-front",
                 "lung-solid-squamous-growth",
                 "melanoma-cohesive-nest-sheet",
                 }
@@ -4144,10 +4146,11 @@ class JointSkillTests(unittest.TestCase):
                 self.assertNotIn(
                     "tumor-burden-increase-v1", mechanism.supported_primitives
                 )
-                self.assertIn(
-                    "cohesive-boundary-expansion-v1",
-                    mechanism.supported_primitives,
-                )
+                if mechanism_id != "breast-cohesive-nst-front":
+                    self.assertIn(
+                        "cohesive-boundary-expansion-v1",
+                        mechanism.supported_primitives,
+                    )
             else:
                 self.assertIn(
                     "tumor-burden-increase-v1", mechanism.supported_primitives
@@ -4316,11 +4319,12 @@ class JointSkillTests(unittest.TestCase):
                 mechanism_id="breast-cohesive-nst-front",
             ),
         )
-        self.assertIsNone(
+        self.assertIn(
+            "does not support",
             repository.execution_selection_reason(
                 primitive_id="tumor-burden-increase-v1",
                 mechanism_id="breast-annotation-anchored-boundary-growth",
-            )
+            ),
         )
         local = _case_stub(
             primitive="cellularity-increase-v1",

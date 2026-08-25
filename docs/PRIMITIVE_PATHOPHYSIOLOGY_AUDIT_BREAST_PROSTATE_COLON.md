@@ -1,13 +1,14 @@
 # Breast / Prostate / Colon Primitive 病理生理与执行区分度审计
 
-审计分支：`golden/breast-all-primitives-glas-panda`  
-审计日期：2026-08-23
+审计分支：`final-mask-edit`
+审计日期：2026-08-24
 
 ## 结论口径
 
 - 这里的 primitive 是受标注约束的反事实形态编辑，不等于从一张小 patch 直接推断患者真实的纵向疾病进展、疗效或预后。
-- 当前启用的 41 个 organ × mechanism 项中，没有两项是“目标类别、宿主区域、组织转换、空间布局和后条件均相同”的无条件完全重复操作。
+- 当前启用的 40 个 organ × mechanism 项中，没有两项是“目标类别、宿主区域、组织转换、空间布局和后条件均相同”的无条件完全重复操作。
 - 3 个关闭项应继续关闭：Colon/GLaS `tumor-burden-increase-v1`、Prostate/PANDA `architecture-progression-v1`、Prostate Pattern 3 的 `cohesive-boundary-expansion-v1`。
+- Breast `tumor-burden-increase-v1` 已合并进 `cohesive-boundary-expansion-v1`：两者原本使用完全相同的 Stroma→Tumor 外边界转换、`boundary_aligned` 细胞布局和执行器，所谓 burden 差异只需由 edit magnitude 表达。
 - Breast 的低区分度 `infiltrative-nest-cord-extension-v1` 绑定已移除，统一保留 cell-first `invasive-cord-formation-v1`。
 - 仍需重点治理的条件性重叠有三类：
   1. Breast `cell-type-abundance-*` 若允许显式选择 neoplastic class，会与 `neoplastic-cell-abundance-*` 条件性重叠；应把 neoplastic 指令统一路由到后者。
@@ -29,8 +30,7 @@
 
 | Organ | Primitive / mechanism | 当前状态 | 病理生理或治疗意义 | 实际操作 | 与相关 primitive 的区分度与结论 |
 |---|---|---|---|---|---|
-| Breast | `tumor-burden-increase-v1` | 条件支持 / shadow | 未治疗进展或治疗后进展导致浸润癌总体占据面积增加 | 从认证外边界把 BCSS Stroma 2 转为 Tumor 1，并重建完整 class-1 肿瘤细胞 | **中**：与 cohesive expansion 共用边界生长机制，但本项以总体 burden/面积为终点；不完全重复 |
-| Breast | `cohesive-boundary-expansion-v1` | 条件支持 / shadow | 黏连性肿瘤前沿局部推进 | 浅表、连续、多叶状 Stroma 2→Tumor 1 扩张，伴整实例细胞替换 | **中高**：强调局部前沿几何；区别于更广义 tumor burden |
+| Breast | `cohesive-boundary-expansion-v1` | 条件支持 / shadow | 黏连性肿瘤前沿局部推进；扩张幅度可表达局部肿瘤占据面积增加 | 浅表、连续、多叶状 Stroma 2→Tumor 1 扩张，伴整实例细胞替换；面积由 magnitude 控制 | **高**：Breast 唯一的连续外边界扩张 primitive；原 `tumor-burden-increase-v1` 已作为重复项合并 |
 | Breast | `invasive-cord-formation-v1` | 条件支持 / shadow | 狭窄肿瘤细胞 cord 向间质延伸，模拟浸润形态 | 先排布至少 6 个 class-1 细胞，主体 1–2 细胞宽，再从细胞轮廓派生 Tumor 支持 | **高**：作为唯一 Breast cord primitive；区别于脱离的较大 nest、2–4 细胞小簇和单细胞 scatter |
 | Breast | `peritumoral-tumor-nest-formation-v1` | 条件支持 / shadow | 邻近间质内形成较大的脱离肿瘤岛 | 新建 1 个不规则、脱离的 Tumor 1 岛，填入 6–12 个完整 class-1 细胞 | **高**：有组织标签且 ≥6 细胞；区别于 ≤4 细胞 bud/cluster 和单细胞 scatter |
 | Breast | `peritumoral-neoplastic-scatter-increase-v1` | 条件支持 / shadow | 浸润前沿离散单细胞播散 | 组织标签不变；只在 Tumor 外侧认证 Stroma 环带加入分离的完整 class-1 单细胞 | **高**：single-cell；区别于小簇和带 Tumor 组织岛的 nest |
@@ -78,7 +78,7 @@
 
 | 相关组 | 是否“完全一致” | 判断 |
 |---|---:|---|
-| Breast tumor burden vs cohesive boundary expansion | 否 | 共享边界生长家族，但面积目标和局部几何不同 |
+| Breast tumor burden vs cohesive boundary expansion | **是，已合并** | 原实现的目标标签、宿主、边界几何、细胞布局和执行器一致；面积大小属于 magnitude 参数，保留 cohesive boundary expansion |
 | Breast/各器官 cell-type abundance vs neoplastic abundance | 条件性 | 当显式类别为 class-1 时会重叠；应由解析器统一路由到 neoplastic primitive |
 | 各器官 cellularity vs cell-type abundance | 条件性 | 多类别时不同；单类别 patch 会退化，需 gate 或显式审计标记 |
 | Breast/Prostate footprint decrease vs fragmentation | 否 | 连续外沿退缩 vs 内部 breakup 后的多灶残余 |

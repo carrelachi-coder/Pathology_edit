@@ -2,7 +2,6 @@
   "mechanism_id": "breast-cohesive-nst-front",
   "pathology_domain_id": "breast-invasive-carcinoma-v1",
   "supported_primitives": [
-    "tumor-burden-increase-v1",
     "invasive-front-expansion-v1"
   ],
   "version": "1.1.0-draft",
@@ -43,15 +42,6 @@
       "maximum_depth_span_ratio": 1.25
     },
     "primitive_label_contracts": {
-      "tumor-burden-increase-v1": {
-        "source_labels": [
-          "Stroma",
-          "Other tissue"
-        ],
-        "target_labels": [
-          "Tumor"
-        ]
-      },
       "invasive-front-expansion-v1": {
         "source_labels": [
           "Stroma"
@@ -133,7 +123,6 @@
       "cell_spatial_distribution"
     ],
     "layout_program_by_primitive": {
-      "tumor-burden-increase-v1": "boundary_aligned",
       "invasive-front-expansion-v1": "boundary_aligned"
     }
   },
