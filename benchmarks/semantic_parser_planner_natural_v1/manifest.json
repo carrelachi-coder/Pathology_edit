@@ -1,0 +1,132 @@
+{
+  "benchmark_jsonl_sha256": "29bcfa4dae2abb522d315a1bba88713b0de52a5bd5c24543281912adae093db4",
+  "benchmark_version": "semantic-parser-planner-natural-benchmark-v1",
+  "category_counts": {
+    "catalog_single_intent": 296,
+    "negation": 12,
+    "ordered_multi_intent": 24,
+    "underspecified_intent": 12,
+    "unordered_conflict": 12
+  },
+  "evaluation_split_counts": {
+    "development": 269,
+    "final_holdout": 87
+  },
+  "executable_scope_without_open_profile_binding": [
+    "invasive-front-expansion-v1",
+    "neoplastic-microinfiltration-increase-v1",
+    "tumor-burden-increase-v1"
+  ],
+  "generator_model": "gpt-5.4-mini-2026-03-17",
+  "generator_protocol": "chat_completions",
+  "gold_labels_changed": false,
+  "language_counts": {
+    "en": 178,
+    "zh": 178
+  },
+  "ontology_schema_version": "joint-semantic-request-v4",
+  "open_bindings": {
+    "BCSS": [
+      "cell-type-abundance-decrease-v1",
+      "cell-type-abundance-increase-v1",
+      "cellularity-decrease-v1",
+      "cellularity-increase-v1",
+      "cohesive-boundary-expansion-v1",
+      "generic-immune-infiltrate-decrease-v1",
+      "generic-immune-infiltrate-increase-v1",
+      "invasive-cord-formation-v1",
+      "invasive-tumor-footprint-decrease-v1",
+      "local-invasive-clearance-v1",
+      "necrosis-appearance-v1",
+      "necrosis-resolution-v1",
+      "neoplastic-cell-abundance-decrease-v1",
+      "neoplastic-cell-abundance-increase-v1",
+      "peritumoral-neoplastic-scatter-increase-v1",
+      "peritumoral-small-cluster-increase-v1",
+      "peritumoral-tumor-nest-formation-v1",
+      "residual-tumor-fragmentation-v1",
+      "stroma-increase-v1"
+    ],
+    "GLaS": [
+      "cell-type-abundance-decrease-v1",
+      "cell-type-abundance-increase-v1",
+      "cellularity-decrease-v1",
+      "cellularity-increase-v1",
+      "neoplastic-cell-abundance-decrease-v1",
+      "neoplastic-cell-abundance-increase-v1",
+      "peritumoral-neoplastic-scatter-increase-v1",
+      "peritumoral-small-cluster-increase-v1"
+    ],
+    "IGNITE": [
+      "cell-type-abundance-decrease-v1",
+      "cell-type-abundance-increase-v1",
+      "cellularity-decrease-v1",
+      "cellularity-increase-v1",
+      "cohesive-boundary-expansion-v1",
+      "generic-immune-infiltrate-decrease-v1",
+      "generic-immune-infiltrate-increase-v1",
+      "infiltrative-nest-cord-extension-v1",
+      "invasive-tumor-footprint-decrease-v1",
+      "necrosis-appearance-v1",
+      "necrosis-resolution-v1",
+      "neoplastic-cell-abundance-decrease-v1",
+      "neoplastic-cell-abundance-increase-v1",
+      "peritumoral-neoplastic-scatter-increase-v1",
+      "peritumoral-small-cluster-increase-v1",
+      "residual-tumor-fragmentation-v1",
+      "stroma-increase-v1"
+    ],
+    "ORCA": [
+      "cell-type-abundance-decrease-v1",
+      "cell-type-abundance-increase-v1",
+      "cellularity-decrease-v1",
+      "cellularity-increase-v1",
+      "neoplastic-cell-abundance-decrease-v1",
+      "neoplastic-cell-abundance-increase-v1"
+    ],
+    "PANDA": [
+      "cell-type-abundance-decrease-v1",
+      "cell-type-abundance-increase-v1",
+      "cellularity-decrease-v1",
+      "cellularity-increase-v1",
+      "cohesive-boundary-expansion-v1",
+      "infiltrative-nest-cord-extension-v1",
+      "invasive-tumor-footprint-decrease-v1",
+      "local-invasive-clearance-v1",
+      "neoplastic-cell-abundance-decrease-v1",
+      "neoplastic-cell-abundance-increase-v1",
+      "peritumoral-neoplastic-scatter-increase-v1",
+      "residual-tumor-fragmentation-v1"
+    ],
+    "PUMA": [
+      "cell-type-abundance-decrease-v1",
+      "cell-type-abundance-increase-v1",
+      "cellularity-decrease-v1",
+      "cellularity-increase-v1",
+      "cohesive-boundary-expansion-v1",
+      "invasive-tumor-footprint-decrease-v1",
+      "neoplastic-cell-abundance-decrease-v1",
+      "neoplastic-cell-abundance-increase-v1",
+      "peritumoral-neoplastic-scatter-increase-v1",
+      "peritumoral-small-cluster-increase-v1",
+      "residual-tumor-fragmentation-v1",
+      "stroma-increase-v1"
+    ]
+  },
+  "open_organ_profile_binding_count": 74,
+  "open_primitive_type_count": 20,
+  "profile_counts": {
+    "BCSS": 86,
+    "GLaS": 42,
+    "IGNITE": 78,
+    "ORCA": 34,
+    "PANDA": 58,
+    "PUMA": 58
+  },
+  "purpose": "closed-ontology bilingual Parser/Planner interface conformance",
+  "record_count": 356,
+  "scientific_claim_boundary": "synthetic templates and paraphrases; not unrestricted clinical language understanding and not mask-quality evidence",
+  "source_benchmark_sha256": "3932287495dd7f78b2feb2b0b087f7bb2c0990c3d93e451015cb8593d8acd106",
+  "source_benchmark_version": "semantic-parser-planner-benchmark-v1",
+  "substantively_rewritten_count": 343
+}

@@ -1,0 +1,13 @@
+{
+  "generation_fallback_count": 3,
+  "input_tokens": 183265,
+  "model": "gpt-5.4-mini-2026-03-17",
+  "output_tokens": 25743,
+  "repair_candidate_count": 1,
+  "repair_input_tokens": 413,
+  "repair_output_tokens": 41,
+  "repair_request_count": 1,
+  "repair_total_tokens": 454,
+  "request_count": 219,
+  "total_tokens": 209008
+}

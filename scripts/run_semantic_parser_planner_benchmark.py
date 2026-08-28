@@ -14,6 +14,7 @@ import json
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
+from phase3_joint_edit_refine.compatible_api import (
+    OpenAIChatCompletionsJSONClient,
+)
 from phase3_joint_edit_refine.models import JointAreaBudget, JointCaseContext
 from phase3_joint_edit_refine.program_planner import SemanticProgramPlanner
 from phase3_joint_edit_refine.semantic_request import (
@@ -146,14 +150,23 @@ def _parser_for(args: argparse.Namespace):
         return None
     if args.parser == "rule-based":
         return RuleBasedSemanticRequestParser()
-    client = OpenAIResponsesJSONClient(
-        model=args.model,
-        reasoning_effort=args.reasoning_effort,
-        api_base_url=args.api_base_url,
-        api_key_env=args.api_key_env,
-        timeout_sec=args.timeout_sec,
-        max_retries=args.max_retries,
-    )
+    if args.api_protocol == "chat-completions":
+        client = OpenAIChatCompletionsJSONClient(
+            model=args.model,
+            api_base_url=args.api_base_url,
+            api_key_env=args.api_key_env,
+            timeout_sec=args.timeout_sec,
+            max_retries=args.max_retries,
+        )
+    else:
+        client = OpenAIResponsesJSONClient(
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            api_base_url=args.api_base_url,
+            api_key_env=args.api_key_env,
+            timeout_sec=args.timeout_sec,
+            max_retries=args.max_retries,
+        )
     return OpenAISemanticRequestParser(client)
 
 
@@ -358,6 +371,82 @@ def _markdown_report(result: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _evaluate_record(
+    record: Mapping[str, Any], *, parser_impl: Any, planner: SemanticProgramPlanner
+) -> dict[str, Any]:
+    gold = semantic_request_from_metadata(record["gold_semantic_request"])
+    expected_program = record["expected_planner"]
+    gold_program = _program_projection(
+        planner.plan(gold, case_template=_case_stub(record))
+    )
+    row: dict[str, Any] = {
+        "case_id": record["case_id"],
+        "evaluation_split": record.get("evaluation_split"),
+        "language": record["language"],
+        "category": record["category"],
+        "dataset": record["case_profile"]["dataset"],
+        "instruction": record["instruction"],
+        "gold_intent_count": len(gold.intents),
+        "gold_planner_exact": gold_program == expected_program,
+        "parser_scored": parser_impl is not None,
+        "parse_success": True if parser_impl is not None else None,
+        "parse_error": None,
+        "intent_count_exact": True,
+        "semantic_request_exact": True,
+        "relation_exact": True,
+        "primitive_leakage": False,
+        "parsed_pipeline_planner_exact": True,
+        "intent_field_correct": {field: len(gold.intents) for field in INTENT_FIELDS},
+    }
+    if parser_impl is None:
+        return row
+    try:
+        parsed = parser_impl.parse(str(record["instruction"]))
+        gold_projection = _request_projection(gold)
+        parsed_projection = _request_projection(parsed)
+        row["intent_count_exact"] = len(parsed.intents) == len(gold.intents)
+        row["relation_exact"] = (
+            parsed_projection["relations"] == gold_projection["relations"]
+        )
+        row["semantic_request_exact"] = parsed_projection == gold_projection
+        row["primitive_leakage"] = _contains_key(
+            parsed.to_metadata(),
+            {"primitive_id", "primitive_hypotheses", "mechanism_id"},
+        )
+        field_correct = Counter()
+        for index, gold_intent in enumerate(gold_projection["intents"]):
+            parsed_intent = (
+                parsed_projection["intents"][index]
+                if index < len(parsed_projection["intents"])
+                else {}
+            )
+            for field in INTENT_FIELDS:
+                field_correct[field] += int(
+                    parsed_intent.get(field) == gold_intent[field]
+                )
+        row["intent_field_correct"] = dict(field_correct)
+        parsed_program = _program_projection(
+            planner.plan(parsed, case_template=_case_stub(record))
+        )
+        row["parsed_pipeline_planner_exact"] = parsed_program == expected_program
+        row["parsed_semantic_request"] = parsed.to_metadata()
+        row["parsed_program"] = parsed_program
+    except Exception as exc:  # noqa: BLE001 - preserve per-case provider failures
+        row.update(
+            {
+                "parse_success": False,
+                "parse_error": f"{type(exc).__name__}: {exc}",
+                "intent_count_exact": False,
+                "semantic_request_exact": False,
+                "relation_exact": False,
+                "primitive_leakage": False,
+                "parsed_pipeline_planner_exact": False,
+                "intent_field_correct": {},
+            }
+        )
+    return row
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--benchmark", type=Path, default=DEFAULT_BENCHMARK)
@@ -369,12 +458,23 @@ def main() -> int:
     parser.add_argument("--model", default="gpt-5.6-luna")
     parser.add_argument("--reasoning-effort", default="low")
     parser.add_argument("--api-base-url", default="https://api.openai.com/v1")
+    parser.add_argument(
+        "--api-protocol",
+        choices=("responses", "chat-completions"),
+        default="responses",
+    )
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--timeout-sec", type=float, default=180.0)
     parser.add_argument("--max-retries", type=int, default=2)
     parser.add_argument("--language", choices=("zh", "en"))
     parser.add_argument("--category")
+    parser.add_argument(
+        "--case-ids",
+        help="Comma-separated case IDs for a focused development regression run",
+    )
+    parser.add_argument("--evaluation-split", choices=("development", "final_holdout"))
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--workers", type=int, default=1)
     parser.add_argument(
         "--write-predictions",
         action="store_true",
@@ -392,6 +492,17 @@ def main() -> int:
         records = [item for item in records if item["language"] == args.language]
     if args.category:
         records = [item for item in records if item["category"] == args.category]
+    if args.case_ids:
+        selected_case_ids = {
+            item.strip() for item in args.case_ids.split(",") if item.strip()
+        }
+        records = [item for item in records if item["case_id"] in selected_case_ids]
+    if args.evaluation_split:
+        records = [
+            item
+            for item in records
+            if item.get("evaluation_split") == args.evaluation_split
+        ]
     if args.limit is not None:
         records = records[: args.limit]
     if not records:
@@ -399,83 +510,26 @@ def main() -> int:
 
     parser_impl = _parser_for(args)
     planner = SemanticProgramPlanner()
-    results: list[dict[str, Any]] = []
-    for record in records:
-        gold = semantic_request_from_metadata(record["gold_semantic_request"])
-        expected_program = record["expected_planner"]
-        gold_program = _program_projection(
-            planner.plan(gold, case_template=_case_stub(record))
-        )
-        row: dict[str, Any] = {
-            "case_id": record["case_id"],
-            "language": record["language"],
-            "category": record["category"],
-            "dataset": record["case_profile"]["dataset"],
-            "instruction": record["instruction"],
-            "gold_intent_count": len(gold.intents),
-            "gold_planner_exact": gold_program == expected_program,
-            "parser_scored": parser_impl is not None,
-            "parse_success": True if parser_impl is not None else None,
-            "parse_error": None,
-            "intent_count_exact": True,
-            "semantic_request_exact": True,
-            "relation_exact": True,
-            "primitive_leakage": False,
-            "parsed_pipeline_planner_exact": True,
-            "intent_field_correct": {
-                field: len(gold.intents) for field in INTENT_FIELDS
-            },
-        }
-        if parser_impl is not None:
-            try:
-                parsed = parser_impl.parse(str(record["instruction"]))
-                gold_projection = _request_projection(gold)
-                parsed_projection = _request_projection(parsed)
-                row["intent_count_exact"] = len(parsed.intents) == len(gold.intents)
-                row["relation_exact"] = (
-                    parsed_projection["relations"] == gold_projection["relations"]
-                )
-                row["semantic_request_exact"] = parsed_projection == gold_projection
-                row["primitive_leakage"] = _contains_key(
-                    parsed.to_metadata(),
-                    {"primitive_id", "primitive_hypotheses", "mechanism_id"},
-                )
-                field_correct = Counter()
-                for index, gold_intent in enumerate(gold_projection["intents"]):
-                    parsed_intent = (
-                        parsed_projection["intents"][index]
-                        if index < len(parsed_projection["intents"])
-                        else {}
-                    )
-                    for field in INTENT_FIELDS:
-                        field_correct[field] += int(
-                            parsed_intent.get(field) == gold_intent[field]
-                        )
-                row["intent_field_correct"] = dict(field_correct)
-                parsed_program = _program_projection(
-                    planner.plan(parsed, case_template=_case_stub(record))
-                )
-                row["parsed_pipeline_planner_exact"] = (
-                    parsed_program == expected_program
-                )
-                row["parsed_semantic_request"] = parsed.to_metadata()
-                row["parsed_program"] = parsed_program
-            except (
-                Exception  # noqa: BLE001 - preserve per-case provider failures
-            ) as exc:
-                row.update(
-                    {
-                        "parse_success": False,
-                        "parse_error": f"{type(exc).__name__}: {exc}",
-                        "intent_count_exact": False,
-                        "semantic_request_exact": False,
-                        "relation_exact": False,
-                        "primitive_leakage": False,
-                        "parsed_pipeline_planner_exact": False,
-                        "intent_field_correct": {},
-                    }
-                )
-        results.append(row)
+    if args.workers <= 1:
+        results = [
+            _evaluate_record(record, parser_impl=parser_impl, planner=planner)
+            for record in records
+        ]
+    else:
+        indexed_results: dict[int, dict[str, Any]] = {}
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = {
+                executor.submit(
+                    _evaluate_record,
+                    record,
+                    parser_impl=parser_impl,
+                    planner=planner,
+                ): index
+                for index, record in enumerate(records)
+            }
+            for future in as_completed(futures):
+                indexed_results[futures[future]] = future.result()
+        results = [indexed_results[index] for index in range(len(records))]
 
     by_language = {
         key: _aggregate(value)
@@ -493,6 +547,8 @@ def main() -> int:
         "filters": {
             "language": args.language,
             "category": args.category,
+            "case_ids": args.case_ids,
+            "evaluation_split": args.evaluation_split,
             "limit": args.limit,
         },
         "overall": _aggregate(results),

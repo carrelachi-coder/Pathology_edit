@@ -11,13 +11,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from phase3_mask_edit_refine.agents import OpenAIResponsesJSONClient
 
 from .models import JointContractError
-
 
 SEMANTIC_REQUEST_SCHEMA_VERSION = "joint-semantic-request-v4"
 
@@ -104,6 +104,37 @@ Your sole responsibility is to translate the user's Chinese or English language 
 
 For every intent, extract the biological target, requested operation, polarity, clinical context, spatial scope, morphology, explicitly named cell class, strength, literal source span, and uncertainty. Use `direct_edit` for an explicit requested change and `clinical_trajectory` for progression, regression, treatment-response, residual-disease, or recurrence language. Normalize paraphrases into the supplied enum values.
 
+Assign intent IDs consecutively in textual order, starting with `intent-001`. Use the following target boundaries consistently:
+- `selected_cell_population`: the user explicitly changes the number or abundance of one named non-neoplastic cell class, such as inflammatory or connective cells.
+- `neoplastic_cell_population`: the user changes the number or abundance of tumour cells without requesting a tissue-area or invasion-pattern change.
+- `overall_cellularity`: the user changes total local nucleus density across cell classes.
+- `immune_compartment`: the user changes the area or extent of an immune-rich/infiltrated tissue region; do not use it for a request that only adds or removes inflammatory cells.
+- `tumor_extent`: the user changes tumour area, footprint, boundary extent, or requests local clearance.
+- `tumor_topology`: the user requests fragmentation or multiple separated residual foci.
+- `invasion_pattern`: the user requests how tumour crosses or extends beyond a boundary, such as cords, nests, single cells, small clusters, or an otherwise unspecified infiltrative pattern.
+- `tumor_state`: reserve this for generic progression or response language whose concrete endpoint is not stated.
+- `necrosis` and `stroma`: use only when those biological compartments are explicitly requested.
+
+An explicit morphology or spatial qualifier belongs to the same biological intent, not a separate intent. In particular, “make the boundary cohesive and broader”, “keep the boundary continuous while expanding it”, and “replace/repopulate necrosis with viable tumour” are each one endpoint, not two intents.
+
+Apply these normalization rules before returning the fields:
+- Peritumoral or boundary-crossing tumour cords, nests, single cells, or small clusters always describe `invasion_pattern`, even when the wording says to add, form, appear, or increase their number. Normalize their operation to `increase`. This rule applies independently to every intent in a multi-intent request. Do not reinterpret them as generic `neoplastic_cell_population` or as `tumor_topology`.
+- Bare “local invasion” / “局部浸润” means `invasion_pattern` with `morphology=unspecified`. It means `immune_compartment` only when immune, inflammatory, lymphocytic, or another immune-rich compartment is stated.
+- `tumor_topology` + `fragment` + `fragmented` is reserved for splitting an established local tumour into multiple separated foci. A new peritumoral nest is an invasion morphology, not fragmentation, even if the nests are called separate or discrete.
+- A continuous/cohesive outward tumour-boundary expansion is one `tumor_extent` + `increase` intent with `morphology=cohesive`. Continuity is not topology and outward expansion is not clearance.
+- For `necrosis`, creation/increase of an intratumoral necrotic region always normalizes to `appear`; replacement of necrosis by viable tumour always normalizes to `repopulate`. In this ontology, `necrosis` never uses the generic `increase` or `decrease` operations. The latter endpoint is one intent and is not clearance or generic decrease.
+- A whole-lesion footprint reduction is `tumor_extent` + `decrease`; use `clear` only for explicit local removal/clearance of a tumour focus.
+- Negation changes only `polarity`. Thus “do not increase X” remains `operation=increase` with `polarity=negated`; it is not a decrease.
+- Set `morphology=fragmented` without exception whenever the user asks to fragment/split tumour into multiple foci. Set `morphology=cohesive` for continuous/cohesive boundary expansion. Do not infer `invasive_front` merely from the adjective “invasive” when no front or boundary is named.
+- `cell_class` records a population selector, not every cell word in the sentence. Use `neoplastic` for `neoplastic_cell_population`, and the named non-neoplastic class for `selected_cell_population`. Use null for `invasion_pattern`, `tumor_extent`, `tumor_topology`, necrosis, stroma, and compartment-level intents, even if their morphology is made of tumour cells.
+- Map “whole/overall/entire lesion” and “整体/全病灶” to `whole_lesion`. A “local/localized area” is `local`; use `selected_roi` only when the user explicitly refers to a selected, marked, or chosen ROI. Map “slight/slightly/a bit/mild/modest” and “轻微/轻度/稍微” to `mild`; do not infer mild strength from polite or hesitant wording alone.
+
+Relations are mandatory for every pair of separately stated intentions. Use `explicit_sequence` only when the user states an order such as first/then/after/先/然后. When two intentions are joined without an order—including “and”, “while”, “at the same time”, “同时”, or a simultaneous contradiction—return an `unordered` relation and never invent execution order.
+
+A named cell class must not be inferred when the user only refers to a tissue compartment. Preserve deliberately underspecified morphology as `unspecified`.
+
+Use `clinical_context=none` when an explicit edit contains no disease-course, treatment, residual-disease, or recurrence framing. Use `clinical_context=unspecified` only when the user invokes a clinical context but the available enum cannot be determined. Do not treat ordinary uncertainty or polite wording as a clinical context.
+
 Never select, name, rank, or suggest an edit primitive or pathology mechanism. Never inspect or infer image morphology, annotation labels, coordinates, masks, connected components, area, cell count, density, tool parameters, or feasibility. Do not invent an order that the user did not state. Preserve negation and do not convert post-treatment context into improvement unless the user states response or regression. If the biological direction is genuinely missing, use `unspecified` and record the uncertainty instead of guessing.
 
 Return only JSON conforming to the supplied strict schema."""
@@ -148,7 +179,10 @@ SEMANTIC_REQUEST_JSON_SCHEMA: dict[str, Any] = {
                     "target": {"type": "string", "enum": sorted(BIOLOGICAL_TARGETS)},
                     "operation": {"type": "string", "enum": sorted(OPERATIONS)},
                     "polarity": {"type": "string", "enum": sorted(POLARITIES)},
-                    "clinical_context": {"type": "string", "enum": sorted(CLINICAL_CONTEXTS)},
+                    "clinical_context": {
+                        "type": "string",
+                        "enum": sorted(CLINICAL_CONTEXTS),
+                    },
                     "spatial_scope": {"type": "string", "enum": sorted(SPATIAL_SCOPES)},
                     "morphology": {"type": "string", "enum": sorted(MORPHOLOGIES)},
                     "cell_class": {
@@ -366,7 +400,12 @@ class OpenAISemanticRequestParser:
             json_schema=SEMANTIC_REQUEST_JSON_SCHEMA,
         )
         return semantic_request_from_metadata(
-            {**dict(raw), "instruction": text, "parser": self.name, "parser_metadata": usage}
+            {
+                **dict(raw),
+                "instruction": text,
+                "parser": self.name,
+                "parser_metadata": usage,
+            }
         )
 
 
@@ -584,7 +623,9 @@ def _classify_clause(clause: str, *, index: int) -> SemanticIntentClause:
         target, operation = "tumor_extent", "clear"
     elif re.search(r"坏死.*(恢复|再生|肿瘤)|repopulat.*necros|viable.*necros", lowered):
         target, operation = "necrosis", "repopulate"
-    elif re.search(r"增加坏死|出现坏死|坏死形成|necrosis.*appear|increase necrosis", lowered):
+    elif re.search(
+        r"增加坏死|出现坏死|坏死形成|necrosis.*appear|increase necrosis", lowered
+    ):
         target, operation, scope = "necrosis", "appear", "intratumoral"
     elif re.search(r"免疫.*(区域|区室|浸润区)|immune.*compartment", lowered):
         target = "immune_compartment"
@@ -600,9 +641,13 @@ def _classify_clause(clause: str, *, index: int) -> SemanticIntentClause:
         target = "selected_cell_population"
         operation = _increase_or_decrease(lowered)
         cell_class = "connective"
-    elif re.search(r"缩小|减少.*面积|退缩|shrink|decrease.*(area|footprint)|regress", lowered):
+    elif re.search(
+        r"缩小|减少.*面积|退缩|shrink|decrease.*(area|footprint)|regress", lowered
+    ):
         target, operation = "tumor_extent", "decrease"
-    elif re.search(r"肿瘤细胞|癌细胞|neoplastic cell|tumou?r cell", lowered) and not re.search(
+    elif re.search(
+        r"肿瘤细胞|癌细胞|neoplastic cell|tumou?r cell", lowered
+    ) and not re.search(
         r"浸润|散落|单细胞|小簇|细胞簇|小团|出芽|infiltrat|cord|nest|scatter|cluster",
         lowered,
     ):
@@ -657,9 +702,7 @@ def _classify_clause(clause: str, *, index: int) -> SemanticIntentClause:
     elif re.search(r"进展|恶化|progress|worsen", lowered):
         target, operation = "tumor_state", "worsen"
         context = (
-            "post_treatment"
-            if context == "post_treatment"
-            else "disease_progression"
+            "post_treatment" if context == "post_treatment" else "disease_progression"
         )
         uncertainties = ("specific morphological endpoint is unspecified",)
     elif re.search(r"缓解|改善|response|improve", lowered):
