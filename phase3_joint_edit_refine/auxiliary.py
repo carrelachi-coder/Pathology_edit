@@ -2,8 +2,11 @@
 
 Lumen maps are conservative protection maps derived from the aligned H&E,
 tissue annotation, and complete nucleus mask.  The encoding is profile-aware:
-GLaS stores lumen inside the gland/tumor label, while PANDA stores it as
-Stroma.  The maps never rewrite the source tissue annotation.
+GLaS includes lumen in the annotated gland object, whereas PANDA leaves lumen
+outside the Gleason-pattern epithelial label.  In the normalized PANDA mask,
+that complement is represented by the operational fine-2 class; this does not
+assert that a gland lumen is biological stroma.  The maps never rewrite the
+source tissue annotation.
 """
 
 from __future__ import annotations

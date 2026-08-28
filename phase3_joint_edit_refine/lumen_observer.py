@@ -112,11 +112,13 @@ def observe_luminal_spaces(
 ) -> LumenObservation:
     """Observe confirmed and uncertain luminal protection regions.
 
-    ``stroma`` encoding is used when the annotation stores lumen as Stroma
-    (PANDA). ``within_architecture`` is used when lumen shares the gland/tumor
-    label (GLaS); there the first layer derives a low-cell, lightly stained
-    candidate inside the semantic gland component.  Both encodings then apply
-    the same nucleus-density, H&E, boundary, and edge-truncation audit.
+    ``stroma`` is the legacy internal name for drawing PANDA lumen candidates
+    from the normalized fine-2 operational complement outside Gleason-pattern
+    epithelium; it does not classify lumen as biological stroma.
+    ``within_architecture`` is used when lumen shares the gland/tumor label
+    (GLaS); there the first layer derives a low-cell, lightly stained candidate
+    inside the semantic gland component.  Both encodings then apply the same
+    nucleus-density, H&E, boundary, and edge-truncation audit.
     """
 
     image = np.asarray(image_rgb, dtype=np.uint8)
