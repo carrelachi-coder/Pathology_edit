@@ -56,32 +56,28 @@ Status: revised four-paragraph manuscript draft. Quantitative mask-quality and p
 
 **中10.** 肿瘤细胞丰度 primitive 在与肿瘤兼容的组织支撑区域内进行操作，而免疫区室 primitive 表达带标注免疫富集区域在空间范围上的变化。
 
-**E11.** Dataset-specific annotation knowledge further resolves structures whose label semantics differ across cohorts: in the masks used here, PANDA assigns Gleason-pattern labels to cancerous epithelium, leaving the glandular lumen outside the tumour label, whereas GLaS represents the complete gland unit, including its lumen, as one annotated object.
+**E11.** Dataset-specific annotation knowledge accounts for heterogeneity in how the same biological structure is represented across cohorts.
 
-**中11.** 数据集特异的标注知识还用于解析不同队列中标签语义不一致的结构：在本研究使用的 mask 中，PANDA 的 Gleason pattern 标签对应癌性上皮，腺腔不属于肿瘤标签；GLaS 则将包括腺腔在内的完整腺体单元作为一个标注对象。
+**中11.** 数据集特异的标注知识用于处理不同队列对同一生物学结构采用不同标注方式所产生的异质性。
 
-**E12.** Accordingly, the editor identifies likely glandular lumina from their appearance in the H&E image and the scarcity of nearby nuclei, without requiring a lumen to be fully enclosed within the cropped patch.
+**E12.** For example, PANDA labels Gleason-pattern epithelium whereas GLaS annotates complete gland units, so lumen-aware primitives apply profile-specific spatial constraints rather than a shared mask rule.
 
-**中12.** 因此，编辑器根据 H&E 图像中的腔隙外观和周围较低的细胞核密度识别可能的腺腔；即使腺腔在 patch 边缘被截断，也不要求它在当前图像中完全闭合。
-
-**E13.** The detected lumen and its surrounding epithelial wall are then protected from edits that do not target gland structure, while cell placement is restricted to cellular tissue outside the lumen.
-
-**中13.** 随后，系统会保护识别出的腺腔及其周围上皮壁，避免与腺体结构无关的编辑破坏它们；需要放置细胞时，也只会选择腺腔外实际含有细胞的组织区域。
+**中12.** 例如，PANDA 标注 Gleason pattern 上皮，而 GLaS 标注完整腺体单元，因此涉及腺腔的 primitive 会采用与各自标注体系相匹配的空间约束，而不是共享同一套 mask 规则。
 
 ### Paragraph 4 — Closed-loop execution and compositional editing
 
-**E14.** Before execution, each planned primitive is evaluated against the current tissue and nucleus state, and a candidate edit is committed only when it satisfies the requested direction and magnitude, legal source-to-target transitions, spatial requirements and structure-preservation constraints.
+**E13.** Before execution, each planned primitive is evaluated against the current tissue and nucleus state, and a candidate edit is committed only when it satisfies the requested direction and magnitude, legal source-to-target transitions, spatial requirements and structure-preservation constraints.
 
-**中14.** 在执行前，每个规划得到的 primitive 都会结合当前组织和细胞核状态进行评估；只有当候选编辑满足请求的变化方向与幅度、合法的源到目标转换、空间要求和结构保护约束时，结果才会被提交。
+**中13.** 在执行前，每个规划得到的 primitive 都会结合当前组织和细胞核状态进行评估；只有当候选编辑满足请求的变化方向与幅度、合法的源到目标转换、空间要求和结构保护约束时，结果才会被提交。
 
-**E15.** Requests containing multiple intents are represented as multi-step programs and executed sequentially through edit, validation and confirmation, after which the updated mask state is re-analysed before planning the next step.
+**E14.** Requests containing multiple intents are represented as multi-step programs and executed sequentially through edit, validation and confirmation, after which the updated mask state is re-analysed before planning the next step.
 
-**中15.** 包含多个意图的请求被表示为多步骤程序，并按照“编辑—验证—确认”的顺序连续执行；每一步完成后，系统都会重新分析更新后的 mask 状态，再规划下一步。
+**中14.** 包含多个意图的请求被表示为多步骤程序，并按照“编辑—验证—确认”的顺序连续执行；每一步完成后，系统都会重新分析更新后的 mask 状态，再规划下一步。
 
-**E16.** Unsupported, ambiguous or conflicting requests produce an explicit clarification or review state, preventing the framework from silently substituting a different biological operation.
+**E15.** Unsupported, ambiguous or conflicting requests produce an explicit clarification or review state, preventing the framework from silently substituting a different biological operation.
 
-**中16.** 对于不受支持、存在歧义或相互冲突的请求，系统会明确进入澄清或审查状态，从而避免在未说明的情况下替换为另一种生物学操作。
+**中15.** 对于不受支持、存在歧义或相互冲突的请求，系统会明确进入澄清或审查状态，从而避免在未说明的情况下替换为另一种生物学操作。
 
-**E17.** In a bilingual synthetic interface audit, the frozen Parser–Planner pipeline exactly recovered the structured semantic request and organ-compatible edit program for all 87 held-out natural-language cases (Supplementary Methods and Supplementary Table X).
+**E16.** In a bilingual synthetic interface audit, the frozen Parser–Planner pipeline exactly recovered the structured semantic request and organ-compatible edit program for all 87 held-out natural-language cases (Supplementary Methods and Supplementary Table X).
 
-**中17.** 在一项中英文合成接口测试中，冻结后的 Parser–Planner 流程在 87 条未见自然语言样本上均准确恢复了结构化语义请求及与器官兼容的编辑程序（补充方法和补充表 X）。
+**中16.** 在一项中英文合成接口测试中，冻结后的 Parser–Planner 流程在 87 条未见自然语言样本上均准确恢复了结构化语义请求及与器官兼容的编辑程序（补充方法和补充表 X）。
