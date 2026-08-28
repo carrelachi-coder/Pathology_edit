@@ -13,14 +13,18 @@ from scipy.spatial import cKDTree
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.models import CandidateMask
 
-from .authority import nucleus_instance_has_destructive_authority
+from .authority import (
+    NUCLEUS_AUTHORITY_SEMANTIC_RASTER,
+    NUCLEUS_AUTHORITY_SEMANTIC_WATERSHED,
+    nucleus_instance_has_destructive_authority,
+)
 from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
 from .spatial_contracts import peritumoral_outer_maximum_px
 
-CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v18"
+CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v19"
 DEPLETION_FIELD_AREA_RASTER_TOLERANCE = 0.05
 QUALIFIED_RESIDUAL_MINIMUM_AREA_RATIO = 0.05
 IMMUNE_RESIDUAL_MINIMUM_AREA_RATIO = 0.10
@@ -56,6 +60,37 @@ def _is_biological_instance(
     return bool(
         residual_area_floor_px is not None
         and float(item.area_px) >= float(residual_area_floor_px)
+    )
+
+
+def _has_compiled_erasure_authority(
+    *,
+    item,
+    scene: JointSceneAnalysis,
+    bundle: JointSkillBundle,
+) -> bool:
+    """Match final erasure authority to the deterministic preflight contract.
+
+    Hybrid CellViT partitions retain the stricter per-instance authority rule:
+    only native seeds or explicitly isolated semantic instances may be erased.
+    A pure semantic raster/watershed profile has no hidden native partition,
+    however, and a mechanism that explicitly allows semantic instance fallback
+    treats each complete, uncensored semantic component as its whole-instance
+    authority.  The preflight already applies the corresponding connectivity,
+    border, quality and protected-region checks; the final compiler must not
+    silently revoke that approved authority.
+    """
+
+    if nucleus_instance_has_destructive_authority(item):
+        return True
+    return bool(
+        bundle.mechanism.representability.allow_semantic_instance_fallback
+        and scene.cells.observation_quality
+        in {
+            NUCLEUS_AUTHORITY_SEMANTIC_RASTER,
+            NUCLEUS_AUTHORITY_SEMANTIC_WATERSHED,
+        }
+        and item.source in {"semantic_component", "semantic_distance_watershed"}
     )
 
 
@@ -884,7 +919,11 @@ class CellToolProgramCompiler:
             erasure = np.zeros_like(tissue_change)
             for item in scene.cells.instances:
                 if (
-                    not nucleus_instance_has_destructive_authority(item)
+                    not _has_compiled_erasure_authority(
+                        item=item,
+                        scene=scene,
+                        bundle=bundle,
+                    )
                     or item.instance_id in protected_ids
                     or item.touches_border
                     or item.completeness_status != "complete"

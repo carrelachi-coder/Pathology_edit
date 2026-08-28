@@ -7609,7 +7609,7 @@ class JointWorkflowTests(unittest.TestCase):
             )
             program = contract["cell_program"]
             self.assertEqual(
-                program["compiler_version"], "joint-cell-tool-compiler-v18"
+                program["compiler_version"], "joint-cell-tool-compiler-v19"
             )
             self.assertEqual(
                 program["policies"]["P"],
@@ -9927,13 +9927,15 @@ def _as_breast_growth_case(source: JointCaseContext) -> JointCaseContext:
         "original_label_map_digest": tissue_digest,
         "preprocessing_revision": "synthetic-bcss-v1",
         "joint_mechanism_id": "breast-annotation-anchored-boundary-growth",
-        "joint_primitive_id": "tumor-burden-increase-v1",
+        "joint_primitive_id": "cohesive-boundary-expansion-v1",
         "available_auxiliary_structures": [],
     }
     provenance.pop("auxiliary_structure_sha256", None)
     provenance.pop("auxiliary_structure_provenance", None)
     return replace(
         source,
+        instruction="expand the tumor boundary locally",
+        primitive_id="cohesive-boundary-expansion-v1",
         pathology_domain_id="breast-invasive-carcinoma-v1",
         annotation_profile_id="bcss-semantic-v1",
         cell_population_profile_id="breast-cellvit-source-first-v1",

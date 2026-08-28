@@ -192,7 +192,7 @@ def _run(case: JointCaseContext, root: Path):
     ).run(case, output_root=root / "output")
 
 
-def test_directionless_treatment_workflow_offers_three_preflighted_scenarios(
+def test_directionless_treatment_workflow_offers_only_preflighted_scenarios(
     tmp_path,
 ):
     case = _write_breast_case(
@@ -208,8 +208,10 @@ def test_directionless_treatment_workflow_offers_three_preflighted_scenarios(
     assert [item["scenario"] for item in options] == [
         "treatment_response",
         "post_treatment_progression",
-        "residual_disease",
     ]
+    assert "residual_disease" not in {
+        item["scenario"] for item in options
+    }
     assert all(item["clinician_label"].isascii() for item in options)
 
 

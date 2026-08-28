@@ -169,6 +169,23 @@ Every materialized file is hashed. A preprocessing revision absent from the
 source manifest is recorded as missing evidence, never inferred from a path or
 current checkout.
 
+Natural-language single- and multi-intent programs use the v4 entry point:
+
+```bash
+python scripts/run_joint_edit_program.py \
+  --manifest cases.jsonl \
+  --output-root artifacts/edit_programs \
+  --semantic-parser api \
+  --agent-mode api
+```
+
+The Parser receives text only and cannot emit a primitive. The Program Planner
+creates one primitive-resolvable step per user intent. After each step passes
+the deterministic hard gates, its committed tissue/nuclei masks become the
+source state for the next step. See
+`docs/semantic_parser_planner_v4.md` for the exact Parser prompt, examples and
+the deterministic evaluator boundary.
+
 `--agent-mode api` enables strict-schema multimodal tissue Planner, joint
 Planner and independent joint critic adapters. It is opt-in and reads the key
 only from `--api-key-env`; the default offline path makes no network call.
