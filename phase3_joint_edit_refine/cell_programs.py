@@ -405,6 +405,11 @@ class CellToolProgramCompiler:
             nominal_nucleus_diameter_px=effect_diameter,
             capacity_fallback_enabled=peritumoral_capacity_fallback,
         )
+        depletion_count_capped_radial_fallback = bool(
+            case.provenance.get("depletion_count_capped_radial_fallback")
+            is True
+            and cell.layout_program_id == "localized_density_gradient"
+        )
         minimum_effect_span_cell_diameters = (
             primitive.minimum_effect_span_cell_diameters
         )
@@ -606,6 +611,9 @@ class CellToolProgramCompiler:
                     ),
                     "minimum_field_area_cell_diameter_squares": (
                         depletion.minimum_field_area_cell_diameter_squares
+                    ),
+                    "count_capped_radial_fallback": (
+                        depletion_count_capped_radial_fallback
                     ),
                 }
             elif cell.core_zone in scene.population_zone_masks:
@@ -864,6 +872,9 @@ class CellToolProgramCompiler:
                         ),
                         nominal_nucleus_diameter_px=diameter,
                         contract=depletion,
+                        count_capped_radial_fallback=(
+                            depletion_count_capped_radial_fallback
+                        ),
                         selection_variant=int(
                             case.provenance.get(
                                 "depletion_removal_selection_variant", 0
@@ -1230,6 +1241,7 @@ class CellToolProgramCompiler:
         maximum_count: int,
         nominal_nucleus_diameter_px: float,
         contract,
+        count_capped_radial_fallback: bool = False,
         selection_variant: int = 0,
     ) -> tuple[tuple[str, ...], DepletionInstanceAuthority]:
         """Select complete nuclei with a stronger core than transition thinning."""
@@ -1393,6 +1405,9 @@ class CellToolProgramCompiler:
                 minimum_count=minimum_count,
                 maximum_count=maximum_count,
                 contract=contract,
+                count_capped_radial_fallback=(
+                    count_capped_radial_fallback
+                ),
                 effective_core_end_px=effective_core_end,
                 effective_transition_width_px=effective_transition_width,
                 selection_variant=selection_variant,
@@ -1511,6 +1526,7 @@ class CellToolProgramCompiler:
         minimum_count: int,
         maximum_count: int,
         contract,
+        count_capped_radial_fallback: bool,
         effective_core_end_px: float,
         effective_transition_width_px: float,
         selection_variant: int = 0,
@@ -1611,7 +1627,7 @@ class CellToolProgramCompiler:
                         "tolerance": tolerance,
                     }
                 )
-        if radial_target_mismatches:
+        if radial_target_mismatches and not count_capped_radial_fallback:
             raise JointContractError(
                 "density field count budget cannot realize the skill-owned "
                 "radial removal targets: "

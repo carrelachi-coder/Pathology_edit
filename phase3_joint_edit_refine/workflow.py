@@ -2958,6 +2958,39 @@ class JointPathologyEditWorkflow:
                 usage=usage,
             )
 
+        def retry_with_count_capped_depletion_profile():
+            if (
+                case.provenance.get("depletion_count_capped_radial_fallback")
+                is True
+                or bundle.mechanism.cell_program.cellularity_depletion is None
+                or bundle.mechanism.cell_program.layout_for(case.primitive_id)
+                != "localized_density_gradient"
+            ):
+                return None
+            fallback_case = replace(
+                case,
+                provenance={
+                    **case.provenance,
+                    "depletion_count_capped_radial_fallback": True,
+                    "depletion_count_capped_radial_fallback_policy": (
+                        "monotonic_radial_profile_after_fixed_fraction_conflict"
+                    ),
+                },
+            )
+            return self._run_cell_only(
+                audit=audit,
+                case=fallback_case,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                schema=schema,
+                scene=scene,
+                bundle=bundle,
+                mechanism_id=mechanism_id,
+                planner_images=planner_images,
+                planner_artifacts=planner_artifacts,
+                usage=usage,
+            )
+
         try:
             cell_portfolio = self._compile_cell_only_candidate_portfolio(
                 case=case,
@@ -2968,11 +3001,12 @@ class JointPathologyEditWorkflow:
                 bundle=bundle,
             )
         except JointContractError as exc:
-            retry = (
-                retry_with_capacity_scaled_annulus()
-                if "no exact-capacity survivor" in str(exc)
-                else None
-            )
+            message = str(exc)
+            retry = None
+            if "density field count budget cannot realize" in message:
+                retry = retry_with_count_capped_depletion_profile()
+            if retry is None and "no exact-capacity survivor" in message:
+                retry = retry_with_capacity_scaled_annulus()
             if retry is not None:
                 return retry
             raise

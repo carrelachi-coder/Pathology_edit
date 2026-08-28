@@ -1,3 +1,4 @@
+import inspect
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +13,10 @@ from phase3_joint_edit_refine.spatial_contracts import (
     peritumoral_outer_maximum_px,
 )
 from phase3_joint_edit_refine.tissue_planner import _capacity_fallback_topology
-from phase3_joint_edit_refine.workflow import _apply_profile_visible_cell_budget
+from phase3_joint_edit_refine.workflow import (
+    JointPathologyEditWorkflow,
+    _apply_profile_visible_cell_budget,
+)
 from scripts.build_lung_oral_skin_primitive_audit import build
 from scripts.run_lung_oral_skin_primitive_mask_review import (
     CELL_BUDGETS,
@@ -177,6 +181,13 @@ def test_peritumoral_annulus_widens_only_on_failed_capacity_path():
         nominal_nucleus_diameter_px=36.0,
         capacity_fallback_enabled=True,
     ) == 90
+
+
+def test_density_profile_fallback_is_named_as_a_retry_only_policy():
+    source = inspect.getsource(JointPathologyEditWorkflow._run_cell_only)
+    assert "depletion_count_capped_radial_fallback" in source
+    assert "density field count budget cannot realize" in source
+    assert "monotonic_radial_profile_after_fixed_fraction_conflict" in source
 
 
 def test_lung_cord_uses_a_narrow_topology_appropriate_area_floor():

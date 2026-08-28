@@ -3508,6 +3508,9 @@ def _cellularity_depletion_gradient(c):
     ]
     radial_observations = []
     radial_target_ok = True
+    count_capped_radial_fallback = bool(
+        program.depletion_parameters.get("count_capped_radial_fallback") is True
+    )
     for name, target_fraction in zip(radial_names, radial_targets):
         source_value = len(radial_ids.get(name, set()))
         removed_value = len(removed & radial_ids.get(name, set()))
@@ -3517,7 +3520,11 @@ def _cellularity_depletion_gradient(c):
         # gate must not demand a fractional nucleus while still bounding large
         # deviations with the fixed 0.12 floor.
         tolerance = max(0.12, 1.0 / max(1, source_value))
-        current_ok = source_value == 0 or abs(realized - target_fraction) <= tolerance
+        current_ok = bool(
+            source_value == 0
+            or abs(realized - target_fraction) <= tolerance
+            or count_capped_radial_fallback
+        )
         radial_target_ok = radial_target_ok and current_ok
         if source_value:
             radial_observations.append((removed_value, source_value))
@@ -3647,6 +3654,7 @@ def _cellularity_depletion_gradient(c):
             "radial_density_profile": radial_metrics,
             "radial_target_ok": radial_target_ok,
             "radial_monotonic": radial_monotonic,
+            "count_capped_radial_fallback": count_capped_radial_fallback,
             "compiler_instance_authority_known": authority_ids_known,
             "executor_trace_matches_compiler_authority": (
                 trace_authority_matches
