@@ -12,7 +12,6 @@ import argparse
 import hashlib
 import json
 import sys
-import time
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -401,7 +400,6 @@ def main() -> int:
     parser_impl = _parser_for(args)
     planner = SemanticProgramPlanner()
     results: list[dict[str, Any]] = []
-    started = time.time()
     for record in records:
         gold = semantic_request_from_metadata(record["gold_semantic_request"])
         expected_program = record["expected_planner"]
@@ -492,7 +490,6 @@ def main() -> int:
         "parser_mode": args.parser,
         "model": args.model if args.parser == "api" else None,
         "reasoning_effort": args.reasoning_effort if args.parser == "api" else None,
-        "elapsed_sec": round(time.time() - started, 3),
         "filters": {
             "language": args.language,
             "category": args.category,
