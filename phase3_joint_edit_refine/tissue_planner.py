@@ -269,6 +269,44 @@ def _effective_tissue_topology(
     return result
 
 
+def _capacity_fallback_topology(
+    topology: dict[str, Any],
+    *,
+    annotation_profile_id: str,
+    primitive_id: str,
+    retry_index: int,
+    feedback_stage: str,
+) -> dict[str, Any]:
+    """Relax only the visible-fraction floor after a proven capacity failure."""
+
+    if (
+        annotation_profile_id not in {"ignite-semantic-v1", "puma-semantic-v1"}
+        or (feedback_stage != "tissue_area_underfill" and retry_index <= 0)
+    ):
+        return topology
+    if primitive_id == "residual-tumor-fragmentation-v1":
+        return {
+            **topology,
+            "minimum_source_component_changed_fraction": min(
+                float(topology["minimum_source_component_changed_fraction"]),
+                0.01,
+            ),
+            "maximum_residual_area_fraction": max(
+                float(topology["maximum_residual_area_fraction"]),
+                0.97,
+            ),
+        }
+    if primitive_id == "invasive-tumor-footprint-decrease-v1":
+        return {
+            **topology,
+            "minimum_source_component_changed_fraction": min(
+                float(topology["minimum_source_component_changed_fraction"]),
+                0.01,
+            ),
+        }
+    return topology
+
+
 @dataclass(frozen=True)
 class OpenAIJointAwareTissuePlanner:
     """Mask-graph tissue Planner that selects certified interfaces and anchors."""
@@ -995,6 +1033,16 @@ class MultiInterfaceResearchTissuePlanner:
                     **topology,
                     "minimum_source_component_changed_fraction": 0.03,
                 }
+        else:
+            # Keep the reviewed primitive floor on the first attempt. Only an
+            # infeasible replay may use the largest topology-safe local edit.
+            topology = _capacity_fallback_topology(
+                topology,
+                annotation_profile_id=case.annotation_profile_id,
+                primitive_id=case.primitive_id,
+                retry_index=retry_index,
+                feedback_stage=feedback_stage,
+            )
         component_turnover = (
             topology["geometry_mode"] == "component_boundary_turnover"
         )

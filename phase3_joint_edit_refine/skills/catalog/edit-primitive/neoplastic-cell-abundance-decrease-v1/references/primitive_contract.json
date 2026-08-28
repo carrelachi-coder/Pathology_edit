@@ -6,17 +6,31 @@
   "summary": "Decrease only observable class-1 neoplastic nuclei as a bounded density gradient without changing tissue or non-target cell classes.",
   "tissue_action": "forbidden",
   "budget_mode": "count_extent",
-  "allowed_baseline_modes": ["selective_remove"],
-  "allowed_quota_roles": ["explicit_decrement"],
-  "host_tissue_labels": ["Tumor"],
-  "target_cell_classes": [1],
+  "allowed_baseline_modes": [
+    "selective_remove"
+  ],
+  "allowed_quota_roles": [
+    "explicit_decrement"
+  ],
+  "host_tissue_labels": [
+    "Tumor"
+  ],
+  "target_cell_classes": [
+    1
+  ],
   "cell_effect_contract": {
     "minimum_delta_count": 12,
     "minimum_delta_count_by_pathology_domain": {
-      "prostate-adenocarcinoma-v1": 2
+      "prostate-adenocarcinoma-v1": 2,
+      "melanoma-v1": 8
     },
     "minimum_span_cell_diameters": 6.0,
     "minimum_foci": 0
   },
-  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_population_density", "cellularity_depletion_gradient"]
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "local_population_density",
+    "cellularity_depletion_gradient"
+  ]
 }

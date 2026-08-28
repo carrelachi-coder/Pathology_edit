@@ -4350,15 +4350,17 @@ def _residual_fragmentation_topology(c):
     after = selected_source & np.isin(target, editable_ids)
     structure = np.ones((3, 3), dtype=bool)
     primitive = c.bundle.primitive
-    minimum_changed_fraction = (
-        0.03
-        if c.case.annotation_profile_id == "panda-gleason-v1"
-        else primitive.minimum_source_component_changed_fraction
+    minimum_changed_fraction = float(
+        c.plan.tissue_plan.tool_program.parameter_ranges.get(
+            "min_source_component_changed_fraction",
+            primitive.minimum_source_component_changed_fraction,
+        )
     )
-    maximum_residual_fraction = (
-        0.97
-        if c.case.annotation_profile_id == "panda-gleason-v1"
-        else primitive.maximum_residual_area_fraction
+    maximum_residual_fraction = float(
+        c.plan.tissue_plan.tool_program.parameter_ranges.get(
+            "maximum_residual_area_fraction",
+            primitive.maximum_residual_area_fraction,
+        )
     )
     labeled, count = ndimage.label(after, structure=structure)
     sizes = [
@@ -4546,10 +4548,11 @@ def _coherent_footprint_retreat(c):
         )
     )
     primitive = c.bundle.primitive
-    minimum_changed_fraction = (
-        0.03
-        if c.case.annotation_profile_id == "panda-gleason-v1"
-        else primitive.minimum_source_component_changed_fraction
+    minimum_changed_fraction = float(
+        c.plan.tissue_plan.tool_program.parameter_ranges.get(
+            "min_source_component_changed_fraction",
+            primitive.minimum_source_component_changed_fraction,
+        )
     )
     passed = bool(
         changed_pixels > 0

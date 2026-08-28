@@ -49,7 +49,7 @@
     "oral-scc-local-carcinoma-clearance": "The cross-validation annotation bundle has no user-supplied, digest-bound local_clearance_roi, and ORCA has no specific receiving stroma label.",
     "oral-scc-operational-tumor-retreat": "ORCA has no explicit stroma or treatment-bed class. Tumor-to-Other-tissue replacement would overclaim post-treatment physiology from a heterogeneous annotation label.",
     "prostate-pattern-3-growth": "The current generic interface-band executor cannot insert separated complete pattern-3 glands and has produced gland bridging or circumferential wall thickening. Keep this mechanism closed until a whole-gland-unit executor and paired frozen-generator validation exist.",
-    "melanoma-intratumoral-necrosis-turnover": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution."
+    "melanoma-intratumoral-necrosis-turnover": "None of the 189 PUMA cross-validation targets contains native Necrosis fine-ID-3 pixels. Appearance and resolution therefore lack a source or target Necrosis compartment and remain unavailable under the current annotation distribution, independent of edit-area thresholds."
   },
   "policy": "fail_closed",
   "review_status": "implementation_scoped",

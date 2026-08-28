@@ -734,7 +734,7 @@
           "status": "closed"
         },
         {
-          "closed_reason": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution.",
+          "closed_reason": "None of the 189 PUMA cross-validation targets contains native Necrosis fine-ID-3 pixels. Appearance and resolution therefore lack a source or target Necrosis compartment and remain unavailable under the current annotation distribution, independent of edit-area thresholds.",
           "closure_category": "dataset_case_limited",
           "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
           "primitive_id": "necrosis-appearance-v1",
@@ -746,7 +746,7 @@
           "status": "closed"
         },
         {
-          "closed_reason": "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact and the 8% visible donor compartment for appearance or resolution. Both primitives are unavailable under the current annotation distribution.",
+          "closed_reason": "None of the 189 PUMA cross-validation targets contains native Necrosis fine-ID-3 pixels. Appearance and resolution therefore lack a source or target Necrosis compartment and remain unavailable under the current annotation distribution, independent of edit-area thresholds.",
           "closure_category": "dataset_case_limited",
           "mechanism_id": "melanoma-intratumoral-necrosis-turnover",
           "primitive_id": "necrosis-resolution-v1",

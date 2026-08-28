@@ -101,6 +101,15 @@ LARGE_TISSUE_BUDGET = JointAreaBudget(
     fallback_policy="max_feasible_below_target",
     capacity_floor_policy="lower_to_proven_max_safe",
 )
+ADAPTIVE_LARGE_TISSUE_BUDGET = JointAreaBudget(
+    target_fraction=0.12,
+    min_fraction=0.08,
+    max_fraction=0.17,
+    tissue_min_fraction=0.08,
+    minimum_effective_fraction=0.0,
+    fallback_policy="max_feasible_below_target",
+    capacity_floor_policy="lower_to_proven_max_safe",
+)
 COMPARTMENT_TISSUE_BUDGET = JointAreaBudget(
     target_fraction=0.12,
     min_fraction=0.08,
@@ -116,6 +125,15 @@ INTERFACE_TISSUE_BUDGET = JointAreaBudget(
     max_fraction=0.12,
     tissue_min_fraction=0.05,
     minimum_effective_fraction=0.04,
+    fallback_policy="max_feasible_below_target",
+    capacity_floor_policy="lower_to_proven_max_safe",
+)
+ADAPTIVE_INTERFACE_TISSUE_BUDGET = JointAreaBudget(
+    target_fraction=0.08,
+    min_fraction=0.05,
+    max_fraction=0.12,
+    tissue_min_fraction=0.05,
+    minimum_effective_fraction=0.0,
     fallback_policy="max_feasible_below_target",
     capacity_floor_policy="lower_to_proven_max_safe",
 )
@@ -334,9 +352,19 @@ def _eligible_score(organ: str, primitive: str, row: dict[str, Any]) -> tuple[bo
             # the densest source population.  The previous density-heavy rank
             # systematically selected saturated ORCA tumor rasters.
             free = _value(row, "free", 1)
+        decrease_class_floor, decrease_local_floor = (
+            (12, 8)
+            if organ == "skin"
+            and primitive
+            in {
+                "cell-type-abundance-decrease-v1",
+                "neoplastic-cell-abundance-decrease-v1",
+            }
+            else (16, 12)
+        )
         eligible = (
-            class_count >= (16 if decrease else 4)
-            and (not decrease or local_count >= 12)
+            class_count >= (decrease_class_floor if decrease else 4)
+            and (not decrease or local_count >= decrease_local_floor)
             and (decrease or free >= 8192)
         )
         # Prefer masks with many distinct observable nuclei components; free
@@ -422,6 +450,63 @@ def _semantic_intent(evaluation: Evaluation) -> dict[str, Any]:
     return intent
 
 
+def _review_tissue_budget(organ: str, primitive: str) -> JointAreaBudget | None:
+    if primitive in CELL_BUDGETS:
+        return None
+    if organ == "lung" and primitive in {
+        "tumor-burden-increase-v1",
+        "cohesive-boundary-expansion-v1",
+    }:
+        return ADAPTIVE_INTERFACE_TISSUE_BUDGET
+    if (
+        organ == "lung" and primitive == "residual-tumor-fragmentation-v1"
+    ) or (
+        organ == "skin"
+        and primitive
+        in {
+            "invasive-tumor-footprint-decrease-v1",
+            "residual-tumor-fragmentation-v1",
+        }
+    ):
+        return ADAPTIVE_LARGE_TISSUE_BUDGET
+    if primitive == "infiltrative-nest-cord-extension-v1":
+        return CORD_TISSUE_BUDGET
+    if (
+        primitive.startswith("generic-immune-")
+        or primitive.startswith("necrosis-")
+        or (organ == "skin" and primitive == "cohesive-boundary-expansion-v1")
+        or (
+            organ == "skin"
+            and primitive
+            in {
+                "invasive-tumor-footprint-decrease-v1",
+                "stroma-increase-v1",
+                "residual-tumor-fragmentation-v1",
+            }
+        )
+    ):
+        return COMPARTMENT_TISSUE_BUDGET
+    return LARGE_TISSUE_BUDGET
+
+
+def _review_cell_budget(organ: str, primitive: str) -> CellCountExtentBudget | None:
+    budget = CELL_BUDGETS.get(primitive)
+    if primitive == "cell-type-abundance-decrease-v1" and organ == "oral":
+        # ORCA class-2 effects remain focal generic inflammatory density
+        # decreases. Ten-to-twenty-two complete instances remain reviewable.
+        return CellCountExtentBudget(16, 10, 22, 384, 0, 96, 64, 3)
+    if organ == "skin" and primitive in {
+        "cell-type-abundance-decrease-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+    }:
+        # Keep the reviewed 16-cell target. Sparse PUMA fields may fall back
+        # to eight complete cells instead of being rejected.
+        return CellCountExtentBudget(16, 8, 24, 384, 0, 96, 64, 3)
+    if primitive == "cell-type-abundance-decrease-v1" and organ == "lung":
+        return CellCountExtentBudget(16, 12, 24, 384, 0, 96, 64, 3)
+    return budget
+
+
 def _case(
     evaluation: Evaluation,
     row: dict[str, Any],
@@ -430,47 +515,9 @@ def _case(
 ) -> dict[str, Any]:
     primitive = evaluation.primitive_id
     short = hashlib.sha256(f"{evaluation.organ}:{primitive}:{row['sample_id']}".encode()).hexdigest()[:12]
-    tissue_primitive = primitive not in CELL_BUDGETS
-    budget = (
-        INTERFACE_TISSUE_BUDGET
-        if evaluation.organ == "lung" and primitive in {
-            "tumor-burden-increase-v1",
-            "cohesive-boundary-expansion-v1",
-        }
-        else CORD_TISSUE_BUDGET
-        if primitive == "infiltrative-nest-cord-extension-v1"
-        else COMPARTMENT_TISSUE_BUDGET
-        if (
-            primitive.startswith("generic-immune-")
-            or primitive.startswith("necrosis-")
-            or (evaluation.organ == "skin" and primitive == "cohesive-boundary-expansion-v1")
-            or (
-                evaluation.organ == "skin"
-                and primitive
-                in {
-                    "invasive-tumor-footprint-decrease-v1",
-                    "stroma-increase-v1",
-                    "residual-tumor-fragmentation-v1",
-                }
-            )
-        )
-        else LARGE_TISSUE_BUDGET
-    ) if tissue_primitive else None
+    budget = _review_tissue_budget(evaluation.organ, primitive)
     intent = _semantic_intent(evaluation)
-    cell_budget = CELL_BUDGETS.get(primitive)
-    if (
-        primitive == "cell-type-abundance-decrease-v1"
-        and evaluation.organ in {"oral", "skin"}
-    ):
-        # ORCA/PUMA class-2 effects remain focal generic inflammatory density
-        # decreases. Ten-to-twenty-two complete instances make the edit
-        # reviewable while the radial contract retains a residual population.
-        cell_budget = CellCountExtentBudget(16, 10, 22, 384, 0, 96, 64, 3)
-    elif (
-        primitive == "cell-type-abundance-decrease-v1"
-        and evaluation.organ == "lung"
-    ):
-        cell_budget = CellCountExtentBudget(16, 12, 24, 384, 0, 96, 64, 3)
+    cell_budget = _review_cell_budget(evaluation.organ, primitive)
     provenance = {
         "source_image_sha256": sha256_file(row["source_image"]),
         "source_tissue_mask_sha256": sha256_file(row["source_tissue_mask"]),

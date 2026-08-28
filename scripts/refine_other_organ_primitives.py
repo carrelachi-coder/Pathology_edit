@@ -1052,10 +1052,22 @@ def _install_primitives(writer: Writer) -> None:
             # complete instances makes a focal density decrease reviewable
             # without converting it into near-total immune clearance.
             "oral-squamous-cell-carcinoma-v1": 10,
-            "melanoma-v1": 10,
+            "melanoma-v1": 8,
         }
     )
     writer.json(class_decrease_path, class_decrease)
+
+    neoplastic_decrease_path = (
+        PRIMITIVES
+        / "neoplastic-cell-abundance-decrease-v1"
+        / "references"
+        / "primitive_contract.json"
+    )
+    neoplastic_decrease = _load(writer.root / neoplastic_decrease_path)
+    neoplastic_decrease["cell_effect_contract"].setdefault(
+        "minimum_delta_count_by_pathology_domain", {}
+    )["melanoma-v1"] = 8
+    writer.json(neoplastic_decrease_path, neoplastic_decrease)
 
 def _melanoma_small_focus_transform(contract: dict[str, Any]) -> None:
     """Keep attempted stromal focus programs explicit for fail-closed audit."""
@@ -1630,9 +1642,9 @@ def refine(root: Path, *, check: bool) -> list[Path]:
                 "local_clearance_roi; automatic ROI invention would not be mask-authorized local clearance."
             ),
             "melanoma-intratumoral-necrosis-turnover": (
-                "None of the 189 PUMA cross-validation targets has both the required Tumor-Necrosis contact "
-                "and the 8% visible donor compartment for appearance or resolution. Both primitives are "
-                "unavailable under the current annotation distribution."
+                "None of the 189 PUMA cross-validation targets contains native Necrosis fine-ID-3 pixels. "
+                "Appearance and resolution therefore lack a source or target Necrosis compartment and remain "
+                "unavailable under the current annotation distribution, independent of edit-area thresholds."
             ),
             "melanoma-operational-tumor-retreat": (
                 "Top mask-ranked PUMA retries at both the 14% visible-area floor and the 5-8% compartment "

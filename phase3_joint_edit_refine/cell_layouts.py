@@ -174,6 +174,21 @@ def certificate_aligned_cluster_size_range(
     return (minimum, maximum)
 
 
+def compact_cluster_capacity_fallback_range(
+    *,
+    compact_pair_small_cluster: bool,
+    placed_count: int,
+    minimum_effect_delta_count: int,
+) -> tuple[int, int] | None:
+    """Keep successful pair layouts; widen only a sub-minimum failed attempt."""
+
+    if compact_pair_small_cluster and placed_count < max(
+        4, int(minimum_effect_delta_count)
+    ):
+        return (2, 4)
+    return None
+
+
 def certificate_capacity_reference_ids(
     packing_certificate: dict[str, Any],
 ) -> tuple[str, ...]:
@@ -834,6 +849,36 @@ def generate_cell_layouts(
             diagnostics=halo_diagnostics,
             **halo_layout_kwargs,
         )
+        compact_cluster_capacity_fallback_used = False
+        fallback_cluster_range = compact_cluster_capacity_fallback_range(
+            compact_pair_small_cluster=compact_pair_small_cluster,
+            placed_count=halo_placed,
+            minimum_effect_delta_count=(
+                bundle.primitive.minimum_effect_delta_count_for(
+                    bundle.mechanism.pathology_domain_id
+                )
+            ),
+        )
+        if fallback_cluster_range is not None:
+            # Preserve the reviewed pair-only path for every existing success.
+            # If it cannot realize two complete foci, retry the same anchors
+            # as two 2--4-cell atomic groups. This changes grouping capacity,
+            # not the annulus, class, topology, collision or locality rules.
+            fallback_kwargs = dict(halo_layout_kwargs)
+            fallback_kwargs["cluster_size_range"] = fallback_cluster_range
+            fallback_diagnostics: dict[str, Any] = {}
+            fallback_target, fallback_placed, fallback_placements = _place_layout(
+                base=halo_base,
+                requested_count=halo_requested_count,
+                diagnostics=fallback_diagnostics,
+                **fallback_kwargs,
+            )
+            halo_diagnostics["atomic_group_fallback"] = fallback_diagnostics
+            if fallback_placed > halo_placed:
+                target = fallback_target
+                halo_placed = fallback_placed
+                halo_placements = fallback_placements
+                compact_cluster_capacity_fallback_used = True
         layout_diagnostics.append(
             {
                 "variant": variant,
@@ -1016,6 +1061,9 @@ def generate_cell_layouts(
                     "cell_capacity_fallback_used": placed < biological_desired_count,
                     "packing_witness_fallback_used": (
                         packing_witness_fallback_used
+                    ),
+                    "compact_cluster_capacity_fallback_used": (
+                        compact_cluster_capacity_fallback_used
                     ),
                     "continuity_mode": compiled_program.continuity_mode,
                     "continuity_width_px": (
