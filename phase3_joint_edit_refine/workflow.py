@@ -2925,14 +2925,57 @@ class JointPathologyEditWorkflow:
     ):
         """Execute a count/extent primitive without entering the tissue solver."""
 
-        cell_portfolio = self._compile_cell_only_candidate_portfolio(
-            case=case,
-            source_tissue=source_tissue,
-            source_nuclei=source_nuclei,
-            schema=schema,
-            scene=scene,
-            bundle=bundle,
-        )
+        def retry_with_capacity_scaled_annulus():
+            if (
+                case.provenance.get("peritumoral_capacity_fallback") is True
+                or case.annotation_profile_id
+                not in {"ignite-semantic-v1", "puma-semantic-v1"}
+                or case.primitive_id
+                != "peritumoral-small-cluster-increase-v1"
+            ):
+                return None
+            fallback_case = replace(
+                case,
+                provenance={
+                    **case.provenance,
+                    "peritumoral_capacity_fallback": True,
+                    "peritumoral_capacity_fallback_policy": (
+                        "scale_bounded_outer_annulus_after_failed_reviewed_path"
+                    ),
+                },
+            )
+            return self._run_cell_only(
+                audit=audit,
+                case=fallback_case,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                schema=schema,
+                scene=scene,
+                bundle=bundle,
+                mechanism_id=mechanism_id,
+                planner_images=planner_images,
+                planner_artifacts=planner_artifacts,
+                usage=usage,
+            )
+
+        try:
+            cell_portfolio = self._compile_cell_only_candidate_portfolio(
+                case=case,
+                source_tissue=source_tissue,
+                source_nuclei=source_nuclei,
+                schema=schema,
+                scene=scene,
+                bundle=bundle,
+            )
+        except JointContractError as exc:
+            retry = (
+                retry_with_capacity_scaled_annulus()
+                if "no exact-capacity survivor" in str(exc)
+                else None
+            )
+            if retry is not None:
+                return retry
+            raise
         plan, joint_usage = self.joint_planner.create_plan(
             case=case,
             scene=scene,
@@ -3165,6 +3208,9 @@ class JointPathologyEditWorkflow:
             )
         ]
         if not passing:
+            retry = retry_with_capacity_scaled_annulus()
+            if retry is not None:
+                return retry
             raise JointContractError(
                 "no cell-only candidate passed its joint condition gates"
             )
@@ -4825,7 +4871,7 @@ def _apply_profile_visible_cell_budget(
     elif primitive_id == "peritumoral-small-cluster-increase-v1":
         visible = CellCountExtentBudget(
             target_delta_count=8,
-            min_delta_count=6,
+            min_delta_count=4,
             max_delta_count=10,
             maximum_extent_px=max(160, budget.maximum_extent_px),
             interface_min_px=max(4, budget.interface_min_px),

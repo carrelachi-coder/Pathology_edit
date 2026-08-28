@@ -59,6 +59,7 @@ from .spatial_contracts import (
     small_cluster_maximum_focus_diameter_px,
     small_cluster_maximum_hotspot_span_px,
     small_cluster_within_focus_link_px,
+    peritumoral_outer_maximum_px,
 )
 from .tissue_tools import (
     JOINT_TOOL_FAMILY_TO_EXECUTOR,
@@ -1253,7 +1254,15 @@ def _peritumoral_annulus(c):
     tumor = np.isin(c.source_tissue, tumor_ids)
     outer_distance = ndimage.distance_transform_edt(~tumor)
     added = (c.candidate.target_nuclei_mask > 0) & (c.source_nuclei == 0)
-    allowed_max = max(1, int(c.bundle.mechanism.cell_program.halo_distance_px[1]))
+    allowed_max = peritumoral_outer_maximum_px(
+        configured_maximum_px=c.bundle.mechanism.cell_program.halo_distance_px[1],
+        nominal_nucleus_diameter_px=(
+            c.executable_contract.cell_program.nominal_nucleus_diameter_px
+        ),
+        capacity_fallback_enabled=bool(
+            c.case.provenance.get("peritumoral_capacity_fallback") is True
+        ),
+    )
     outside_host = ~tumor
     violations = int(
         np.count_nonzero(added & (~outside_host | (outer_distance > allowed_max)))
@@ -1723,7 +1732,15 @@ def _no_remote_neoplastic_focus(c):
     labeled, count = ndimage.label(
         target_class1, structure=np.ones((3, 3), dtype=bool)
     )
-    maximum = max(1, int(c.bundle.mechanism.cell_program.halo_distance_px[1]))
+    maximum = peritumoral_outer_maximum_px(
+        configured_maximum_px=c.bundle.mechanism.cell_program.halo_distance_px[1],
+        nominal_nucleus_diameter_px=(
+            c.executable_contract.cell_program.nominal_nucleus_diameter_px
+        ),
+        capacity_fallback_enabled=bool(
+            c.case.provenance.get("peritumoral_capacity_fallback") is True
+        ),
+    )
     remote = []
     added_count = 0
     for label_id in range(1, count + 1):

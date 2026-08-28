@@ -8,6 +8,9 @@ from phase3_joint_edit_refine.cell_layouts import (
 )
 from phase3_joint_edit_refine.planner_inputs import MASK_PLANNER_ARTIFACT_KINDS
 from phase3_joint_edit_refine.skills.repository import JointSkillRepository
+from phase3_joint_edit_refine.spatial_contracts import (
+    peritumoral_outer_maximum_px,
+)
 from phase3_joint_edit_refine.tissue_planner import _capacity_fallback_topology
 from phase3_joint_edit_refine.workflow import _apply_profile_visible_cell_budget
 from scripts.build_lung_oral_skin_primitive_audit import build
@@ -150,6 +153,30 @@ def test_target_profiles_receive_visible_cell_effect_budget():
         assert budget.min_delta_count == 12
         assert budget.maximum_extent_px >= 384
         assert metadata["policy_id"] == "mask-review-visible-cell-effect-budget-v4"
+
+    case = SimpleNamespace(annotation_profile_id="ignite-semantic-v1")
+    cluster, _ = _apply_profile_visible_cell_budget(
+        case,
+        primitive_id="peritumoral-small-cluster-increase-v1",
+        minimum_delta_count=4,
+        budget=CellCountExtentBudget(8, 4, 10, 176, 4, 64, 32, 2),
+        metadata={},
+    )
+    assert cluster.target_delta_count == 8
+    assert cluster.min_delta_count == 4
+
+
+def test_peritumoral_annulus_widens_only_on_failed_capacity_path():
+    assert peritumoral_outer_maximum_px(
+        configured_maximum_px=48,
+        nominal_nucleus_diameter_px=36.0,
+        capacity_fallback_enabled=False,
+    ) == 48
+    assert peritumoral_outer_maximum_px(
+        configured_maximum_px=48,
+        nominal_nucleus_diameter_px=36.0,
+        capacity_fallback_enabled=True,
+    ) == 90
 
 
 def test_lung_cord_uses_a_narrow_topology_appropriate_area_floor():

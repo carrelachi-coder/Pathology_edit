@@ -1,6 +1,6 @@
 """Shared deterministic spatial contracts for cell-layout morphology."""
 
-from math import sqrt
+from math import ceil, sqrt
 
 SMALL_CLUSTER_TARGET_FOCUS_COUNT = 2
 SMALL_CLUSTER_MINIMUM_FOCUS_SIZE = 2
@@ -38,6 +38,29 @@ SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS = 4.0
 SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_PX = 128.0
 BREAST_SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_DIAMETERS = 6.5
 BREAST_SMALL_CLUSTER_MAXIMUM_HOTSPOT_SPAN_PX = 192.0
+PERITUMORAL_CAPACITY_FALLBACK_MAXIMUM_DIAMETERS = 2.5
+
+
+def peritumoral_outer_maximum_px(
+    *,
+    configured_maximum_px: int,
+    nominal_nucleus_diameter_px: float,
+    capacity_fallback_enabled: bool,
+) -> int:
+    """Keep the reviewed annulus first; widen failed sparse cases by scale."""
+
+    configured = max(1, int(configured_maximum_px))
+    if not capacity_fallback_enabled:
+        return configured
+    return max(
+        configured,
+        int(
+            ceil(
+                PERITUMORAL_CAPACITY_FALLBACK_MAXIMUM_DIAMETERS
+                * max(1.0, float(nominal_nucleus_diameter_px))
+            )
+        ),
+    )
 
 
 def small_cluster_maximum_hotspot_span_px(

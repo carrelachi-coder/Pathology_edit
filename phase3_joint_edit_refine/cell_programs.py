@@ -18,6 +18,7 @@ from .models import JointCaseContext, JointContractError, JointEditPlan
 from .scene import JointSceneAnalysis
 from .seam import compile_adaptive_seam, target_cell_class_for_tissue
 from .skills.repository import JointSkillBundle
+from .spatial_contracts import peritumoral_outer_maximum_px
 
 CELL_TOOL_COMPILER_VERSION = "joint-cell-tool-compiler-v18"
 DEPLETION_FIELD_AREA_RASTER_TOLERANCE = 0.05
@@ -355,6 +356,20 @@ class CellToolProgramCompiler:
         # diameter for the latter stages collapsed valid GLaS depletion fields
         # even though preflight had already applied the finite-raster floor.
         diameter = float(effect_diameter)
+        peritumoral_capacity_fallback = bool(
+            case.provenance.get("peritumoral_capacity_fallback") is True
+            and case.annotation_profile_id
+            in {"ignite-semantic-v1", "puma-semantic-v1"}
+            and primitive.primitive_id
+            == "peritumoral-small-cluster-increase-v1"
+        )
+        peritumoral_maximum_px = peritumoral_outer_maximum_px(
+            configured_maximum_px=(
+                bundle.mechanism.cell_program.halo_distance_px[1]
+            ),
+            nominal_nucleus_diameter_px=effect_diameter,
+            capacity_fallback_enabled=peritumoral_capacity_fallback,
+        )
         minimum_effect_span_cell_diameters = (
             primitive.minimum_effect_span_cell_diameters
         )
@@ -405,7 +420,7 @@ class CellToolProgramCompiler:
                 scene=scene,
                 interface_ids=cell.interface_ids,
                 anchor_ids=cell.anchor_ids,
-                maximum_px=bundle.mechanism.cell_program.halo_distance_px[1],
+                maximum_px=peritumoral_maximum_px,
             )
         )
         if primitive.scope == "tissue_and_cell":
@@ -566,6 +581,17 @@ class CellToolProgramCompiler:
                     maximum_extent_px=case.cell_count_extent_budget.maximum_extent_px,
                 )
             else:
+                interface_maximum_px = min(
+                    case.cell_count_extent_budget.maximum_extent_px,
+                    (
+                        peritumoral_maximum_px
+                        if peritumoral_capacity_fallback
+                        else min(
+                            case.cell_count_extent_budget.interface_max_px,
+                            bundle.mechanism.cell_program.halo_distance_px[1],
+                        )
+                    ),
+                )
                 center_region = self._interface_zone(
                     scene=scene,
                     interface_ids=cell.interface_ids,
@@ -574,11 +600,7 @@ class CellToolProgramCompiler:
                         case.cell_count_extent_budget.interface_min_px,
                         bundle.mechanism.cell_program.halo_distance_px[0],
                     ),
-                    maximum_px=min(
-                        case.cell_count_extent_budget.interface_max_px,
-                        case.cell_count_extent_budget.maximum_extent_px,
-                        bundle.mechanism.cell_program.halo_distance_px[1],
-                    ),
+                    maximum_px=interface_maximum_px,
                 )
             if cell.layout_program_id != "localized_density_gradient":
                 mechanism_region = center_region.copy()
@@ -660,10 +682,7 @@ class CellToolProgramCompiler:
                 tuple(schema.resolve_fine_ids("Tumor")),
             )
             outer_distance = ndimage.distance_transform_edt(~tumor)
-            outer_maximum = max(
-                1,
-                int(bundle.mechanism.cell_program.halo_distance_px[1]),
-            )
+            outer_maximum = peritumoral_maximum_px
             valid &= ~tumor & (outer_distance <= outer_maximum)
         if (
             bundle.annotation_profile.annotation_profile_id == "glas-gland-v1"
