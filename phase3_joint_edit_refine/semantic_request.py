@@ -525,7 +525,8 @@ def _relation_from_mapping(raw: Any) -> IntentRelation:
 
 def _split_clauses(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     pattern = re.compile(
-        r"\s*(and then|after that|then|finally|然后|接着|随后|最后|再|并且|同时|以及|and)\s*",
+        r"\s*((?<![A-Za-z])(?:and then|after that|then|finally|and)(?![A-Za-z])|"
+        r"然后|接着|随后|最后|再|并且|同时|以及)\s*",
         flags=re.IGNORECASE,
     )
     parts = pattern.split(text)
@@ -599,8 +600,11 @@ def _classify_clause(clause: str, *, index: int) -> SemanticIntentClause:
         target = "selected_cell_population"
         operation = _increase_or_decrease(lowered)
         cell_class = "connective"
+    elif re.search(r"缩小|减少.*面积|退缩|shrink|decrease.*(area|footprint)|regress", lowered):
+        target, operation = "tumor_extent", "decrease"
     elif re.search(r"肿瘤细胞|癌细胞|neoplastic cell|tumou?r cell", lowered) and not re.search(
-        r"浸润|infiltrat|cord|nest|scatter|cluster|出芽", lowered
+        r"浸润|散落|单细胞|小簇|细胞簇|小团|出芽|infiltrat|cord|nest|scatter|cluster",
+        lowered,
     ):
         target = "neoplastic_cell_population"
         operation = _increase_or_decrease(lowered)
@@ -628,17 +632,21 @@ def _classify_clause(clause: str, *, index: int) -> SemanticIntentClause:
     elif re.search(r"肿瘤巢|小巢|nest", lowered):
         target, operation, morphology = "invasion_pattern", "increase", "nest"
         scope = "peritumoral" if scope == "unspecified" else scope
-    elif re.search(r"单细胞|散落细胞|single[- ]cell|scatter", lowered):
+    elif re.search(
+        r"单细胞|散落(?:的)?(?:单个)?(?:肿瘤)?细胞|single[- ]cell|scatter",
+        lowered,
+    ):
         target, operation, morphology = "invasion_pattern", "increase", "single_cell"
         scope = "peritumoral" if scope == "unspecified" else scope
-    elif re.search(r"小簇|小团|出芽|small cluster|budding", lowered):
+    elif re.search(
+        r"小(?:细胞)?簇|小团|出芽|small (?:tumou?r[- ]?)?(?:cell[- ]?)?cluster|budding",
+        lowered,
+    ):
         target, operation, morphology = "invasion_pattern", "increase", "small_cluster"
         scope = "peritumoral" if scope == "unspecified" else scope
-    elif re.search(r"浸润|infiltrat|invasive", lowered):
+    elif re.search(r"浸润|infiltrat|invasive|invasion", lowered):
         target, operation = "invasion_pattern", "increase"
         uncertainties = ("invasion morphology is unspecified",)
-    elif re.search(r"缩小|减少.*面积|退缩|shrink|decrease.*(area|footprint)|regress", lowered):
-        target, operation = "tumor_extent", "decrease"
     elif re.search(r"边界.*(扩|长)|外沿.*(扩|长)|expand.*boundar|cohesive", lowered):
         target, operation, morphology, scope = (
             "tumor_extent",

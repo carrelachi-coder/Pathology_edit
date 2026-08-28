@@ -155,6 +155,51 @@ def test_rule_parser_preserves_three_explicitly_ordered_intents():
     ]
 
 
+def test_rule_parser_does_not_split_expand_as_english_and_connector():
+    request = RuleBasedSemanticRequestParser().parse(
+        "Expand the tumor boundary cohesively"
+    )
+
+    assert len(request.intents) == 1
+    assert request.intents[0].target == "tumor_extent"
+    assert request.intents[0].morphology == "cohesive"
+
+
+@pytest.mark.parametrize(
+    ("instruction", "target", "operation", "morphology"),
+    (
+        (
+            "Decrease the invasive tumor footprint across the whole lesion",
+            "tumor_extent",
+            "decrease",
+            "unspecified",
+        ),
+        (
+            "在瘤周增加散落的单个肿瘤细胞",
+            "invasion_pattern",
+            "increase",
+            "single_cell",
+        ),
+        (
+            "在瘤周增加肿瘤小细胞簇",
+            "invasion_pattern",
+            "increase",
+            "small_cluster",
+        ),
+    ),
+)
+def test_rule_parser_resolves_catalog_phrases_before_generic_fallbacks(
+    instruction, target, operation, morphology
+):
+    intent = RuleBasedSemanticRequestParser().parse(instruction).intents[0]
+
+    assert (intent.target, intent.operation, intent.morphology) == (
+        target,
+        operation,
+        morphology,
+    )
+
+
 def test_planner_resolves_one_primitive_per_intent_and_uses_step_dependencies():
     request = RuleBasedSemanticRequestParser().parse(
         "先让肿瘤边界连续扩张，然后在治疗后减少肿瘤细胞。"

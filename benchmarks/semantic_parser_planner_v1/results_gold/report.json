@@ -1,0 +1,322 @@
+{
+  "benchmark_manifest": {
+    "benchmark_jsonl_sha256": "3932287495dd7f78b2feb2b0b087f7bb2c0990c3d93e451015cb8593d8acd106",
+    "benchmark_version": "semantic-parser-planner-benchmark-v1",
+    "category_counts": {
+      "catalog_single_intent": 296,
+      "negation": 12,
+      "ordered_multi_intent": 24,
+      "underspecified_intent": 12,
+      "unordered_conflict": 12
+    },
+    "executable_scope_without_open_profile_binding": [
+      "invasive-front-expansion-v1",
+      "neoplastic-microinfiltration-increase-v1",
+      "tumor-burden-increase-v1"
+    ],
+    "language_counts": {
+      "en": 178,
+      "zh": 178
+    },
+    "ontology_schema_version": "joint-semantic-request-v4",
+    "open_bindings": {
+      "BCSS": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "cohesive-boundary-expansion-v1",
+        "generic-immune-infiltrate-decrease-v1",
+        "generic-immune-infiltrate-increase-v1",
+        "invasive-cord-formation-v1",
+        "invasive-tumor-footprint-decrease-v1",
+        "local-invasive-clearance-v1",
+        "necrosis-appearance-v1",
+        "necrosis-resolution-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+        "peritumoral-tumor-nest-formation-v1",
+        "residual-tumor-fragmentation-v1",
+        "stroma-increase-v1"
+      ],
+      "GLaS": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1"
+      ],
+      "IGNITE": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "cohesive-boundary-expansion-v1",
+        "generic-immune-infiltrate-decrease-v1",
+        "generic-immune-infiltrate-increase-v1",
+        "infiltrative-nest-cord-extension-v1",
+        "invasive-tumor-footprint-decrease-v1",
+        "necrosis-appearance-v1",
+        "necrosis-resolution-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+        "residual-tumor-fragmentation-v1",
+        "stroma-increase-v1"
+      ],
+      "ORCA": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1"
+      ],
+      "PANDA": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "cohesive-boundary-expansion-v1",
+        "infiltrative-nest-cord-extension-v1",
+        "invasive-tumor-footprint-decrease-v1",
+        "local-invasive-clearance-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "residual-tumor-fragmentation-v1"
+      ],
+      "PUMA": [
+        "cell-type-abundance-decrease-v1",
+        "cell-type-abundance-increase-v1",
+        "cellularity-decrease-v1",
+        "cellularity-increase-v1",
+        "cohesive-boundary-expansion-v1",
+        "invasive-tumor-footprint-decrease-v1",
+        "neoplastic-cell-abundance-decrease-v1",
+        "neoplastic-cell-abundance-increase-v1",
+        "peritumoral-neoplastic-scatter-increase-v1",
+        "peritumoral-small-cluster-increase-v1",
+        "residual-tumor-fragmentation-v1",
+        "stroma-increase-v1"
+      ]
+    },
+    "open_organ_profile_binding_count": 74,
+    "open_primitive_type_count": 20,
+    "profile_counts": {
+      "BCSS": 86,
+      "GLaS": 42,
+      "IGNITE": 78,
+      "ORCA": 34,
+      "PANDA": 58,
+      "PUMA": 58
+    },
+    "purpose": "closed-ontology bilingual Parser/Planner interface conformance",
+    "record_count": 356,
+    "scientific_claim_boundary": "synthetic templates and paraphrases; not unrestricted clinical language understanding and not mask-quality evidence"
+  },
+  "benchmark_version": "semantic-parser-planner-benchmark-v1",
+  "by_category": {
+    "catalog_single_intent": {
+      "count": 296,
+      "gold_planner_exact_rate": 1.0,
+      "intent_count_exact_rate": null,
+      "intent_field_accuracy": {
+        "cell_class": null,
+        "clinical_context": null,
+        "intent_type": null,
+        "morphology": null,
+        "operation": null,
+        "polarity": null,
+        "spatial_scope": null,
+        "strength": null,
+        "target": null
+      },
+      "parse_success_count": 0,
+      "parse_success_rate": null,
+      "parsed_pipeline_planner_exact_rate": null,
+      "parser_scored_count": 0,
+      "primitive_leakage_count": 0,
+      "relation_exact_rate": null,
+      "semantic_request_exact_rate": null
+    },
+    "negation": {
+      "count": 12,
+      "gold_planner_exact_rate": 1.0,
+      "intent_count_exact_rate": null,
+      "intent_field_accuracy": {
+        "cell_class": null,
+        "clinical_context": null,
+        "intent_type": null,
+        "morphology": null,
+        "operation": null,
+        "polarity": null,
+        "spatial_scope": null,
+        "strength": null,
+        "target": null
+      },
+      "parse_success_count": 0,
+      "parse_success_rate": null,
+      "parsed_pipeline_planner_exact_rate": null,
+      "parser_scored_count": 0,
+      "primitive_leakage_count": 0,
+      "relation_exact_rate": null,
+      "semantic_request_exact_rate": null
+    },
+    "ordered_multi_intent": {
+      "count": 24,
+      "gold_planner_exact_rate": 1.0,
+      "intent_count_exact_rate": null,
+      "intent_field_accuracy": {
+        "cell_class": null,
+        "clinical_context": null,
+        "intent_type": null,
+        "morphology": null,
+        "operation": null,
+        "polarity": null,
+        "spatial_scope": null,
+        "strength": null,
+        "target": null
+      },
+      "parse_success_count": 0,
+      "parse_success_rate": null,
+      "parsed_pipeline_planner_exact_rate": null,
+      "parser_scored_count": 0,
+      "primitive_leakage_count": 0,
+      "relation_exact_rate": null,
+      "semantic_request_exact_rate": null
+    },
+    "underspecified_intent": {
+      "count": 12,
+      "gold_planner_exact_rate": 1.0,
+      "intent_count_exact_rate": null,
+      "intent_field_accuracy": {
+        "cell_class": null,
+        "clinical_context": null,
+        "intent_type": null,
+        "morphology": null,
+        "operation": null,
+        "polarity": null,
+        "spatial_scope": null,
+        "strength": null,
+        "target": null
+      },
+      "parse_success_count": 0,
+      "parse_success_rate": null,
+      "parsed_pipeline_planner_exact_rate": null,
+      "parser_scored_count": 0,
+      "primitive_leakage_count": 0,
+      "relation_exact_rate": null,
+      "semantic_request_exact_rate": null
+    },
+    "unordered_conflict": {
+      "count": 12,
+      "gold_planner_exact_rate": 1.0,
+      "intent_count_exact_rate": null,
+      "intent_field_accuracy": {
+        "cell_class": null,
+        "clinical_context": null,
+        "intent_type": null,
+        "morphology": null,
+        "operation": null,
+        "polarity": null,
+        "spatial_scope": null,
+        "strength": null,
+        "target": null
+      },
+      "parse_success_count": 0,
+      "parse_success_rate": null,
+      "parsed_pipeline_planner_exact_rate": null,
+      "parser_scored_count": 0,
+      "primitive_leakage_count": 0,
+      "relation_exact_rate": null,
+      "semantic_request_exact_rate": null
+    }
+  },
+  "by_language": {
+    "en": {
+      "count": 178,
+      "gold_planner_exact_rate": 1.0,
+      "intent_count_exact_rate": null,
+      "intent_field_accuracy": {
+        "cell_class": null,
+        "clinical_context": null,
+        "intent_type": null,
+        "morphology": null,
+        "operation": null,
+        "polarity": null,
+        "spatial_scope": null,
+        "strength": null,
+        "target": null
+      },
+      "parse_success_count": 0,
+      "parse_success_rate": null,
+      "parsed_pipeline_planner_exact_rate": null,
+      "parser_scored_count": 0,
+      "primitive_leakage_count": 0,
+      "relation_exact_rate": null,
+      "semantic_request_exact_rate": null
+    },
+    "zh": {
+      "count": 178,
+      "gold_planner_exact_rate": 1.0,
+      "intent_count_exact_rate": null,
+      "intent_field_accuracy": {
+        "cell_class": null,
+        "clinical_context": null,
+        "intent_type": null,
+        "morphology": null,
+        "operation": null,
+        "polarity": null,
+        "spatial_scope": null,
+        "strength": null,
+        "target": null
+      },
+      "parse_success_count": 0,
+      "parse_success_rate": null,
+      "parsed_pipeline_planner_exact_rate": null,
+      "parser_scored_count": 0,
+      "primitive_leakage_count": 0,
+      "relation_exact_rate": null,
+      "semantic_request_exact_rate": null
+    }
+  },
+  "elapsed_sec": 0.02,
+  "filters": {
+    "category": null,
+    "language": null,
+    "limit": null
+  },
+  "model": null,
+  "overall": {
+    "count": 356,
+    "gold_planner_exact_rate": 1.0,
+    "intent_count_exact_rate": null,
+    "intent_field_accuracy": {
+      "cell_class": null,
+      "clinical_context": null,
+      "intent_type": null,
+      "morphology": null,
+      "operation": null,
+      "polarity": null,
+      "spatial_scope": null,
+      "strength": null,
+      "target": null
+    },
+    "parse_success_count": 0,
+    "parse_success_rate": null,
+    "parsed_pipeline_planner_exact_rate": null,
+    "parser_scored_count": 0,
+    "primitive_leakage_count": 0,
+    "relation_exact_rate": null,
+    "semantic_request_exact_rate": null
+  },
+  "parser_mode": "gold",
+  "reasoning_effort": null
+}
