@@ -234,3 +234,40 @@ Every catalog entry remains `draft` until full-cohort profile statistics and
 internal pathology review are attached. The current source-relative NND,
 component-area and Ripley-K checks are deliberately labeled an uncalibrated
 research envelope and cannot pass production composition.
+
+## Cumulative handoff for validated edit programs
+
+A multi-step program's last handoff is relative to the preceding masks, not to
+its original source. Prepare the original reference, final target masks and the
+**union of every validated step's generation support** with:
+
+```bash
+python scripts/prepare_joint_program_generation.py \
+  --program-result artifacts/edit_programs/CASE/program_result.json \
+  --output-dir artifacts/program_generation/CASE \
+  --dataset BCSS \
+  --backend auto
+```
+
+`--backend cross` explicitly selects the global backend. The export records both
+the automatic recommendation and the caller's choice. An explicit Inpaint
+selection cannot override the existing support-forced Cross threshold. Exporting
+inputs does not run the generator or pass any independent image/pathology audit.
+
+The adapter validates the semantic/program digests, ordered state chain, each
+selected candidate's gates and handoff, original image identity, and support
+containment. A partial program or final no-op is rejected. Use a fresh output
+directory per export. `generator_inputs.json` contains the existing
+`EditPipelineInputs` fields for `run_edit_pipeline`; callers may also use
+`build_frozen_program_generator_inputs` directly with their frozen model bundles
+and runners. `program_generation_manifest.json` preserves the chain and routing
+provenance. It is a program export, not a single-primitive handoff and must not be
+passed to `run_frozen_joint_generator` or its single-primitive post-generation
+auditor. Program-level image evaluation remains a separate downstream task.
+
+This interface does not automatically divide a large request into smaller ones.
+For repeated expansion, the caller must supply the explicit ordered program.
+Step budgets remain separate: two 6% budgets do not imply a final 12% tumour-area
+increase. Final area changes are measured against the original mask, and G is a
+separate generator-support fraction. Per-step nucleus additions/removals are
+edit events, not a net count of distinct cells across the program.

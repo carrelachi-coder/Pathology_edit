@@ -1,0 +1,63 @@
+% Proposed R2 replacement. Not a completed quantitative Results section.
+% PENDING fields require a new frozen final-mask-edit execution cohort.
+\subsection{Language-guided editing constructs annotation-aware tissue and cellular counterfactual states}
+
+We first examined how language-specified interventions were represented as
+explicit changes in tissue and cellular state. An instruction-only semantic
+Parser separated the biological target, direction, morphology, cellular class
+and clinical context while preserving negation and explicitly stated order.
+The resulting request constrained primitive selection through the executable
+catalog and current-mask feasibility analysis. In the existing frozen,
+catalog-derived bilingual interface audit using the frozen gpt-4.1-mini
+configuration, all 87 held-out instructions
+(43 Chinese and 44 English) matched the scored closed-ontology semantics and
+expected organ-compatible programs. This audit evaluates interface conformance,
+not unrestricted clinical language or downstream mask quality. Numerical area
+and cell-count budgets were specified separately from the parsed ordinal
+strength labels. \textbf{[REPORT THE EXACT PARSER AND MASK-PLANNER CONFIGURATION.]}
+
+The executable catalog distinguishes tissue-compartment geometry, local
+invasive architecture and cellular composition. Its frozen scope comprises
+20 open semantic primitive types and 74 organ--annotation-profile bindings.
+These bindings define available actions rather than a measured execution
+success rate. Boundary expansion changes the spatial extent of annotated tumour,
+whereas cell-population editing changes specified nuclei within compatible
+tissue support. Similarly, changing an annotated immune-rich compartment is
+distinct from adding inflammatory cells while preserving tissue labels.
+Cellular construction combines source-derived population constraints,
+ProbNet spatial scores and complete reference nucleus shapes.
+\textbf{[PENDING: VERSION-MATCHED MULTISCALE EXECUTION COUNTS AND MEASUREMENTS.]}
+
+Annotation profiles constrain how a biological action can be represented.
+For example, complete gland annotations and pattern-specific epithelial labels
+require different interpretations of gland boundaries and lumen-associated
+space. The current masks and provenance-bound auxiliary structures determine
+which catalog actions can be instantiated in each patch. This prevents a shared
+semantic instruction from silently imposing the same geometric rule on
+incompatible annotation systems.
+\textbf{[PENDING: MATCHED GLaS/PANDA EXAMPLES; ADD ABLATION ONLY IF CLAIMING A
+QUANTITATIVE BENEFIT OVER A SHARED RULE.]}
+
+Candidate edits are committed only after the prescribed mask constraints pass,
+including legal label transitions, requested direction and magnitude,
+complete-instance placement and preservation of protected state. The joint
+change region measures altered tissue or nucleus labels, whereas generation
+support specifies the region available for downstream image reconstruction.
+We distinguish the validity of accepted outputs from the fraction of attempted
+requests that produce an accepted state, retaining clarification, abstention,
+timeout and runtime failure in their appropriate denominators.
+\textbf{[PENDING: FROZEN ATTEMPT-LEVEL STATUS COUNTS, TARGET ERROR AND PRESERVATION
+MEASUREMENTS; DO NOT SUBSTITUTE THE LEGACY TISSUE-ONLY BENCHMARK.]}
+
+Explicitly ordered programs update the masks after each validated step and
+rebuild the current state before the next operation. In the illustrated repeated
+expansion example, tumour occupancy increased from 49.3\% in the original mask
+to 54.7\% after one step and 60.2\% after two steps. Each step used a 6\% joint-area
+budget; these budgets are distinct from the measured final tumour-area change.
+The cumulative generation interface retains the original reference, final target
+masks and the union of both validated support regions (23.7\% of the patch).
+Global reconstruction was explicitly selected for this example. This demonstrates
+one audited repeated intervention, not arbitrary composition, automatic
+large-budget decomposition or prediction of longitudinal disease progression.
+\textbf{[PENDING: ADD THE PRESPECIFIED MULTI-OPERATION PROGRAM COHORT BEFORE MAKING
+A GENERAL COMPOSITIONALITY CLAIM.]}
