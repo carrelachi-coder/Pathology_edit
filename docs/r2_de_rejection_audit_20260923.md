@@ -48,3 +48,12 @@ and 24 actual added instance events, with zero unauthorized tissue change and
 zero change outside generation support. This is one integration pilot, not a
 222-request Terra result. The full Terra protocol is in
 `docs/r2_de_terra_cli_protocol.md`.
+
+The six BCSS cord/nest adapter refusals were also investigated. Registering
+the two primitive IDs with the generic tumor-increase mask bundle moved two
+representative requests past bundle binding, but both still failed before the
+Planner: the specialized `cell_seeded_cord` and
+`peritumoral_tumor_island` mechanisms have no concrete tool in common with
+that generic bundle. The provisional alias change was reverted. These six
+cannot be counted as rescued by a name mapping; their dedicated tissue tool
+contracts need a separately reviewed integration and executable gate proof.
