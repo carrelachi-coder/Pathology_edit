@@ -28,6 +28,7 @@ from phase3_joint_edit_refine.program_planner import (
 from phase3_joint_edit_refine.program_workflow import (
     DeterministicMaskProgramEvaluator,
     SequentialEditProgramWorkflow,
+    _bind_step_case,
 )
 from phase3_joint_edit_refine.semantic_request import (
     OpenAISemanticRequestParser,
@@ -215,6 +216,30 @@ def test_planner_resolves_one_primitive_per_intent_and_uses_step_dependencies():
         "neoplastic-cell-abundance-decrease-v1",
     ]
     assert program.steps[1].depends_on == ("step-001",)
+
+
+def test_program_step_passes_observable_cell_class_to_budget_compiler():
+    request = RuleBasedSemanticRequestParser().parse(
+        "Increase inflammatory cells locally."
+    )
+    program = SemanticProgramPlanner().plan(
+        request,
+        case_template=_case_stub(),
+    )
+    case = _bind_step_case(
+        _case_stub(),
+        step=program.steps[0],
+        intent=request.intents[0],
+        request=request,
+        clarification_decision=None,
+    )
+
+    assert case.primitive_id == "cell-type-abundance-increase-v1"
+    assert case.provenance["target_cell_class_ids"] == [2]
+    assert case.semantic_intent["resolved_cell_class_ids"] == [2]
+    assert case.semantic_intent["cell_class_resolution"] == case.provenance[
+        "target_cell_class_resolution"
+    ]
 
 
 def test_planner_keeps_unresolved_invasion_morphologies_for_mask_preflight():

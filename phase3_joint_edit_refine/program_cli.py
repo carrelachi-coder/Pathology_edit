@@ -9,6 +9,7 @@ from pathlib import Path
 from phase3_mask_edit_refine.agents import OpenAIResponsesJSONClient
 
 from .agents import OpenAIMultimodalJointPlanner
+from .codex_cli_queue import CodexCLIQueueJSONClient
 from .mature_probnet_adapter import MatureProbNetCellExecutor, MatureProbNetConfig
 from .probnet_adapter import FrozenProbNetSpatialRanker
 from .program_planner import DeterministicProgramJointPlanner, SemanticProgramPlanner
@@ -40,7 +41,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("auto", "rule-based", "prebound", "api"),
         default="auto",
     )
-    parser.add_argument("--agent-mode", choices=("offline", "api"), default="offline")
+    parser.add_argument(
+        "--agent-mode", choices=("offline", "api", "cli-queue"), default="offline"
+    )
+    parser.add_argument(
+        "--planner-queue-root",
+        help="Shared request/response directory for fresh Codex CLI Planner calls",
+    )
     parser.add_argument("--production", action="store_true")
     parser.add_argument("--model", default="gpt-5.6-terra")
     parser.add_argument("--semantic-model", default="gpt-5.6-luna")
@@ -76,6 +83,10 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--meta-eval requires --cell-executor mature")
     if args.semantic_parser == "api" and args.agent_mode != "api":
         raise ValueError("--semantic-parser api requires --agent-mode api")
+    if args.agent_mode == "cli-queue" and not args.planner_queue_root:
+        raise ValueError("--agent-mode cli-queue requires --planner-queue-root")
+    if args.agent_mode == "cli-queue" and args.model != "gpt-5.6-terra":
+        raise ValueError("D/E CLI Planner must use gpt-5.6-terra")
     if args.production and not (
         args.agent_mode == "api" and args.semantic_parser in {"auto", "api"}
     ):
@@ -113,6 +124,13 @@ def main(argv: list[str] | None = None) -> int:
             api_base_url=args.api_base_url,
             api_key_env=args.api_key_env,
         )
+    elif args.agent_mode == "cli-queue":
+        planner_client = CodexCLIQueueJSONClient(
+            queue_root=Path(args.planner_queue_root),
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+        )
+        escalation_client = planner_client
 
     repository = JointSkillRepository()
     summaries = []

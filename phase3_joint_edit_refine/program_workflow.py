@@ -487,6 +487,16 @@ def _bind_step_case(
             "resolved_class_ids": list(resolved),
             "authority": "versioned_v4_observation_profile",
         }
+        # The source-calibrated cell budget reads the semantic intent, while
+        # downstream cell execution reads the provenance binding. Keep both
+        # representations tied to the same observation-profile resolution.
+        semantic_intent = {
+            **semantic_intent,
+            "resolved_cell_class_ids": list(resolved),
+            "cell_class_resolution": dict(
+                provenance["target_cell_class_resolution"]
+            ),
+        }
     return replace(
         current,
         case_id=f"{current.case_id}--{step.step_id}",
