@@ -1,0 +1,25 @@
+{
+  "amendment_id": "r2-de-six-v3-planner-packet-size-20260924",
+  "recorded_at_utc": "2026-09-24 06:20:21 UTC",
+  "trigger": "Seven same-case infrastructure retries still failed at Codex CLI turn/start with input_too_large (maximum 1048576 characters). The inputs repeated the entire mask graph or full nonselectable candidate records, although the LLM chose only a primitive-mechanism pair or a certified candidate ID.",
+  "changes": [
+    "Semantic selection retains all interpretation options, deterministic capability metrics, and a digest of the full mask graph; repeated individual zones, edges, and nuclei are replaced by exact aggregate counts.",
+    "Joint tissue-cell planning retains all compiled tissue-plan data and local component, interface, population-zone, and structural-unit records for its candidate fronts, plus a full-graph digest.",
+    "Cell-only selection retains every selectable candidate ID, zone, interface, anchor, allowed tool program, and measured metric; vetoed records are summarized by count, reason counts, and full-portfolio digest. The compiler still holds all original certificates and validates the selected output."
+  ],
+  "measured_packet_examples_characters": {
+    "semantic_ORCA_085": [3536883, 11234],
+    "joint_BCSS_037": [1133958, 101116],
+    "cell_ORCA_085": [1097675, 446757]
+  },
+  "tests": "23 targeted tests and 15 subtests passed. Captured BCSS, ORCA, and PANDA packets were replayed through the compaction functions and stayed below the CLI limit.",
+  "full_same_case_verification": {
+    "case_id": "r2de6-085-orca-cellularity-decrease",
+    "attempt": 4,
+    "code_commit": "55eac1c",
+    "program_status": "validated",
+    "independent_E_passed": true,
+    "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-085-orca-cellularity-decrease/attempt-4/retry_metadata.json"
+  },
+  "audit_rule": "All original oversized packets, failed attempts, and new attempt packets remain on disk. No source case was replaced and no scientific gate was weakened."
+}

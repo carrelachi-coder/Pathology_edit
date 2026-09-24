@@ -139,3 +139,23 @@ candidate-local cell execution failures before the joint contract, population
 zone, and provenance fixes were also frozen for a separate retry batch. Their
 server manifests retain the exact IDs and selection reasons. These are
 software-recovery audits, not additions to the 222-case cohort.
+
+Several initial infrastructure failures remained after CLI transport retries
+because repeated full mask-graph records exceeded the Codex CLI's 1,048,576
+character input limit. The semantic selector now receives measured class,
+component, interface, and zone summaries with a digest of the full graph; it
+still receives every interpretation option and its measured feasibility
+metrics. The tissue--cell Planner receives the same summary plus the exact
+components, interfaces, and population zones local to its compiled tissue
+fronts. The cell-only Planner still sees every selectable candidate ID and
+metric, while the nonselectable vetoes are summarized by count and reason.
+All full certificates remain in deterministic code for output validation.
+No pathology, capacity, or raster gate was relaxed. BCSS/ORCA/PANDA captured
+packets and full same-case ORCA case 085 are recorded in
+`benchmarks/r2_de_six_v3/protocol_amendment_planner_packet_size.json`.
+
+The retry runner now records SHA-256 hashes of the deployed Planner and
+executor source files at each attempt start. This supplements its declared
+commit label when a long-running batch spans a source deployment; previously
+started attempt metadata remains untouched. Packet format and process start
+times provide further evidence for such attempts.

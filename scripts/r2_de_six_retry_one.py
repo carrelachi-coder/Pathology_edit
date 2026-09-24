@@ -51,11 +51,21 @@ def main() -> int:
     attempt_dir = ROOT / "retry_attempts" / args.case_id / f"attempt-{args.attempt}"
     attempt_dir.mkdir(parents=True, exist_ok=False)
     start = time.time()
+    source_hashes = {
+        str(path.relative_to(CODE)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in (
+            CODE / "phase3_joint_edit_refine" / "agents.py",
+            CODE / "phase3_joint_edit_refine" / "tissue_planner.py",
+            CODE / "phase3_joint_edit_refine" / "planner.py",
+            CODE / "phase3_joint_edit_refine" / "mature_probnet_adapter.py",
+        )
+    }
     metadata = {
         "case_id": args.case_id,
         "attempt": args.attempt,
         "dataset": row["dataset"],
         "code_commit": args.code_commit,
+        "runtime_source_hashes": source_hashes,
         "frozen_cohort_sha256": protocol["cohort_sha256"],
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "first_result_sha256": hashlib.sha256(first_result.read_bytes()).hexdigest(),
