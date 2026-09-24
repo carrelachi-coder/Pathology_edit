@@ -75,3 +75,12 @@ software amendment, recorded in
 `benchmarks/r2_de_six_v3/protocol_amendment_joint_contract_prompt.json`.
 Per-case process start times identify which version was used. Failed cases
 remain in the denominator and any rerun must keep the original attempt.
+
+The local Terra queue consumer later exited on a transient SSH listing error;
+it was restarted with retry-on-listing behavior. SSH/SCP transfer retries and
+an early cohesive-boundary population-zone contract were also added. The
+latter rejects a whole tumor-component cell zone for local boundary growth
+before cell execution; the LLM still chooses among legal interface and anchor
+options, and the independent gates are unchanged. The deployment times,
+tests, and handling of affected frozen cases are recorded in
+`benchmarks/r2_de_six_v3/protocol_amendment_execution_recovery.json`.

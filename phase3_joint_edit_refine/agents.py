@@ -370,6 +370,9 @@ class OpenAIMultimodalJointPlanner:
                 ),
                 "select_interface_and_anchor_ids_not_coordinates": True,
                 "local_population_primitives_select_component_population_zone": True,
+                "cohesive_boundary_expansion_selects_interface_or_changed_tissue_zone": (
+                    case.primitive_id == "cohesive-boundary-expansion-v1"
+                ),
                 "cellularity_decrease_requires_mask_graph_interface_anchor_and_density_gradient": (
                     case.primitive_id == "cellularity-decrease-v1"
                 ),
@@ -408,6 +411,8 @@ class OpenAIMultimodalJointPlanner:
                     "the mechanism ID is not a cell program ID. "
                     "Choose allowed_cell_classes only from the supplied "
                     "allowed_cell_classes_from_primitive_and_mechanism list. "
+                    "For cohesive boundary expansion, select an interface-band or "
+                    "certified changed-tissue population zone, not an entire tumor component. "
                     "Output a tissue binding, cell intent and coupling "
                     "intent. The Semantic Parser already owns the immutable user intent; do not "
                     "reinterpret it. Deterministic tools own every pixel, coordinate, count and "
@@ -764,6 +769,14 @@ class OpenAIMultimodalJointPlanner:
         raw_cell_plan["protected_instance_ids"] = list(mandatory_protected)
         raw_cell_plan["interface_ids"] = sorted(bound_interfaces)
         cell_plan = CellEditPlan.from_mapping(raw_cell_plan)
+        if (
+            case.primitive_id == "cohesive-boundary-expansion-v1"
+            and cell_plan.core_zone.startswith("pop:component:")
+        ):
+            raise JointContractError(
+                "cohesive boundary expansion must localize cells to the "
+                "bound interface or certified changed-tissue zone"
+            )
         unknown_cell_rules = set(cell_plan.supporting_rule_ids) - set(
             bundle.active_rule_ids
         )

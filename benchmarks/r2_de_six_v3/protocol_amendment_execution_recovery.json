@@ -1,0 +1,15 @@
+{
+  "amendment_id": "r2-de-six-v3-execution-recovery-20260924",
+  "queue_worker_restarted_at_utc": "2026-09-24 01:39:32 UTC",
+  "cohesive_zone_contract_deployed_at_utc": "2026-09-24 01:45:43 UTC",
+  "observations": [
+    "The local Terra CLI queue worker exited after a transient SSH listing failure. Pending GPU cases continued waiting and some timed out. The worker was restarted; queue listing failures now retry without terminating the consumer.",
+    "For BCSS cohesive boundary expansion, cases 014, 017 and 018 passed cell-count checks but selected an entire tumor-component population zone. The reference-shape gate then rejected the component-local provenance, whereas validated cases used interface-band or certified changed-tissue zones."
+  ],
+  "software_changes": [
+    "SSH/SCP list and transfer operations retry transient failures. A successfully completed Terra decision is retained during response-upload retries, so the model is not called again for a transport-only upload failure. The transfer version is committed but will apply to the long-running consumer only after a safe restart.",
+    "The joint Planner now receives an explicit cohesive-boundary core-zone constraint and rejects a whole-component zone before expensive execution. This does not choose the interface for the LLM or loosen any final gate."
+  ],
+  "audit_rule": "Classify CLI transport and wall-clock failures separately. Preserve every initial attempt; rerun only the same frozen case with an explicit attempt link. A process uses the code it imported at its own start time.",
+  "verification": "Four local queue tests passed. Two server-side joint Planner tests passed, including a regression that rejects whole-component zones for cohesive boundary expansion."
+}

@@ -6183,6 +6183,22 @@ class JointWorkflowTests(unittest.TestCase):
                 parsed.supporting_preference_rule_ids,
                 tuple(raw["supporting_preference_rule_ids"]),
             )
+            with self.assertRaisesRegex(
+                JointContractError, "must localize cells to the bound interface"
+            ):
+                parser._parse_plan(
+                    raw={
+                        **raw,
+                        "cell_plan": {
+                            **raw["cell_plan"],
+                            "core_zone": "pop:component:cmp:tumor:p01:0001",
+                        },
+                    },
+                    case=case,
+                    scene=scene,
+                    bundle=bundle,
+                    tissue_plan=heuristic.tissue_plan,
+                )
             free_text_variants = (
                 "desmoplastic reaction is present",
                 "the invasive front is histologically evident",
