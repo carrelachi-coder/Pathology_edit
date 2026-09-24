@@ -65,3 +65,13 @@ is a Planner output-format error. These two infrastructure outcomes are kept
 distinct from scientific abstentions. Both frozen cases require a same-case
 retry with their initial result and queue response retained in the audit
 trail; no new patch or request may be substituted.
+
+The early tissue cases also exposed repeated joint Planner contract errors:
+mandatory mechanism rule IDs were omitted, and the pathology mechanism ID was
+sometimes placed in the skill-owned cell program field. The prompt now states
+the mandatory IDs directly and the output schema constrains the two fixed
+cell program fields to the compiled skill layout. This is a post-start
+software amendment, recorded in
+`benchmarks/r2_de_six_v3/protocol_amendment_joint_contract_prompt.json`.
+Per-case process start times identify which version was used. Failed cases
+remain in the denominator and any rerun must keep the original attempt.

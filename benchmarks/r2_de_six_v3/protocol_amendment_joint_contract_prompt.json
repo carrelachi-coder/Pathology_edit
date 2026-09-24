@@ -1,0 +1,8 @@
+{
+  "amendment_id": "r2-de-six-v3-joint-contract-prompt-20260924",
+  "deployed_at_utc": "2026-09-24 00:25:29 UTC",
+  "trigger": "Early BCSS tissue requests repeatedly failed the joint Planner contract because Terra omitted mandatory skill rule IDs or copied the selected pathology mechanism ID into the cell mechanism_program_id field. Case r2de6-005 then abstained after deterministic replanning repeated the same contract failure.",
+  "scope": "The joint Planner packet now lists mandatory compatibility rule IDs explicitly and says to copy the skill-compiled cell layout into both layout_program_id and mechanism_program_id. The output schema restricts those two skill-owned fields and selected_mechanism_id to the already selected skill values. The Planner still selects the certified interface, anchor and other allowed variable choices; no raster, candidate, budget, source case, mask gate or independent E rule changes.",
+  "timing_rule": "A case process that imported the module before deployment keeps the old packet and schema. A case process started after deployment uses the amended packet. Per-case start time and queue prompt digest distinguish the two. Initial outcomes are retained; failed frozen cases may be retried only as the same case, with an explicit attempt link.",
+  "verification": "A targeted unittest confirmed that the packet carries mandatory compatibility IDs and binds the two cell program fields to the skill-compiled layout. The broader 13-test planner selection ran 12 passes and one unrelated existing breast fixture composition error; no claim of full-suite pass is made."
+}

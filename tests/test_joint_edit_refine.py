@@ -433,6 +433,48 @@ class JointSkillTests(unittest.TestCase):
                     {"cell_plan": {key: 1}}
                 )
 
+    def test_joint_planner_schema_binds_skill_owned_program_fields(self):
+        class CapturingClient:
+            def __init__(self):
+                self.calls = []
+
+            def call(self, **kwargs):
+                self.calls.append(kwargs)
+                return {
+                    "abstain": True,
+                    "abstain_reason": "joint_contract_not_representable",
+                }, {"model": "fixture"}
+
+        with tempfile.TemporaryDirectory() as directory:
+            case = _as_breast_growth_case(_write_synthetic_case(Path(directory)))
+            bundle = JointSkillRepository().compose(
+                case=case,
+                mechanism_id="breast-annotation-anchored-boundary-growth",
+                available_checker_ids=JointGateRegistry().available_checker_ids,
+                production=False,
+            )
+            client = CapturingClient()
+            with self.assertRaisesRegex(JointContractError, "abstained"):
+                OpenAIMultimodalJointPlanner(
+                    client=client, max_contract_attempts=1
+                ).create_plan(
+                    case=case,
+                    scene=SimpleNamespace(to_metadata=lambda: {}),
+                    bundle=bundle,
+                    tissue_plan=None,
+                    image_paths=(),
+                )
+            call = client.calls[0]
+            layout = bundle.mechanism.cell_program.layout_for(case.primitive_id)
+            cell_schema = call["json_schema"]["properties"]["cell_plan"]["properties"]
+            self.assertEqual(cell_schema["layout_program_id"]["enum"], [layout])
+            self.assertEqual(cell_schema["mechanism_program_id"]["enum"], [layout])
+            packet = json.loads(call["user_prompt"])
+            self.assertEqual(
+                packet["requirements"]["mandatory_compatibility_rule_ids"],
+                list(bundle.mechanism.coupling.compatibility_rule_ids),
+            )
+
     def test_mask_planner_direct_caller_cannot_bypass_registry(self):
         class NeverCalledClient:
             def call(self, **kwargs):

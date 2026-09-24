@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -348,6 +349,9 @@ class OpenAIMultimodalJointPlanner:
                 "compiled_layout_program_is_immutable": (
                     bundle.mechanism.cell_program.layout_for(case.primitive_id)
                 ),
+                "mandatory_compatibility_rule_ids": list(
+                    bundle.mechanism.coupling.compatibility_rule_ids
+                ),
                 "do_not_output_polygons_pixels_coordinates_counts_or_density_multipliers": True,
                 "area_budget_is_immutable_and_compiler_owned": True,
                 "semantic_intent_is_immutable_and_parser_owned": (
@@ -366,6 +370,14 @@ class OpenAIMultimodalJointPlanner:
                 "do_not_infer_unannotated_histology": True,
             },
         }
+        compiled_layout = bundle.mechanism.cell_program.layout_for(case.primitive_id)
+        schema = deepcopy(JOINT_PLAN_JSON_SCHEMA)
+        schema["properties"]["selected_mechanism_id"]["enum"] = [
+            bundle.mechanism.mechanism_id, None
+        ]
+        cell_properties = schema["properties"]["cell_plan"]["properties"]
+        for field in ("layout_program_id", "mechanism_program_id"):
+            cell_properties[field]["enum"] = [compiled_layout]
         errors = []
         for attempt, client in enumerate(self._contract_clients(), start=1):
             raw, usage = client.call(
@@ -373,6 +385,11 @@ class OpenAIMultimodalJointPlanner:
                     "You are a mask-graph joint pathology edit Planner. Review the already compiled "
                     "deterministic tissue interface plan (or an explicit preserve-tissue contract), "
                     "the tissue/nuclei masks, scene graph, candidate certificate, and skill policy. "
+                    "The mandatory_compatibility_rule_ids must all appear in both "
+                    "supporting_rule_ids arrays and in coupling_plan.compatibility_rule_ids. "
+                    "Copy compiled_layout_program_is_immutable exactly into both "
+                    "cell_plan.layout_program_id and cell_plan.mechanism_program_id; "
+                    "the mechanism ID is not a cell program ID. "
                     "Output a tissue binding, cell intent and coupling "
                     "intent. The Semantic Parser already owns the immutable user intent; do not "
                     "reinterpret it. Deterministic tools own every pixel, coordinate, count and "
@@ -386,7 +403,7 @@ class OpenAIMultimodalJointPlanner:
                 ),
                 image_paths=image_paths,
                 schema_name="joint_pathology_edit_plan",
-                json_schema=JOINT_PLAN_JSON_SCHEMA,
+                json_schema=schema,
             )
             provider_usage = isolate_provider_usage(usage)
             if raw.get("abstain") is True:
