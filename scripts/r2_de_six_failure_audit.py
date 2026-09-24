@@ -20,6 +20,10 @@ def classify(reasons: list[str], outcome: str) -> str:
         return "planner_transport"
     if "no natural-language interpretation survives skill and deterministic feasibility" in joined:
         return "source_or_skill_infeasible"
+    if "cell-only pre-LLM portfolio has no exact-capacity survivor" in joined:
+        return "source_exact_capacity_infeasible"
+    if "no cell-only candidate passed its joint condition gates" in joined:
+        return "cell_condition_gate_rejection"
     if "no paired tissue--cell candidate passed all joint gates" in joined:
         return "joint_gate_rejection"
     if "all candidate-local cell executions failed" in joined:
