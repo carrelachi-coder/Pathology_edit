@@ -274,7 +274,18 @@ def main() -> int:
                 idle_since = time.monotonic()
                 if args.once:
                     return 1 if response.get("error") else 0
-            pending = _pending_ids(root=args.queue_root, host=args.remote_host)
+            try:
+                pending = _pending_ids(root=args.queue_root, host=args.remote_host)
+            except subprocess.CalledProcessError as exc:
+                # A transient SSH listing failure must not terminate the queue
+                # consumer while GPU cases are waiting for Planner responses.
+                print(json.dumps({
+                    "warning": "queue_listing_retry",
+                    "return_code": exc.returncode,
+                    "stderr": (exc.stderr or "")[-500:],
+                }), flush=True)
+                time.sleep(5.0)
+                continue
             active_ids = set(active.values())
             available = args.parallelism - len(active)
             for request_id in (name for name in pending if name not in active_ids):
