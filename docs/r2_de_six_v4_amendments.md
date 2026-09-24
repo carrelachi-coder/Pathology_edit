@@ -108,3 +108,17 @@ failure categories, and partitions numbered attempt-2 runs across workers.
 Existing attempts are preserved and skipped, so a runner restart cannot
 overwrite an outcome. Scientific abstentions are excluded and require
 case-specific investigation before any amended run.
+
+## A4: pass the source-composition policy through radial depletion
+
+The first eight ORCA infrastructure retries reached cell-program compilation
+and then all failed with the same `TypeError`: the caller supplied
+`composition_include_outer_reference`, but
+`_select_gradient_removal_instances` did not accept it. The downstream
+`_select_density_field_instances` already accepted and used that parameter
+for the existing class-composition target; the intermediate function simply
+failed to forward it. This is a software interface error, not a biological
+rejection. The repair adds the missing intermediate parameter and passes it
+through unchanged. Every failed attempt-2 output remains preserved; any
+affected case must receive an explicitly numbered attempt 3 under the
+patched source, followed by independent E if validated.

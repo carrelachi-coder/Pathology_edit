@@ -1247,6 +1247,7 @@ class CellToolProgramCompiler:
         contract,
         count_capped_radial_fallback: bool = False,
         selection_variant: int = 0,
+        composition_include_outer_reference: bool = True,
     ) -> tuple[tuple[str, ...], DepletionInstanceAuthority]:
         """Select complete nuclei with a stronger core than transition thinning."""
 
@@ -1415,6 +1416,9 @@ class CellToolProgramCompiler:
                 effective_core_end_px=effective_core_end,
                 effective_transition_width_px=effective_transition_width,
                 selection_variant=selection_variant,
+                composition_include_outer_reference=(
+                    composition_include_outer_reference
+                ),
             )
             return selected, authority
         band_availability = {
