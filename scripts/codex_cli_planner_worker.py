@@ -153,15 +153,32 @@ def _run_packet(packet_dir: Path, *, codex: str, timeout: int) -> dict:
     for path in images:
         command.extend(["-i", str(path)])
     retry_errors = []
+    transport_retry_errors = []
+    total_attempt_count = 0
     for attempt in range(1, 4):
-        completed = subprocess.run(
-            command, cwd=packet_dir, input=prompt,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            timeout=timeout, check=False,
-        )
-        if completed.returncode:
+        for transport_attempt in range(1, 4):
+            output.unlink(missing_ok=True)
+            completed = subprocess.run(
+                command, cwd=packet_dir, input=prompt,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                timeout=timeout, check=False,
+            )
+            total_attempt_count += 1
+            if not completed.returncode:
+                break
+            error_tail = completed.stderr[-1000:]
+            transient = any(marker in completed.stderr.lower() for marker in (
+                "tls handshake eof", "stream disconnected",
+                "error sending request", "hit your usage limit",
+            ))
+            if transient and transport_attempt < 3:
+                transport_retry_errors.append(
+                    f"CLI exit {completed.returncode}: {error_tail}"
+                )
+                time.sleep(2 ** transport_attempt)
+                continue
             raise RuntimeError(
-                f"Codex CLI exit {completed.returncode}: {completed.stderr[-1000:]}"
+                f"Codex CLI exit {completed.returncode}: {error_tail}"
             )
         raw = json.loads(output.read_text(encoding="utf-8"))
         try:
@@ -184,7 +201,9 @@ def _run_packet(packet_dir: Path, *, codex: str, timeout: int) -> dict:
             "output": raw,
             "session_id": match.group(1) if match else None,
             "attempt_count": attempt,
+            "total_attempt_count": total_attempt_count,
             "retry_errors": retry_errors,
+            "transport_retry_errors": transport_retry_errors,
             "effective_prompt_sha256": _sha(prompt.encode("utf-8")),
         }
     raise AssertionError("unreachable CLI retry state")

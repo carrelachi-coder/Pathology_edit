@@ -1,0 +1,18 @@
+{
+  "amendment_id": "r2-de-six-v3-transport-and-retry-029-20260924",
+  "recorded_at_utc": "2026-09-24 02:41:53 UTC",
+  "frozen_cohort_sha256": "8693a26f8a453b3ed06136b674c0adc597bfbacbe55d2474ec2a60c364f856bc",
+  "software_changes": [
+    "Retry a fresh ephemeral Terra CLI invocation up to three times for a bounded list of transport or temporary usage-limit errors; retain every error and the total invocation count in the queue response.",
+    "Allow the same-case retry runner to use an isolated queue, so an independent retry can run without replacing an initial queue response.",
+    "Classify live initial-attempt failures for audit without modifying any case outcome."
+  ],
+  "verification": {
+    "local_queue_tests": "5 passed",
+    "same_case_retry": "r2de6-029-bcss-generic-immune-infiltrate-decrease, attempt 3, code commit 331496a",
+    "retry_metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-029-bcss-generic-immune-infiltrate-decrease/attempt-3/retry_metadata.json",
+    "program_status": "validated",
+    "independent_E_passed": true
+  },
+  "audit_rule": "Preserve the initial result and every retry. Recovered retries remain separate from the live initial-attempt summary and may enter final per-case accounting only with their explicit attempt link and independent E result."
+}

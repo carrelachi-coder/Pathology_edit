@@ -133,3 +133,37 @@ def test_cli_worker_retries_original_nonempty_array_constraint(tmp_path):
     assert response["output"] == {"ids": ["capacity_margin"]}
     assert response["attempt_count"] == 2
     assert "too few items" in response["retry_errors"][0]
+
+
+def test_cli_worker_retries_transient_terra_transport_error(tmp_path, monkeypatch):
+    fake = tmp_path / "fake-codex"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json,pathlib,sys\n"
+        "a=sys.argv[1:]; n=pathlib.Path('transport_attempts')\n"
+        "i=int(n.read_text())+1 if n.exists() else 1; n.write_text(str(i))\n"
+        "if i==1:\n"
+        " print('stream disconnected: tls handshake eof',file=sys.stderr); sys.exit(1)\n"
+        "pathlib.Path(a[a.index('-o')+1]).write_text(json.dumps({'choice':'C1'}))\n"
+        "print('session id: 01234567-89ab-cdef-0123-456789abcdef',file=sys.stderr)\n"
+    )
+    fake.chmod(0o755)
+    schema = {"type": "object", "properties": {"choice": {"type": "string"}}}
+    packet = tmp_path / "packet"
+    packet.mkdir()
+    system = "Select a certified option"
+    user = '{"options":["C1"]}'
+    digest = hashlib.sha256(
+        (system + "\n" + user + "\n" + json.dumps(schema, sort_keys=True)).encode()
+    ).hexdigest()
+    (packet / "request.json").write_text(json.dumps({
+        "request_id": "b" * 32, "model": "gpt-5.6-terra",
+        "reasoning_effort": "medium", "schema_name": "test",
+        "system_prompt": system, "user_prompt": user,
+        "prompt_sha256": digest, "json_schema": schema, "images": [],
+    }))
+    monkeypatch.setattr("scripts.codex_cli_planner_worker.time.sleep", lambda _: None)
+    response = _run_packet(packet, codex=str(fake), timeout=5)
+    assert response["output"] == {"choice": "C1"}
+    assert response["total_attempt_count"] == 2
+    assert len(response["transport_retry_errors"]) == 1

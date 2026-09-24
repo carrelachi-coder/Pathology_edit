@@ -29,6 +29,7 @@ def main() -> int:
     parser.add_argument("--attempt", type=int, required=True)
     parser.add_argument("--gpu", type=int, required=True)
     parser.add_argument("--code-commit", required=True)
+    parser.add_argument("--queue-root", type=Path, default=ROOT / "terra_queue")
     args = parser.parse_args()
     if args.attempt < 2:
         parser.error("retry attempt must be at least 2")
@@ -61,6 +62,7 @@ def main() -> int:
         "first_result_path": str(first_result),
         "started_at_unix": start,
         "gpu": args.gpu,
+        "queue_root": str(args.queue_root),
         "status": "running",
     }
     dump(attempt_dir / "retry_metadata.json", metadata)
@@ -80,7 +82,7 @@ def main() -> int:
         "from phase3_joint_edit_refine.program_cli import main; raise SystemExit(main())",
         "--manifest", str(manifest), "--output-root", str(output_root),
         "--semantic-parser", "prebound", "--agent-mode", "cli-queue",
-        "--planner-queue-root", str(ROOT / "terra_queue"),
+        "--planner-queue-root", str(args.queue_root),
         "--model", "gpt-5.6-terra", "--reasoning-effort", "medium",
         "--cell-executor", "mature",
         "--probnet-checkpoint",

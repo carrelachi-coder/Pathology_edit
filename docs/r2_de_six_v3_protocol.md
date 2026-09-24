@@ -92,3 +92,16 @@ now exports those existing records to the unchanged reference-shape gate.
 This post-start evidence-handoff fix, a replay on one persisted candidate,
 and the required same-case reruns are documented in
 `benchmarks/r2_de_six_v3/protocol_amendment_mature_shape_provenance.json`.
+
+The complete same-case retry of case 029 (attempt 3) subsequently passed the
+unchanged program checks and independent E raster audit. Its original failed
+attempt and failed attempt 2 remain on disk; this result is a recovery of the
+same frozen request, not another cohort member. Transient Terra CLI transport
+errors now receive up to three bounded fresh CLI attempts, with each error and
+the total invocation count retained in the queue response. An isolated retry
+queue may be selected without changing the frozen request. These changes and
+the case-029 evidence are recorded in
+`benchmarks/r2_de_six_v3/protocol_amendment_transport_and_retry_029.json`.
+The live initial-attempt summary does not include recovered retries; final
+per-case accounting must explicitly link and report both initial and accepted
+retry outcomes.
