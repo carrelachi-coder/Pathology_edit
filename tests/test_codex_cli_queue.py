@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -16,7 +17,24 @@ from scripts.codex_cli_planner_worker import (
     _cli_compatible_schema,
     _process_one,
     _run_packet,
+    _remote_transfer,
 )
+
+
+def test_remote_transfer_retries_transient_ssh_failure(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(255, command, stderr="temporary SSH failure")
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr("scripts.codex_cli_planner_worker.time.sleep", lambda _: None)
+    result = _remote_transfer(["ssh", "amax2", "true"])
+    assert result.stdout == "ok"
+    assert len(calls) == 2
 
 
 def test_cli_schema_projection_preserves_original_array_constraints():

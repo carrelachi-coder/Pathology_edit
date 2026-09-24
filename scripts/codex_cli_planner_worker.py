@@ -85,6 +85,22 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _remote_transfer(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """Retry transient SSH/SCP failures without repeating a Terra decision."""
+    last_error = None
+    for attempt in range(5):
+        try:
+            return subprocess.run(
+                command, capture_output=True, text=True, timeout=120, check=True,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            last_error = exc
+            if attempt < 4:
+                time.sleep(min(2 ** attempt, 8))
+    assert last_error is not None
+    raise last_error
+
+
 def _run_packet(packet_dir: Path, *, codex: str, timeout: int) -> dict:
     request = json.loads((packet_dir / "request.json").read_text(encoding="utf-8"))
     if request["model"] != "gpt-5.6-terra":
@@ -178,13 +194,11 @@ def _pending_ids(*, root: str, host: str | None) -> list[str]:
     if host:
         command = ["ssh", "-o", "BatchMode=yes", host,
                    "ls -1 " + shlex.quote(root.rstrip("/") + "/requests")]
-        completed = subprocess.run(command, capture_output=True, text=True,
-                                   check=True)
+        completed = _remote_transfer(command)
         names = completed.stdout.splitlines()
-        completed = subprocess.run(
+        completed = _remote_transfer(
             ["ssh", "-o", "BatchMode=yes", host,
              "ls -1 " + shlex.quote(root.rstrip("/") + "/responses")],
-            capture_output=True, text=True, check=True,
         )
         done = {name.removesuffix(".json") for name in completed.stdout.splitlines()}
     else:
@@ -203,8 +217,7 @@ def _process_one(request_id: str, *, root: str, host: str | None,
         local = Path(directory)
         if host:
             remote = root.rstrip("/") + "/requests/" + request_id
-            subprocess.run(["scp", "-q", "-r", f"{host}:{remote}", str(local)],
-                           check=True)
+            _remote_transfer(["scp", "-q", "-r", f"{host}:{remote}", str(local)])
             packet = local / request_id
         else:
             packet = Path(root) / "requests" / request_id
@@ -223,13 +236,12 @@ def _process_one(request_id: str, *, root: str, host: str | None,
             local_response.write_text(payload, encoding="utf-8")
             temp_name = "." + request_id + ".tmp"
             responses = root.rstrip("/") + "/responses/"
-            subprocess.run(["scp", "-q", str(local_response),
-                            f"{host}:{responses}{temp_name}"], check=True)
-            subprocess.run(
+            _remote_transfer(["scp", "-q", str(local_response),
+                              f"{host}:{responses}{temp_name}"])
+            _remote_transfer(
                 ["ssh", "-o", "BatchMode=yes", host,
                  "mv " + shlex.quote(responses + temp_name) + " "
                  + shlex.quote(responses + request_id + ".json")],
-                check=True,
             )
         else:
             target = Path(root) / "responses" / f"{request_id}.json"
@@ -276,13 +288,13 @@ def main() -> int:
                     return 1 if response.get("error") else 0
             try:
                 pending = _pending_ids(root=args.queue_root, host=args.remote_host)
-            except subprocess.CalledProcessError as exc:
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 # A transient SSH listing failure must not terminate the queue
                 # consumer while GPU cases are waiting for Planner responses.
                 print(json.dumps({
                     "warning": "queue_listing_retry",
-                    "return_code": exc.returncode,
-                    "stderr": (exc.stderr or "")[-500:],
+                    "return_code": getattr(exc, "returncode", None),
+                    "stderr": str(getattr(exc, "stderr", "") or "")[-500:],
                 }), flush=True)
                 time.sleep(5.0)
                 continue
