@@ -3,6 +3,7 @@
 import json
 
 from phase3_joint_edit_refine.agents import (
+    _compact_joint_plan_scene_metadata,
     _compact_semantic_option_metadata,
     _compact_semantic_scene_metadata,
 )
@@ -80,3 +81,64 @@ def test_semantic_option_keeps_certificate_counts_and_measured_metrics():
     assert portfolio["hard_gate_passing_candidate_count"] == 1
     assert portfolio["realized_tissue_pixels_range"] == [100, 200]
     assert len(json.dumps(compact)) < 2_000
+
+
+def test_joint_plan_scene_keeps_only_compiled_front_observations():
+    scene = {
+        "tissue": {
+            "width": 10, "height": 10,
+            "labels_present": {"Tumor": 50, "Stroma": 50},
+            "components": [
+                {"component_id": "t1", "label": "Tumor"},
+                {"component_id": "s1", "label": "Stroma"},
+                {"component_id": "s2", "label": "Stroma"},
+            ],
+            "interfaces": [
+                {"interface_id": "if1", "source_label": "Tumor",
+                 "target_label": "Stroma"},
+                {"interface_id": "if2", "source_label": "Tumor",
+                 "target_label": "Stroma"},
+            ],
+            "warnings": [],
+        },
+        "cells": {
+            "class_counts": {"1": 2}, "observation_quality": "native_instance",
+            "instances": [{}, {}], "border_censored_instance_ids": [],
+            "merged_suspect_instance_ids": [], "warnings": [],
+        },
+        "population": {
+            "zones": [
+                {"zone_id": "z1", "zone_kind": "interface_band",
+                 "interface_id": "if1"},
+                {"zone_id": "z2", "zone_kind": "interface_band",
+                 "interface_id": "if2"},
+                {"zone_id": "z3", "zone_kind": "component",
+                 "tissue_component_id": "t1"},
+            ],
+            "median_nucleus_area_px": 8,
+            "nominal_nucleus_diameter_px": 3, "warnings": [],
+        },
+        "nucleus_instance_authority": {},
+        "structural_hierarchy": {
+            "schema_version": "v2", "levels": [],
+            "observation_policy": "mask_only", "execution_semantics": {},
+            "structure_units": [
+                {"unit_id": "u1", "parent_tissue_component_id": "t1"},
+                {"unit_id": "u2", "parent_tissue_component_id": "s2"},
+            ],
+        },
+        "reference_shape_authority": None,
+    }
+    plan = {"candidate_interfaces": [{
+        "interface_id": "if1", "source_component_id": "t1",
+        "target_component_id": "s1",
+    }]}
+    compact = _compact_joint_plan_scene_metadata(scene, plan)
+    assert {x["component_id"] for x in compact["tissue"]["candidate_components"]} == {
+        "t1", "s1"
+    }
+    assert [x["interface_id"] for x in compact["tissue"]["candidate_interfaces"]] == ["if1"]
+    assert {x["zone_id"] for x in compact["population"]["candidate_zones"]} == {
+        "z1", "z3"
+    }
+    assert [x["unit_id"] for x in compact["structural_hierarchy"]["candidate_structure_units"]] == ["u1"]

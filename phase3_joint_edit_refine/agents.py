@@ -219,6 +219,43 @@ def _compact_semantic_option_metadata(metadata: Mapping[str, Any]) -> dict[str, 
     return result
 
 
+def _compact_joint_plan_scene_metadata(
+    metadata: Mapping[str, Any], tissue_plan: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Expose the compiled tissue fronts and their local mask observations."""
+
+    result = _compact_semantic_scene_metadata(metadata)
+    candidates = tissue_plan.get("candidate_interfaces", []) if tissue_plan else []
+    interface_ids = {item["interface_id"] for item in candidates}
+    component_ids = {
+        component_id
+        for item in candidates
+        for component_id in (
+            item["source_component_id"], item["target_component_id"]
+        )
+    }
+    tissue = metadata["tissue"]
+    result["tissue"]["candidate_components"] = [
+        item for item in tissue["components"]
+        if item["component_id"] in component_ids
+    ]
+    result["tissue"]["candidate_interfaces"] = [
+        item for item in tissue["interfaces"]
+        if item["interface_id"] in interface_ids
+    ]
+    result["population"]["candidate_zones"] = [
+        item for item in metadata["population"]["zones"]
+        if item.get("interface_id") in interface_ids
+        or (item.get("zone_kind") == "component"
+            and item.get("tissue_component_id") in component_ids)
+    ]
+    result["structural_hierarchy"]["candidate_structure_units"] = [
+        item for item in metadata["structural_hierarchy"]["structure_units"]
+        if item.get("parent_tissue_component_id") in component_ids
+    ]
+    return result
+
+
 @dataclass(frozen=True)
 class OpenAIMultimodalJointPlanner:
     client: OpenAIResponsesJSONClient
@@ -432,9 +469,12 @@ class OpenAIMultimodalJointPlanner:
                 portfolio=candidate_portfolio,
                 image_paths=image_paths,
             )
+        tissue_metadata = tissue_plan.to_metadata() if tissue_plan is not None else None
         payload = {
             "case": _mask_planner_case_metadata(case),
-            "scene": scene.to_metadata(),
+            "scene": _compact_joint_plan_scene_metadata(
+                scene.to_metadata(), tissue_metadata
+            ),
             "selected_mechanism": bundle.to_metadata(),
             "mechanism_contract": {
                 "recognition": asdict(bundle.mechanism.recognition),
@@ -445,9 +485,7 @@ class OpenAIMultimodalJointPlanner:
                 "render": asdict(bundle.mechanism.render),
                 "planner_policy": asdict(bundle.mechanism.planner_policy),
             },
-            "compiled_tissue_plan": (
-                tissue_plan.to_metadata() if tissue_plan is not None else None
-            ),
+            "compiled_tissue_plan": tissue_metadata,
             "primitive_contract": asdict(bundle.primitive),
             "requirements": {
                 "accept_only_if_tissue_plan_matches_skill_and_candidate_certificate": True,
