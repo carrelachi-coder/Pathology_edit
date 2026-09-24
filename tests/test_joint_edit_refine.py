@@ -470,6 +470,14 @@ class JointSkillTests(unittest.TestCase):
             self.assertEqual(cell_schema["layout_program_id"]["enum"], [layout])
             self.assertEqual(cell_schema["mechanism_program_id"]["enum"], [layout])
             packet = json.loads(call["user_prompt"])
+            allowed_classes = packet["requirements"][
+                "allowed_cell_classes_from_primitive_and_mechanism"
+            ]
+            self.assertEqual(
+                cell_schema["allowed_cell_classes"]["items"]["enum"],
+                allowed_classes,
+            )
+            self.assertEqual(allowed_classes, [1])
             self.assertEqual(
                 packet["requirements"]["mandatory_compatibility_rule_ids"],
                 list(bundle.mechanism.coupling.compatibility_rule_ids),

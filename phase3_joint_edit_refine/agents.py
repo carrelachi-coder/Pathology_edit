@@ -352,6 +352,14 @@ class OpenAIMultimodalJointPlanner:
                 "mandatory_compatibility_rule_ids": list(
                     bundle.mechanism.coupling.compatibility_rule_ids
                 ),
+                "allowed_cell_classes_from_primitive_and_mechanism": sorted(
+                    set(bundle.mechanism.cell_program.allowed_cell_classes)
+                    & (
+                        set(bundle.primitive.target_cell_classes)
+                        if bundle.primitive.target_cell_classes
+                        else set(bundle.mechanism.cell_program.allowed_cell_classes)
+                    )
+                ),
                 "do_not_output_polygons_pixels_coordinates_counts_or_density_multipliers": True,
                 "area_budget_is_immutable_and_compiler_owned": True,
                 "semantic_intent_is_immutable_and_parser_owned": (
@@ -371,6 +379,10 @@ class OpenAIMultimodalJointPlanner:
             },
         }
         compiled_layout = bundle.mechanism.cell_program.layout_for(case.primitive_id)
+        if not payload["requirements"]["allowed_cell_classes_from_primitive_and_mechanism"]:
+            raise JointContractError(
+                "primitive and mechanism have no shared observable cell classes"
+            )
         schema = deepcopy(JOINT_PLAN_JSON_SCHEMA)
         schema["properties"]["selected_mechanism_id"]["enum"] = [
             bundle.mechanism.mechanism_id, None
@@ -378,6 +390,10 @@ class OpenAIMultimodalJointPlanner:
         cell_properties = schema["properties"]["cell_plan"]["properties"]
         for field in ("layout_program_id", "mechanism_program_id"):
             cell_properties[field]["enum"] = [compiled_layout]
+        cell_properties["allowed_cell_classes"]["items"]["enum"] = payload[
+            "requirements"
+        ]["allowed_cell_classes_from_primitive_and_mechanism"]
+        cell_properties["allowed_cell_classes"]["uniqueItems"] = True
         errors = []
         for attempt, client in enumerate(self._contract_clients(), start=1):
             raw, usage = client.call(
@@ -390,6 +406,8 @@ class OpenAIMultimodalJointPlanner:
                     "Copy compiled_layout_program_is_immutable exactly into both "
                     "cell_plan.layout_program_id and cell_plan.mechanism_program_id; "
                     "the mechanism ID is not a cell program ID. "
+                    "Choose allowed_cell_classes only from the supplied "
+                    "allowed_cell_classes_from_primitive_and_mechanism list. "
                     "Output a tissue binding, cell intent and coupling "
                     "intent. The Semantic Parser already owns the immutable user intent; do not "
                     "reinterpret it. Deterministic tools own every pixel, coordinate, count and "
