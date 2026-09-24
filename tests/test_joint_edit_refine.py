@@ -97,6 +97,7 @@ from phase3_joint_edit_refine.mature_probnet_adapter import (
     MatureProbNetCellExecutor,
     MatureProbNetConfig,
     _architecture_placement_trace,
+    _mature_generic_placement_trace,
     _compile_packing_witness,
     _mature_nucleus_area_medians,
 )
@@ -5135,6 +5136,23 @@ class JointSkillTests(unittest.TestCase):
             command[command.index("--required-nucleus-type") + 1],
             "101",
         )
+
+    def test_mature_generic_trace_preserves_each_placed_shape_source(self):
+        placements = _mature_generic_placement_trace([
+            {
+                "row": 12, "col": 20, "class_id": 3, "area_px": 75,
+                "shape_source": "library", "reference_instance_id": None,
+            },
+            {
+                "row": 18, "col": 21, "class_id": 1, "area_px": 92,
+                "shape_source": "same_patch_complete_instance",
+                "reference_instance_id": "nuc-c1-0002",
+            },
+        ])
+        self.assertEqual(len(placements), 2)
+        self.assertEqual(placements[0]["reference_source"], "calibrated_instance_library")
+        self.assertEqual(placements[1]["reference_instance_id"], "nuc-c1-0002")
+        self.assertEqual([item["center_xy"] for item in placements], [[20, 12], [21, 18]])
 
     def test_packing_witness_maps_cellvit_classes_to_mature_schema(self):
         self.assertEqual(

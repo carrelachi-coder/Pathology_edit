@@ -622,11 +622,40 @@ class MatureProbNetCellExecutor:
                             {"row": row, "col": col, "class_id": class_id}
                             for row, col, class_id in accepted_center_ledger
                         ],
-                        "placements": _architecture_placement_trace(
-                            contract=contract,
-                            accepted_instance_area_ledger=(
+                        "placements": (
+                            _architecture_placement_trace(
+                                contract=contract,
+                                accepted_instance_area_ledger=(
+                                    accepted_instance_area_ledger
+                                ),
+                            )
+                            if contract.primitive_id in {
+                                "invasive-cord-formation-v1",
+                                "peritumoral-tumor-nest-formation-v1",
+                            }
+                            else _mature_generic_placement_trace(
                                 accepted_instance_area_ledger
-                            ),
+                            )
+                        ),
+                        "reference_shape_authority": (
+                            scene.reference_shape_authority.to_metadata()
+                            if scene.reference_shape_authority is not None
+                            and placed_by_shape_source.get(
+                                "calibrated_instance_library", 0
+                            )
+                            else None
+                        ),
+                        "reference_shape_locality": (
+                            "calibrated_dataset_instance_library"
+                            if placed > 0
+                            and placed_by_shape_source.get(
+                                "calibrated_instance_library", 0
+                            ) == placed
+                            else "same_patch_then_calibrated_dataset_instance_library"
+                            if placed_by_shape_source.get(
+                                "calibrated_instance_library", 0
+                            )
+                            else "same_patch_complete_instance"
                         ),
                         "accepted_instance_area_ledger": (
                             accepted_instance_area_ledger
@@ -952,6 +981,34 @@ def _architecture_placement_trace(
             "cluster_size": int(group_size),
             "orientation_policy": orientation,
             "packing_witness_replayed": True,
+            "execution_engine": MATURE_EXECUTION_VERSION,
+        }
+        for item in accepted_instance_area_ledger
+    ]
+
+
+def _mature_generic_placement_trace(
+    accepted_instance_area_ledger: list[dict],
+) -> list[dict]:
+    """Preserve the mature sampler's per-instance provenance for all edits."""
+
+    library_sources = {
+        "library",
+        "calibrated_library",
+        "instance_library",
+        "calibrated_instance_library",
+    }
+    return [
+        {
+            "center_xy": [int(item["col"]), int(item["row"])],
+            "cell_class": int(item["class_id"]),
+            "area_px": int(item["area_px"]),
+            "reference_instance_id": item.get("reference_instance_id"),
+            "reference_source": (
+                "calibrated_instance_library"
+                if str(item.get("shape_source") or "unknown") in library_sources
+                else str(item.get("shape_source") or "unknown")
+            ),
             "execution_engine": MATURE_EXECUTION_VERSION,
         }
         for item in accepted_instance_area_ledger

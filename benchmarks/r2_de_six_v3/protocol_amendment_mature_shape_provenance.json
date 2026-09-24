@@ -1,0 +1,8 @@
+{
+  "amendment_id": "r2-de-six-v3-mature-shape-provenance-20260924",
+  "deployed_at_utc": "2026-09-24 01:50:50 UTC",
+  "trigger": "BCSS cases 014, 018 and 029 had mature cell candidates with 7-9 accepted placements and passing cell-count checks, yet the generic mature adapter exported an empty placements trace and omitted the calibrated library authority. The reference_shape_integrity gate therefore rejected them for missing provenance.",
+  "change": "For non-cord/nest mature edits, export each accepted instance from the executor's existing immutable instance-area ledger as a placement provenance record. Export the already loaded reference-shape authority when the calibrated library supplied shapes, and declare locality from the observed source counts. Cord/nest architecture traces remain unchanged. No gate threshold is relaxed and no synthetic placement is added.",
+  "verification": "Two targeted server-side unit tests passed. Recomputing the unchanged reference_shape_integrity gate on case 029's persisted candidate changed its result from false to true only after injecting the actual nine accepted placement records and the scene's existing library authority. Full same-case execution and independent E are still required before counting case 029 as validated.",
+  "audit_rule": "Original failed attempts stay recorded. New processes use this deployed adapter; old failed cases require same-case reruns, and independently measured raster checks must pass before replacing an initial outcome in final per-case accounting."
+}

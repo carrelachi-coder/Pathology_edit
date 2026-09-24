@@ -84,3 +84,11 @@ before cell execution; the LLM still chooses among legal interface and anchor
 options, and the independent gates are unchanged. The deployment times,
 tests, and handling of affected frozen cases are recorded in
 `benchmarks/r2_de_six_v3/protocol_amendment_execution_recovery.json`.
+
+Several mature cell candidates were also rejected because the generic
+adapter dropped its accepted placement ledger from the provenance trace and
+omitted an already loaded calibrated shape-library authority. The adapter
+now exports those existing records to the unchanged reference-shape gate.
+This post-start evidence-handoff fix, a replay on one persisted candidate,
+and the required same-case reruns are documented in
+`benchmarks/r2_de_six_v3/protocol_amendment_mature_shape_provenance.json`.
