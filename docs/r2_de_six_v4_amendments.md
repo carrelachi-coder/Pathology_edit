@@ -66,9 +66,10 @@ independent E checks remain necessary.
 
 PANDA Pattern-4 growth case `r2dev4-123` selected a verified fine-9 tumor
 front, and its compiled tool program authorized Stroma fine 2 to Pattern-4
-fine 9. The generic mask-level `Tumor` executor nevertheless painted fine 8,
-the first fine ID in its coarse Tumor class. The unchanged fine-pattern gate
-correctly rejected all three joint candidates. A separate fine-label binding
+fine 9. The first planning pass painted fine 9 correctly, but its second-pass
+area replan fell back to fine 8, the first fine ID in the coarse Tumor class.
+The unchanged fine-pattern gate correctly rejected all three joint candidates.
+A separate fine-label binding
 now applies the **single explicit mechanism-authorized target fine ID** to
 the generic candidate's changed pixels, only when every changed source pixel
 belongs to the explicitly authorized source fine IDs and the generic target
