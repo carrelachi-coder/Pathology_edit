@@ -49,6 +49,16 @@ def main() -> int:
     first_result = ROOT / "results" / f"{args.case_id}.json"
     if not first_result.exists():
         raise RuntimeError("first attempt must be retained before retry")
+    previous_attempt = None
+    if args.attempt > 2:
+        previous_attempt = (
+            ROOT / "retry_attempts" / args.case_id
+            / f"attempt-{args.attempt - 1}" / "retry_metadata.json"
+        )
+        if not previous_attempt.exists():
+            raise RuntimeError("previous numbered attempt must be retained")
+        if json.loads(previous_attempt.read_text())["status"] == "running":
+            raise RuntimeError("previous numbered attempt is still running")
     attempt_dir = ROOT / "retry_attempts" / args.case_id / f"attempt-{args.attempt}"
     attempt_dir.mkdir(parents=True, exist_ok=False)
     start = time.time()
@@ -58,6 +68,8 @@ def main() -> int:
             code / "phase3_joint_edit_refine" / "agents.py",
             code / "phase3_joint_edit_refine" / "tissue_planner.py",
             code / "phase3_joint_edit_refine" / "planner.py",
+            code / "phase3_joint_edit_refine" / "cell_programs.py",
+            code / "phase3_joint_edit_refine" / "invasive_architecture.py",
             code / "phase3_joint_edit_refine" / "mature_probnet_adapter.py",
             code / "inpaint_cells" / "generate.py",
         )
@@ -73,6 +85,11 @@ def main() -> int:
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "first_result_sha256": hashlib.sha256(first_result.read_bytes()).hexdigest(),
         "first_result_path": str(first_result),
+        "previous_attempt_path": str(previous_attempt) if previous_attempt else None,
+        "previous_attempt_sha256": (
+            hashlib.sha256(previous_attempt.read_bytes()).hexdigest()
+            if previous_attempt else None
+        ),
         "started_at_unix": start,
         "gpu": args.gpu,
         "queue_root": str(args.queue_root),
