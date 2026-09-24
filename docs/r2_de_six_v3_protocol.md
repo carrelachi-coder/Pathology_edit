@@ -124,3 +124,10 @@ seven-case manifests, `retry_batch_infra_20260924_gpu0.json` and
 `retry_batch_infra_20260924_gpu2.json`, each linking to the original retry
 manifest digest. The original batch parent was stopped after its case-020
 child had started; that child and all previous attempts were preserved.
+
+`scripts/r2_de_six_reconcile.py` checks the frozen cohort digest, initial
+result links, every retry's case identity and first-result digest, and the
+independent E record for each accepted retry. It reports initial validated
+cases separately from same-case recoveries and produces one auditable row per
+frozen case. This prevents a retry from silently replacing an initial outcome
+or being counted without an independently checked mask output.
