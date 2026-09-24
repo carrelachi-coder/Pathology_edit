@@ -1648,6 +1648,56 @@ def test_two_stage_execution_uses_compiled_total_for_remainder(monkeypatch):
     assert diagnostics["tissues"]["2"]["placed"] == 25
 
 
+def test_minimum_only_seam_allows_more_target_cells_in_remainder(monkeypatch):
+    calls = []
+
+    def fake_generate_for_gamma(*args, **kwargs):
+        calls.append(kwargs)
+        count = int((kwargs.get("new_target_count_overrides") or {}).get(2, 0))
+        return np.asarray(args[2]).copy(), {
+            "placed": count,
+            "placed_by_shape_source": {"reference": count, "library": 0},
+            "tissues": {
+                "2": {
+                    "target_count": count,
+                    "placed": count,
+                    "placed_by_type": {"103": count},
+                    "target_by_type": {"103": count},
+                    "posterior_expected_by_type": {"103": float(count)},
+                    "accepted_centers": [
+                        {"row": 2, "col": 2, "nucleus_type": 103}
+                    ] * count,
+                }
+            },
+        }
+
+    monkeypatch.setattr(generate_module, "generate_for_gamma", fake_generate_for_gamma)
+    tissue = np.full((8, 8), 2, dtype=np.int64)
+    mask = np.ones_like(tissue, dtype=bool)
+    required = np.zeros_like(mask)
+    required[2:4, 2:4] = True
+    _, diagnostics = generate_two_stage_for_gamma(
+        np.zeros((6, 8, 8), dtype=np.float32),
+        tissue,
+        np.zeros_like(tissue),
+        mask,
+        mask,
+        object(),
+        object(),
+        1.0,
+        SimpleNamespace(skip_tissue_ids=[]),
+        {},
+        population_mask=mask,
+        required_center_mask=required,
+        minimum_required_centers=1,
+        required_nucleus_type=103,
+        packing_witness={"requested_count": 3, "required_seam_count": 1},
+    )
+    assert [call["new_target_count_overrides"][2] for call in calls] == [1, 2]
+    assert calls[1]["center_region_exclusions_by_type"] is None
+    assert diagnostics["tissues"]["2"]["placed"] == 3
+
+
 def test_two_stage_rejects_runtime_seam_quota_that_differs_from_contract():
     tissue = np.full((8, 8), 2, dtype=np.int64)
     mask = np.ones_like(tissue, dtype=bool)

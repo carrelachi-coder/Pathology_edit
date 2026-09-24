@@ -3675,16 +3675,18 @@ def generate_two_stage_for_gamma(
                 }
             else:
                 remainder_target_overrides = None
-            # The exact seam quota applies only to the required target class.
             # Other compatible populations may legitimately occupy the same
             # anatomical band (for example inflammatory cells interspersed at
-            # a melanoma--stroma boundary).  Keep the full compiled P for the
-            # remainder; the typed packing witness and the final continuity
-            # gate still cap target-class centers in the seam.
+            # a melanoma--stroma boundary). Keep the full compiled P for the
+            # remainder; the final continuity gate checks the realized seam.
             remainder_generation_mask = np.asarray(
                 generation_mask,
                 dtype=bool,
             )
+            # A required seam count without a maximum is a lower bound.
+            # The compiled witness may place additional target-class nuclei
+            # in that same seam.  Excluding the seam from the remainder would
+            # make a certified full-population packing impossible to replay.
             output, diagnostics = generate_for_gamma(
                 prob,
                 tissue,
@@ -3714,6 +3716,7 @@ def generate_two_stage_for_gamma(
                         int(required_nucleus_type): required_center_mask
                     }
                     if required_nucleus_type is not None
+                    and maximum_required_centers is not None
                     else None
                 ),
             )
