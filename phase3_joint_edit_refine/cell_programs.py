@@ -880,6 +880,10 @@ class CellToolProgramCompiler:
                                 "depletion_removal_selection_variant", 0
                             )
                         ),
+                        composition_include_outer_reference=(
+                            bundle.annotation_profile.annotation_profile_id
+                            != "glas-gland-v1"
+                        ),
                     )
                 )
                 depletion_population_instance_ids = (
@@ -1530,6 +1534,7 @@ class CellToolProgramCompiler:
         effective_core_end_px: float,
         effective_transition_width_px: float,
         selection_variant: int = 0,
+        composition_include_outer_reference: bool = True,
     ) -> tuple[str, ...]:
         """Resolve deletion count from a radial density field, not a count target."""
 
@@ -1653,6 +1658,24 @@ class CellToolProgramCompiler:
             quota_by_band_and_class.append(
                 _largest_remainder_quotas(class_counts, quota)
             )
+        composition_items = [
+            item for _name, items, _target in radial_bands for item in items
+        ]
+        if composition_include_outer_reference:
+            composition_items.extend(by_band.get("outer_reference", ()))
+        composition_counts: dict[int, int] = {}
+        for item in composition_items:
+            composition_counts[item.class_id] = (
+                composition_counts.get(item.class_id, 0) + 1
+            )
+        quota_by_band_and_class = _rebalance_radial_class_quotas(
+            radial_bands=radial_bands,
+            radial_quotas=quotas,
+            class_quotas=quota_by_band_and_class,
+            global_class_quotas=_largest_remainder_quotas(
+                composition_counts, resolved
+            ),
+        )
         selected = []
         for class_id in sorted(all_classes):
             class_bands = [
@@ -2466,6 +2489,78 @@ def _select_density_field_removals_preserving_coverage(
                 (int(selection_variant) - 1) % len(ordered)
             ][-1]
     return [item for item in all_items if item.instance_id not in retained_ids]
+
+
+def _rebalance_radial_class_quotas(
+    *,
+    radial_bands: list[tuple[str, list, float]],
+    radial_quotas: list[int],
+    class_quotas: list[dict[int, int]],
+    global_class_quotas: dict[int, int],
+) -> list[dict[int, int]]:
+    """Match global class mix by same-band swaps without changing the field.
+
+    Independent largest-remainder rounding in each radial band can accumulate
+    a global error even when a class-balanced allocation is available. Each
+    swap keeps the skill-owned radial count and source-class capacity fixed.
+    """
+
+    adjusted = [dict(quotas) for quotas in class_quotas]
+    availability: list[dict[int, int]] = []
+    for _name, items, _target in radial_bands:
+        counts: dict[int, int] = {}
+        for item in items:
+            counts[item.class_id] = counts.get(item.class_id, 0) + 1
+        availability.append(counts)
+    classes = sorted(
+        set(global_class_quotas)
+        | {key for counts in availability for key in counts}
+    )
+    while True:
+        realized = {
+            class_id: sum(band.get(class_id, 0) for band in adjusted)
+            for class_id in classes
+        }
+        swaps = []
+        for donor in classes:
+            if realized[donor] <= global_class_quotas.get(donor, 0):
+                continue
+            for receiver in classes:
+                if realized[receiver] >= global_class_quotas.get(receiver, 0):
+                    continue
+                for index, band in enumerate(adjusted):
+                    if (
+                        band.get(donor, 0) <= 0
+                        or band.get(receiver, 0)
+                        >= availability[index].get(receiver, 0)
+                    ):
+                        continue
+                    source_total = max(1, sum(availability[index].values()))
+                    ideal_donor = (
+                        radial_quotas[index]
+                        * availability[index].get(donor, 0)
+                        / source_total
+                    )
+                    ideal_receiver = (
+                        radial_quotas[index]
+                        * availability[index].get(receiver, 0)
+                        / source_total
+                    )
+                    before = (
+                        (band.get(donor, 0) - ideal_donor) ** 2
+                        + (band.get(receiver, 0) - ideal_receiver) ** 2
+                    )
+                    after = (
+                        (band.get(donor, 0) - 1 - ideal_donor) ** 2
+                        + (band.get(receiver, 0) + 1 - ideal_receiver) ** 2
+                    )
+                    swaps.append((after - before, index, donor, receiver))
+        if not swaps:
+            break
+        _penalty, index, donor, receiver = min(swaps)
+        adjusted[index][donor] -= 1
+        adjusted[index][receiver] = adjusted[index].get(receiver, 0) + 1
+    return adjusted
 
 
 def _largest_remainder_quotas(counts: dict[int, int], total: int) -> dict[int, int]:

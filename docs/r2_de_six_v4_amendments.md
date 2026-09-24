@@ -42,3 +42,22 @@ The GPU workers and first-attempt result files continued running. The worker
 was restarted as a user LaunchAgent so it persists across Codex turns. Planner
 transport errors and wall-clock timeouts are retained as first-attempt
 outcomes; any rerun will be numbered and linked to the initial result.
+
+## A2: radial depletion class allocation
+
+Several GLaS and ORCA cell-only first attempts met the prescribed deletion
+count, spatial extent, radial density gradient, and whole-instance constraints
+but failed the existing class-composition gate. The compiler rounded each
+radial band's class quotas independently; those rounding errors accumulated
+across bands. The repair performs deterministic **same-band class swaps** to
+move the overall deletion mix toward the existing source-derived target. It
+does not alter any radial deletion count, total budget, candidate mask, gate,
+or tolerance. Where the source bands lack an eligible class, the residual
+composition error remains and the ordinary gate can still reject the edit.
+
+An isolated audit of eight saved failed cases found a feasible allocation
+meeting the exact global class target for seven and an allocation within the
+unchanged tolerance for the eighth. This is a feasibility check, not a
+recovered outcome. A focused regression test and related density-field tests
+passed in the scientific Python environment; full numbered retries and
+independent E checks remain necessary.

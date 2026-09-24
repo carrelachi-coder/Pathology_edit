@@ -56,6 +56,7 @@ from phase3_joint_edit_refine.cell_programs import (
     _cap_density_field_quotas,
     _depletion_band_edges,
     _enforce_density_field_gradient_quotas,
+    _rebalance_radial_class_quotas,
     _select_density_field_removals_preserving_coverage,
     depletion_field_area_is_sufficient,
 )
@@ -2084,6 +2085,27 @@ class JointSkillTests(unittest.TestCase):
         )
 
         self.assertEqual(repaired, [7, 2, 1, 2, 0])
+
+    def test_radial_depletion_preserves_global_class_mix(self):
+        bands = [
+            (
+                f"band-{index}",
+                [SimpleNamespace(class_id=1)] * 3
+                + [SimpleNamespace(class_id=2)],
+                0.25,
+            )
+            for index in range(4)
+        ]
+        adjusted = _rebalance_radial_class_quotas(
+            radial_bands=bands,
+            radial_quotas=[1, 1, 1, 1],
+            class_quotas=[{1: 1, 2: 0} for _ in bands],
+            global_class_quotas={1: 3, 2: 1},
+        )
+
+        self.assertEqual([sum(band.values()) for band in adjusted], [1] * 4)
+        self.assertEqual(sum(band.get(1, 0) for band in adjusted), 3)
+        self.assertEqual(sum(band.get(2, 0) for band in adjusted), 1)
 
     def test_cluster_members_each_require_a_legal_center(self):
         shape = np.ones((3, 3), dtype=bool)
