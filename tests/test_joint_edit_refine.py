@@ -578,7 +578,7 @@ class JointSkillTests(unittest.TestCase):
                     max_contract_attempts=1,
                 ).select_interpretation(
                     case=case,
-                    scene=SimpleNamespace(to_metadata=dict),
+                    scene=SimpleNamespace(to_metadata=_semantic_scene_stub),
                     options=(option,),
                     image_paths=(),
                     artifact_registry=None,
@@ -1911,7 +1911,7 @@ class JointSkillTests(unittest.TestCase):
                         client=client, max_contract_attempts=1
                     ).select_interpretation(
                         case=case,
-                        scene=SimpleNamespace(to_metadata=dict),
+                        scene=SimpleNamespace(to_metadata=_semantic_scene_stub),
                         options=(option,),
                         image_paths=(),
                     )
@@ -9757,6 +9757,33 @@ def _case_stub(
         },
         cell_count_extent_budget=cell_budget,
     )
+
+
+def _semantic_scene_stub() -> dict:
+    return {
+        "tissue": {
+            "width": 8, "height": 8, "labels_present": {"Tumor": 16},
+            "components": [{"label": "Tumor"}], "interfaces": [],
+            "warnings": [],
+        },
+        "cells": {
+            "class_counts": {"1": 1}, "observation_quality": "native_instance",
+            "instances": [{}], "border_censored_instance_ids": [],
+            "merged_suspect_instance_ids": [], "warnings": [],
+        },
+        "population": {
+            "zones": [{"zone_kind": "component"}],
+            "median_nucleus_area_px": 9,
+            "nominal_nucleus_diameter_px": 3, "warnings": [],
+        },
+        "nucleus_instance_authority": {},
+        "structural_hierarchy": {
+            "schema_version": "fixture", "levels": [],
+            "observation_policy": "mask_only", "execution_semantics": {},
+            "structure_units": [],
+        },
+        "reference_shape_authority": None,
+    }
 
 
 def _breast_case_stub(*, budget=None) -> JointCaseContext:

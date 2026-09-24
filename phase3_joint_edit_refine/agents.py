@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from copy import deepcopy
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -112,6 +114,111 @@ def _mask_planner_case_metadata(case: JointCaseContext) -> dict[str, Any]:
     return metadata
 
 
+def _compact_semantic_scene_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    """Summarize a mask graph for primitive selection, not spatial execution.
+
+    The later tissue/cell Planners still receive their certified candidate
+    portfolios. This stage chooses only a primitive--mechanism pair, so
+    repeating thousands of zone, edge and instance records can exceed the CLI
+    transport limit without adding a selectable decision variable.
+    """
+
+    tissue = metadata["tissue"]
+    cells = metadata["cells"]
+    population = metadata["population"]
+    hierarchy = metadata["structural_hierarchy"]
+    reference = metadata.get("reference_shape_authority")
+    full_digest = hashlib.sha256(
+        json.dumps(metadata, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    component_counts = Counter(item["label"] for item in tissue["components"])
+    interface_counts = Counter(
+        f"{item['source_label']} -> {item['target_label']}"
+        for item in tissue["interfaces"]
+    )
+    zone_counts = Counter(item["zone_kind"] for item in population["zones"])
+    return {
+        "full_mask_graph_sha256": full_digest,
+        "tissue": {
+            "width": tissue["width"], "height": tissue["height"],
+            "labels_present": tissue["labels_present"],
+            "component_counts_by_label": dict(sorted(component_counts.items())),
+            "interface_counts_by_label_pair": dict(sorted(interface_counts.items())),
+            "warnings": tissue.get("warnings", []),
+        },
+        "cells": {
+            "class_counts": cells["class_counts"],
+            "observation_quality": cells["observation_quality"],
+            "instance_count": len(cells["instances"]),
+            "border_censored_instance_count": len(
+                cells["border_censored_instance_ids"]
+            ),
+            "merged_suspect_instance_count": len(
+                cells["merged_suspect_instance_ids"]
+            ),
+            "warnings": cells.get("warnings", []),
+        },
+        "population": {
+            "zone_counts_by_kind": dict(sorted(zone_counts.items())),
+            "median_nucleus_area_px": population["median_nucleus_area_px"],
+            "nominal_nucleus_diameter_px": population[
+                "nominal_nucleus_diameter_px"
+            ],
+            "warnings": population.get("warnings", []),
+        },
+        "nucleus_instance_authority": metadata["nucleus_instance_authority"],
+        "structural_hierarchy": {
+            "schema_version": hierarchy["schema_version"],
+            "levels": hierarchy["levels"],
+            "observation_policy": hierarchy["observation_policy"],
+            "execution_semantics": hierarchy["execution_semantics"],
+            "structure_unit_count": len(hierarchy["structure_units"]),
+        },
+        "reference_shape_authority": (
+            {
+                "authority_sha256": reference["authority_sha256"],
+                "dataset_name": reference["dataset_name"],
+                "nominal_area_by_class": reference["nominal_area_by_class"],
+                "version": reference["version"],
+            }
+            if reference is not None else None
+        ),
+    }
+
+
+def _compact_semantic_option_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep measured option evidence while omitting full tissue execution traces."""
+
+    result = dict(metadata)
+    feasibility = dict(result["feasibility"])
+    portfolio = feasibility.get("whole_mask_topology_portfolio")
+    if isinstance(portfolio, Mapping):
+        survivors = portfolio.get("surviving_candidates", [])
+        vetoed = portfolio.get("vetoed_candidates", [])
+        feasibility["whole_mask_topology_portfolio"] = {
+            "schema_version": portfolio.get("schema_version"),
+            "authority_binding_sha256": portfolio.get(
+                "authority_binding_sha256"
+            ),
+            "surviving_candidate_count": len(survivors),
+            "hard_gate_passing_candidate_count": sum(
+                item.get("hard_gate_passed") is True for item in survivors
+            ),
+            "vetoed_candidate_count": len(vetoed),
+            "realized_tissue_pixels_range": (
+                [min(values), max(values)] if (
+                    values := [
+                        int(item["realized_tissue_pixels"])
+                        for item in survivors
+                        if isinstance(item.get("realized_tissue_pixels"), int)
+                    ]
+                ) else None
+            ),
+        }
+    result["feasibility"] = feasibility
+    return result
+
+
 @dataclass(frozen=True)
 class OpenAIMultimodalJointPlanner:
     client: OpenAIResponsesJSONClient
@@ -134,9 +241,10 @@ class OpenAIMultimodalJointPlanner:
         )
         payload = {
             "case": _mask_planner_case_metadata(case),
-            "scene": scene.to_metadata(),
+            "scene": _compact_semantic_scene_metadata(scene.to_metadata()),
             "available_interpretations": [
-                item.to_metadata() for item in options
+                _compact_semantic_option_metadata(item.to_metadata())
+                for item in options
             ],
             "requirements": {
                 "choose_only_listed_primitive_mechanism_pair": True,
