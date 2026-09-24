@@ -1,0 +1,27 @@
+{
+  "amendment_id": "r2-de-six-v3-targeted-bcss-retries-20260924",
+  "recorded_at_utc": "2026-09-24 05:05 UTC",
+  "frozen_cohort_sha256": "8693a26f8a453b3ed06136b674c0adc597bfbacbe55d2474ec2a60c364f856bc",
+  "shape_provenance_cases": [
+    "r2de6-017-bcss-cohesive-boundary-expansion",
+    "r2de6-018-bcss-cohesive-boundary-expansion",
+    "r2de6-028-bcss-generic-immune-infiltrate-decrease"
+  ],
+  "early_joint_replanning_cases": [
+    "r2de6-003-bcss-cohesive-boundary-expansion",
+    "r2de6-005-bcss-cohesive-boundary-expansion",
+    "r2de6-006-bcss-cohesive-boundary-expansion",
+    "r2de6-007-bcss-cohesive-boundary-expansion",
+    "r2de6-008-bcss-cohesive-boundary-expansion",
+    "r2de6-015-bcss-cohesive-boundary-expansion",
+    "r2de6-021-bcss-cohesive-boundary-expansion",
+    "r2de6-026-bcss-cohesive-boundary-expansion",
+    "r2de6-027-bcss-cohesive-boundary-expansion"
+  ],
+  "server_manifests": [
+    "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_batch_shape_provenance_20260924.json",
+    "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_batch_early_bcss_20260924.json"
+  ],
+  "reason": "These initial failures occurred before fixes that clarify the joint Planner contract, disallow an entire tumor component as a local population zone, and pass through mature placement provenance. Case 017 also failed a joint-area gate, which remains unchanged.",
+  "audit_rule": "Same frozen cases only. Preserve initial and every retry. Count a recovery only after unchanged program checks and independent E both pass."
+}

@@ -131,3 +131,11 @@ independent E record for each accepted retry. It reports initial validated
 cases separately from same-case recoveries and produces one auditable row per
 frozen case. This prevents a retry from silently replacing an initial outcome
 or being counted without an independently checked mask output.
+
+Three additional BCSS cases (017, 018, 028) with initial reference-shape
+provenance gate failures were frozen for same-case retries after the adapter
+fix. Nine early BCSS cohesive-boundary cases that had stalled replanning or
+candidate-local cell execution failures before the joint contract, population
+zone, and provenance fixes were also frozen for a separate retry batch. Their
+server manifests retain the exact IDs and selection reasons. These are
+software-recovery audits, not additions to the 222-case cohort.
