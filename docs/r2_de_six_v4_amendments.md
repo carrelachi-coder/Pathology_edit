@@ -136,3 +136,15 @@ follow-up repair updates the candidate's target fine-ID declaration together
 with its changed pixels, only when the original declaration is the coarse
 default and the explicit mechanism contract authorizes exactly one target
 fine ID. The same unchanged hard gate will be applied in attempt 3.
+
+## Final disposition
+
+All scheduled attempts are terminal. A1 recovered BCSS `r2dev4-009`, while
+`r2dev4-003` failed the unchanged seam-density gate. A2 recovered all eight
+prespecified local-population-density cases. The A3 follow-up recovered
+PANDA `r2dev4-123`. A4 recovered six of its eight ORCA cases; the other two
+failed existing feasibility or joint-condition checks. All 20 additional
+validated cases passed independent E. The primary v4 first-attempt result
+remains 156/222; the separately reconciled result is 176/222. See the
+[final results](r2_de_six_v4_final_results.md) for per-dataset and
+per-primitive counts and unresolved-case limitations.
