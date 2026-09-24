@@ -1,0 +1,11 @@
+{
+  "amendment_id": "r2-de-six-v3-parallel-retry-partition-20260924",
+  "recorded_at_utc": "2026-09-24 04:49 UTC",
+  "trigger": "Initial GPU workers 0 and 2 completed while 14 previously selected infrastructure retries had not started.",
+  "change": "Stop only the original sequential retry-batch parent, leaving its active case-020 child running on GPU 3. Split the 14 unstarted IDs from the already frozen 18-case manifest into two disjoint seven-case manifests and launch them on now-idle GPUs 0 and 2. Each partition manifest records the parent manifest SHA-256 and original outcomes.",
+  "manifests": [
+    "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_batch_infra_20260924_gpu0.json",
+    "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_batch_infra_20260924_gpu2.json"
+  ],
+  "audit_rule": "No overlap between partitions, no source replacement, and no initial or running attempt was removed. Each retry uses an isolated CLI queue and the same frozen case manifest."
+}

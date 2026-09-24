@@ -115,3 +115,12 @@ then frozen for sequential same-case retries in an isolated queue. The list,
 initial outcomes, code version, per-attempt metadata, and batch progress are
 retained under the evaluation root. This retry batch cannot change the source
 cohort or the initial-attempt denominator.
+
+Once initial GPU workers 0 and 2 finished their assigned cases, the retry
+batch was split to use those idle GPUs. Cases 001, 004, and 019 had already
+finished; case 020 continued in its own attempt process on GPU 3. The
+remaining 14 previously selected IDs were partitioned into two disjoint
+seven-case manifests, `retry_batch_infra_20260924_gpu0.json` and
+`retry_batch_infra_20260924_gpu2.json`, each linking to the original retry
+manifest digest. The original batch parent was stopped after its case-020
+child had started; that child and all previous attempts were preserved.
