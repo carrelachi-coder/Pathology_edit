@@ -11,6 +11,7 @@ No new annotation channel is introduced.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from typing import Iterable
 
 import numpy as np
@@ -123,7 +124,7 @@ def generate_joint_tissue_candidates(
     if plan.primitive_id not in SPECIALIZED_ARCHITECTURE_PRIMITIVES:
         from phase3_mask_edit_refine.candidates import generate_candidates
 
-        return generate_candidates(
+        candidates = generate_candidates(
             source_tissue,
             schema=schema,
             scene=tissue_scene,
@@ -133,6 +134,12 @@ def generate_joint_tissue_candidates(
             candidate_limit=candidate_limit,
             compiled_replay_parts=compiled_replay_parts,
             compiled_replay_audit=compiled_replay_audit,
+        )
+        return _bind_explicit_target_fine_id(
+            candidates,
+            source_tissue=source_tissue,
+            schema=schema,
+            plan=plan,
         )
     limit = max(1, min(8, int(candidate_limit or plan.tool_program.candidate_count)))
     generated = []
@@ -160,6 +167,74 @@ def generate_joint_tissue_candidates(
         if candidate is not None:
             generated.append(candidate)
     return tuple(generated)
+
+
+def _bind_explicit_target_fine_id(
+    candidates,
+    *,
+    source_tissue,
+    schema,
+    plan,
+):
+    """Paint the mechanism-owned fine label on a generic coarse-label edit.
+
+    The mask-level Tumor executor defaults to its first fine ID. For PANDA,
+    that is Pattern 3 even when a joint mechanism has certified a Pattern 4/5
+    front. Only an explicitly bound, single authorized target ID is replayed;
+    other source transitions remain subject to the ordinary hard gates.
+    """
+
+    target_ids = tuple(
+        int(value)
+        for value in plan.tool_program.parameter_ranges.get(
+            "editable_target_fine_ids", ()
+        )
+    )
+    source_ids = tuple(
+        int(value)
+        for value in plan.tool_program.parameter_ranges.get(
+            "editable_source_fine_ids", ()
+        )
+    )
+    if (
+        len(target_ids) != 1
+        or not source_ids
+        or target_ids[0] not in schema.resolve_fine_ids(plan.target_label)
+    ):
+        return tuple(candidates)
+    coarse_target_id = int(schema.resolve_fine_ids(plan.target_label)[0])
+    fine_target_id = target_ids[0]
+    if coarse_target_id == fine_target_id:
+        return tuple(candidates)
+    source = np.asarray(source_tissue)
+    bound = []
+    for candidate in candidates:
+        changed = np.asarray(candidate.change_region, dtype=bool)
+        target = np.asarray(candidate.target_mask)
+        if (
+            not np.any(changed)
+            or not np.all(np.isin(source[changed], source_ids))
+            or not np.all(target[changed] == coarse_target_id)
+        ):
+            bound.append(candidate)
+            continue
+        corrected = target.copy()
+        corrected[changed] = fine_target_id
+        bound.append(
+            replace(
+                candidate,
+                target_mask=corrected,
+                tool_trace={
+                    **candidate.tool_trace,
+                    "explicit_target_fine_id_binding": {
+                        "coarse_executor_target_id": coarse_target_id,
+                        "mechanism_target_fine_id": fine_target_id,
+                        "changed_pixels": int(np.count_nonzero(changed)),
+                    },
+                },
+            )
+        )
+    return tuple(bound)
 
 
 def _cell_seeded_cord_candidate(

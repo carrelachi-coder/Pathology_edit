@@ -61,3 +61,18 @@ unchanged tolerance for the eighth. This is a feasibility check, not a
 recovered outcome. A focused regression test and related density-field tests
 passed in the scientific Python environment; full numbered retries and
 independent E checks remain necessary.
+
+## A3: explicit PANDA growth target fine ID
+
+PANDA Pattern-4 growth case `r2dev4-123` selected a verified fine-9 tumor
+front, and its compiled tool program authorized Stroma fine 2 to Pattern-4
+fine 9. The generic mask-level `Tumor` executor nevertheless painted fine 8,
+the first fine ID in its coarse Tumor class. The unchanged fine-pattern gate
+correctly rejected all three joint candidates. A separate fine-label binding
+now applies the **single explicit mechanism-authorized target fine ID** to
+the generic candidate's changed pixels, only when every changed source pixel
+belongs to the explicitly authorized source fine IDs and the generic target
+is the coarse class default. This leaves all unrelated fine labels untouched
+and retains the normal tissue and joint gates after rebinding. A focused
+regression test passed; full same-case retry is still required before recovery
+can be counted.

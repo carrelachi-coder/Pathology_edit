@@ -93,6 +93,9 @@ from phase3_joint_edit_refine.generator_adapter import (
 from phase3_joint_edit_refine.instance_authority import (
     build_scene_instance_authority,
 )
+from phase3_joint_edit_refine.invasive_architecture import (
+    _bind_explicit_target_fine_id,
+)
 from phase3_joint_edit_refine.ledger import analyze_joint_change
 from phase3_joint_edit_refine.mature_probnet_adapter import (
     MatureProbNetCellExecutor,
@@ -2106,6 +2109,53 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual([sum(band.values()) for band in adjusted], [1] * 4)
         self.assertEqual(sum(band.get(1, 0) for band in adjusted), 3)
         self.assertEqual(sum(band.get(2, 0) for band in adjusted), 1)
+
+    def test_explicit_panda_growth_fine_id_rebinds_generic_tumor_candidate(self):
+        from phase3_mask_edit_refine.models import CandidateMask
+
+        source = np.array([[9, 2], [8, 2]], dtype=np.uint8)
+        changed = np.array([[False, True], [False, False]])
+        candidate = CandidateMask(
+            candidate_id="candidate-1",
+            interface_id="interface-1",
+            tool_name="interface_sdf",
+            target_mask=np.array([[9, 8], [8, 2]], dtype=np.uint8),
+            change_region=changed,
+            tool_trace={},
+        )
+        schema = SimpleNamespace(
+            resolve_fine_ids=lambda label: (8, 9, 10)
+            if label == "Tumor" else (2,)
+        )
+        plan = SimpleNamespace(
+            target_label="Tumor",
+            tool_program=SimpleNamespace(
+                parameter_ranges={
+                    "editable_source_fine_ids": [2],
+                    "editable_target_fine_ids": [9],
+                }
+            ),
+        )
+
+        (bound,) = _bind_explicit_target_fine_id(
+            (candidate,), source_tissue=source, schema=schema, plan=plan
+        )
+        self.assertEqual(bound.target_mask.tolist(), [[9, 9], [8, 2]])
+        self.assertEqual(candidate.target_mask.tolist(), [[9, 8], [8, 2]])
+        self.assertEqual(
+            bound.tool_trace["explicit_target_fine_id_binding"]
+            ["mechanism_target_fine_id"],
+            9,
+        )
+        unauthorized_source = source.copy()
+        unauthorized_source[0, 1] = 8
+        (rejected,) = _bind_explicit_target_fine_id(
+            (candidate,),
+            source_tissue=unauthorized_source,
+            schema=schema,
+            plan=plan,
+        )
+        self.assertIs(rejected, candidate)
 
     def test_cluster_members_each_require_a_legal_center(self):
         shape = np.ones((3, 3), dtype=bool)
