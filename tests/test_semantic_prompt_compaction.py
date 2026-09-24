@@ -3,6 +3,7 @@
 import json
 
 from phase3_joint_edit_refine.agents import (
+    _compact_cell_selection_portfolio,
     _compact_joint_plan_scene_metadata,
     _compact_semantic_option_metadata,
     _compact_semantic_scene_metadata,
@@ -142,3 +143,30 @@ def test_joint_plan_scene_keeps_only_compiled_front_observations():
         "z1", "z3"
     }
     assert [x["unit_id"] for x in compact["structural_hierarchy"]["candidate_structure_units"]] == ["u1"]
+
+
+def test_cell_selection_lists_every_survivor_and_summarizes_vetoes():
+    candidates = [
+        {
+            "candidate_id": f"c{i}", "interface_ids": ["if1"],
+            "anchor_ids": ["a1"], "zone_id": "z1",
+            "allowed_tool_program_ids": ["p1"],
+            "deterministic_candidate_metrics": {"capacity_margin": i},
+            "compiler_certificate_sha256": "a" * 64,
+            "executable_contract_id": "b" * 64,
+            "authority_binding_sha256": "c" * 64,
+            "veto_reasons": [],
+        }
+        for i in range(500)
+    ]
+    vetoed = [{"candidate_id": f"v{i}", "veto_reasons": ["no_capacity"]}
+              for i in range(1000)]
+    compact = _compact_cell_selection_portfolio(candidates, vetoed)
+    assert len(compact["certified_cell_plan_candidates"]) == 500
+    assert compact["certified_cell_plan_candidates"][499][
+        "deterministic_candidate_metrics"
+    ] == {"capacity_margin": 499}
+    assert compact["vetoed_candidate_count"] == 1000
+    assert compact["veto_reason_counts"] == {"no_capacity": 1000}
+    assert "v0" not in json.dumps(compact)
+    assert len(compact["full_portfolio_sha256"]) == 64

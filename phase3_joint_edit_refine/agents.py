@@ -256,6 +256,37 @@ def _compact_joint_plan_scene_metadata(
     return result
 
 
+def _compact_cell_selection_portfolio(
+    candidates: Sequence[Mapping[str, Any]],
+    vetoed: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Present all selectable IDs and metrics; summarize nonselectable vetoes."""
+
+    full = {"candidates": list(candidates), "vetoed": list(vetoed)}
+    digest = hashlib.sha256(
+        json.dumps(full, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    reason_counts = Counter(
+        reason for item in vetoed for reason in item.get("veto_reasons", [])
+    )
+    return {
+        "full_portfolio_sha256": digest,
+        "certified_cell_plan_candidates": [
+            {
+                key: item[key]
+                for key in (
+                    "candidate_id", "interface_ids", "anchor_ids", "zone_id",
+                    "allowed_tool_program_ids",
+                    "deterministic_candidate_metrics",
+                )
+            }
+            for item in candidates
+        ],
+        "vetoed_candidate_count": len(vetoed),
+        "veto_reason_counts": dict(sorted(reason_counts.items())),
+    }
+
+
 @dataclass(frozen=True)
 class OpenAIMultimodalJointPlanner:
     client: OpenAIResponsesJSONClient
@@ -645,16 +676,15 @@ class OpenAIMultimodalJointPlanner:
         available = {item.candidate_id: item for item in portfolio}
         if len(available) != len(portfolio):
             raise JointContractError("cell candidate portfolio IDs are not unique")
+        compact_portfolio = _compact_cell_selection_portfolio(
+            [item.to_metadata() for item in portfolio],
+            [item.to_metadata() for item in vetoed],
+        )
         payload = {
             "case": _mask_planner_case_metadata(case),
             "selected_mechanism": bundle.mechanism.mechanism_id,
             "planner_policy": asdict(bundle.mechanism.planner_policy),
-            "certified_cell_plan_candidates": [
-                item.to_metadata() for item in portfolio
-            ],
-            "vetoed_cell_plan_candidates": [
-                item.to_metadata() for item in vetoed
-            ],
+            **compact_portfolio,
             "requirements": {
                 "select_only_surviving_candidate_id": True,
                 "select_only_candidate_tool_program": True,
