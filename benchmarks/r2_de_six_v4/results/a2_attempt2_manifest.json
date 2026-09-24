@@ -1,0 +1,56 @@
+{
+  "schema_version": "r2-de-six-v4-A2-attempt2-manifest-v1",
+  "frozen_cohort_sha256": "f5d677ff400546eabaf23d7935a0dcaa180575511a538863b70200787df1fbaa",
+  "initial_case_count": 222,
+  "attempt": 2,
+  "cases": [
+    {
+      "case_id": "r2dev4-042-glas-cellularity-decrease",
+      "initial_failure_category": "cell_condition_gate_rejection",
+      "initial_failed_gate": "local_population_density",
+      "initial_result_sha256": "2d242546d7ab3265f0b3bb6be9acbd181acbee2270179250dccb7ba58dfaad4e"
+    },
+    {
+      "case_id": "r2dev4-051-glas-cellularity-decrease",
+      "initial_failure_category": "cell_condition_gate_rejection",
+      "initial_failed_gate": "local_population_density",
+      "initial_result_sha256": "6b497d101339bcbcbcfa29a04b78a455a6c561ef6960f9de41045c569bccdcce"
+    },
+    {
+      "case_id": "r2dev4-053-glas-cellularity-decrease",
+      "initial_failure_category": "cell_condition_gate_rejection",
+      "initial_failed_gate": "local_population_density",
+      "initial_result_sha256": "9ecc4b56d8ae5eb02da7f0092974900b7b58074ed5e3508f04e7419d0266fe2c"
+    },
+    {
+      "case_id": "r2dev4-058-glas-cellularity-decrease",
+      "initial_failure_category": "cell_condition_gate_rejection",
+      "initial_failed_gate": "local_population_density",
+      "initial_result_sha256": "c40d53625a66609fb702c3d048437765f35ac5c6edd3b5dab687e3b1afde02c3"
+    },
+    {
+      "case_id": "r2dev4-082-orca-cellularity-decrease",
+      "initial_failure_category": "cell_condition_gate_rejection",
+      "initial_failed_gate": "local_population_density",
+      "initial_result_sha256": "59d41129a13fe0e0024b3ce9b4f9a8978fa7047abf6e2a176d09aad23e8f6e88"
+    },
+    {
+      "case_id": "r2dev4-088-orca-cellularity-decrease",
+      "initial_failure_category": "cell_condition_gate_rejection",
+      "initial_failed_gate": "local_population_density",
+      "initial_result_sha256": "f14d6cfd6f88f2b2cb6732d8657f6639948624aad45d026182a44c91645c9051"
+    },
+    {
+      "case_id": "r2dev4-095-orca-cellularity-decrease",
+      "initial_failure_category": "cell_condition_gate_rejection",
+      "initial_failed_gate": "local_population_density",
+      "initial_result_sha256": "b31ea5b0c529d9a591459386858cd9fdb43e49816a22faa18cbc476eb3418319"
+    },
+    {
+      "case_id": "r2dev4-110-orca-cellularity-decrease",
+      "initial_failure_category": "cell_condition_gate_rejection",
+      "initial_failed_gate": "local_population_density",
+      "initial_result_sha256": "d701f3a687e33e593bbe33f39246669a06e133bac8fc8924e6672d993e8921ae"
+    }
+  ]
+}

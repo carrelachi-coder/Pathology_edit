@@ -1,0 +1,47 @@
+{
+  "schema_version": "r2-de-six-v4-A4-attempt3-manifest-v1",
+  "cohort_sha256": "f5d677ff400546eabaf23d7935a0dcaa180575511a538863b70200787df1fbaa",
+  "code_commit": "1b4f248",
+  "cases": [
+    {
+      "case_id": "r2dev4-093-orca-cellularity-decrease",
+      "attempt_2_metadata_sha256": "db48754baa8a5f628f6f330b24806f87d36f2c30ae02b890e7f99b46b6c5b7a2",
+      "attempt_2_program_sha256": "5eea3af144682acc86027de874ec19eb329ffea8e7116c273a850b6f47b30aa2"
+    },
+    {
+      "case_id": "r2dev4-094-orca-cellularity-decrease",
+      "attempt_2_metadata_sha256": "8a0f32c0fcde7bcd58e1cdd537a66d4942c60a973428cc1c8da4ae658fe58fb0",
+      "attempt_2_program_sha256": "c954dce8d846229c772984fa0d6831b02085539e2d3c2767e0efc2d98552bfb2"
+    },
+    {
+      "case_id": "r2dev4-097-orca-cellularity-decrease",
+      "attempt_2_metadata_sha256": "8a8155f06756e64fe64197328ad36a7d23955dd5f090b69b1de29419107e415a",
+      "attempt_2_program_sha256": "ce279357e068b3b40a83d1b23741d5cd54083056ecd3d807e3dca47d180321cd"
+    },
+    {
+      "case_id": "r2dev4-098-orca-cellularity-decrease",
+      "attempt_2_metadata_sha256": "d0d083d0340dd0d8119a22644c3fe3c4b3ec0f136042dc78606e1b008fe4e27b",
+      "attempt_2_program_sha256": "2a70f1be8719ea5f2d238a8926446caa0fe7234ce0163d82d73dbc95d1df81d6"
+    },
+    {
+      "case_id": "r2dev4-104-orca-cellularity-decrease",
+      "attempt_2_metadata_sha256": "7ca47f2d878c85e894ffcbea949fd898effe802dfd982a8c19f727c621549653",
+      "attempt_2_program_sha256": "1f1ac37095de391f8aef7fe26c9666ccd0b28e8ce6cd2fa19b31381ca38a57e9"
+    },
+    {
+      "case_id": "r2dev4-107-orca-cellularity-decrease",
+      "attempt_2_metadata_sha256": "f3212214663bd3a8f147b376f7e31fa3fa0c4c6110a7edcfd49d7147e9eb78df",
+      "attempt_2_program_sha256": "eb664ec4e3c56be352d28ce3a7b64069c78e163c2bdfc1e586b463cda3f6a6d2"
+    },
+    {
+      "case_id": "r2dev4-108-orca-cellularity-decrease",
+      "attempt_2_metadata_sha256": "49f340351b708254f245d8dd51f8223ca0fc6aaf0e1259eda1df721de97bff09",
+      "attempt_2_program_sha256": "53d22a8ce49cd50f711d611cdb7367c669ea7dd7f090830d94ad6e9c26ba77b7"
+    },
+    {
+      "case_id": "r2dev4-111-orca-cellularity-decrease",
+      "attempt_2_metadata_sha256": "df381bf3faeab9cd0d05ea8ca5aff12a63fefc13f5c5d4c94bf5242984eae1cb",
+      "attempt_2_program_sha256": "a6d49e26fe9c6984cdc066c6fd0d2afc819c17aa4057a21ee01f9460b2fe6c38"
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+{
+  "cohort_sha256": "f5d677ff400546eabaf23d7935a0dcaa180575511a538863b70200787df1fbaa",
+  "total_planned": 222,
+  "initial_completed": 222,
+  "initial_outcomes": {
+    "validated": 156,
+    "abstained": 49,
+    "timeout": 4,
+    "planner_transport_error": 13
+  },
+  "initial_validated": 156,
+  "retry_recovered": 20,
+  "validated_after_retries": 176,
+  "active_retry_attempts": 0,
+  "E_measured_unique_validated_cases": 176,
+  "by_dataset": {
+    "BCSS": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 25,
+      "retry_recovered": 3,
+      "validated_after_retries": 28,
+      "source_groups": 17,
+      "E_measured": 28,
+      "median_joint_change_fraction": 0.03858375549316406,
+      "median_generation_region_fraction": 0.11516952514648438,
+      "max_change_outside_G_pixels": 0,
+      "max_protected_tissue_changed_pixels": 0,
+      "max_unauthorized_tissue_transition_pixels": 0,
+      "max_nuclear_label_changes_outside_declared_cell_region": 0
+    },
+    "GLAS": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 25,
+      "retry_recovered": 4,
+      "validated_after_retries": 29,
+      "source_groups": 15,
+      "E_measured": 29,
+      "median_joint_change_fraction": 0.0162200927734375,
+      "median_generation_region_fraction": 0.6101837158203125,
+      "max_change_outside_G_pixels": 0,
+      "max_protected_tissue_changed_pixels": 0,
+      "max_unauthorized_tissue_transition_pixels": 0,
+      "max_nuclear_label_changes_outside_declared_cell_region": 0
+    },
+    "IGNITE": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 31,
+      "retry_recovered": 0,
+      "validated_after_retries": 31,
+      "source_groups": 11,
+      "E_measured": 31,
+      "median_joint_change_fraction": 0.02236175537109375,
+      "median_generation_region_fraction": 0.5742645263671875,
+      "max_change_outside_G_pixels": 0,
+      "max_protected_tissue_changed_pixels": 0,
+      "max_unauthorized_tissue_transition_pixels": 0,
+      "max_nuclear_label_changes_outside_declared_cell_region": 0
+    },
+    "ORCA": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 22,
+      "retry_recovered": 10,
+      "validated_after_retries": 32,
+      "source_groups": 18,
+      "E_measured": 32,
+      "median_joint_change_fraction": 0.03223228454589844,
+      "median_generation_region_fraction": 0.7974185943603516,
+      "max_change_outside_G_pixels": 0,
+      "max_protected_tissue_changed_pixels": 0,
+      "max_unauthorized_tissue_transition_pixels": 0,
+      "max_nuclear_label_changes_outside_declared_cell_region": 0
+    },
+    "PANDA": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 19,
+      "retry_recovered": 3,
+      "validated_after_retries": 22,
+      "source_groups": 15,
+      "E_measured": 22,
+      "median_joint_change_fraction": 0.04084587097167969,
+      "median_generation_region_fraction": 0.13794517517089844,
+      "max_change_outside_G_pixels": 0,
+      "max_protected_tissue_changed_pixels": 0,
+      "max_unauthorized_tissue_transition_pixels": 0,
+      "max_nuclear_label_changes_outside_declared_cell_region": 0
+    },
+    "PUMA": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 34,
+      "retry_recovered": 0,
+      "validated_after_retries": 34,
+      "source_groups": 10,
+      "E_measured": 34,
+      "median_joint_change_fraction": 0.0234832763671875,
+      "median_generation_region_fraction": 0.44641876220703125,
+      "max_change_outside_G_pixels": 0,
+      "max_protected_tissue_changed_pixels": 0,
+      "max_unauthorized_tissue_transition_pixels": 0,
+      "max_nuclear_label_changes_outside_declared_cell_region": 0
+    }
+  },
+  "by_primitive": {
+    "cell-type-abundance-decrease-v1": {
+      "planned": 45,
+      "initial_validated": 35,
+      "retry_recovered": 1,
+      "validated_after_retries": 36
+    },
+    "cell-type-abundance-increase-v1": {
+      "planned": 15,
+      "initial_validated": 14,
+      "retry_recovered": 0,
+      "validated_after_retries": 14
+    },
+    "cellularity-decrease-v1": {
+      "planned": 74,
+      "initial_validated": 47,
+      "retry_recovered": 14,
+      "validated_after_retries": 61
+    },
+    "cohesive-boundary-expansion-v1": {
+      "planned": 73,
+      "initial_validated": 46,
+      "retry_recovered": 5,
+      "validated_after_retries": 51
+    },
+    "generic-immune-infiltrate-decrease-v1": {
+      "planned": 10,
+      "initial_validated": 9,
+      "retry_recovered": 0,
+      "validated_after_retries": 9
+    },
+    "neoplastic-cell-abundance-decrease-v1": {
+      "planned": 5,
+      "initial_validated": 5,
+      "retry_recovered": 0,
+      "validated_after_retries": 5
+    }
+  },
+  "source_patch_reuse": {
+    "unique_dataset_patch_pairs": 210,
+    "repeated_dataset_patch_pairs": 12,
+    "repeated_pairs_by_dataset": {
+      "PUMA": 12
+    },
+    "repeated_patch_outcomes": [
+      {
+        "initial_validated_requests": 1,
+        "final_validated_requests": 1,
+        "requests_on_patch": 2,
+        "patches": 1
+      },
+      {
+        "initial_validated_requests": 2,
+        "final_validated_requests": 2,
+        "requests_on_patch": 2,
+        "patches": 11
+      }
+    ],
+    "group_counts_by_dataset": {
+      "BCSS": 17,
+      "GLAS": 15,
+      "IGNITE": 11,
+      "ORCA": 18,
+      "PANDA": 15,
+      "PUMA": 10
+    },
+    "group_authority": "recorded source group; patient identity not verified"
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "schema_version": "r2-de-six-v4-infrastructure-retry-manifest-v1",
+  "frozen_cohort_sha256": "f5d677ff400546eabaf23d7935a0dcaa180575511a538863b70200787df1fbaa",
+  "initial_case_count": 222,
+  "attempt": 2,
+  "cases": [
+    {
+      "case_id": "r2dev4-010-bcss-cohesive-boundary-expansion",
+      "initial_failure_category": "wall_clock_timeout",
+      "initial_result_sha256": "9e3ab503756404a640bf3a6625cc70c72e549ff531989c67a3910a25c2680d93"
+    },
+    {
+      "case_id": "r2dev4-012-bcss-cohesive-boundary-expansion",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "408626c2fdc7d4a8e5332ca500804ca750b29c07ec5c68b33ab4ea52880d1370"
+    },
+    {
+      "case_id": "r2dev4-013-bcss-cohesive-boundary-expansion",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "8f79f5d982f916c4a7755f606c769f4c778408d59428257dc8f0943f01ccc110"
+    },
+    {
+      "case_id": "r2dev4-019-bcss-cohesive-boundary-expansion",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "194eacba2f203657292be7af080f3f7f4ee60c3afed04c6a552e213754c88d95"
+    },
+    {
+      "case_id": "r2dev4-023-bcss-cohesive-boundary-expansion",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "692443c2cd35830ebe57a3dc52b216db524b3e66bbe9b3482555d8847cdb3421"
+    },
+    {
+      "case_id": "r2dev4-093-orca-cellularity-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "05eaf3ae135ee07c268eca6fc44a3a0e411c3139d8d4fb4d783bd5d71fe444a3"
+    },
+    {
+      "case_id": "r2dev4-094-orca-cellularity-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "4d3200811c2bad5b6938760dcf5ef06424e708d4453e0038da679fd840db0ed5"
+    },
+    {
+      "case_id": "r2dev4-097-orca-cellularity-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "5f2c019973e4fe73d0cd16ba0fa00ac4b6f36ea19a1675039ef872a6ac5a0f5f"
+    },
+    {
+      "case_id": "r2dev4-098-orca-cellularity-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "874af8e7cabfcf7752b9405cf27b0ef55c6a8f727ddb321f8fe29227aee7a486"
+    },
+    {
+      "case_id": "r2dev4-104-orca-cellularity-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "be408ae0f67f5fe1479f182e9ce8c8726340eb6d8e77b975a857a46a4fa48446"
+    },
+    {
+      "case_id": "r2dev4-107-orca-cellularity-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "74a2ee62aa0f504e1adf57dc57e5c4c4b109ae554f5e15aa60832ec31a118ee5"
+    },
+    {
+      "case_id": "r2dev4-108-orca-cellularity-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "d5cfed6b6057c6e75f745c1c4298411063fe3e484ef4b3a17d560edb732c0139"
+    },
+    {
+      "case_id": "r2dev4-111-orca-cellularity-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "4f06acfa67348fcfa488dd9f8783fb45453cee1d544284973728679786b004e3"
+    },
+    {
+      "case_id": "r2dev4-112-panda-cell-type-abundance-decrease",
+      "initial_failure_category": "planner_transport",
+      "initial_result_sha256": "6df4fb1a496e81e7e535c9661f94bf0291eda122282d1bc44c3cbddc5851c75d"
+    },
+    {
+      "case_id": "r2dev4-143-panda-cohesive-boundary-expansion",
+      "initial_failure_category": "wall_clock_timeout",
+      "initial_result_sha256": "f77184139dab5eb008bc406c7df4037a9527828fc0da12beb98f090382157913"
+    },
+    {
+      "case_id": "r2dev4-183-ignite-cohesive-boundary-expansion",
+      "initial_failure_category": "wall_clock_timeout",
+      "initial_result_sha256": "df3278131a23c63de4018ad5042bc81ecad675b2482aaecc5298767547cb2f0b"
+    },
+    {
+      "case_id": "r2dev4-196-puma-cohesive-boundary-expansion",
+      "initial_failure_category": "wall_clock_timeout",
+      "initial_result_sha256": "9d4afe87ab754f8615fb81a5a643cf72cce893bdf5cc9f5b1b8d0469dc850b98"
+    }
+  ]
+}
