@@ -1,0 +1,53 @@
+{
+  "version": "r2-de-six-v3",
+  "runtime_code_base_commit": "ca5ae61",
+  "builder_sha256": "089db745c0e6f80ff6e558d06e97d78b68a84ebc26b70c67581a28427ddb2d2a",
+  "cohort_sha256": "8693a26f8a453b3ed06136b674c0adc597bfbacbe55d2474ec2a60c364f856bc",
+  "source_metadata_sha256": "3534761060f519bb9e1a7a6d556b64dddb5b246a8289c6566f5f672470fdf4fb",
+  "requests": 222,
+  "per_dataset": {
+    "BCSS": 37,
+    "GLAS": 37,
+    "ORCA": 37,
+    "PANDA": 37,
+    "IGNITE": 37,
+    "PUMA": 37
+  },
+  "per_binding": {
+    "BCSS/cohesive-boundary-expansion-v1": 27,
+    "BCSS/generic-immune-infiltrate-decrease-v1": 10,
+    "GLAS/cellularity-decrease-v1": 37,
+    "ORCA/cellularity-decrease-v1": 37,
+    "PANDA/cell-type-abundance-decrease-v1": 27,
+    "PANDA/cohesive-boundary-expansion-v1": 10,
+    "IGNITE/cell-type-abundance-decrease-v1": 27,
+    "IGNITE/cohesive-boundary-expansion-v1": 10,
+    "PUMA/cell-type-abundance-decrease-v1": 27,
+    "PUMA/cohesive-boundary-expansion-v1": 10
+  },
+  "source_groups_per_dataset": {
+    "BCSS": 16,
+    "GLAS": 14,
+    "ORCA": 20,
+    "PANDA": 15,
+    "IGNITE": 12,
+    "PUMA": 7
+  },
+  "case_selection": "Preset six-dataset quotas, then source masks and recorded metadata only; no individual Planner/executor outcome selection",
+  "capability_selection": "Bindings chosen after v1 audit, so this is a capability-conditioned benchmark and not an all-primitive benchmark",
+  "panda_provider_scope": "Radboud-style annotation schema inferred from source fine Gleason IDs; acquisition institution not independently verified",
+  "puma_site_scope": "Primary cutaneous melanoma at dataset level; exact anatomic subsite unavailable",
+  "grouping_scope": "Filename-derived source groups; patches within a group are correlated and are not separate patients",
+  "parser_mode": "prebound benchmark gold semantics; parser accuracy excluded",
+  "planner_mode": "fresh gpt-5.6-terra Codex CLI sessions",
+  "execution_mode": "mature ProbNet frozen epoch29, meta-eval",
+  "per_request_timeout_seconds": 600,
+  "probnet_checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
+  "gpu_ids": [
+    0,
+    2,
+    6,
+    7
+  ],
+  "outcome_selection": "No replacement or reroll after freeze"
+}

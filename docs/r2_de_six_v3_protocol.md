@@ -1,0 +1,50 @@
+# R2 Figure 2D/E six-dataset Terra evaluation, version 3
+
+The original 222-request cohort covered 74 dataset–primitive bindings with
+three patches each. That design predated the final mask-edit contracts and
+included requests with unavailable clinical premises, ROI authority, native
+instance authority, or provider metadata. Version 3 uses 222 **new** requests:
+37 each from BCSS, GLaS, ORCA, PANDA, IGNITE, and PUMA. It is a
+capability-conditioned benchmark of ten specified bindings, not a replacement
+estimate for all 74 original bindings. Report the original and version-3
+results separately.
+
+The allocation and selection algorithm are frozen in
+`scripts/r2_de_six_freeze_cohort.py`. The selected cases are source-screened
+using tissue and nuclei masks and dataset metadata, without inspecting any
+Planner or executor outcome for the selected patch. There is no case
+replacement after freeze. Requests use prebound benchmark semantics to
+isolate Planner/executor performance; this experiment does not measure Parser
+accuracy. Every Terra decision uses a fresh account-authenticated
+`codex exec -m gpt-5.6-terra --ephemeral` call. The GPU server retains
+candidate compilation, mask execution, and hard checks. The independent E
+script recomputes raster preservation, support, label-transition, and ledger
+checks for every validated output.
+
+The PANDA `provider` value in this cohort means the **Radboud-style Gleason
+annotation protocol** verified by source fine labels 8/9/10 and the repository
+label map. The acquisition center of each slide is not independently
+verified. This distinction matters because the [PANDA challenge
+documentation](https://www.kaggle.com/c/prostate-cancer-grade-assessment/data)
+specifies different label semantics for Radboud and Karolinska and places
+institutional `data_provider` in the original `train.csv`. IGNITE site and
+biopsy/resection values come from the exact patch entry in the local dataset
+metadata. PUMA is limited to patches documented as **primary** melanoma; the
+site is recorded at the dataset level as skin, while the exact anatomical
+subsite is unavailable. The [PUMA dataset description](https://puma.grand-challenge.org/dataset/)
+describes the primary/metastatic cohorts. These provenance scopes must remain
+visible in any paper claim; neither raw H&E nor the LLM supplied them.
+
+Filename-derived source groups cap contribution to eight patches per group.
+They do not prove patient identity, and patch outcomes within a group are
+correlated. Report both patch-level denominators and group counts. If a
+confidence interval is needed, resample at source-group level.
+
+The frozen source cohort and initial protocol are on the GPU server at
+`/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924`. Before the first
+evaluation case, the wall-clock cap was amended from 600 to 1800 seconds to
+allow slower tissue candidate compilation and the Terra queue. The initial
+protocol is retained as `protocol_frozen_initial.json`; the executed setting
+is in `protocol.json`. No source, request, skill, model checkpoint, or mask
+budget changed in that amendment. Any unmet 200/222 target must be reported
+as measured rather than hidden by post-hoc replacement.
