@@ -30,6 +30,11 @@ isolated behavioral test in the server's scientific Python environment passed.
 The actual failed cases still require full retry and independent E verification
 before any recovery is counted.
 
+The retry harness now accepts an explicit `--code-root`. Recovery attempts for
+this repair will use a separate `code_92ddb4f` source copy and record hashes
+for both the Planner modules and `inpaint_cells/generate.py`; the original
+`code` directory continues to serve all first attempts.
+
 ## Queue interruption
 
 The local Terra CLI queue worker exited when its interactive session ended.

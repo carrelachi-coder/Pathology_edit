@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 
 ROOT = Path("/data1/lyw/pathology_edit_eval/r2_de_terra_six_v4_20260924")
-CODE = ROOT / "code"
 
 
 def dump(path: Path, value: dict) -> None:
@@ -29,8 +28,10 @@ def main() -> int:
     parser.add_argument("--attempt", type=int, required=True)
     parser.add_argument("--gpu", type=int, required=True)
     parser.add_argument("--code-commit", required=True)
+    parser.add_argument("--code-root", type=Path, default=ROOT / "code")
     parser.add_argument("--queue-root", type=Path, default=ROOT / "terra_queue")
     args = parser.parse_args()
+    code = args.code_root.resolve()
     if args.attempt < 2:
         parser.error("retry attempt must be at least 2")
     protocol = json.loads((ROOT / "protocol.json").read_text())
@@ -52,12 +53,13 @@ def main() -> int:
     attempt_dir.mkdir(parents=True, exist_ok=False)
     start = time.time()
     source_hashes = {
-        str(path.relative_to(CODE)): hashlib.sha256(path.read_bytes()).hexdigest()
+        str(path.relative_to(code)): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in (
-            CODE / "phase3_joint_edit_refine" / "agents.py",
-            CODE / "phase3_joint_edit_refine" / "tissue_planner.py",
-            CODE / "phase3_joint_edit_refine" / "planner.py",
-            CODE / "phase3_joint_edit_refine" / "mature_probnet_adapter.py",
+            code / "phase3_joint_edit_refine" / "agents.py",
+            code / "phase3_joint_edit_refine" / "tissue_planner.py",
+            code / "phase3_joint_edit_refine" / "planner.py",
+            code / "phase3_joint_edit_refine" / "mature_probnet_adapter.py",
+            code / "inpaint_cells" / "generate.py",
         )
     }
     metadata = {
@@ -65,6 +67,7 @@ def main() -> int:
         "attempt": args.attempt,
         "dataset": row["dataset"],
         "code_commit": args.code_commit,
+        "code_root": str(code),
         "runtime_source_hashes": source_hashes,
         "frozen_cohort_sha256": protocol["cohort_sha256"],
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
@@ -81,7 +84,7 @@ def main() -> int:
         CUDA_VISIBLE_DEVICES=str(args.gpu),
         OMP_NUM_THREADS="2",
         MKL_NUM_THREADS="2",
-        PYTHONPATH=str(CODE) + ":/home/lyw/wqx-DL/flow-edit/FlowEdit-main",
+        PYTHONPATH=str(code) + ":/home/lyw/wqx-DL/flow-edit/FlowEdit-main",
         HF_HUB_OFFLINE="1",
         TRANSFORMERS_OFFLINE="1",
     )
@@ -103,7 +106,7 @@ def main() -> int:
     ]
     with (attempt_dir / "stdout.log").open("w") as log:
         process = subprocess.Popen(
-            command, cwd=CODE, env=environment, stdout=log,
+            command, cwd=code, env=environment, stdout=log,
             stderr=subprocess.STDOUT, start_new_session=True,
         )
         try:
@@ -131,7 +134,7 @@ def main() -> int:
             handoffs = list((output_root / args.case_id).rglob("generation_handoff/manifest.json"))
             if len(handoffs) != 1:
                 raise RuntimeError("validated retry lacks a unique generation handoff")
-            sys.path[:0] = [str(ROOT / "code"), "/home/lyw/wqx-DL/flow-edit/FlowEdit-main"]
+            sys.path[:0] = [str(code), "/home/lyw/wqx-DL/flow-edit/FlowEdit-main"]
             from measure import measure
 
             independent = measure(row, handoffs[0])
