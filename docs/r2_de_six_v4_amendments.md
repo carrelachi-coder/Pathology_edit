@@ -77,3 +77,34 @@ is the coarse class default. This leaves all unrelated fine labels untouched
 and retains the normal tissue and joint gates after rebinding. A focused
 regression test passed; full same-case retry is still required before recovery
 can be counted.
+
+## Numbered recovery observations and infrastructure queue
+
+The first-attempt v4 run reached all 222 terminal outcomes before the
+infrastructure recovery queue was frozen. Its unamended result was 156
+validated, 49 abstained, 4 timed out, and 13 Planner transport errors;
+independent E passed for all 156 validated outputs. These denominators remain
+the primary v4 first-attempt result.
+
+BCSS case `r2dev4-003` was rerun as attempt 2 under `code_e0438ad`. Its
+executor reached the joint gate, but the new placement produced five inner
+seam centers where the unchanged continuity contract allowed one to three.
+The case remains a failed recovery; passing a packing preflight alone is not
+evidence that the image-mask edit satisfies the complete contract. The
+attempt-2 metadata and gate reports are retained. This observation also
+limits A1: its conditional seam exclusion fixes a replay constraint, but does
+not guarantee a feasible final density profile.
+
+BCSS case `r2dev4-012`, whose first attempt failed from Planner transport,
+was rerun as attempt 2 using the same frozen request and `code_e0438ad`.
+It validated and passed independent E. The first-attempt transport failure
+remains in the original result; the recovery is counted only in a separate
+attempt-linked analysis.
+
+The remaining initial Planner transport errors and wall-clock timeouts are
+eligible for a frozen infrastructure recovery queue. The queue manifest
+records each first-result SHA-256 and cohort digest, selects only those two
+failure categories, and partitions numbered attempt-2 runs across workers.
+Existing attempts are preserved and skipped, so a runner restart cannot
+overwrite an outcome. Scientific abstentions are excluded and require
+case-specific investigation before any amended run.
