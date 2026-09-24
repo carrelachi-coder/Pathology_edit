@@ -56,3 +56,12 @@ response remains in the queue; the same frozen case may be rerun with an
 explicit retry trace. See
 `benchmarks/r2_de_six_v3/protocol_amendment_format_retry.json`. This
 amendment does not loosen the Planner schema or any mask safety gate.
+
+During the increase to four parallel local Terra CLI sessions, an active
+session for `r2de6-001-bcss-cohesive-boundary-expansion` was interrupted.
+Its first result is a Planner transport error attributable to that process
+interruption. The first result for `r2de6-004-bcss-cohesive-boundary-expansion`
+is a Planner output-format error. These two infrastructure outcomes are kept
+distinct from scientific abstentions. Both frozen cases require a same-case
+retry with their initial result and queue response retained in the audit
+trail; no new patch or request may be substituted.

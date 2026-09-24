@@ -26,7 +26,7 @@ for row in rows[worker::4]:
     os.killpg(proc.pid,signal.SIGTERM)
     try:proc.wait(timeout=5)
     except subprocess.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait()
-    base.update(outcome='timeout',reason='prespecified_600_second_wall_time_limit');rc=None
+    base.update(outcome='timeout',reason=f"prespecified_{protocol['per_request_timeout_seconds']}_second_wall_time_limit");rc=None
   if rc is not None:
    result=out/name/'program_result.json';base['return_code']=rc
    if rc!=0 or not result.exists():base.update(outcome='runtime_error',reason='nonzero_exit_or_missing_program_result')

@@ -4,7 +4,7 @@ from collections import Counter,defaultdict
 ROOT=Path('/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924')
 sys.path[:0]=[str(ROOT/'code'),'/home/lyw/wqx-DL/flow-edit/FlowEdit-main']
 from measure import measure
-STATES=['validated','clarification','review','abstained','failed','timeout','runtime_error']
+STATES=['validated','clarification','review','abstained','failed','timeout','runtime_error','planner_format_error','planner_transport_error']
 def dump(p,x):
  tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(x,ensure_ascii=False,indent=2,default=str)+'\n');tmp.replace(p)
 def csvout(p,rows):
@@ -22,12 +22,15 @@ def summarize():
   # CLI returns nonzero for scientific abstention/failure. Classify by the persisted program outcome, not exit code.
   if prpath.exists() and r['outcome']!='timeout':
    pr=json.loads(prpath.read_text());sts={str(s['workflow_status']) for s in pr['steps']};status=pr['status']
+   reasons=[z for s in pr['steps'] for z in s.get('reasons',[])]
    if status=='validated' and pr['evaluation'].get('passed'):r['outcome']='validated'
+   elif any('CodexCLIQueueError: ValueError:' in z for z in reasons):r['outcome']='planner_format_error'
+   elif any('CodexCLIQueueError:' in z for z in reasons):r['outcome']='planner_transport_error'
    elif 'clarification' in status or any('clarification' in x for x in sts):r['outcome']='clarification'
    elif 'review' in status or any('review' in x for x in sts):r['outcome']='review'
    elif 'abstained' in sts:r['outcome']='abstained'
    else:r['outcome']='failed'
-   r['reasons']=[z for s in pr['steps'] for z in s.get('reasons',[])];r['program_result']=str(prpath)
+   r['reasons']=reasons;r['program_result']=str(prpath)
   records.append(r)
   q=ROOT/'metrics'/f'{name}.json'
   if q.exists():
