@@ -211,10 +211,23 @@ def _bind_explicit_target_fine_id(
     for candidate in candidates:
         changed = np.asarray(candidate.change_region, dtype=bool)
         target = np.asarray(candidate.target_mask)
+        trace_target_ids = candidate.tool_trace.get("target_fine_ids")
+        trace_target_id = candidate.tool_trace.get("target_fine_id")
         if (
             not np.any(changed)
             or not np.all(np.isin(source[changed], source_ids))
             or not np.all(target[changed] == coarse_target_id)
+            or (
+                trace_target_ids is not None
+                and (
+                    not isinstance(trace_target_ids, (list, tuple))
+                    or tuple(trace_target_ids) != (coarse_target_id,)
+                )
+            )
+            or (
+                trace_target_id is not None
+                and trace_target_id != coarse_target_id
+            )
         ):
             bound.append(candidate)
             continue
@@ -226,6 +239,8 @@ def _bind_explicit_target_fine_id(
                 target_mask=corrected,
                 tool_trace={
                     **candidate.tool_trace,
+                    "target_fine_id": fine_target_id,
+                    "target_fine_ids": [fine_target_id],
                     "explicit_target_fine_id_binding": {
                         "coarse_executor_target_id": coarse_target_id,
                         "mechanism_target_fine_id": fine_target_id,

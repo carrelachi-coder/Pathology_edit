@@ -122,3 +122,17 @@ rejection. The repair adds the missing intermediate parameter and passes it
 through unchanged. Every failed attempt-2 output remains preserved; any
 affected case must receive an explicitly numbered attempt 3 under the
 patched source, followed by independent E if validated.
+
+## A3 follow-up: bind the fine-label declaration as well as pixels
+
+The full numbered retry of PANDA case `r2dev4-123` showed that A3's mask
+pixels were corrected to the authorized Pattern-4 fine ID, but the generic
+candidate's `tool_trace` still declared the coarse Tumor default fine ID.
+The ordinary `label_transition` gate checks the declaration against the
+actual changed pixels and rejected the candidate. After feedback, the LLM
+Planner abstained because no certified joint candidate remained. This is a
+trace-binding inconsistency in A3, not a reason to relax the gate. The
+follow-up repair updates the candidate's target fine-ID declaration together
+with its changed pixels, only when the original declaration is the coarse
+default and the explicit mechanism contract authorizes exactly one target
+fine ID. The same unchanged hard gate will be applied in attempt 3.

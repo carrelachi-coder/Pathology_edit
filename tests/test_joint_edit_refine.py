@@ -2121,7 +2121,7 @@ class JointSkillTests(unittest.TestCase):
             tool_name="interface_sdf",
             target_mask=np.array([[9, 8], [8, 2]], dtype=np.uint8),
             change_region=changed,
-            tool_trace={},
+            tool_trace={"target_fine_id": 8, "target_fine_ids": [8]},
         )
         schema = SimpleNamespace(
             resolve_fine_ids=lambda label: (8, 9, 10)
@@ -2141,6 +2141,8 @@ class JointSkillTests(unittest.TestCase):
             (candidate,), source_tissue=source, schema=schema, plan=plan
         )
         self.assertEqual(bound.target_mask.tolist(), [[9, 9], [8, 2]])
+        self.assertEqual(bound.tool_trace["target_fine_id"], 9)
+        self.assertEqual(bound.tool_trace["target_fine_ids"], [9])
         self.assertEqual(candidate.target_mask.tolist(), [[9, 8], [8, 2]])
         self.assertEqual(
             bound.tool_trace["explicit_target_fine_id_binding"]
