@@ -1,0 +1,2533 @@
+{
+  "cohort_sha256": "8693a26f8a453b3ed06136b674c0adc597bfbacbe55d2474ec2a60c364f856bc",
+  "total_planned": 222,
+  "initial_completed": 222,
+  "initial_outcomes": {
+    "planner_transport_error": 14,
+    "abstained": 84,
+    "planner_format_error": 1,
+    "validated": 120,
+    "timeout": 3
+  },
+  "initial_validated": 120,
+  "retry_recovered": 21,
+  "validated_after_retries": 141,
+  "active_retry_attempts": 0,
+  "by_dataset": {
+    "BCSS": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 10,
+      "retry_recovered": 15,
+      "validated_after_retries": 25
+    },
+    "GLAS": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 23,
+      "retry_recovered": 0,
+      "validated_after_retries": 23
+    },
+    "IGNITE": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 28,
+      "retry_recovered": 2,
+      "validated_after_retries": 30
+    },
+    "ORCA": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 16,
+      "retry_recovered": 4,
+      "validated_after_retries": 20
+    },
+    "PANDA": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 11,
+      "retry_recovered": 0,
+      "validated_after_retries": 11
+    },
+    "PUMA": {
+      "planned": 37,
+      "initial_completed": 37,
+      "initial_validated": 32,
+      "retry_recovered": 0,
+      "validated_after_retries": 32
+    }
+  },
+  "records": [
+    {
+      "case_id": "r2de6-001-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-001-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-001-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-001-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "2e3e7a79b056a79ee2f6d4db83ccb362a8afaaeb34d6a0c231dc5f328faa8eaa"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-002-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-002-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "40e7da6",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-002-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-002-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "d23e2f1d707e20a01d12576532770aeb9f754454784cb6f3c2f135e9c516fdb8"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-003-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-003-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-003-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-003-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "66cd1ac5b2e07fe319201d73dec3b35b5013a2a7bcfd5a4d871d1b9aeecb8d13"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-004-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "planner_format_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-004-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-004-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-005-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-005-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-005-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-005-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "822750163507a295c82c7e1e8bf724f5cfafed1e0b214314a9caefa1dcf4c85d"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-006-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-006-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-006-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-007-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-007-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-007-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-008-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-008-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-008-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-008-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "23ca66cfde6615a31e41c2c3d32e1a6e5c37191c719e1507a1f260f29585f3b2"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-009-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-009-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-010-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-010-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-011-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-011-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-012-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-012-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-013-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-013-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-014-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-014-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 3,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": null,
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-014-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-014-bcss-cohesive-boundary-expansion/attempt-3/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-014-bcss-cohesive-boundary-expansion/attempt-3/independent_E.json",
+          "independent_E_sha256": "a1805ab7bbaa91cac4f9266eb3174769b10f0d52dfd74d5217801f6286babd71"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-015-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-015-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-015-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-016-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-016-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-017-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-017-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-017-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-017-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "dd4115d13645cbd8da222aa644ea4aa42813a32daef59d78d8454ee2308cd40e"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-018-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-018-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-018-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-018-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "5cafb118169e04784b3b9bd5fb222b281063319b8d6fac75140cde00cfe8b8e2"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-019-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "timeout",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-019-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-019-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-019-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "91dcb03708340727b84a7f9a7d6817f908eec6df9378124d2f56dbc423f25ed2"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-020-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "timeout",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-020-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-020-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-021-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-021-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-021-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-022-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-022-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-022-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-022-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "3d1fee570abb5aeda5b5484e4781bcb1cf4ea5bbe874546044a9108fec9d88f4"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-023-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-023-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-023-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-023-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "6e789d34505a62e865e902f99dc47f294ad010b0ec0c0eda2ab1dc01aaf1247a"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-024-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-024-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-025-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-025-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-025-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-026-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-026-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "55eac1c",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-026-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-026-bcss-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "08e5da33d7b9df1abc816f4ec08b0eeec90527314aabb97f870531c557af120e"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-027-bcss-cohesive-boundary-expansion",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-027-bcss-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "55eac1c",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-027-bcss-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-028-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-028-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-028-bcss-generic-immune-infiltrate-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-028-bcss-generic-immune-infiltrate-decrease/attempt-2/independent_E.json",
+          "independent_E_sha256": "2a0d144f8e9ac3dee42f823f8d78ebed8efa9d59aeb330a97958b0355902a6cd"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-029-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-029-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": 3,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-029-bcss-generic-immune-infiltrate-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-029-bcss-generic-immune-infiltrate-decrease/attempt-3/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-029-bcss-generic-immune-infiltrate-decrease/attempt-3/independent_E.json",
+          "independent_E_sha256": "3d3f5cc7cef6d981a61cab7891d7cf0fe2354e2daae9a906357dcbe10f10a8c9"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-030-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-030-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-031-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-031-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-032-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "timeout",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-032-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "timeout",
+          "program_status": null,
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-032-bcss-generic-immune-infiltrate-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-033-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-033-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-034-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-034-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-035-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-035-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-036-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-036-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-037-bcss-generic-immune-infiltrate-decrease",
+      "dataset": "BCSS",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-037-bcss-generic-immune-infiltrate-decrease.json",
+      "accepted_retry_attempt": 4,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-037-bcss-generic-immune-infiltrate-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "371364b",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-037-bcss-generic-immune-infiltrate-decrease/attempt-3/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 4,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "49afd0a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-037-bcss-generic-immune-infiltrate-decrease/attempt-4/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-037-bcss-generic-immune-infiltrate-decrease/attempt-4/independent_E.json",
+          "independent_E_sha256": "bed2dd11850832e258704292f1b73aa28adabbaecb8ba9c8163ea125c87aafaa"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-038-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-038-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-039-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-039-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-040-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-040-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-041-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-041-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-042-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-042-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-043-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-043-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-044-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-044-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-045-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-045-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-046-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-046-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-047-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-047-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-048-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-048-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-049-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-049-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-050-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-050-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-051-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-051-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-052-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-052-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-053-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-053-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-054-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-054-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-055-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-055-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-056-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-056-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-057-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-057-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-058-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-058-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-059-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-059-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-060-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-060-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-061-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-061-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-062-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-062-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-063-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-063-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-064-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-064-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-065-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-065-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-066-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-066-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-067-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-067-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-068-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-068-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-069-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-069-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-070-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-070-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-071-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-071-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-072-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-072-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-073-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-073-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-074-glas-cellularity-decrease",
+      "dataset": "GLAS",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-074-glas-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-075-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-075-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-076-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-076-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-077-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-077-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-077-orca-cellularity-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "49afd0a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-077-orca-cellularity-decrease/attempt-3/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-078-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-078-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-079-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-079-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-080-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-080-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-081-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-081-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-082-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-082-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-083-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-083-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-084-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-084-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-085-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-085-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": 4,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-085-orca-cellularity-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "49afd0a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-085-orca-cellularity-decrease/attempt-3/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 4,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "55eac1c",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-085-orca-cellularity-decrease/attempt-4/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-085-orca-cellularity-decrease/attempt-4/independent_E.json",
+          "independent_E_sha256": "09fcc23c975e8591c49b8d14acf666d3224248615e3ccb6f26d084c0f9309752"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-086-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-086-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-087-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-087-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-088-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-088-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-089-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-089-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-090-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-090-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": 3,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-090-orca-cellularity-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "49afd0a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-090-orca-cellularity-decrease/attempt-3/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-090-orca-cellularity-decrease/attempt-3/independent_E.json",
+          "independent_E_sha256": "5b6a902ed460e727f72c4c17faf54cff5480c25d8843cd32743c3383c9b90568"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-091-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-091-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-092-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-092-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-093-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-093-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-094-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-094-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-095-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-095-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-096-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-096-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-097-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-097-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-098-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-098-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-099-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-099-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-100-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-100-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-101-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-101-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-102-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-102-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-103-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-103-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": 3,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-103-orca-cellularity-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "49afd0a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-103-orca-cellularity-decrease/attempt-3/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-103-orca-cellularity-decrease/attempt-3/independent_E.json",
+          "independent_E_sha256": "2cb23349e29e2f0d57504f00e5eb5898aea21b33b39bfd965ed2370b55fcff4b"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-104-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-104-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-105-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-105-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-106-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-106-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-107-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-107-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-108-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-108-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-109-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-109-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": 3,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-109-orca-cellularity-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "49afd0a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-109-orca-cellularity-decrease/attempt-3/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-109-orca-cellularity-decrease/attempt-3/independent_E.json",
+          "independent_E_sha256": "b73e8888ef87ea10fd2125ab38085e1b9b0a8e8573ad59ef38202b7d392c25ce"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-110-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-110-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-111-orca-cellularity-decrease",
+      "dataset": "ORCA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-111-orca-cellularity-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-112-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-112-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-113-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-113-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-114-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-114-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-115-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-115-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-116-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-116-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-117-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-117-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-118-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-118-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-119-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-119-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-120-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-120-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-120-panda-cell-type-abundance-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-121-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-121-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-122-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-122-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-123-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-123-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-124-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-124-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-125-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-125-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-126-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-126-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-127-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-127-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-128-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-128-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-129-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-129-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-130-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-130-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-131-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-131-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-132-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-132-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-133-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-133-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-134-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-134-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-135-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-135-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-136-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-136-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-137-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-137-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-137-panda-cell-type-abundance-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        },
+        {
+          "attempt": 3,
+          "status": "terminal",
+          "program_status": "failed",
+          "independent_E_passed": false,
+          "code_commit": "49afd0a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-137-panda-cell-type-abundance-decrease/attempt-3/retry_metadata.json",
+          "independent_E_path": null,
+          "independent_E_sha256": null
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-138-panda-cell-type-abundance-decrease",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-138-panda-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-139-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-139-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-140-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-140-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-141-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-141-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-142-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-142-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-143-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-143-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-144-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-144-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-145-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-145-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-146-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-146-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-147-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-147-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-148-panda-cohesive-boundary-expansion",
+      "dataset": "PANDA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-148-panda-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-149-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-149-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-150-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-150-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-151-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-151-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-152-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-152-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-153-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-153-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-154-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-154-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-155-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-155-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-156-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-156-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-157-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-157-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-158-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-158-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-158-ignite-cell-type-abundance-decrease/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-158-ignite-cell-type-abundance-decrease/attempt-2/independent_E.json",
+          "independent_E_sha256": "7c48ff9ed36118d79807941651f1a3a737262c7a461e786f78929be09ef0307c"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-159-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-159-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-160-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-160-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-161-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-161-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-162-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-162-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-163-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-163-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-164-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-164-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-165-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-165-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-166-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-166-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-167-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-167-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-168-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-168-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-169-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-169-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-170-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-170-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-171-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-171-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-172-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-172-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-173-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-173-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-174-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-174-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-175-ignite-cell-type-abundance-decrease",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-175-ignite-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-176-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-176-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-177-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-177-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-178-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-178-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-179-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-179-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-180-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-180-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-181-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "planner_transport_error",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-181-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": 2,
+      "validated_after_retries": true,
+      "retry_attempts": [
+        {
+          "attempt": 2,
+          "status": "terminal",
+          "program_status": "validated",
+          "independent_E_passed": true,
+          "code_commit": "331496a",
+          "metadata_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-181-ignite-cohesive-boundary-expansion/attempt-2/retry_metadata.json",
+          "independent_E_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/retry_attempts/r2de6-181-ignite-cohesive-boundary-expansion/attempt-2/independent_E.json",
+          "independent_E_sha256": "c1d4130aa2221248058ab35949014864645189fdbdf6b7409a4c0e5f6c577de5"
+        }
+      ]
+    },
+    {
+      "case_id": "r2de6-182-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-182-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-183-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-183-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-184-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-184-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-185-ignite-cohesive-boundary-expansion",
+      "dataset": "IGNITE",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-185-ignite-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-186-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-186-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-187-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-187-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-188-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-188-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-189-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-189-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-190-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-190-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-191-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-191-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-192-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-192-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-193-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-193-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-194-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-194-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-195-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-195-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-196-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-196-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-197-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-197-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-198-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-198-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-199-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-199-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-200-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-200-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-201-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-201-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-202-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-202-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-203-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-203-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-204-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-204-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-205-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-205-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-206-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-206-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-207-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-207-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-208-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-208-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-209-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-209-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-210-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-210-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-211-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-211-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-212-puma-cell-type-abundance-decrease",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-212-puma-cell-type-abundance-decrease.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-213-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-213-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-214-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-214-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-215-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "abstained",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-215-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": false,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-216-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-216-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-217-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-217-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-218-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-218-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-219-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-219-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-220-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-220-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-221-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-221-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    },
+    {
+      "case_id": "r2de6-222-puma-cohesive-boundary-expansion",
+      "dataset": "PUMA",
+      "initial_outcome": "validated",
+      "initial_result_path": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/results/r2de6-222-puma-cohesive-boundary-expansion.json",
+      "accepted_retry_attempt": null,
+      "validated_after_retries": true,
+      "retry_attempts": []
+    }
+  ]
+}

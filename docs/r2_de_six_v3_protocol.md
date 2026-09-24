@@ -159,3 +159,12 @@ executor source files at each attempt start. This supplements its declared
 commit label when a long-running batch spans a source deployment; previously
 started attempt metadata remains untouched. Packet format and process start
 times provide further evidence for such attempts.
+
+The last unretried BCSS Planner-contract case, `r2de6-002`, was run again as
+attempt 2 against the same frozen input and the final source hashes. It
+validated and passed independent E. The completed reconciliation contains
+222 terminal initial results, 44 numbered retry attempts, 21 same-case
+recoveries, and 141 distinct validated cases, each with a passing independent
+E record. `benchmarks/r2_de_six_v3/final/reconciled_final.json` and
+`report_stats_final.json` contain the case links and aggregate measurements;
+the discussion and limitations are in `docs/r2_de_six_v3_final_results.md`.
