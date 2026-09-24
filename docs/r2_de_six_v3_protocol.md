@@ -48,3 +48,11 @@ protocol is retained as `protocol_frozen_initial.json`; the executed setting
 is in `protocol.json`. No source, request, skill, model checkpoint, or mask
 budget changed in that amendment. Any unmet 200/222 target must be reported
 as measured rather than hidden by post-hoc replacement.
+
+After the first terminal case exposed a CLI-only schema-format issue, the
+worker was amended to state stripped constraints in the prompt and allow up
+to three **fresh** attempts for a schema violation. The original failed
+response remains in the queue; the same frozen case may be rerun with an
+explicit retry trace. See
+`benchmarks/r2_de_six_v3/protocol_amendment_format_retry.json`. This
+amendment does not loosen the Planner schema or any mask safety gate.

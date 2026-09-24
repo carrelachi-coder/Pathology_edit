@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import threading
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ from scripts.codex_cli_planner_worker import (
     _check_stripped_constraints,
     _cli_compatible_schema,
     _process_one,
+    _run_packet,
 )
 
 
@@ -79,3 +81,37 @@ def test_cli_queue_round_trip_uses_fresh_terra_session(tmp_path):
     assert usage["model"] == "gpt-5.6-terra"
     assert response["prompt_sha256"] == usage["prompt_sha256"]
     assert response["session_id"] == "01234567-89ab-cdef-0123-456789abcdef"
+
+
+def test_cli_worker_retries_original_nonempty_array_constraint(tmp_path):
+    fake = tmp_path / "fake-codex"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json,pathlib,sys\n"
+        "a=sys.argv[1:]; n=pathlib.Path('attempts')\n"
+        "i=int(n.read_text())+1 if n.exists() else 1; n.write_text(str(i))\n"
+        "value=[] if i==1 else ['capacity_margin']\n"
+        "pathlib.Path(a[a.index('-o')+1]).write_text(json.dumps({'ids':value}))\n"
+        "print('session id: 01234567-89ab-cdef-0123-456789abcdef',file=sys.stderr)\n"
+    )
+    fake.chmod(0o755)
+    schema = {"type": "object", "properties": {"ids": {
+        "type": "array", "items": {"type": "string"}, "minItems": 1,
+    }}}
+    packet = tmp_path / "packet"
+    packet.mkdir()
+    system = "Select a supported metric"
+    user = '{"metrics":["capacity_margin"]}'
+    digest = hashlib.sha256(
+        (system + "\n" + user + "\n" + json.dumps(schema, sort_keys=True)).encode()
+    ).hexdigest()
+    (packet / "request.json").write_text(json.dumps({
+        "request_id": "a" * 32, "model": "gpt-5.6-terra",
+        "reasoning_effort": "medium", "schema_name": "test",
+        "system_prompt": system, "user_prompt": user,
+        "prompt_sha256": digest, "json_schema": schema, "images": [],
+    }))
+    response = _run_packet(packet, codex=str(fake), timeout=5)
+    assert response["output"] == {"ids": ["capacity_margin"]}
+    assert response["attempt_count"] == 2
+    assert "too few items" in response["retry_errors"][0]

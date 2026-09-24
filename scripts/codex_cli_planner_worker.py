@@ -9,6 +9,7 @@ mask images and schema into an isolated temporary directory. Every call uses
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import re
@@ -63,6 +64,23 @@ def _check_stripped_constraints(output, schema, location="root"):
             )
 
 
+def _original_constraint_hints(schema, location="root"):
+    """Describe constraints removed only for the CLI's schema subset."""
+    if not isinstance(schema, dict):
+        return []
+    hints = []
+    for key in ("minItems", "maxItems", "minimum", "maximum"):
+        if key in schema:
+            hints.append(f"{location}: {key}={schema[key]}")
+    if schema.get("uniqueItems"):
+        hints.append(f"{location}: array items must be unique")
+    for key, child in schema.get("properties", {}).items():
+        hints.extend(_original_constraint_hints(child, f"{location}.{key}"))
+    if "items" in schema:
+        hints.extend(_original_constraint_hints(schema["items"], f"{location}[]"))
+    return hints
+
+
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -103,6 +121,10 @@ def _run_packet(packet_dir: Path, *, codex: str, timeout: int) -> dict:
         + "\n\nReturn only one JSON object satisfying the supplied output schema. "
         "Use no tools and do not inspect local files."
     )
+    hints = _original_constraint_hints(request["json_schema"])
+    if hints:
+        prompt += "\n\nAdditional original schema requirements (the CLI schema cannot encode these):\n"
+        prompt += "\n".join("- " + item for item in hints)
     command = [
         codex, "exec", "-m", "gpt-5.6-terra", "-s", "read-only",
         "-C", str(packet_dir), "--skip-git-repo-check", "--ephemeral",
@@ -114,26 +136,42 @@ def _run_packet(packet_dir: Path, *, codex: str, timeout: int) -> dict:
     command.append("-")
     for path in images:
         command.extend(["-i", str(path)])
-    completed = subprocess.run(
-        command, cwd=packet_dir, input=prompt,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        timeout=timeout, check=False,
-    )
-    if completed.returncode:
-        raise RuntimeError(
-            f"Codex CLI exit {completed.returncode}: {completed.stderr[-1000:]}"
+    retry_errors = []
+    for attempt in range(1, 4):
+        completed = subprocess.run(
+            command, cwd=packet_dir, input=prompt,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            timeout=timeout, check=False,
         )
-    raw = json.loads(output.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise ValueError("Codex CLI output is not a JSON object")
-    _check_stripped_constraints(raw, request["json_schema"])
-    match = re.search(r"session id: ([0-9a-f-]+)", completed.stderr)
-    return {
-        "request_id": request["request_id"],
-        "prompt_sha256": request["prompt_sha256"],
-        "output": raw,
-        "session_id": match.group(1) if match else None,
-    }
+        if completed.returncode:
+            raise RuntimeError(
+                f"Codex CLI exit {completed.returncode}: {completed.stderr[-1000:]}"
+            )
+        raw = json.loads(output.read_text(encoding="utf-8"))
+        try:
+            if not isinstance(raw, dict):
+                raise ValueError("Codex CLI output is not a JSON object")
+            _check_stripped_constraints(raw, request["json_schema"])
+        except ValueError as exc:
+            retry_errors.append(str(exc))
+            if attempt == 3:
+                raise
+            prompt += ("\n\nYour previous JSON violated the original output schema: "
+                       + str(exc) + ". Produce a corrected JSON object. "
+                       "Every required nonempty array must contain a supported ID. "
+                       "Previous JSON: " + json.dumps(raw, ensure_ascii=False))
+            continue
+        match = re.search(r"session id: ([0-9a-f-]+)", completed.stderr)
+        return {
+            "request_id": request["request_id"],
+            "prompt_sha256": request["prompt_sha256"],
+            "output": raw,
+            "session_id": match.group(1) if match else None,
+            "attempt_count": attempt,
+            "retry_errors": retry_errors,
+            "effective_prompt_sha256": _sha(prompt.encode("utf-8")),
+        }
+    raise AssertionError("unreachable CLI retry state")
 
 
 def _pending_ids(*, root: str, host: str | None) -> list[str]:
@@ -212,29 +250,47 @@ def main() -> int:
         help="Exit after this much idle time following at least one response",
     )
     parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--parallelism", type=int, default=1)
     args = parser.parse_args()
+    if args.parallelism < 1 or (args.once and args.parallelism != 1):
+        parser.error("--parallelism must be positive and --once requires one worker")
     processed = 0
     idle_since = time.monotonic()
-    while True:
-        pending = _pending_ids(root=args.queue_root, host=args.remote_host)
-        if pending:
-            response = _process_one(
-                pending[0], root=args.queue_root, host=args.remote_host,
-                codex=args.codex, timeout=args.timeout,
-            )
-            print(json.dumps({k: response.get(k) for k in
-                              ("request_id", "session_id", "error")} ), flush=True)
-            processed += 1
-            idle_since = time.monotonic()
-            if args.once:
-                return 1 if response.get("error") else 0
-        elif args.once:
-            return 2
-        elif processed and args.idle_exit_seconds and (
-            time.monotonic() - idle_since >= args.idle_exit_seconds
-        ):
-            return 0
-        else:
+    with ThreadPoolExecutor(max_workers=args.parallelism) as executor:
+        active = {}
+        while True:
+            for future, request_id in list(active.items()):
+                if not future.done():
+                    continue
+                del active[future]
+                try:
+                    response = future.result()
+                except Exception as exc:
+                    response = {"request_id": request_id,
+                                "error": f"transport error: {type(exc).__name__}: {exc}"}
+                print(json.dumps({k: response.get(k) for k in
+                                  ("request_id", "session_id", "error")}), flush=True)
+                processed += 1
+                idle_since = time.monotonic()
+                if args.once:
+                    return 1 if response.get("error") else 0
+            pending = _pending_ids(root=args.queue_root, host=args.remote_host)
+            active_ids = set(active.values())
+            available = args.parallelism - len(active)
+            for request_id in (name for name in pending if name not in active_ids):
+                if available <= 0:
+                    break
+                future = executor.submit(
+                    _process_one, request_id, root=args.queue_root,
+                    host=args.remote_host, codex=args.codex, timeout=args.timeout,
+                )
+                active[future] = request_id
+                available -= 1
+            if args.once and not active:
+                return 2
+            if (not active and processed and args.idle_exit_seconds and
+                    time.monotonic() - idle_since >= args.idle_exit_seconds):
+                return 0
             time.sleep(1.0)
 
 

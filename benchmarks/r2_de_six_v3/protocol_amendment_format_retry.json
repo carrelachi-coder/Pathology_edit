@@ -1,0 +1,10 @@
+{
+  "amendment_id": "r2-de-six-v3-format-retry-20260924",
+  "time_utc": "2026-09-24 00:11:55 UTC",
+  "trigger": "The first terminal case, r2de6-004-bcss-cohesive-boundary-expansion, failed because Terra returned an empty supporting_capability_metric_ids array although the original Planner schema requires at least one measured metric ID. The Codex CLI strict-output schema rejects minItems, so the worker had stripped that keyword and checked it after output.",
+  "scope": "All subsequent CLI Planner calls use the same original certified candidate packet and original schema. The worker presents stripped schema constraints explicitly and permits at most three fresh ephemeral CLI attempts for a schema violation, returning only an output that passes the original constraint checker. No candidate, mask, budget, skill, gate, or request is changed.",
+  "prior_failure_handling": "The original failed output for r2de6-004 remains archived. The same frozen case may be rerun once under the amended transport policy and must retain an explicit retry link; it is not a replacement case or a changed instruction.",
+  "audit_fields": ["request_id", "prompt_sha256", "effective_prompt_sha256", "attempt_count", "retry_errors", "session_id"],
+  "parallelism": 2,
+  "review_note": "This is an execution-transport correction made after one observed formatting failure. Report its timing and the first failed attempt in the methods or supplement."
+}
