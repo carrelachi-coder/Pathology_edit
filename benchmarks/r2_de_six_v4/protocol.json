@@ -1,0 +1,57 @@
+{
+  "version": "r2-de-six-v4",
+  "runtime_code_base_commit": "2db8e23",
+  "builder_sha256": "fda3b1dce80393463db660fc231ec2057abc3621d4ce20928cada9dd603f1c06",
+  "cohort_sha256": "f5d677ff400546eabaf23d7935a0dcaa180575511a538863b70200787df1fbaa",
+  "source_metadata_sha256": "3534761060f519bb9e1a7a6d556b64dddb5b246a8289c6566f5f672470fdf4fb",
+  "requests": 222,
+  "per_dataset": {
+    "BCSS": 37,
+    "GLAS": 37,
+    "ORCA": 37,
+    "PANDA": 37,
+    "IGNITE": 37,
+    "PUMA": 37
+  },
+  "per_binding": {
+    "BCSS/cohesive-boundary-expansion-v1": 27,
+    "BCSS/generic-immune-infiltrate-decrease-v1": 10,
+    "GLAS/cellularity-decrease-v1": 37,
+    "ORCA/cellularity-decrease-v1": 37,
+    "PANDA/cell-type-abundance-decrease-v1": 10,
+    "PANDA/cohesive-boundary-expansion-v1": 27,
+    "IGNITE/cell-type-abundance-decrease-v1": 27,
+    "IGNITE/cohesive-boundary-expansion-v1": 10,
+    "PUMA/cell-type-abundance-decrease-v1": 8,
+    "PUMA/cohesive-boundary-expansion-v1": 9,
+    "PUMA/cell-type-abundance-increase-v1": 15,
+    "PUMA/neoplastic-cell-abundance-decrease-v1": 5
+  },
+  "source_groups_per_dataset": {
+    "BCSS": 17,
+    "GLAS": 15,
+    "ORCA": 18,
+    "PANDA": 15,
+    "IGNITE": 11,
+    "PUMA": 10
+  },
+  "case_selection": "Preset six-dataset quotas; exclude all v3 patches; source-only mask and complete-instance screens before freeze; PUMA may have two distinct primitives on one patch; no Planner, executor, gate or E outcome selection",
+  "capability_selection": "Bindings and thresholds chosen after v3 audit, so this is a source-qualified follow-up benchmark, not a replacement for v3 or an all-primitive estimate",
+  "v3_cohort_sha256": "8693a26f8a453b3ed06136b674c0adc597bfbacbe55d2474ec2a60c364f856bc",
+  "panda_provider_scope": "Radboud-style annotation schema inferred from source fine Gleason IDs; acquisition institution not independently verified",
+  "puma_site_scope": "Primary cutaneous melanoma at dataset level; exact anatomic subsite unavailable",
+  "grouping_scope": "Filename-derived source groups; patches within a group are correlated and are not separate patients",
+  "parser_mode": "prebound benchmark gold semantics; parser accuracy excluded",
+  "planner_mode": "fresh gpt-5.6-terra Codex CLI sessions",
+  "execution_mode": "mature ProbNet frozen epoch29, meta-eval",
+  "per_request_timeout_seconds": 1800,
+  "probnet_checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
+  "gpu_ids": [
+    0,
+    2,
+    6,
+    7
+  ],
+  "outcome_selection": "No replacement or reroll after freeze",
+  "timeout_amendment": "Pre-execution wall-clock cap 1800 seconds; no case or outcome existed when amended"
+}

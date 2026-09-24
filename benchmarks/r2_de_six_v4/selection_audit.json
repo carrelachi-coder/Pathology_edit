@@ -1,0 +1,369 @@
+[
+  {
+    "dataset": "BCSS",
+    "primitive_id": "cohesive-boundary-expansion-v1",
+    "quota": 27,
+    "selected_samples": [
+      "TCGA-EW-A1OW_x36101_y49680_py6144_px2816",
+      "TCGA-AR-A2LR_x46540_y31961_py1280_px1792",
+      "TCGA-A8-A08R_x14220_y13782_py256_px2560",
+      "TCGA-BH-A1F6_x53806_y49901_py1792_px0",
+      "TCGA-BH-A18V_x50030_y48454_py2048_px4608",
+      "TCGA-D8-A13Z_x30985_y49337_py3840_px0",
+      "TCGA-D8-A13Z_x30985_y49337_py3072_px1536",
+      "TCGA-A8-A09X_x55379_y38394_py1280_px2048",
+      "TCGA-A7-A26F_x72969_y11489_py1280_px4096",
+      "TCGA-BH-A1F6_x53806_y49901_py1024_px2560",
+      "TCGA-EW-A1OW_x36101_y49680_py512_px3072",
+      "TCGA-AR-A0TS_x118843_y22812_py1536_px4608",
+      "TCGA-A7-A26G_x77919_y10728_py0_px2304",
+      "TCGA-A7-A26G_x77919_y10728_py768_px1280",
+      "TCGA-A7-A5ZV_x103009_y26581_py512_px2048",
+      "TCGA-BH-A1F6_x53806_y49901_py1792_px3584",
+      "TCGA-A2-A3XU_x33329_y26157_py1280_px3328",
+      "TCGA-A2-A04T_x72145_y39078_py256_px3840",
+      "TCGA-A2-A0YE_x59206_y33505_py1536_px256",
+      "TCGA-BH-A18V_x50030_y48454_py1536_px512",
+      "TCGA-A8-A09X_x55379_y38394_py0_px256",
+      "TCGA-A2-A0YE_x59206_y33505_py3072_px1536",
+      "TCGA-C8-A27B_x52632_y11349_py1280_px3328",
+      "TCGA-AO-A0J2_x33561_y14515_py1536_px512",
+      "TCGA-A7-A26F_x72969_y11489_py1536_px3840",
+      "TCGA-A2-A3XU_x33329_y26157_py2048_px3584",
+      "TCGA-C8-A27B_x52632_y11349_py2048_px0"
+    ],
+    "exclusions": {
+      "tissue_source_or_external_front_insufficient": 28
+    }
+  },
+  {
+    "dataset": "BCSS",
+    "primitive_id": "generic-immune-infiltrate-decrease-v1",
+    "quota": 10,
+    "selected_samples": [
+      "TCGA-A7-A5ZV_x103009_y26581_py768_px2048",
+      "TCGA-EW-A1OW_x36101_y49680_py3328_px5376",
+      "TCGA-A7-A5ZV_x103009_y26581_py768_px3328",
+      "TCGA-S3-AA10_x43039_y23986_py1536_px512",
+      "TCGA-EW-A1OW_x36101_y49680_py1280_px1280",
+      "TCGA-A2-A0YE_x59206_y33505_py2560_px2048",
+      "TCGA-S3-AA10_x43039_y23986_py1536_px1024",
+      "TCGA-A7-A26G_x77919_y10728_py512_px1280",
+      "TCGA-BH-A18V_x50030_y48454_py2304_px4608",
+      "TCGA-A7-A5ZV_x103009_y26581_py768_px768"
+    ],
+    "exclusions": {
+      "immune_compartment_below_4096px": 64,
+      "immune_compartment_below_12000px": 2,
+      "v3_patch_excluded": 2
+    }
+  },
+  {
+    "dataset": "GLAS",
+    "primitive_id": "cellularity-decrease-v1",
+    "quota": 37,
+    "selected_samples": [
+      "train_38_py512_px512",
+      "testB_15_py0_px512",
+      "train_38_py256_px256",
+      "train_36_py256_px256",
+      "train_2_py512_px256",
+      "train_2_py0_px256",
+      "train_48_py512_px768",
+      "testA_26_py0_px0",
+      "testA_2_py256_px0",
+      "train_78_py0_px768",
+      "testB_10_py256_px512",
+      "train_2_py0_px768",
+      "train_18_py512_px512",
+      "train_18_py256_px256",
+      "train_2_py0_px512",
+      "train_62_py0_px512",
+      "train_48_py0_px768",
+      "testA_48_py256_px0",
+      "testB_10_py0_px256",
+      "train_48_py256_px1024",
+      "testA_2_py0_px256",
+      "testA_48_py512_px512",
+      "train_62_py512_px768",
+      "testB_10_py0_px768",
+      "train_7_py0_px256",
+      "train_6_py0_px512",
+      "testA_37_py256_px256",
+      "testB_10_py256_px1024",
+      "train_78_py0_px512",
+      "train_38_py0_px0",
+      "train_6_py0_px0",
+      "train_18_py512_px0",
+      "train_48_py256_px768",
+      "train_38_py256_px512",
+      "testA_37_py0_px512",
+      "testA_37_py0_px256",
+      "train_2_py0_px0"
+    ],
+    "exclusions": {
+      "v3_patch_excluded": 19,
+      "cellularity_local_instance_capacity_below_screen": 10
+    }
+  },
+  {
+    "dataset": "ORCA",
+    "primitive_id": "cellularity-decrease-v1",
+    "quota": 37,
+    "selected_samples": [
+      "TCGA-BA-4074-01Z-00-DX1.937DC1B1-C9A4-4E67-B5FD-A0C0C60D2628_0_py512_px1536",
+      "TCGA-CN-5374-01Z-00-DX1.027c681b-d8d8-47fd-b0f8-917d6ddb3b83_0_py3584_px768",
+      "TCGA-BB-4228-01Z-00-DX1.170b1b9a-05ac-4115-965e-56c2af944f1f_1_py256_px2560",
+      "TCGA-CN-4735-01Z-00-DX1.b7d37666-bd65-4d3b-826b-97e560444956_1_py1280_px768",
+      "TCGA-BB-4228-01Z-00-DX1.170b1b9a-05ac-4115-965e-56c2af944f1f_1_py3840_px2560",
+      "TCGA-CN-4723-01Z-00-DX1.13483e7b-9322-4d39-8cd6-91e898bf2ee9_1_py1024_px1024",
+      "TCGA-BB-4228-01Z-00-DX1.170b1b9a-05ac-4115-965e-56c2af944f1f_1_py768_px1280",
+      "TCGA-CN-5364-01Z-00-DX1.caeed5d0-cd48-40f3-b81b-099637341563_0_py3072_px2816",
+      "TCGA-CN-4723-01Z-00-DX1.13483e7b-9322-4d39-8cd6-91e898bf2ee9_1_py512_px3328",
+      "TCGA-CN-4738-01Z-00-DX1.9c456d54-0bde-4f04-ba53-17c09e692491_0_py2816_px3840",
+      "TCGA-BA-5556-01Z-00-DX1.6941a8fa-2f68-41d8-8661-82601570d901_0_py3328_px1280",
+      "TCGA-BA-5556-01Z-00-DX1.6941a8fa-2f68-41d8-8661-82601570d901_0_py1280_px3328",
+      "TCGA-CN-6012-01Z-00-DX1.bd9283bb-47c7-41ab-996a-f3f5070cfc73_0_py3072_px768",
+      "TCGA-CN-4733-01Z-00-DX1.03cccb3f-c551-450f-b00a-f808a237db0b_0_py2304_px512",
+      "TCGA-CN-6017-01Z-00-DX1.690fa1af-4b51-41c8-a52d-bd1341f990e9_1_py0_px2048",
+      "TCGA-CN-4723-01Z-00-DX1.13483e7b-9322-4d39-8cd6-91e898bf2ee9_1_py3840_px1280",
+      "TCGA-CN-4736-01Z-00-DX1.883fda2c-82bd-46c1-b220-b9961d8700cc_1_py1280_px1536",
+      "TCGA-CN-4723-01Z-00-DX1.13483e7b-9322-4d39-8cd6-91e898bf2ee9_1_py512_px2816",
+      "TCGA-CN-5364-01Z-00-DX1.caeed5d0-cd48-40f3-b81b-099637341563_0_py3840_px1280",
+      "TCGA-BA-5556-01Z-00-DX1.6941a8fa-2f68-41d8-8661-82601570d901_0_py1280_px1536",
+      "TCGA-BB-8596-01Z-00-DX1.F354D65B-F1F9-447C-8C6A-519140FC4549_0_py1280_px256",
+      "TCGA-CN-5374-01Z-00-DX1.027c681b-d8d8-47fd-b0f8-917d6ddb3b83_0_py2304_px1024",
+      "TCGA-CN-4722-01Z-00-DX1.cf599bd8-c285-4f44-82d0-64f4b453d5e5_1_py1024_px3584",
+      "TCGA-CN-4723-01Z-00-DX1.13483e7b-9322-4d39-8cd6-91e898bf2ee9_1_py1024_px2048",
+      "TCGA-CN-6012-01Z-00-DX1.bd9283bb-47c7-41ab-996a-f3f5070cfc73_0_py1024_px2304",
+      "TCGA-CN-6012-01Z-00-DX1.bd9283bb-47c7-41ab-996a-f3f5070cfc73_0_py3584_px1792",
+      "TCGA-CN-6020-01Z-00-DX1.910f4ce3-873f-4712-b896-789d764513a7_0_py3584_px2304",
+      "TCGA-BA-5151-01Z-00-DX1.32EE476B-128D-4153-A57C-CFA823B993A2_0_py768_px2048",
+      "TCGA-CN-4738-01Z-00-DX1.9c456d54-0bde-4f04-ba53-17c09e692491_0_py2560_px2816",
+      "TCGA-CN-6012-01Z-00-DX1.bd9283bb-47c7-41ab-996a-f3f5070cfc73_0_py0_px1280",
+      "TCGA-CN-5363-01Z-00-DX1.bd9c87d4-de64-4932-a90f-95888150d780_1_py2816_px1024",
+      "TCGA-CN-5363-01Z-00-DX1.bd9c87d4-de64-4932-a90f-95888150d780_1_py3072_px2048",
+      "TCGA-CN-4725-01Z-00-DX1.fe518acf-cceb-4be4-b01a-63d66248d6d4_0_py2304_px1280",
+      "TCGA-CN-4735-01Z-00-DX1.b7d37666-bd65-4d3b-826b-97e560444956_1_py768_px1280",
+      "TCGA-CN-6020-01Z-00-DX1.910f4ce3-873f-4712-b896-789d764513a7_0_py2048_px1536",
+      "TCGA-CN-4723-01Z-00-DX1.13483e7b-9322-4d39-8cd6-91e898bf2ee9_1_py768_px1792",
+      "TCGA-CN-5364-01Z-00-DX1.caeed5d0-cd48-40f3-b81b-099637341563_0_py2560_px3072"
+    ],
+    "exclusions": {
+      "cellularity_local_instance_capacity_below_screen": 13,
+      "v3_patch_excluded": 1,
+      "cellularity_source_below_6000px": 1
+    }
+  },
+  {
+    "dataset": "PANDA",
+    "primitive_id": "cell-type-abundance-decrease-v1",
+    "quota": 10,
+    "selected_samples": [
+      "0e2203e117e27e9728407f102404ac59_y3072_x8960_py2048_px1792",
+      "00a26aaa82c959624d90dfb69fcf259c_y14592_x10240_py512_px256",
+      "00a26aaa82c959624d90dfb69fcf259c_y14592_x10240_py1280_px1792",
+      "11f9b8c48b800c4434f693f0e76bc3b4_y16384_x4352_py256_px768",
+      "11f9b8c48b800c4434f693f0e76bc3b4_y16384_x4352_py768_px1536",
+      "11acf00f7aba60feb6c6626ceff0cc51_y15360_x6144_py2304_px2048",
+      "0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1024_px0",
+      "00a26aaa82c959624d90dfb69fcf259c_y14592_x10240_py1536_px768",
+      "00a26aaa82c959624d90dfb69fcf259c_y14592_x10240_py1280_px1536",
+      "11acf00f7aba60feb6c6626ceff0cc51_y15360_x6144_py2304_px2560"
+    ],
+    "exclusions": {
+      "inflammatory_capacity_proxy_below_floor": 272,
+      "inflammatory_local_instance_capacity_below_screen": 30,
+      "v3_patch_excluded": 8
+    }
+  },
+  {
+    "dataset": "PANDA",
+    "primitive_id": "cohesive-boundary-expansion-v1",
+    "quota": 27,
+    "selected_samples": [
+      "0e2203e117e27e9728407f102404ac59_y3072_x8960_py1536_px2048",
+      "06cab87cd7a132bd8eaa30aa1ea42434_y11264_x768_py256_px256",
+      "0e2203e117e27e9728407f102404ac59_y3072_x8960_py0_px768",
+      "0aa144fb4a6597dd19b3e0de25151e11_y4864_x8960_py1792_px2304",
+      "0e2203e117e27e9728407f102404ac59_y3072_x8960_py1280_px1024",
+      "105cbd187035503e56605db53600b491_y17152_x2560_py768_px1024",
+      "0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py768_px256",
+      "0e2203e117e27e9728407f102404ac59_y3072_x8960_py0_px1024",
+      "107694232cb071255848ddca5efbe061_y8704_x10496_py512_px256",
+      "02a7b258e875cf073e2421d67ff824cd_y1792_x5376_py1024_px1536",
+      "0e2203e117e27e9728407f102404ac59_y3072_x8960_py1024_px1792",
+      "11a715facad7b619e3213ce126be1c77_y10496_x256_py1792_px1280",
+      "0a848ccbbb065ef5ee59dd01710f8531_y20736_x6144_py2304_px2048",
+      "0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1280_px1536",
+      "0aa144fb4a6597dd19b3e0de25151e11_y4864_x8960_py2560_px0",
+      "11a715facad7b619e3213ce126be1c77_y10496_x256_py1536_px1536",
+      "105cbd187035503e56605db53600b491_y17152_x2560_py1536_px2560",
+      "107694232cb071255848ddca5efbe061_y8704_x10496_py2560_px1792",
+      "0a848ccbbb065ef5ee59dd01710f8531_y20736_x6144_py768_px1536",
+      "0fcc5673242af956da6637881d14c414_y5120_x1536_py2304_px2304",
+      "0c884ecf6571905365546a078c02133b_y18432_x2304_py512_px0",
+      "0fcc5673242af956da6637881d14c414_y5120_x1536_py256_px1280",
+      "107694232cb071255848ddca5efbe061_y8704_x10496_py2048_px512",
+      "107694232cb071255848ddca5efbe061_y8704_x10496_py2304_px512",
+      "11f9b8c48b800c4434f693f0e76bc3b4_y16384_x4352_py1024_px0",
+      "146fdf9cb391b6199413967a26ee3305_y17920_x3328_py512_px1536",
+      "0076bcb66e46fb485f5ba432b9a1fe8a_y8960_x3840_py1792_px2048"
+    ],
+    "exclusions": {
+      "v3_patch_excluded": 2,
+      "tissue_source_or_external_front_insufficient": 20,
+      "panda_pattern4_or_5_external_front_absent": 14
+    }
+  },
+  {
+    "dataset": "IGNITE",
+    "primitive_id": "cell-type-abundance-decrease-v1",
+    "quota": 27,
+    "selected_samples": [
+      "patient29_he_roi1_py1792_px768",
+      "patient20_he_roi3_py2048_px1024",
+      "patient1_he_roi4_py2560_px1792",
+      "patient1_he_roi4_py3072_px3840",
+      "patient1_he_roi4_py3840_px2816",
+      "patient1_he_roi4_py2304_px1792",
+      "patient20_he_roi3_py768_px1536",
+      "patient1_he_roi4_py2816_px2048",
+      "patient1_he_roi4_py2304_px3328",
+      "patient42_he_roi3_py2048_px2048",
+      "patient35_he_roi3_py1792_px2048",
+      "patient1_he_roi4_py2304_px2048",
+      "patient1_he_roi4_py3584_px2560",
+      "patient42_he_roi3_py1536_px1792",
+      "patient1_he_roi7_py1536_px1792",
+      "patient7_he_roi1_py1536_px2560",
+      "patient25_he_roi1_py1792_px2048",
+      "patient7_he_roi1_py1280_px2560",
+      "patient42_he_roi3_py1280_px2304",
+      "patient25_he_roi1_py1024_px768",
+      "patient20_he_roi3_py1536_px1024",
+      "patient1_he_roi7_py1024_px1536",
+      "patient42_he_roi3_py1280_px2048",
+      "patient1_he_roi7_py1024_px3328",
+      "patient25_he_roi1_py1792_px1792",
+      "patient25_he_roi1_py768_px768",
+      "patient5_he_roi4_py3584_px4096"
+    ],
+    "exclusions": {
+      "inflammatory_capacity_proxy_below_floor": 256,
+      "v3_patch_excluded": 14,
+      "inflammatory_local_instance_capacity_below_screen": 9,
+      "source_group_cap_8": 28
+    }
+  },
+  {
+    "dataset": "IGNITE",
+    "primitive_id": "cohesive-boundary-expansion-v1",
+    "quota": 10,
+    "selected_samples": [
+      "patient29_he_roi1_py1024_px1024",
+      "patient25_he_roi1_py1792_px1024",
+      "patient25_he_roi1_py1536_px1536",
+      "patient1_he_roi7_py2560_px2560",
+      "patient29_he_roi1_py2304_px1792",
+      "patient25_he_roi1_py1536_px1792",
+      "patient5_he_roi3_py1792_px1024",
+      "patient5_he_roi3_py1024_px1792",
+      "patient15_he_roi3_py1536_px1536",
+      "patient25_he_roi1_py768_px1280"
+    ],
+    "exclusions": {
+      "tissue_source_or_external_front_insufficient": 16,
+      "per_patch_request_cap": 3,
+      "source_group_cap_8": 4,
+      "v3_patch_excluded": 1
+    }
+  },
+  {
+    "dataset": "PUMA",
+    "primitive_id": "cell-type-abundance-decrease-v1",
+    "quota": 8,
+    "selected_samples": [
+      "training_set_primary_roi_005_py0_px256",
+      "training_set_primary_roi_087_py0_px512",
+      "training_set_primary_roi_005_py512_px512",
+      "training_set_primary_roi_050_py0_px512",
+      "training_set_primary_roi_036_py256_px0",
+      "training_set_primary_roi_005_py256_px256",
+      "training_set_primary_roi_005_py256_px512",
+      "training_set_primary_roi_087_py256_px512"
+    ],
+    "exclusions": {
+      "inflammatory_capacity_proxy_below_floor": 45,
+      "puma_primary_provenance_required": 99,
+      "v3_patch_excluded": 37
+    }
+  },
+  {
+    "dataset": "PUMA",
+    "primitive_id": "cohesive-boundary-expansion-v1",
+    "quota": 9,
+    "selected_samples": [
+      "training_set_primary_roi_036_py512_px256",
+      "training_set_primary_roi_042_py0_px0",
+      "training_set_primary_roi_042_py0_px512",
+      "training_set_primary_roi_042_py256_px512",
+      "training_set_primary_roi_050_py0_px512",
+      "training_set_primary_roi_041_py512_px512",
+      "training_set_primary_roi_041_py512_px0",
+      "training_set_primary_roi_041_py512_px256",
+      "training_set_primary_roi_038_py512_px512"
+    ],
+    "exclusions": {
+      "tissue_source_or_external_front_insufficient": 35,
+      "puma_primary_provenance_required": 81,
+      "v3_patch_excluded": 34
+    }
+  },
+  {
+    "dataset": "PUMA",
+    "primitive_id": "cell-type-abundance-increase-v1",
+    "quota": 15,
+    "selected_samples": [
+      "training_set_primary_roi_036_py256_px0",
+      "training_set_primary_roi_036_py512_px256",
+      "training_set_primary_roi_041_py512_px512",
+      "training_set_primary_roi_005_py256_px512",
+      "training_set_primary_roi_005_py256_px256",
+      "training_set_primary_roi_038_py512_px512",
+      "training_set_primary_roi_036_py0_px0",
+      "training_set_primary_roi_087_py256_px512",
+      "training_set_primary_roi_005_py0_px256",
+      "training_set_primary_roi_024_py256_px256",
+      "training_set_primary_roi_024_py256_px0",
+      "training_set_primary_roi_041_py512_px256",
+      "training_set_primary_roi_024_py0_px256",
+      "training_set_primary_roi_041_py512_px0",
+      "training_set_primary_roi_005_py512_px512"
+    ],
+    "exclusions": {
+      "puma_primary_provenance_required": 98,
+      "v3_patch_excluded": 37,
+      "cell_increase_reference_or_host_space_below_screen": 37,
+      "per_patch_request_cap": 1
+    }
+  },
+  {
+    "dataset": "PUMA",
+    "primitive_id": "neoplastic-cell-abundance-decrease-v1",
+    "quota": 5,
+    "selected_samples": [
+      "training_set_primary_roi_038_py0_px256",
+      "training_set_primary_roi_050_py256_px0",
+      "training_set_primary_roi_067_py512_px256",
+      "training_set_primary_roi_008_py512_px256",
+      "training_set_primary_roi_008_py256_px0"
+    ],
+    "exclusions": {
+      "puma_primary_provenance_required": 18,
+      "v3_patch_excluded": 8,
+      "per_patch_request_cap": 2,
+      "neoplastic_local_instance_capacity_below_screen": 1
+    }
+  }
+]
