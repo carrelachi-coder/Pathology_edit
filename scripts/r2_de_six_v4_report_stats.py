@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from statistics import median
 
@@ -15,8 +15,25 @@ def summarize(root: Path) -> dict:
     report = reconcile(root)
     cohort = json.loads((root / "frozen_cohort.json").read_text())
     groups = defaultdict(set)
+    by_case = {row["case_id"]: row for row in report["records"]}
+    primitives = defaultdict(lambda: {
+        "planned": 0, "initial_validated": 0,
+        "retry_recovered": 0, "validated_after_retries": 0,
+    })
+    patch_cases = defaultdict(list)
     for row in cohort:
         groups[row["dataset"]].add(row["source_group"])
+        case_id = row["record"]["case_id"]
+        outcome = by_case[case_id]
+        counts = primitives[row["primitive_id"]]
+        counts["planned"] += 1
+        counts["initial_validated"] += outcome["initial_outcome"] == "validated"
+        counts["retry_recovered"] += (
+            outcome["initial_outcome"] != "validated"
+            and outcome["accepted_retry_attempt"] is not None
+        )
+        counts["validated_after_retries"] += outcome["validated_after_retries"]
+        patch_cases[(row["dataset"], row["sample_id"])].append(outcome)
     metrics = defaultdict(list)
     for row in report["records"]:
         if not row["validated_after_retries"]:
@@ -66,6 +83,15 @@ def summarize(root: Path) -> dict:
                  for item in values), default=None,
             ),
         }
+    repeated = {key: value for key, value in patch_cases.items() if len(value) > 1}
+    repeat_outcomes = Counter(
+        (
+            sum(row["initial_outcome"] == "validated" for row in cases),
+            sum(row["validated_after_retries"] for row in cases),
+            len(cases),
+        )
+        for cases in repeated.values()
+    )
     return {
         "cohort_sha256": report["cohort_sha256"],
         "total_planned": report["total_planned"],
@@ -77,6 +103,27 @@ def summarize(root: Path) -> dict:
         "active_retry_attempts": report["active_retry_attempts"],
         "E_measured_unique_validated_cases": sum(len(v) for v in metrics.values()),
         "by_dataset": by_dataset,
+        "by_primitive": dict(sorted(primitives.items())),
+        "source_patch_reuse": {
+            "unique_dataset_patch_pairs": len(patch_cases),
+            "repeated_dataset_patch_pairs": len(repeated),
+            "repeated_pairs_by_dataset": dict(Counter(
+                dataset for dataset, _sample in repeated
+            )),
+            "repeated_patch_outcomes": [
+                {
+                    "initial_validated_requests": initial,
+                    "final_validated_requests": final,
+                    "requests_on_patch": size,
+                    "patches": count,
+                }
+                for (initial, final, size), count in sorted(repeat_outcomes.items())
+            ],
+            "group_counts_by_dataset": {
+                dataset: len(values) for dataset, values in sorted(groups.items())
+            },
+            "group_authority": "recorded source group; patient identity not verified",
+        },
     }
 
 
