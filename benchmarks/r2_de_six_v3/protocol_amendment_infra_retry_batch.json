@@ -1,0 +1,17 @@
+{
+  "amendment_id": "r2-de-six-v3-infrastructure-retry-batch-20260924",
+  "recorded_at_utc": "2026-09-24 03:45:38 UTC",
+  "evaluation_root": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924",
+  "frozen_cohort_sha256": "8693a26f8a453b3ed06136b674c0adc597bfbacbe55d2474ec2a60c364f856bc",
+  "selection": "At 170 completed initial attempts, freeze all 18 initial outcomes classified as planner_transport_error, planner_format_error, or timeout. The server-side retry_batch_infra_20260924.json records every selected case ID, its initial outcome, and a digest of the live D_request_outcomes.csv at selection time.",
+  "runner": "scripts/r2_de_six_retry_batch.py launches scripts/r2_de_six_retry_one.py sequentially on GPU 3, determines the next unused attempt number, preserves all earlier attempts, and records progress. Each validated retry is independently measured by E inside retry_one.py.",
+  "queue_root": "/data1/lyw/pathology_edit_eval/r2_de_terra_six_v3_20260924/terra_retry_queue_fix1",
+  "code_commit_on_gpu_server": "331496a",
+  "case_014_evidence": {
+    "case_id": "r2de6-014-bcss-cohesive-boundary-expansion",
+    "attempt_2": "Infrastructure failure: system Python lacked scipy; no program result. Preserved.",
+    "attempt_3_program_status": "validated",
+    "attempt_3_independent_E_passed": true
+  },
+  "audit_rule": "No source substitution. Initial attempts remain the primary live summary; final per-case outcomes require explicit links to every accepted retry and its independent E record."
+}

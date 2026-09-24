@@ -105,3 +105,13 @@ the case-029 evidence are recorded in
 The live initial-attempt summary does not include recovered retries; final
 per-case accounting must explicitly link and report both initial and accepted
 retry outcomes.
+
+The full same-case retry of BCSS case 014 (attempt 3) also passed the unchanged
+program checks and independent E audit. Its attempt 2 failed before any mask
+work because the launcher used the server's system Python rather than the
+project environment; that infrastructure attempt is preserved. A fixed list
+of 18 initial Planner transport, output-format, or wall-clock outcomes was
+then frozen for sequential same-case retries in an isolated queue. The list,
+initial outcomes, code version, per-attempt metadata, and batch progress are
+retained under the evaluation root. This retry batch cannot change the source
+cohort or the initial-attempt denominator.
