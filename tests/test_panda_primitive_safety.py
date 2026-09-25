@@ -60,6 +60,7 @@ def test_pattern5_organic_cord_is_long_rounded_and_cell_scale() -> None:
         nominal_nucleus_diameter_px=12,
         minimum_directionality_ratio=1.0,
         minimum_skeleton_length_width_ratio=5.0,
+        minimum_tip_to_neck_width_ratio=0.45,
     )
 
     assert projection.sum() > selected.sum() >= 1800
@@ -67,6 +68,67 @@ def test_pattern5_organic_cord_is_long_rounded_and_cell_scale() -> None:
     assert audit["longitudinal_span_px"] >= 5 * 12
     assert 0.45 <= audit["tip_to_neck_width_ratio"] <= 0.90
     assert audit["maximum_width_px"] >= 12
+
+
+def test_rounded_cord_policy_rejects_a_needle_tip() -> None:
+    shape = (100, 100)
+    parent = np.zeros(shape, dtype=bool)
+    parent[30:71, 5:25] = True
+    anchor = np.zeros(shape, dtype=bool)
+    anchor[35:66, 24] = True
+    wedge = np.zeros(shape, dtype=bool)
+    for col in range(25, 76):
+        half_width = max(1, round(10 * (75 - col) / 50))
+        wedge[50 - half_width : 51 + half_width, col] = True
+    common = dict(
+        change=wedge,
+        parent=parent,
+        other_tumor=np.zeros(shape, dtype=bool),
+        selected_anchor=anchor,
+        nominal_nucleus_diameter_px=6,
+    )
+    assert audit_directional_extension_raster(**common)["passed"]
+    rounded_policy = audit_directional_extension_raster(
+        **common, minimum_tip_to_neck_width_ratio=0.45
+    )
+    assert not rounded_policy["passed"]
+    assert rounded_policy["tip_to_neck_width_ratio"] < 0.45
+
+
+def test_lung_rounded_linear_cord_passes_without_a_needle_tip() -> None:
+    shape = (180, 180)
+    rows, cols = np.ogrid[: shape[0], : shape[1]]
+    parent = (rows - 90) ** 2 + (cols - 52) ** 2 <= 30**2
+    legal = ~parent
+    anchor = parent & ndimage.binary_dilation(legal)
+    anchor &= cols >= 75
+    projection, priority = compile_directional_tapered_projection_field(
+        legal,
+        anchor_mask=anchor,
+        parent_mask=parent,
+        maximum_depth_px=90,
+        maximum_width_px=32,
+        tip_width_px=16,
+        shape_mode="rounded_linear_cord",
+        centerline_first=True,
+    )
+    finite = np.flatnonzero(np.isfinite(priority))
+    selected = np.zeros(shape, dtype=bool)
+    selected.flat[finite[np.argsort(priority.flat[finite])[:1100]]] = True
+    audit = audit_directional_extension_raster(
+        change=selected,
+        parent=parent,
+        other_tumor=np.zeros(shape, dtype=bool),
+        selected_anchor=anchor,
+        nominal_nucleus_diameter_px=12,
+        minimum_directionality_ratio=1.35,
+        minimum_skeleton_length_width_ratio=1.5,
+        minimum_tip_to_neck_width_ratio=0.45,
+    )
+    assert projection.sum() >= selected.sum() == 1100
+    assert audit["passed"], audit
+    assert audit["longitudinal_span_px"] >= 50
+    assert 0.45 <= audit["tip_to_neck_width_ratio"] <= 0.90
 
 
 def test_pattern5_infiltrative_cord_requires_multiple_complete_cells() -> None:

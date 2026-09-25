@@ -962,7 +962,7 @@ class MultiInterfaceResearchTissuePlanner:
                 np.clip(1.5 * reference_equivalent_diameter, 12.0, 40.0)
             )
             directional_tip_width_px = float(
-                np.clip(0.12 * reference_equivalent_diameter, 2.0, 5.0)
+                np.clip(0.75 * reference_equivalent_diameter, 6.0, 22.0)
             )
         else:
             directional_maximum_width_px = float(
@@ -1630,11 +1630,15 @@ class MultiInterfaceResearchTissuePlanner:
                         "organic_rounded_cord"
                         if directional_projection
                         and case.annotation_profile_id == "panda-gleason-v1"
+                        else "rounded_linear_cord"
+                        if directional_projection
+                        and case.annotation_profile_id == "ignite-semantic-v1"
                         else "linear_taper"
                     ),
                     "directional_centerline_first": bool(
                         directional_projection
-                        and case.annotation_profile_id == "ignite-semantic-v1"
+                        and case.annotation_profile_id
+                        in {"ignite-semantic-v1", "orca-semantic-v1"}
                         and case.primitive_id
                         == "infiltrative-nest-cord-extension-v1"
                     ),

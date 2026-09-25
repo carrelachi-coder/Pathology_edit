@@ -850,6 +850,11 @@ def _annotation_anchored_extension_geometry(c):
             if c.case.annotation_profile_id == "panda-gleason-v1"
             else 1.5
         ),
+        minimum_tip_to_neck_width_ratio=(
+            0.45
+            if c.case.annotation_profile_id == "ignite-semantic-v1"
+            else 0.0
+        ),
     )
     passed = bool(audit["passed"])
     return _result(
@@ -876,6 +881,7 @@ def audit_directional_extension_raster(
     nominal_nucleus_diameter_px,
     minimum_directionality_ratio=1.35,
     minimum_skeleton_length_width_ratio=1.5,
+    minimum_tip_to_neck_width_ratio=0.0,
 ):
     """Reconstruct a cord-extension certificate from raster authority only."""
 
@@ -929,6 +935,7 @@ def audit_directional_extension_raster(
         and 0 < maximum_width <= maximum_allowed_width
         and length_width_ratio >= float(minimum_skeleton_length_width_ratio)
         and taper_ratio <= 0.90
+        and taper_ratio >= float(minimum_tip_to_neck_width_ratio)
         and directionality >= float(minimum_directionality_ratio)
     )
     return {
@@ -945,6 +952,9 @@ def audit_directional_extension_raster(
         "neck_width_px": neck,
         "tip_width_px": tip,
         "tip_to_neck_width_ratio": taper_ratio,
+        "minimum_tip_to_neck_width_ratio": float(
+            minimum_tip_to_neck_width_ratio
+        ),
         "longitudinal_span_px": longitudinal_span,
         "directionality_ratio": directionality,
     }
@@ -2868,7 +2878,31 @@ def _cell_quota(c):
         and resolved == batch_max
         and resolved == capacity_max
     )
-    passed = exact and (resolved == desired or maximum_safe_fallback)
+    # Profile-derived display counts are not user-specified quotas. A ranked
+    # executor can realize fewer complete, legal footprints than the packing
+    # witness, while still producing the maximum of its audited batch. Keep
+    # explicit case budgets exact and require the skill's minimum effect.
+    policies = getattr(getattr(c, "case", None), "semantic_intent", {})
+    policies = policies.get("derived_budget_policies", {}) if isinstance(policies, dict) else {}
+    primitive_id = getattr(getattr(c, "case", None), "primitive_id", None)
+    system_budget = isinstance(policies, dict) and isinstance(
+        policies.get(primitive_id), dict
+    )
+    primitive = getattr(getattr(c, "bundle", None), "primitive", None)
+    domain_id = getattr(getattr(c, "case", None), "pathology_domain_id", None)
+    skill_minimum = (
+        int(primitive.minimum_effect_delta_count_for(domain_id))
+        if primitive is not None and domain_id is not None
+        else 0
+    )
+    system_capacity_fallback = bool(
+        system_budget
+        and certified
+        and fallback
+        and requested == resolved == placed == batch_max == capacity_max
+        and skill_minimum <= placed < desired
+    )
+    passed = (exact and (resolved == desired or maximum_safe_fallback)) or system_capacity_fallback
     return _result(
         "cell_quota",
         passed,
@@ -2876,7 +2910,7 @@ def _cell_quota(c):
             "cell placement completed the desired quota"
             if passed and resolved == desired
             else (
-                "cell placement completed the deterministically proven maximum reachable quota"
+                "cell placement completed the audited reachable count; the system target was capacity-limited"
                 if passed
                 else "cell layout did not bind its desired, resolved and placed quotas"
             )
@@ -2893,7 +2927,9 @@ def _cell_quota(c):
             "batch_max_attainable_count": batch_max,
             "capacity_max_count": capacity_max,
             "completion": completion,
-            "used_capacity_fallback": maximum_safe_fallback,
+            "used_capacity_fallback": maximum_safe_fallback or system_capacity_fallback,
+            "system_budget_capacity_limited": system_capacity_fallback,
+            "skill_minimum_effect_count": skill_minimum,
             "capacity_certified": certified,
             "packing_certificate_minimum_safe_count": certificate_minimum,
             "packing_certificate_minimum_satisfied": (
@@ -3250,6 +3286,21 @@ def _local_population_density(c):
             else 0
         )
         effective_min = budget.min_delta_count if budget else 0
+        policies = c.case.semantic_intent.get("derived_budget_policies", {})
+        system_budget = isinstance(policies, dict) and isinstance(
+            policies.get(c.case.primitive_id), dict
+        )
+        trace = c.candidate.tool_trace
+        if (
+            system_budget
+            and trace.get("cell_capacity_certified") is True
+            and trace.get("cell_capacity_fallback_used") is True
+            and delta == int(trace.get("capacity_max_count", -1))
+        ):
+            effect_floor = c.bundle.primitive.minimum_effect_delta_count_for(
+                c.case.pathology_domain_id
+            )
+            effective_min = max(effect_floor, min(effective_min, delta))
         if (
             c.plan.cell_plan.mechanism_quota_role == "explicit_increment"
             and certified_min > 0
@@ -3374,6 +3425,10 @@ def _local_population_density(c):
             "quota_role": c.plan.cell_plan.mechanism_quota_role,
             "allowed_delta": (
                 [budget.min_delta_count, budget.max_delta_count] if budget else None
+            ),
+            "effective_min_delta": effective_min,
+            "system_budget_capacity_limited": bool(
+                system_budget and effective_min < (budget.min_delta_count if budget else 0)
             ),
             "class_composition": composition,
         }

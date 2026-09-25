@@ -869,7 +869,7 @@ def compile_directional_tapered_projection_field(
     signed_lateral = delta_row * tangent[0] + delta_col * tangent[1]
     depth = max(2.0, float(maximum_depth_px))
     neck_width = max(4.0, float(maximum_width_px))
-    tip_width = float(np.clip(tip_width_px, 1.0, neck_width * 0.45))
+    tip_width = float(np.clip(tip_width_px, 1.0, neck_width * (0.65 if shape_mode == "rounded_linear_cord" else 0.45)))
     progress = np.clip(longitudinal / depth, 0.0, 1.0)
     if shape_mode == "organic_rounded_cord":
         phase = 0.17 * float(pivot[0]) + 0.11 * float(pivot[1])
@@ -920,10 +920,24 @@ def compile_directional_tapered_projection_field(
             & (longitudinal <= depth)
             & (lateral <= 0.5 * local_width)
         )
+        if shape_mode == "rounded_linear_cord":
+            # Keep the source-calibrated cord wide enough for complete cells,
+            # while ending it in a rounded cap rather than a needle tip.
+            cap_radius = max(2.0, 0.5 * tip_width)
+            cap_start = depth - cap_radius
+            projection &= longitudinal <= cap_start
+            projection |= legal & (longitudinal >= cap_start) & (
+                ((longitudinal - cap_start) / cap_radius) ** 2
+                + (signed_lateral / cap_radius) ** 2 <= 1.0
+            )
         if centerline_first:
             # Establish longitudinal extent and two source-scaled seam pockets
             # before widening the remainder of the IGNITE cord envelope.
-            core_half_width = max(2.0, 0.08 * neck_width)
+            core_half_width = max(
+                2.0,
+                (0.20 if shape_mode == "rounded_linear_cord" else 0.08)
+                * neck_width,
+            )
             core_priority = np.where(
                 lateral <= np.minimum(core_half_width, 0.5 * local_width),
                 0.10 * lateral + 0.01 * np.maximum(longitudinal, 0.0),

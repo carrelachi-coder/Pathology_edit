@@ -4844,11 +4844,29 @@ def _apply_glas_visible_cell_budget(
     else:
         return budget, metadata
 
+    # Visibility is an advisory target for a request without a stated count.
+    # The source-qualified zone may support fewer complete nuclei than this
+    # profile-wide display target; retain the local effect instead of turning
+    # an achievable edit into a preflight rejection.
+    nominal_visible_target = visible.target_delta_count
+    capacity = metadata.get("selected_zone_executable_capacity")
+    if isinstance(capacity, int) and 0 < capacity < visible.target_delta_count:
+        visible = replace(
+            visible,
+            target_delta_count=capacity,
+            min_delta_count=min(visible.min_delta_count, capacity),
+            max_delta_count=max(capacity, min(visible.max_delta_count, capacity)),
+        )
     return visible, {
         **metadata,
         "pre_scale_budget": budget.__dict__,
         "policy_id": "glas-visible-cell-effect-budget-v4-amplitude",
         "authority": "system_owned_profile_specific_budget",
+        "capacity_limited_visible_target": (
+            capacity
+            if isinstance(capacity, int) and capacity < nominal_visible_target
+            else None
+        ),
         "budget": visible.__dict__,
     }
 
@@ -4916,11 +4934,25 @@ def _apply_profile_visible_cell_budget(
     else:
         return budget, metadata
 
+    nominal_visible_target = visible.target_delta_count
+    capacity = metadata.get("selected_zone_executable_capacity")
+    if isinstance(capacity, int) and 0 < capacity < visible.target_delta_count:
+        visible = replace(
+            visible,
+            target_delta_count=capacity,
+            min_delta_count=min(visible.min_delta_count, capacity),
+            max_delta_count=max(capacity, min(visible.max_delta_count, capacity)),
+        )
     return visible, {
         **metadata,
         "pre_scale_budget": budget.__dict__,
         "policy_id": "mask-review-visible-cell-effect-budget-v4",
         "authority": "system_owned_profile_specific_budget",
+        "capacity_limited_visible_target": (
+            capacity
+            if isinstance(capacity, int) and capacity < nominal_visible_target
+            else None
+        ),
         "budget": visible.__dict__,
     }
 

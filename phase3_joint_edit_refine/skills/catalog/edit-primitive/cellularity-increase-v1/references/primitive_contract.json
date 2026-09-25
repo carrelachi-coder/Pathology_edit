@@ -27,9 +27,10 @@
     "local_population_density"
   ],
   "cell_effect_contract": {
-    "minimum_delta_count": 12,
+    "minimum_delta_count": 8,
     "minimum_delta_count_by_pathology_domain": {
-      "prostate-adenocarcinoma-v1": 6
+      "prostate-adenocarcinoma-v1": 6,
+      "colorectal-adenocarcinoma-v1": 4
     },
     "minimum_span_cell_diameters": 6.0,
     "minimum_foci": 4

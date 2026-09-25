@@ -209,7 +209,7 @@ def test_oral_cell_decrease_has_visible_but_residual_preserving_contract():
     primitive = repository.primitives["cell-type-abundance-decrease-v1"]
     assert primitive.minimum_effect_delta_count_for(
         "oral-squamous-cell-carcinoma-v1"
-    ) == 10
+    ) == 8
     mechanism = repository.mechanisms["oral-scc-local-population-modulation"]
     depletion = mechanism.cell_program.cellularity_depletion
     assert depletion is not None

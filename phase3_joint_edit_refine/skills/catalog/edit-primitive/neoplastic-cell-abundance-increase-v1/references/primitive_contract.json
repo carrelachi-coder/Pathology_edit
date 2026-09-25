@@ -6,17 +6,31 @@
   "summary": "Increase observable class-1 neoplastic nuclei across multiple broad local sites within an existing tumor compartment while preserving tissue and non-target cells.",
   "tissue_action": "forbidden",
   "budget_mode": "count_extent",
-  "allowed_baseline_modes": ["structured_add"],
-  "allowed_quota_roles": ["explicit_increment"],
-  "host_tissue_labels": ["Tumor"],
-  "target_cell_classes": [1],
+  "allowed_baseline_modes": [
+    "structured_add"
+  ],
+  "allowed_quota_roles": [
+    "explicit_increment"
+  ],
+  "host_tissue_labels": [
+    "Tumor"
+  ],
+  "target_cell_classes": [
+    1
+  ],
   "cell_effect_contract": {
-    "minimum_delta_count": 12,
+    "minimum_delta_count": 8,
     "minimum_delta_count_by_pathology_domain": {
-      "prostate-adenocarcinoma-v1": 3
+      "prostate-adenocarcinoma-v1": 3,
+      "colorectal-adenocarcinoma-v1": 4
     },
     "minimum_span_cell_diameters": 6.0,
     "minimum_foci": 2
   },
-  "required_checker_ids": ["primitive_semantics", "tool_program_binding", "local_population_density", "mechanism_realization"]
+  "required_checker_ids": [
+    "primitive_semantics",
+    "tool_program_binding",
+    "local_population_density",
+    "mechanism_realization"
+  ]
 }

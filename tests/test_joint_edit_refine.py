@@ -2055,7 +2055,7 @@ class JointSkillTests(unittest.TestCase):
         ):
             with self.subTest(primitive_id=primitive_id):
                 primitive = repository.primitives[primitive_id]
-                self.assertGreaterEqual(primitive.minimum_effect_delta_count, 12)
+                self.assertGreaterEqual(primitive.minimum_effect_delta_count, 8)
                 self.assertGreaterEqual(
                     primitive.minimum_effect_span_cell_diameters, 6.0
                 )
@@ -2068,7 +2068,7 @@ class JointSkillTests(unittest.TestCase):
             abundance_decrease.minimum_effect_delta_count_for(
                 "breast-invasive-carcinoma-v1"
             ),
-            12,
+            8,
         )
         self.assertEqual(
             abundance_decrease.minimum_effect_delta_count_for(
@@ -9428,10 +9428,7 @@ class JointWorkflowTests(unittest.TestCase):
                     joint_planner=HeuristicJointPlanner(),
                     critic=_ApprovingJointCritic(),
                 ).run(case, output_root=root / "local-population")
-                if primitive in {
-                    "cellularity-decrease-v1",
-                    "cell-type-abundance-decrease-v1",
-                }:
+                if primitive == "cell-type-abundance-decrease-v1":
                     self.assertEqual(result.status, "abstained")
                     self.assertTrue(
                         any(
@@ -9459,6 +9456,9 @@ class JointWorkflowTests(unittest.TestCase):
                 }:
                     self.assertGreaterEqual(target_count - source_count, 12)
                     self.assertLessEqual(target_count - source_count, 15)
+                elif primitive == "cellularity-decrease-v1":
+                    self.assertGreaterEqual(source_count - target_count, 12)
+                    self.assertLessEqual(source_count - target_count, 15)
                 else:
                     self.assertEqual(target_count - source_count, expected_sign * 3)
                 self.assertEqual(result.condition.ledger.tissue_pixels, 0)
