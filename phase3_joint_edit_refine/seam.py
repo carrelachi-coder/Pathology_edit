@@ -67,6 +67,28 @@ class ContinuityCenterQuota:
     outer_density: float
 
 
+# A ratio estimated from fewer than nine reference centers has >33% Poisson
+# relative standard error even before segmentation uncertainty.  Such a
+# reference cannot support a hard *upper* density rejection.  The lower bound
+# (including a required new target cell) and geometric coverage remain hard.
+MIN_REFERENCE_CENTERS_FOR_SEAM_DENSITY_UPPER_BOUND = 9
+
+
+def continuity_density_passes(
+    quota: ContinuityCenterQuota, inner_count: int
+) -> tuple[bool, bool]:
+    """Return (passes, upper_bound_applied) for a finite seam count."""
+
+    upper_bound_applied = (
+        quota.maximum_count is not None
+        and quota.outer_count >= MIN_REFERENCE_CENTERS_FOR_SEAM_DENSITY_UPPER_BOUND
+    )
+    passed = inner_count >= quota.minimum_count and (
+        not upper_bound_applied or inner_count <= quota.maximum_count
+    )
+    return passed, upper_bound_applied
+
+
 def compile_executable_continuity_count(
     quota: ContinuityCenterQuota,
     *,

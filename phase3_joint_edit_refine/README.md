@@ -70,6 +70,14 @@ are replanned, not left for post-sampling rejection. A preferred seam count
 that exact footprints cannot pack may fall back only to the achieved count
 when that count remains above the independently compiled density and geometric
 minimums; the nominal target, hard minimum and fallback are all recorded.
+The upper density ratio is a hard gate only when the unchanged reference band
+contains at least nine target-class nuclei (Poisson relative counting error
+at most one third). Sparse references still require a new target cell and
+anchor coverage, but cannot justify a hard upper-density rejection. The exact
+packing witness is checked against the same effective density rule before
+sampling; the gate records both the raw and effective count intervals. This
+policy was introduced after the frozen v4 evaluation and does not revise its
+reported outcomes.
 Protected nuclei remain pixel-immutable but may serve as read-only shape
 references when they are complete and non-border.
 

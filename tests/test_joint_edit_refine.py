@@ -142,9 +142,11 @@ from phase3_joint_edit_refine.reference_shapes import (
 )
 from phase3_joint_edit_refine.scene import build_joint_scene_analysis
 from phase3_joint_edit_refine.seam import (
+    ContinuityCenterQuota,
     anchor_coverage_fraction,
     compile_continuity_center_quota,
     compile_executable_continuity_count,
+    continuity_density_passes,
 )
 from phase3_joint_edit_refine.semantic_parser import (
     RuleBasedSemanticParser,
@@ -5433,6 +5435,24 @@ class JointSkillTests(unittest.TestCase):
         )
         self.assertGreaterEqual(executable_count, quota.minimum_count)
         self.assertLessEqual(executable_count, quota.maximum_count)
+
+    def test_sparse_seam_reference_cannot_impose_hard_density_upper_bound(self):
+        sparse = ContinuityCenterQuota(
+            minimum_count=1,
+            maximum_count=3,
+            target_count=1,
+            expected_count=1.35,
+            outer_count=3,
+            outer_pixels=19546,
+            inner_pixels=8825,
+            outer_density=3 / 19546,
+        )
+        self.assertEqual(continuity_density_passes(sparse, 5), (True, False))
+        self.assertEqual(continuity_density_passes(sparse, 0), (False, False))
+
+        supported = replace(sparse, outer_count=9)
+        self.assertEqual(continuity_density_passes(supported, 5), (False, True))
+        self.assertEqual(continuity_density_passes(supported, 3), (True, True))
 
     def test_continuity_quota_can_use_executor_center_ledger(self):
         nuclei = np.zeros((24, 24), dtype=np.uint8)

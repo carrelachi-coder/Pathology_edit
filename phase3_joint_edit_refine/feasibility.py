@@ -39,11 +39,12 @@ from .seam import (
     compile_continuity_center_quota,
     compile_executable_continuity_count,
     compile_minimum_continuity_count,
+    continuity_density_passes,
     target_cell_class_for_tissue,
 )
 from .skills.repository import JointSkillBundle
 
-PREFLIGHT_VERSION = "joint-nuclei-preflight-v16"
+PREFLIGHT_VERSION = "joint-nuclei-preflight-v17"
 SHAPE_CAPACITY_CLEARANCE_FACTOR = 1.25
 
 
@@ -1665,6 +1666,22 @@ def certify_compiled_cell_program_feasibility(
     for placement in certificate.placements:
         if placement.class_id == target_class:
             witness_centers[placement.row, placement.col] = True
+    witness_inner_count = None
+    density_upper_bound_applied = None
+    if (
+        program.continuity_requires_new_target_cells
+        and np.any(program.continuity_region)
+    ):
+        witness_inner_count = int(
+            np.count_nonzero(
+                witness_centers & np.asarray(program.continuity_region, dtype=bool)
+            )
+        )
+        density_passed, density_upper_bound_applied = continuity_density_passes(
+            quota, witness_inner_count
+        )
+        if not density_passed:
+            reasons.append("exact_packing_witness_violates_seam_density")
     exact_coverage = anchor_coverage_fraction(
         program.continuity_anchor_mask,
         witness_centers,
@@ -1690,6 +1707,8 @@ def certify_compiled_cell_program_feasibility(
             **certificate.to_metadata(),
             "assessment_stage": "compiled_E_P_V_C_pre_probnet",
             "exact_anchor_coverage_fraction": float(exact_coverage),
+            "exact_witness_inner_center_count": witness_inner_count,
+            "density_upper_bound_applied": density_upper_bound_applied,
             "minimum_anchor_coverage_fraction": float(
                 program.continuity_minimum_anchor_coverage_fraction
             ),

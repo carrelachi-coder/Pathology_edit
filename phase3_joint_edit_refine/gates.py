@@ -37,6 +37,8 @@ from .seam import (
     anchor_coverage_fraction,
     class_center_mask,
     compile_continuity_center_quota,
+    continuity_density_passes,
+    MIN_REFERENCE_CENTERS_FOR_SEAM_DENSITY_UPPER_BOUND,
     target_cell_class_for_tissue,
 )
 from .skills.repository import JointSkillBundle
@@ -3780,14 +3782,11 @@ def _interface_seam_continuity(c):
     # fewer than one nucleus in the finite seam raster: for example, an
     # expected count of 0.18 has no integer realization inside [0.04, 0.72].
     # Compile the same ratio envelope into an integer count interval and keep
-    # the required-new-cell lower bound explicit. This accepts exactly one
-    # well-contained seam nucleus in a sparse field, but still rejects zero or
-    # an implausible cluster; it is a resolution correction, not a relaxed
-    # pathology threshold.
-    density_ok = (
-        inner_count >= quota.minimum_count
-        if quota.maximum_count is None
-        else quota.minimum_count <= inner_count <= quota.maximum_count
+    # the required-new-cell lower bound explicit. A hard upper bound needs a
+    # sufficiently populated unchanged reference; otherwise a few nuclei
+    # would make ordinary count quantization look like a pathological seam.
+    density_ok, upper_bound_applied = continuity_density_passes(
+        quota, inner_count
     )
     geometry_exists = bool(np.any(anchor) and np.any(inner))
     coverage_ok = (
@@ -3817,6 +3816,14 @@ def _interface_seam_continuity(c):
                 quota.minimum_count,
                 quota.maximum_count,
             ],
+            "effective_allowed_inner_center_count_interval": [
+                quota.minimum_count,
+                quota.maximum_count if upper_bound_applied else None,
+            ],
+            "density_upper_bound_applied": upper_bound_applied,
+            "minimum_reference_centers_for_density_upper_bound": (
+                MIN_REFERENCE_CENTERS_FOR_SEAM_DENSITY_UPPER_BOUND
+            ),
             "density_discretization_policy": (
                 "ratio_envelope_compiled_to_integer_center_interval_v1"
             ),
