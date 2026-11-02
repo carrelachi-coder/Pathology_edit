@@ -252,10 +252,10 @@
   "technical_harness": {
     "asset_freezer": "scripts/freeze_manuscript_joint_technical.py",
     "measurement_entry": "scripts/measure_manuscript_joint_technical.py",
-    "status": "implemented; four actual reviewed targets required before writing frozen technical protocol",
+    "status": "real five-state generation and six-image measurement completed",
     "cpu_tests": 75,
     "log": "technical_readout_harness_pytest.txt",
-    "gpu_generation_and_measurement_executed": false,
+    "gpu_generation_and_measurement_executed": true,
     "measurement_policy": "fixed source denominators; type-2 cell density at explicit nominal scale; terminal uncertainty stays null; no order/effect gate",
     "version_alignment": "CellViT rasterizer is loaded by exact path from the executing snapshot; current old/live source hash comparison matched 6c210d1b53206ae8108df097beebc0894a9177c1472b0cb70c0a070e035a6fd4"
   },
@@ -329,7 +329,7 @@
       }
     ],
     "all_four_promoted": true,
-    "real_generation_status": "five-state controller launched; pending complete generation and measurements"
+    "real_generation_status": "complete: 5 real generated states; 6 verified image measurements"
   },
   "supplemental_census_v2": {
     "candidate_count": 1918,
@@ -399,5 +399,14 @@
       "scale_basis": "frozen nominal patch scale; no recovered full-slide physical calibration"
     },
     "acceptance_status": "pending_real_generation_and_measurements"
+  },
+  "technical_v5_gpu_validation": {
+    "report": "final_joint_gpu_validation_report.json",
+    "report_sha256": "2ac50e5feb1756ef33f27a18675de1a8719192dca33f4f2f8a1cde0a17f100b8",
+    "chain_integrity_accepted": true,
+    "formal_launch_permitted": false,
+    "generated": 5,
+    "measured": 6,
+    "u2_primary_tissue_tie_retained": true
   }
 }

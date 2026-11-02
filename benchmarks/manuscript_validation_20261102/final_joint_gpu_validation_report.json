@@ -1,0 +1,595 @@
+{
+  "scope": "joint_gpu_technical_acceptance",
+  "status": "complete",
+  "chain_integrity_accepted": true,
+  "formal_launch_permitted": false,
+  "technical_source_count": 1,
+  "technical_patients_excluded_from_formal": 5,
+  "generation_code_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+  "measurement_code_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+  "mask_compile_code_commit": "18258d49",
+  "independent_review_promotion_code_commit": "3d7088ae",
+  "evidence_sha256": {
+    "full_private_measurement_report": "3ab23a8706a35c552ff64323817bbbb4b82c45dab39cdf4fc5c562484b65683e",
+    "frozen_technical_protocol": "7c778f0d8fcd08afd46ca6a05641c7725371d6a4be5ed5632bcbc198f82b964e",
+    "generation_summary": "e4724a7dd243da538025b59a04d83c46f8940522fd6c3dd8063fc8c7081118e9",
+    "generation_manifest": "39050f988325e94c2fbcc94da8ba8e53119eafd7889c9681abad3c83e49a438b",
+    "roi_validation": "2b70c3adce19c103e885729bc52cf491794838f0022615661d5604a1454c33b9"
+  },
+  "generation": {
+    "status": "complete",
+    "backend": "cross-v1",
+    "shard_index": 0,
+    "num_shards": 1,
+    "requested_count": 5,
+    "completed_count": 5,
+    "failure_count": 0,
+    "created_at_utc": "2026-11-02T11:22:16.618926+00:00"
+  },
+  "measurement": {
+    "measured_images": 6,
+    "analysis_valid_images": 6,
+    "cell_status_counts": {
+      "valid_nonzero": 6
+    },
+    "tissue_status_counts": {
+      "u1": {
+        "valid_nonzero": 6
+      },
+      "u2": {
+        "valid_zero_with_completion": 6
+      }
+    },
+    "preservation_status_counts": {
+      "completed": 6
+    },
+    "physical_scale_basis": "frozen nominal patch scale; no recovered full-slide physical calibration",
+    "acceptance_policy": "completed inference and correctly recorded terminal statuses; evaluator uncertainty remains null and is excluded from valid analysis, not converted to zero or used to select a different case"
+  },
+  "sampling": {
+    "steps": 28,
+    "guidance": 3.5,
+    "conditioning_scale": 1.0,
+    "seed": 42,
+    "dtype": "bf16",
+    "prompt": "H&E stained breast cancer histopathology at 40x magnification",
+    "seed_policy": "paired states share seed; record effective parameters"
+  },
+  "model_sha256": {
+    "cross": "f3f5f448cb3752f72b12740bf368795aaf5bf833d3d5d63808ee3819e2d7ba61",
+    "pix2pix": "be5fe9376efdb5620a57481082f6d5738b6353796fb00fe6e58f6b212ba7c2ac",
+    "segmentator": "5165e0fb20aca68f64fb06403eff846173fba3a3373deeedb36b3feb81727b3f",
+    "cellvit": "356418f19d9d478f164c7a31f85274584fefaa02355815c09f52346c658c8ec4",
+    "base_model": "5e18b019ee9543edc1a5299c33a6161f214aac7c1ecdbf8c51e06e80570209b5"
+  },
+  "cellvit_implementation_sha256": "b2a9049c912b4882f9820aeb33f6d53ca9f07585cc6a750ec366bf52a2b9f8ba",
+  "evaluator_release_sha256": "2108613d2fe6ab8fda022246f643612f5e626dcb3d98c49baf1e44e32e521fb5",
+  "runtime": {
+    "gpu": "physical GPU 6 exposed as cuda:0",
+    "parent_python": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "segmentator_python": "/home/lyw/anaconda3/envs/pathology-segmentator-mmseg/bin/python",
+    "parent_package_count": 220,
+    "segmentator_package_count": 103,
+    "explicit_pix2pix_selector": "PATHOLOGY_PIX2PIX_CHECKPOINT matched the frozen packaged epoch26/step214895 asset"
+  },
+  "controllers": [
+    {
+      "stage": "original_tissue",
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 66.78296360559762
+    },
+    {
+      "stage": "sham_tissue",
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 23.20791339688003
+    },
+    {
+      "stage": "u1_moderate_tissue",
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 22.904623756185174
+    },
+    {
+      "stage": "u1_significant_tissue",
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 22.001612411811948
+    },
+    {
+      "stage": "u2_moderate_tissue",
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 21.95497279241681
+    },
+    {
+      "stage": "u2_significant_tissue",
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 21.702985594049096
+    },
+    {
+      "stage": "cellvit",
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 101.66117546334863
+    }
+  ],
+  "records": [
+    {
+      "state": "original",
+      "tissue_status": "completed",
+      "cell_status": "valid_nonzero",
+      "tissue": {
+        "u1": {
+          "status": "valid_nonzero",
+          "value": 0.53155517578125,
+          "count": 139344,
+          "denominator_pixels": 262144,
+          "target_value": 0.2628593444824219,
+          "signed_target_error": 0.2686958312988281,
+          "absolute_target_error": 0.2686958312988281
+        },
+        "u2": {
+          "status": "valid_zero_with_completion",
+          "value": 0.0,
+          "count": 0,
+          "denominator_pixels": 193237,
+          "target_value": 0.22394261968463597,
+          "signed_target_error": -0.22394261968463597,
+          "absolute_target_error": 0.22394261968463597
+        }
+      },
+      "inflammatory_density": {
+        "status": "valid_nonzero",
+        "value": 827.9987787018015,
+        "count": 10,
+        "resolved_in_roi_count": 10,
+        "type2_raw_candidates": 12,
+        "unlocalizable_type2": 0,
+        "outside_frame_type2": 0,
+        "total_detected_cells": 137,
+        "denominator_pixels": 193237,
+        "area_mm2_at_nominal_mpp": 0.0120773125,
+        "nominal_mpp": 0.25,
+        "point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame"
+      },
+      "preservation": {
+        "status": "completed",
+        "denominator_pixels": 112643,
+        "coarse_agreement_vs_original_prediction": 1.0,
+        "rgb_mean_absolute_drift_over_255": 0.0
+      },
+      "artifact_sha256": {
+        "image": "0b435cf088875ddcc24fcbd9b3daf8a1ee963afad1bef2867ac835d9f2e53ecc",
+        "tissue_mask": "76005e71d487c51cd2fc8c2bf7924c53abe962673164a441dd2698dc242f113d",
+        "cell_json": "729e6a42565430ad500933175f24cfd0879cac73018807085fcfda2ede5838d7"
+      }
+    },
+    {
+      "state": "sham",
+      "tissue_status": "completed",
+      "cell_status": "valid_nonzero",
+      "tissue": {
+        "u1": {
+          "status": "valid_nonzero",
+          "value": 0.5326728820800781,
+          "count": 139637,
+          "denominator_pixels": 262144,
+          "target_value": 0.2628593444824219,
+          "signed_target_error": 0.26981353759765625,
+          "absolute_target_error": 0.26981353759765625
+        },
+        "u2": {
+          "status": "valid_zero_with_completion",
+          "value": 0.0,
+          "count": 0,
+          "denominator_pixels": 193237,
+          "target_value": 0.22394261968463597,
+          "signed_target_error": -0.22394261968463597,
+          "absolute_target_error": 0.22394261968463597
+        }
+      },
+      "inflammatory_density": {
+        "status": "valid_nonzero",
+        "value": 827.9987787018015,
+        "count": 10,
+        "resolved_in_roi_count": 10,
+        "type2_raw_candidates": 11,
+        "unlocalizable_type2": 0,
+        "outside_frame_type2": 0,
+        "total_detected_cells": 137,
+        "denominator_pixels": 193237,
+        "area_mm2_at_nominal_mpp": 0.0120773125,
+        "nominal_mpp": 0.25,
+        "point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame"
+      },
+      "preservation": {
+        "status": "completed",
+        "denominator_pixels": 112643,
+        "coarse_agreement_vs_original_prediction": 0.9333380680557158,
+        "rgb_mean_absolute_drift_over_255": 0.04294973436524751
+      },
+      "artifact_sha256": {
+        "image": "94ff6b8522150c12a367d1222edcc22e18b231ee72b391a2ef206bfe45e52ede",
+        "tissue_mask": "2cda91d538013867e0ea6b89a10475c619a18e3b78c403bcb5a9d0873501fbde",
+        "cell_json": "13d2cde46e00f3b0496095cfa885ea32d6fd043ad01225d47c1cc838e2afb457"
+      },
+      "postprocess": {
+        "policy": "cross_rgb_od_near_white_v2",
+        "enabled": true,
+        "applied": false,
+        "configuration": {
+          "policy": "cross_rgb_od_near_white_v2",
+          "minimum_luma": 0.9,
+          "minimum_rgb_channel": 0.86,
+          "maximum_chroma": 0.1,
+          "maximum_otsu_od": 0.12,
+          "nuclei_exclusion_radius_at_512": 5,
+          "closing_iterations_at_512": 4,
+          "opening_iterations_at_512": 2,
+          "minimum_component_area_at_512": 500,
+          "erosion_iterations_at_512": 2,
+          "feather_sigma_at_512": 4.0
+        },
+        "eligibility_region_sha256": "f317dd9d6ba01c465d82e4c4d55d01d270dda69db4a01a64c587a5593ac6084d",
+        "applied_mask_sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+        "target_nuclei_exclusion_sha256": "944b5ee29305ac6ac254e55b962e0bdef2015dbb2268a05f707ffbf556a955c8",
+        "alpha_nonzero_pixels": 0,
+        "alpha_file_sha256": "ef2a4c8949cdab1ef24e678bdb88cc276b1fd75e62066e47011c2ce53996efe6"
+      }
+    },
+    {
+      "state": "u1_moderate",
+      "tissue_status": "completed",
+      "cell_status": "valid_nonzero",
+      "tissue": {
+        "u1": {
+          "status": "valid_nonzero",
+          "value": 0.6031455993652344,
+          "count": 158111,
+          "denominator_pixels": 262144,
+          "target_value": 0.402862548828125,
+          "signed_target_error": 0.20028305053710938,
+          "absolute_target_error": 0.20028305053710938
+        },
+        "u2": {
+          "status": "valid_zero_with_completion",
+          "value": 0.0,
+          "count": 0,
+          "denominator_pixels": 193237,
+          "target_value": 0.22394261968463597,
+          "signed_target_error": -0.22394261968463597,
+          "absolute_target_error": 0.22394261968463597
+        }
+      },
+      "inflammatory_density": {
+        "status": "valid_nonzero",
+        "value": 662.3990229614411,
+        "count": 8,
+        "resolved_in_roi_count": 8,
+        "type2_raw_candidates": 9,
+        "unlocalizable_type2": 0,
+        "outside_frame_type2": 0,
+        "total_detected_cells": 148,
+        "denominator_pixels": 193237,
+        "area_mm2_at_nominal_mpp": 0.0120773125,
+        "nominal_mpp": 0.25,
+        "point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame"
+      },
+      "preservation": {
+        "status": "completed",
+        "denominator_pixels": 112643,
+        "coarse_agreement_vs_original_prediction": 0.9060749447369122,
+        "rgb_mean_absolute_drift_over_255": 0.04514402288588408
+      },
+      "artifact_sha256": {
+        "image": "16c7bfa5460cb337acfdf322ebb2c0bae0b7cdedaa3424a67ba88985b52049f7",
+        "tissue_mask": "504f3ee6d9266b8437807951206f40cff8bf3ebf3629c9bfc67f0d1cd469f628",
+        "cell_json": "42342c58a66ddabaf6e2ab0677ee7fc266efa9177efdfb63d5f83de4b224a96e"
+      },
+      "postprocess": {
+        "policy": "cross_rgb_od_near_white_v2",
+        "enabled": true,
+        "applied": false,
+        "configuration": {
+          "policy": "cross_rgb_od_near_white_v2",
+          "minimum_luma": 0.9,
+          "minimum_rgb_channel": 0.86,
+          "maximum_chroma": 0.1,
+          "maximum_otsu_od": 0.12,
+          "nuclei_exclusion_radius_at_512": 5,
+          "closing_iterations_at_512": 4,
+          "opening_iterations_at_512": 2,
+          "minimum_component_area_at_512": 500,
+          "erosion_iterations_at_512": 2,
+          "feather_sigma_at_512": 4.0
+        },
+        "eligibility_region_sha256": "f317dd9d6ba01c465d82e4c4d55d01d270dda69db4a01a64c587a5593ac6084d",
+        "applied_mask_sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+        "target_nuclei_exclusion_sha256": "11ebbb273395a517d2ef6699ab5918c8bb7a7200777f7bfc0a3cd8202d3b68ab",
+        "alpha_nonzero_pixels": 0,
+        "alpha_file_sha256": "ef2a4c8949cdab1ef24e678bdb88cc276b1fd75e62066e47011c2ce53996efe6"
+      }
+    },
+    {
+      "state": "u1_significant",
+      "tissue_status": "completed",
+      "cell_status": "valid_nonzero",
+      "tissue": {
+        "u1": {
+          "status": "valid_nonzero",
+          "value": 0.6870193481445312,
+          "count": 180098,
+          "denominator_pixels": 262144,
+          "target_value": 0.5328598022460938,
+          "signed_target_error": 0.1541595458984375,
+          "absolute_target_error": 0.1541595458984375
+        },
+        "u2": {
+          "status": "valid_zero_with_completion",
+          "value": 0.0,
+          "count": 0,
+          "denominator_pixels": 193237,
+          "target_value": 0.22394261968463597,
+          "signed_target_error": -0.22394261968463597,
+          "absolute_target_error": 0.22394261968463597
+        }
+      },
+      "inflammatory_density": {
+        "status": "valid_nonzero",
+        "value": 662.3990229614411,
+        "count": 8,
+        "resolved_in_roi_count": 8,
+        "type2_raw_candidates": 9,
+        "unlocalizable_type2": 0,
+        "outside_frame_type2": 0,
+        "total_detected_cells": 166,
+        "denominator_pixels": 193237,
+        "area_mm2_at_nominal_mpp": 0.0120773125,
+        "nominal_mpp": 0.25,
+        "point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame"
+      },
+      "preservation": {
+        "status": "completed",
+        "denominator_pixels": 112643,
+        "coarse_agreement_vs_original_prediction": 0.8844402226503201,
+        "rgb_mean_absolute_drift_over_255": 0.05161722392202237
+      },
+      "artifact_sha256": {
+        "image": "d4892677e487e55f1cc6e342e70770775aa87698f96800d60639ea29727ad041",
+        "tissue_mask": "59fbad315a54ace904fb34cead87662c09ebe9550fc9fc1a6d5f0561d19666f4",
+        "cell_json": "5dfa7024cbebc8e00225a59d89a45f031ef053ad4207df0a9298228314c879e6"
+      },
+      "postprocess": {
+        "policy": "cross_rgb_od_near_white_v2",
+        "enabled": true,
+        "applied": false,
+        "configuration": {
+          "policy": "cross_rgb_od_near_white_v2",
+          "minimum_luma": 0.9,
+          "minimum_rgb_channel": 0.86,
+          "maximum_chroma": 0.1,
+          "maximum_otsu_od": 0.12,
+          "nuclei_exclusion_radius_at_512": 5,
+          "closing_iterations_at_512": 4,
+          "opening_iterations_at_512": 2,
+          "minimum_component_area_at_512": 500,
+          "erosion_iterations_at_512": 2,
+          "feather_sigma_at_512": 4.0
+        },
+        "eligibility_region_sha256": "f317dd9d6ba01c465d82e4c4d55d01d270dda69db4a01a64c587a5593ac6084d",
+        "applied_mask_sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+        "target_nuclei_exclusion_sha256": "03f62dc505a9ccdc8a80a25fb53a5b8209a7d37af9c8b83d0b44e99a5e0661e6",
+        "alpha_nonzero_pixels": 0,
+        "alpha_file_sha256": "ef2a4c8949cdab1ef24e678bdb88cc276b1fd75e62066e47011c2ce53996efe6"
+      }
+    },
+    {
+      "state": "u2_moderate",
+      "tissue_status": "completed",
+      "cell_status": "valid_nonzero",
+      "tissue": {
+        "u1": {
+          "status": "valid_nonzero",
+          "value": 0.5891075134277344,
+          "count": 154431,
+          "denominator_pixels": 262144,
+          "target_value": 0.2628593444824219,
+          "signed_target_error": 0.3262481689453125,
+          "absolute_target_error": 0.3262481689453125
+        },
+        "u2": {
+          "status": "valid_zero_with_completion",
+          "value": 0.0,
+          "count": 0,
+          "denominator_pixels": 193237,
+          "target_value": 0.4519579583620114,
+          "signed_target_error": -0.4519579583620114,
+          "absolute_target_error": 0.4519579583620114
+        }
+      },
+      "inflammatory_density": {
+        "status": "valid_nonzero",
+        "value": 3477.594870547566,
+        "count": 42,
+        "resolved_in_roi_count": 42,
+        "type2_raw_candidates": 43,
+        "unlocalizable_type2": 0,
+        "outside_frame_type2": 0,
+        "total_detected_cells": 170,
+        "denominator_pixels": 193237,
+        "area_mm2_at_nominal_mpp": 0.0120773125,
+        "nominal_mpp": 0.25,
+        "point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame"
+      },
+      "preservation": {
+        "status": "completed",
+        "denominator_pixels": 112643,
+        "coarse_agreement_vs_original_prediction": 0.8986088793799881,
+        "rgb_mean_absolute_drift_over_255": 0.04657678701390981
+      },
+      "artifact_sha256": {
+        "image": "54aef9afedd870abb6d53332c9cc0eeb54baabe0be45df0b03bf0a0fd9ddf6ce",
+        "tissue_mask": "e7cdd90945d35f14418bf7051e6fc076131bc994761f16b131ad9f0bb7cb15b3",
+        "cell_json": "700b9a715e701893a2e3cd8408b0577be71e13c9d885c95eeb7d90998903806f"
+      },
+      "postprocess": {
+        "policy": "cross_rgb_od_near_white_v2",
+        "enabled": true,
+        "applied": false,
+        "configuration": {
+          "policy": "cross_rgb_od_near_white_v2",
+          "minimum_luma": 0.9,
+          "minimum_rgb_channel": 0.86,
+          "maximum_chroma": 0.1,
+          "maximum_otsu_od": 0.12,
+          "nuclei_exclusion_radius_at_512": 5,
+          "closing_iterations_at_512": 4,
+          "opening_iterations_at_512": 2,
+          "minimum_component_area_at_512": 500,
+          "erosion_iterations_at_512": 2,
+          "feather_sigma_at_512": 4.0
+        },
+        "eligibility_region_sha256": "f317dd9d6ba01c465d82e4c4d55d01d270dda69db4a01a64c587a5593ac6084d",
+        "applied_mask_sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+        "target_nuclei_exclusion_sha256": "5b547363b02fac9f55eb9a3285e8cbd1389586c376643b3590b3364f112411f1",
+        "alpha_nonzero_pixels": 0,
+        "alpha_file_sha256": "ef2a4c8949cdab1ef24e678bdb88cc276b1fd75e62066e47011c2ce53996efe6"
+      }
+    },
+    {
+      "state": "u2_significant",
+      "tissue_status": "completed",
+      "cell_status": "valid_nonzero",
+      "tissue": {
+        "u1": {
+          "status": "valid_nonzero",
+          "value": 0.6654739379882812,
+          "count": 174450,
+          "denominator_pixels": 262144,
+          "target_value": 0.2628593444824219,
+          "signed_target_error": 0.4026145935058594,
+          "absolute_target_error": 0.4026145935058594
+        },
+        "u2": {
+          "status": "valid_zero_with_completion",
+          "value": 0.0,
+          "count": 0,
+          "denominator_pixels": 193237,
+          "target_value": 0.5957295962988455,
+          "signed_target_error": -0.5957295962988455,
+          "absolute_target_error": 0.5957295962988455
+        }
+      },
+      "inflammatory_density": {
+        "status": "valid_nonzero",
+        "value": 3725.9945041581063,
+        "count": 45,
+        "resolved_in_roi_count": 45,
+        "type2_raw_candidates": 46,
+        "unlocalizable_type2": 0,
+        "outside_frame_type2": 0,
+        "total_detected_cells": 188,
+        "denominator_pixels": 193237,
+        "area_mm2_at_nominal_mpp": 0.0120773125,
+        "nominal_mpp": 0.25,
+        "point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame"
+      },
+      "preservation": {
+        "status": "completed",
+        "denominator_pixels": 112643,
+        "coarse_agreement_vs_original_prediction": 0.886375540424172,
+        "rgb_mean_absolute_drift_over_255": 0.05129510033404743
+      },
+      "artifact_sha256": {
+        "image": "24dbddc69b071c945a2454535879e924fda47d25eb705932340e1aecb4bb05d8",
+        "tissue_mask": "3b34a6d704d987914d737760199165bda92c63437d5963b98fb3d6c3a55085ac",
+        "cell_json": "e131bb38efa77154c8905882648fc310d316e8332aa9c4784ab0c8797f627627"
+      },
+      "postprocess": {
+        "policy": "cross_rgb_od_near_white_v2",
+        "enabled": true,
+        "applied": false,
+        "configuration": {
+          "policy": "cross_rgb_od_near_white_v2",
+          "minimum_luma": 0.9,
+          "minimum_rgb_channel": 0.86,
+          "maximum_chroma": 0.1,
+          "maximum_otsu_od": 0.12,
+          "nuclei_exclusion_radius_at_512": 5,
+          "closing_iterations_at_512": 4,
+          "opening_iterations_at_512": 2,
+          "minimum_component_area_at_512": 500,
+          "erosion_iterations_at_512": 2,
+          "feather_sigma_at_512": 4.0
+        },
+        "eligibility_region_sha256": "f317dd9d6ba01c465d82e4c4d55d01d270dda69db4a01a64c587a5593ac6084d",
+        "applied_mask_sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+        "target_nuclei_exclusion_sha256": "289ea0269b1c6f0851bca23a8a2f1097d51da621d522809c84abb728ec0398dd",
+        "alpha_nonzero_pixels": 0,
+        "alpha_file_sha256": "ef2a4c8949cdab1ef24e678bdb88cc276b1fd75e62066e47011c2ce53996efe6"
+      }
+    }
+  ],
+  "orders": [
+    {
+      "operation": "u1",
+      "counts_sham_moderate_significant": [
+        139637,
+        158111,
+        180098
+      ],
+      "strict_order": true,
+      "adjacent_tie": false,
+      "reversal": false,
+      "sham_minus_original": 0.001117706298828125
+    },
+    {
+      "operation": "u2",
+      "counts_sham_moderate_significant": [
+        0,
+        0,
+        0
+      ],
+      "strict_order": false,
+      "adjacent_tie": true,
+      "reversal": false,
+      "sham_minus_original": 0.0
+    },
+    {
+      "operation": "secondary_inflammatory_cell_density",
+      "counts_sham_moderate_significant": [
+        10,
+        42,
+        45
+      ],
+      "strict_order": true,
+      "adjacent_tie": false,
+      "reversal": false
+    }
+  ],
+  "retained_failed_generation_attempt": {
+    "completed_count": 0,
+    "failure_count": 5,
+    "controller_exit_code": 2,
+    "stage": "before model invocation",
+    "reason": "missing explicit PATHOLOGY_PIX2PIX_CHECKPOINT environment selector",
+    "retry_changes": [
+      "explicit selector for exact same frozen checkpoint",
+      "fresh output root"
+    ],
+    "target_sampling_or_checkpoint_changed": false
+  },
+  "interpretation_limits": [
+    "One excluded technical source; no formal 30-patient or clinical efficacy claim.",
+    "U2 primary coarse tissue readout was valid zero on all six images; sham/moderate/significant ties retained. Class 4 is Immune infiltrate in the fixed shared taxonomy; all six actual coarse masks contain no class-4 pixels.",
+    "Secondary type-2 ROI counts 10/42/45 do not replace the U2 primary tissue endpoint.",
+    "U1 original prediction differs from source annotation (0.53156 versus 0.26286); target errors are retained without source selection or recalibration.",
+    "All five low-stain alpha masks are zero; this validates actual configuration/region identity and no-op execution, not the efficacy of an activated protection blend.",
+    "Actual full-frame common eligibility is 262144 pixels; target nuclear exclusion masks differ by condition and are individually verified.",
+    "Density uses fixed nominal 0.25 um/px; full-slide physical calibration and full slide barcode remain unavailable.",
+    "Source/target semantics, training overlaps and evaluator coupling remain as documented; no clinical independence is asserted."
+  ]
+}
