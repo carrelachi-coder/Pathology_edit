@@ -12,7 +12,7 @@
   "generated_image_count": 150,
   "generation_manifest_sha256": null,
   "cohort_selection": {
-    "rule": "one source per verified patient; exclude technical pilot source; lexicographic source ID order before generation; require both operations and two approved target strengths",
+    "rule": "within the retained 300-source pool, source-mask qualification only; in lexicographic sample_id order retain first fully qualified source per verified patient; require both operations and two approved strengths; exclude every patient used in technical attempts; no selection by generated RGB or embedding",
     "organ": "BCSS breast; current canonical annotation-boundary and generic immune-compartment mechanisms",
     "source_manifest_sha256": "a7c9e1b6e46527034ee4461375718b37ef6974e62b56e937e3931d7b4d6d8486",
     "formal_source_list_frozen": false
@@ -134,8 +134,8 @@
     "estimand": "equal independent-unit mean; average sources within patient/WSI, then equal-weight units for effect, CI and test"
   },
   "blockers": [
-    "formal approved joint target manifest and protected ROI hashes not frozen; pilot uses historical targets only",
-    "generator and evaluator training-overlap audits for the chosen formal sources are pending; automatic readouts remain computational evidence",
+    "formal 30-patient source list, four approved joint targets per source and protected ROI hashes not frozen; initial 30 inputs are provisional, not a qualified cohort",
+    "training-manifest references and unresolved checkpoint patient lineage must accompany final sources; automatic readouts remain coupled computational evidence",
     "technical multi-stage chain passed; formal joint chain on the eventual frozen snapshot remains to be accepted",
     "final approved joint two-operation/two-strength chain has not been run on the eventual frozen formal snapshot"
   ],

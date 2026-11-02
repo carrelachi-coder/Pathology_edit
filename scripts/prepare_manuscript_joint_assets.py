@@ -47,8 +47,9 @@ def prepare(rows, output, formal_count=30):
         if len(selected)==formal_count+1: break
     if len(selected)<formal_count+1: raise ValueError(f'need {formal_count+1} eligible independent patients; found {len(selected)}')
     technical=selected[0]; formal=selected[1:]
-    rules={'scope':'source_and_mask_target_freeze_only','formal_generation_launched':False,
-        'selection':'lexicographic sample_id, first eligible independent patient for technical chain, next 30 unique patients for prospective formal source list; eligibility uses source masks only',
+    rules={'scope':'provisional_source_inputs_and_strength_rules; not an accepted formal cohort','formal_generation_launched':False,
+        'selection':'lexicographic sample_id, first source-mask-eligible patient for technical chain, next unique patients as provisional input candidates; capacity, topology, all four target gates and independent condition review remain required',
+        'formal_source_list_frozen':False,
         'strength_authorization':'user explicitly selected historical 19% / 32% whole-patch joint area budgets in this chat',
         'strengths':{'moderate':{'target_fraction':.19,'min_fraction':.14,'max_fraction':.24,'tissue_min_fraction':.14},
                      'significant':{'target_fraction':.32,'min_fraction':.27,'max_fraction':.37,'tissue_min_fraction':.27}},

@@ -13,6 +13,15 @@ from phase3_joint_edit_refine.scene import build_joint_scene_analysis
 from phase3_joint_edit_refine.g2_execution_qualification import (MaskSkillRepository,JointSkillRepository,JointFeasibilitySolver,_all_joint_checker_ids,build_joint_nuclei_preflight,tissue_tool_primitive_id,bind_active_bundle_to_case,validate_active_bundle_authority,GateRegistry)
 from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_joint_edit_refine.nuclei import load_nuclei_mask
+from phase3_mask_edit.benchmark.experiment_identity import asset_identity, sha256_file
+
+
+def verify_source_inputs(source):
+    """A census reference is not authority to read changed source bytes."""
+    for field in ('reference_image', 'reference_tissue_mask', 'reference_nuclei_mask'):
+        identity = source['inputs'][field]
+        if sha256_file(identity['path']) != identity['sha256']:
+            raise ValueError(f'frozen source content changed: {field}')
 
 
 def probe(raw, output, *, topology=False):
@@ -39,9 +48,17 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source-freeze',type=Path,required=True);parser.add_argument('--cases',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--limit',type=int,default=5);parser.add_argument('--start-index',type=int,default=0);parser.add_argument('--topology-witness',action='store_true')
     args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=False)
     freeze=json.loads(args.source_freeze.read_text());templates=json.loads(args.cases.read_text());records=[]
+    (args.output/'screen_identity.json').write_text(json.dumps({
+        'source_freeze':asset_identity(args.source_freeze),
+        'case_templates':asset_identity(args.cases),
+        'screen_script':asset_identity(__file__),
+        'scope':'source-mask qualification only; not approved targets or GPU acceptance',
+    },indent=2))
     sources=freeze.get('candidate_sources') or [freeze['technical_source'],*freeze['formal_sources']]
     for source in sources[args.start_index:args.start_index+args.limit]:
         record={'reference_id':source['reference_id'],'patient_id':source['patient_id'],'source_only':True,'target_mask_created':False,'checks':[]}
+        verify_source_inputs(source)
+        record['source_content_verified_against_census']=True
         for template in (templates[1],templates[3]):
             raw=json.loads(json.dumps(template));raw['case_id']=source['reference_id']+'__'+template['primitive_id']+'__capacity'
             for key,field in [('source_image_uri','reference_image'),('source_tissue_mask_uri','reference_tissue_mask'),('source_nuclei_mask_uri','reference_nuclei_mask')]:raw[key]=source['inputs'][field]['path']

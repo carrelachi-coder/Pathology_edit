@@ -1,0 +1,72 @@
+{
+  "scope": "asset preparation progress; neither final joint GPU acceptance nor a formal cohort",
+  "formal_launch_permitted": false,
+  "formal_generation_launched": false,
+  "user_budget_authorization": {
+    "moderate": 0.19,
+    "significant": 0.32,
+    "basis": "whole_patch",
+    "budget_reduction_allowed": false
+  },
+  "census": {
+    "candidate_sources": 300,
+    "patient_groups": 90,
+    "artifacts_sha256": {
+      "full_candidate_pool.json": "81161a185f40a1c13c84989679a770ede4649871f25947861720417ccf27f17c",
+      "full_pool_mapping_audit.json": "ed5a98128f57e1f79cedd15b071a4c8f00830a88665da5be094cf34df6637a32",
+      "full_pool_training_overlap_audit.json": "f2afbffb88f894af58bf72c86e3d4fef4b574e860285dfe6241eeb69e33e43f6"
+    },
+    "formal_source_list_frozen": false
+  },
+  "source_mapping": {
+    "verified_against": "segmentator grouped_seed42 dataset split manifest",
+    "independent_unit": "patient_id",
+    "full_slide_barcode_recovered": false,
+    "wsi_id_scope": "retained dataset patient/WSI group alias"
+  },
+  "training_manifest_references": {
+    "denominator": 300,
+    "cross_train_exact_filename": 270,
+    "cross_val_exact_filename": 30,
+    "segmentator_coarse_train_exact_filename": 268,
+    "segmentator_coarse_train_patient_reference_sources": 300,
+    "segmentator_fine_train_exact_filename": 217,
+    "segmentator_fine_val_exact_filename": 31,
+    "segmentator_fine_test_exact_filename": 52,
+    "interpretation": "potential exposure from retained references; not complete checkpoint lineage or independent clinical validation",
+    "flux_patient_overlap": "unknown",
+    "cellvit_patient_overlap": "unknown",
+    "pix2pix_lineage": "historical config references available; complete final checkpoint lineage not established"
+  },
+  "initial_31_source_qualification": {
+    "denominator": 31,
+    "both_significant_necessary_capacity_pass": 8,
+    "both_significant_topology_witness_pass": 2,
+    "accepted_four_target_pairs": 0,
+    "interpretation": "partial source qualification only; witness pass does not imply four-target approval"
+  },
+  "compilation": {
+    "code_commit": "18258d49",
+    "attempts_1_and_2": {
+      "requested_targets": 8,
+      "review_required": 2,
+      "abstained": 2,
+      "timeout_exit124": 4,
+      "approved_handoffs": 0
+    },
+    "attempt_3": "in progress; U1 Moderate review_required; no approved handoff",
+    "probnet_checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
+    "instance_library_tree_sha256": "f00d5c4b9afb3cae7ca2e22f41f698d51e36af4f3ad216599d47bb7b058433e4"
+  },
+  "new_script_verification": {
+    "command": "python -m pytest -q tests/test_manuscript_asset_freeze.py tests/test_manuscript_roi_contract.py",
+    "passed": 9,
+    "scope": "CPU source identity/freeze and existing ROI cases, not GPU acceptance"
+  },
+  "next_gates": [
+    "complete full source-only qualification with all failures retained",
+    "complete and independently review four technical mask targets",
+    "freeze hash-bound handoffs, common measurement and protected ROI",
+    "run final five-state generation and six-image measurements on excluded technical source with exact stage code/environment identities"
+  ]
+}

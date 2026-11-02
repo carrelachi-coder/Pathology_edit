@@ -20,6 +20,7 @@ def test_freeze_keeps_technical_patient_outside_formal_and_preserves_budgets(tmp
     assert {c['joint_area_budget']['target_fraction'] for c in cases}=={.19,.32}
     assert {c['joint_area_budget']['capacity_floor_policy'] for c in cases}=={'strict'}
     assert not rules['formal_generation_launched']
+    assert not rules['formal_source_list_frozen']
     with pytest.raises(FileExistsError):prepare(rows,tmp_path/'freeze',formal_count=1)
 
 
@@ -28,3 +29,15 @@ def test_overlap_index_matches_exact_filenames_and_patient_groups():
     names,patients=index_strings({'train':[{'reference_image':r'images\TCGA-AA-0001_roi.png'}, {'image':'/data/TCGA-BB-0002_other.png'}]})
     assert names=={'TCGA-AA-0001_roi.png','TCGA-BB-0002_other.png'}
     assert patients=={'TCGA-AA-0001','TCGA-BB-0002'}
+
+
+def test_capacity_screen_rejects_changed_frozen_source(tmp_path):
+    from scripts.probe_manuscript_joint_capacity import verify_source_inputs
+    from phase3_mask_edit.benchmark.experiment_identity import asset_identity
+    image=tmp_path/'image.png';Image.new('RGB',(8,8)).save(image)
+    source={'inputs':{field:asset_identity(image) for field in
+        ('reference_image','reference_tissue_mask','reference_nuclei_mask')}}
+    verify_source_inputs(source)
+    Image.new('RGB',(8,8),'red').save(image)
+    with pytest.raises(ValueError,match='frozen source content changed'):
+        verify_source_inputs(source)
