@@ -26,5 +26,15 @@
     "13 failed, 140 passed, 206 subtests passed",
     "1 failed"
   ],
-  "policy": "not waived, not relabeled passed; formal launch remains blocked"
+  "policy": "not waived, not relabeled passed; formal launch remains blocked",
+  "resolution": {
+    "commit": "6b85b70c138e4e85709f4468dbe9f79f1a3c6b7a",
+    "status": "all 14 restored tests pass; no deselection",
+    "classification": {
+      "obsolete_mechanism_primitive_fixtures": 12,
+      "incomplete_planner_scene_mock": 1,
+      "cellularity_expected_behavior_and_postconditions": 1
+    },
+    "method": "migrate positive fixtures; retain closed-mechanism negative tests; complete planner scene metadata; assert accepted cellularity result preserves tissue and exterior and removes 12-15 instances; production gates unchanged"
+  }
 }

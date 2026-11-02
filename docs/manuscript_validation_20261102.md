@@ -20,11 +20,11 @@
 
 针对性测试位于 [test_manuscript_validation.py](../tests/test_manuscript_validation.py)，另有原生产权重测试中的同长度篡改权重反例。合成数据和 mock 仅证明控制流与实现行为，不是论文结果。
 
-## 回归与基线问题
+## 首轮回归与基线问题（历史记录）
 
 - 相关入口、评价、权重、采样、后处理、handoff 和消融的针对性回归通过；精确数量与代码身份在 [机器可读验收记录](../benchmarks/manuscript_validation_20261102/validation_report.json) 中记录。
 - 扩大联合编辑回归：211 项通过、334 个子测试通过；14 项已知失败单独排除于这次通过数之外。
-- 这 14 项已在未经修改的 `6f481a98` 上重现：13 项与乳腺机制/primitive 范围及其旧测试预期有关，1 项为非乳腺 cellularity decrease 的 `selected_research` / `abstained` 预期差异。详见 [逐项清单](../benchmarks/manuscript_validation_20261102/baseline_failures.json)。它们没有被算作通过，也没有通过放宽研究门槛来消除。
+- 这 14 项已在未经修改的 `6f481a98` 上重现：12 项为过时乳腺机制/primitive fixture、1 项为 planner 场景 mock 不完整，另 1 项为非乳腺 cellularity decrease 的 `selected_research` / `abstained` 预期差异。详见 [逐项清单](../benchmarks/manuscript_validation_20261102/baseline_failures.json)。它们没有被算作通过，也没有通过放宽研究门槛来消除。
 - 首次扩大回归因人工中断，只能作为发现问题的记录；上述 211 项来自后续完整结束的回归。两处新增源哈希接线引起的正向测试失败已修复，相关 handoff 测试单独通过。
 
 ## 非正式链路与正式启动条件
@@ -33,4 +33,17 @@
 
 服务器独立导出目录为 `/home/lyw/wqx-DL/flow-edit/manuscript-validation-20261102`，研究输出位于 `/data1/zhao/wqx/benchmarks/runs/manuscript_chain_pilot_20261102_v2`。实际生成快照为 `f7b47139336f9d1e5f85003da3bf852c223cdf6f`，测量快照为 `8ed6882fd35e907cb5132f29676a4fac52025ab4`。两张真实生成图及三张图的组织/细胞测量均已完成，三份细胞结果均为有效非零检测。生成环境缺少 MMSegmentation 导致首次分割失败后，使用独立分割环境并校验原有输出哈希继续测量，旧失败日志保留。代码与环境按阶段记录，不能用当前分支名替代真实运行版本。v1 在生成前为修正标签映射而主动终止，旧目录保留；不计为生成失败或论文结果。
 
-尚须解决基线回归、冻结适用于两种操作的正式 joint 目标及 ROI、核查所选来源的训练重叠，并完成最终运行版本的完整验收，才能把协议转为 frozen。历史 2,400 张图的统计尚未重算；本次没有覆盖历史报告。医生研究仍放在最后。
+尚须冻结适用于两种操作的正式 joint 目标及 ROI、核查所选来源的训练重叠，并完成最终运行版本的完整验收，才能把协议转为 frozen。历史 2,400 张图的统计尚未重算；本次没有覆盖历史报告。医生研究仍放在最后。
+
+## 第二轮审查后的修复与验收
+
+实现快照为 `6b85b70c138e4e85709f4468dbe9f79f1a3c6b7a`。[本轮记录](../benchmarks/manuscript_validation_20261102/round2_validation_report.json) 与日志另存，首轮 pilot 与测试日志保留。
+
+- 正式操作从协议读取：u1 为 `cohesive-boundary-expansion-v1` / `breast-annotation-anchored-boundary-growth`；u2 为 `generic-immune-infiltrate-increase-v1` / `breast-generic-immune-compartment-turnover`。两档绑定批准 handoff、预算与目标哈希；在固定 ROI 检查相对源图的方向及两档目标剂量，拒绝重复或逆向目标。这不限制生成 H&E 出现并列或逆序。
+- 必需资产采用 `{status, path, sha256}`。入口核对来源、患者/WSI、pilot 排除记录、protected ROI、实际 prompt，以及仓库根目录的 HEAD、未提交/未跟踪文件、解释器和冻结依赖版本。把标志改为 frozen 不足以启动。协议中目标、ROI、映射与训练核查资产仍 unresolved；两档区间和最小剂量差仍待生成前冻结。
+- CellViT 的独立 completion 文件绑定检测 JSON；仅修改 cells 列表不能复用。Segmentator 复用须解码、核对尺寸和标签，并验证输入、checkpoint、配置及输出凭据；旧无凭据文件须另存重测。
+- 两个生成入口在首个产物写入前记录 started 身份，失败保留 failed 状态；非空失败目录不能当新任务。技术重试使用新目录。
+- 效应量和区间改为先对患者/WSI 内来源求均值，再让独立单位等权，与置换观测统计量一致；报告显式输出该观测量。历史结果尚未重算。
+- 12 个早退 fixture 已迁移到当前支持机制，原预算和权限断言实际执行；补齐 planner mock。cellularity 的当前 selected_research 行为增加了组织不变、12–15 个实例删除、区域外不变和 gate 通过的后置断言。生产门槛与旧机制关闭规则未放宽。
+
+完整回归 **316 项、346 个子测试通过，无 deselect**；最终补充反例 **10 项通过**（与完整回归部分重叠，不相加计数）。这轮未重跑 GPU，也未启动正式队列。原技术 pilot 的 165/177/188 是总细胞检测数；两张生成图的低染色保护均未实际触发混合，不能当成炎症终点或保护效果验证。正式 joint 两操作、两强度与保护 ROI 的完整链路仍待验收。

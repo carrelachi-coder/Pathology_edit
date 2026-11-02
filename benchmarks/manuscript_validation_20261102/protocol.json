@@ -4,7 +4,7 @@
   "status": "prerequisite_validation_in_progress",
   "formal_launch_permitted": false,
   "repair_baseline": "6f481a989b57648449340a17d17b8cda3c9c818f",
-  "implementation_commit": "8ed6882fd35e907cb5132f29676a4fac52025ab4",
+  "implementation_commit": "6b85b70c138e4e85709f4468dbe9f79f1a3c6b7a",
   "formal_entry": "scripts/run_manuscript_global_cohort.py",
   "technical_pilot_entry": "scripts/run_manuscript_chain_pilot.py",
   "source_count": 30,
@@ -120,13 +120,14 @@
     "correlation": "patient-cluster bootstrap 95% interval for Spearman rho; no ordinary IID pvalue",
     "multiplicity": "four prespecified operation-by-strength edit-minus-sham comparisons form one Holm family at alpha .05; descriptive intervals reported as such; other comparisons exploratory",
     "physicians": "retain reader-specific estimates and patient clustering; allow ties, cannot distinguish and cannot judge; sham-vs-original drift separate",
-    "seed": 20261102
+    "seed": 20261102,
+    "estimand": "equal independent-unit mean; average sources within patient/WSI, then equal-weight units for effect, CI and test"
   },
   "blockers": [
-    "14 failures reproduced on unmodified repair baseline; mechanism/primitive scope and stale expectations need resolution before formal freeze",
     "formal approved joint target manifest and protected ROI hashes not frozen; pilot uses historical targets only",
     "generator and evaluator training-overlap audits for the chosen formal sources are pending; automatic readouts remain computational evidence",
-    "technical multi-stage chain passed; formal joint chain on the eventual frozen snapshot remains to be accepted"
+    "technical multi-stage chain passed; formal joint chain on the eventual frozen snapshot remains to be accepted",
+    "final approved joint two-operation/two-strength chain has not been run on the eventual frozen formal snapshot"
   ],
   "historical_analysis_status": "corrected inference code tested on synthetic data; historical 2400-image statistics not rerun by this implementation change",
   "technical_pilot_status": "complete: 2 real outputs and 3 paired tissue/cell measurement records; stage versions recorded in validation_report.json",
@@ -135,7 +136,17 @@
       "python_path": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
       "python": "3.11.15 | packaged by conda-forge | (main, Mar  5 2026, 16:45:40) [GCC 14.3.0]",
       "torch": "2.4.1",
-      "cuda": "12.1"
+      "cuda": "12.1",
+      "packages": {
+        "torch": "2.4.1",
+        "numpy": "1.26.4",
+        "scipy": "1.17.1",
+        "Pillow": "10.4.0",
+        "diffusers": "0.35.0",
+        "transformers": "4.44.2",
+        "safetensors": "0.8.0",
+        "torchvision": "0.19.1"
+      }
     },
     "segmentator": {
       "python_path": "/home/lyw/anaconda3/envs/pathology-segmentator-mmseg/bin/python",
@@ -147,10 +158,69 @@
     }
   },
   "formal_assets": {
-    "generation_manifest": "unresolved",
-    "approved_joint_targets": "unresolved",
-    "protected_roi_files_and_hashes": "unresolved",
-    "patient_wsi_mapping_audit": "unresolved",
-    "training_overlap_audits": "unresolved"
+    "generation_manifest": {
+      "status": "unresolved",
+      "path": null,
+      "sha256": null
+    },
+    "approved_joint_targets": {
+      "status": "unresolved",
+      "path": null,
+      "sha256": null
+    },
+    "protected_roi_files_and_hashes": {
+      "status": "unresolved",
+      "path": null,
+      "sha256": null
+    },
+    "patient_wsi_mapping_audit": {
+      "status": "unresolved",
+      "path": null,
+      "sha256": null
+    },
+    "training_overlap_audits": {
+      "status": "unresolved",
+      "path": null,
+      "sha256": null
+    },
+    "pilot_exclusion_audit": {
+      "status": "unresolved",
+      "path": null,
+      "sha256": null
+    }
+  },
+  "operations": {
+    "u1": {
+      "code": "u1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "mechanism_id": "breast-annotation-anchored-boundary-growth",
+      "target_parent": 1,
+      "direction": 1,
+      "minimum_target_gap": null,
+      "strengths": {
+        "moderate": {
+          "dose_interval": null
+        },
+        "significant": {
+          "dose_interval": null
+        }
+      }
+    },
+    "u2": {
+      "code": "u2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "mechanism_id": "breast-generic-immune-compartment-turnover",
+      "target_parent": 4,
+      "direction": 1,
+      "minimum_target_gap": null,
+      "strengths": {
+        "moderate": {
+          "dose_interval": null
+        },
+        "significant": {
+          "dose_interval": null
+        }
+      }
+    }
   }
 }

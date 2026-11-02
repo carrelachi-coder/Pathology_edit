@@ -1,0 +1,35 @@
+{
+  "implementation_commit": "6b85b70c138e4e85709f4468dbe9f79f1a3c6b7a",
+  "formal_launch_permitted": false,
+  "full_regression": {
+    "passed": 316,
+    "subtests_passed": 346,
+    "deselected": 0,
+    "log": "round2_full_pytest.txt",
+    "scope": "joint_edit_refine and prior targeted suite plus first 8 round-2 counterexamples"
+  },
+  "final_counterexamples": {
+    "passed": 10,
+    "log": "round2_counterexamples_pytest.txt",
+    "scope": "includes final target direction and dependency-version checks; overlaps full regression"
+  },
+  "historical_baseline_failures_resolved": 14,
+  "gpu_rerun": false,
+  "formal_joint_chain_passed": false,
+  "historical_statistics_recomputed": false,
+  "changes": [
+    "protocol-driven canonical primitives/mechanisms and frozen per-strength handoff, budget, target hashes and target ROI dose ordering",
+    "structured required asset validation, source and patient mapping, pilot exclusion, protected ROI reconstruction, fixed prompt and clean repository/interpreter/dependency checks",
+    "independent CellViT detection completion receipt",
+    "record started/failed identities before generation and refuse nonempty failed attempts",
+    "equal independent-unit effect and interval weights match permutation observed statistic",
+    "decode and bind reused Segmentator outputs",
+    "restore all previously blocked fixture assertions and strengthen current cellularity postconditions"
+  ],
+  "remaining": [
+    "freeze source/target/ROI/patient mapping and training-overlap assets",
+    "freeze strength intervals and minimum target gaps before inspecting formal outputs",
+    "run final approved joint technical chain outside formal cohort",
+    "then consider formal 30 WSI; doctors remain last"
+  ]
+}
