@@ -1,0 +1,3 @@
+Command: python -m pytest -q --tb=short tests/test_independent_mask_review.py tests/test_approval_handoff.py tests/test_manuscript_roi_contract.py tests/test_manuscript_review_gaps.py tests/test_manuscript_validation.py tests/test_manuscript_asset_freeze.py
+.......................................................                  [100%]
+55 passed in 6.42s

@@ -110,5 +110,30 @@
     "formal_launch_permitted": false,
     "same_handoff_roi_code_environment_checks": true,
     "gpu_executed": false
+  },
+  "independent_mask_review": {
+    "user_delegation": "user explicitly chose independent Codex review in current chat",
+    "reviewer": "codex_current_chat",
+    "scope": "research_mask_condition_only",
+    "raw_source_he_provided": false,
+    "physician_or_user_approval_claimed": false,
+    "hard_gate_waiver_permitted": false,
+    "evidence": "exact source and passing candidate hashes, reconstructed mask-only board and persisted gate/plan files",
+    "handoff_status": "pending actual recorded review promotion; no final joint acceptance yet"
+  },
+  "supplemental_pool_authorization": {
+    "authority": "user explicitly requested additional candidate sources from the same BCSS dataset in current chat",
+    "target_independent_patients": 30,
+    "joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "retain_initial_300_denominator": true,
+    "supplemental_census_status": "not frozen yet"
+  },
+  "independent_review_tests": {
+    "passed": 55,
+    "log": "independent_review_pytest.txt",
+    "scope": "13 independent review/legacy approval tests plus 42 prior relevant cases; CPU fixtures explicitly stub workflow gates in the promotion reconstruction test, not real visual/GPU acceptance"
   }
 }

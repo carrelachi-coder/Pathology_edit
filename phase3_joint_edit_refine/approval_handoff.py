@@ -1,10 +1,12 @@
-"""Promote one explicitly user-approved audited candidate to Generate.
+"""Promote one exactly reviewed audited candidate to Generate.
 
 The mask workflow deliberately stops at ``review_required`` when its research
 critic abstains.  This module does not rerun or reinterpret that workflow.  It
 hash-validates the persisted candidate, its passing gate report, immutable
 executable contract, and exact E/P/V/S masks before emitting the standard
-``joint-generation-handoff-v3`` consumed by the Online product.
+``joint-generation-handoff-v3``. User approval and independent Codex research
+review are separate entry points with separately named provenance. The latter
+never claims that a user or physician approved the condition.
 """
 
 from __future__ import annotations
@@ -72,6 +74,26 @@ def promote_audited_joint_candidate(
     repository: JointSkillRepository | None = None,
 ) -> dict[str, str]:
     """Emit a hash-bound handoff without changing the approved mask condition."""
+    return _promote_persisted_candidate(audit_case_dir, candidate_id=candidate_id,
+        authorization=approval, authorization_kind='user', output_dir=output_dir,
+        repository=repository)
+
+
+def promote_independently_reviewed_joint_candidate(
+    audit_case_dir: str | Path, *, candidate_id: str,
+    review_path: str | Path, output_dir: str | Path | None = None,
+    repository: JointSkillRepository | None = None,
+) -> dict[str, str]:
+    """Promote an actual Codex mask review; never label it user/doctor approval."""
+    return _promote_persisted_candidate(audit_case_dir, candidate_id=candidate_id,
+        authorization=review_path, authorization_kind='independent_critic',
+        output_dir=output_dir, repository=repository)
+
+
+def _promote_persisted_candidate(
+    audit_case_dir, *, candidate_id, authorization, authorization_kind,
+    output_dir=None, repository=None,
+):
 
     audit_dir = Path(audit_case_dir).resolve()
     if not audit_dir.is_dir():
@@ -79,11 +101,18 @@ def promote_audited_joint_candidate(
     case_payload = _read_object(audit_dir / "case_context.json")
     case = JointCaseContext.from_mapping(case_payload)
     case.validate_local_inputs()
-    normalized_approval = _validate_approval(
-        approval,
-        case_id=case.case_id,
-        candidate_id=candidate_id,
-    )
+    if authorization_kind == 'user':
+        normalized_approval = _validate_approval(
+            authorization, case_id=case.case_id, candidate_id=candidate_id)
+        authorization_key = 'user_approval'
+    elif authorization_kind == 'independent_critic':
+        from .independent_review import validate_independent_review
+        normalized_approval = validate_independent_review(
+            authorization, audit_dir=audit_dir, case_id=case.case_id,
+            candidate_id=candidate_id)
+        authorization_key = 'independent_critic_review'
+    else:
+        raise JointContractError('unknown candidate authorization kind')
 
     candidate_records = _read_list(audit_dir / "candidates.json")
     matching = [
@@ -247,6 +276,8 @@ def promote_audited_joint_candidate(
 
     root = Path(output_dir).resolve() if output_dir else audit_dir
     handoff_dir = root / "generation_handoff"
+    if authorization_kind == 'independent_critic' and handoff_dir.exists() and any(handoff_dir.iterdir()):
+        raise JointContractError('preserve previous handoff; choose a fresh independent-review output')
     handoff_dir.mkdir(parents=True, exist_ok=True)
     paths: dict[str, str] = {}
     digests: dict[str, str] = {}
@@ -325,8 +356,9 @@ def promote_audited_joint_candidate(
         "digests": digests,
         "provenance": {
             **trace,
-            "user_approval": normalized_approval,
-            "promotion_policy": "persisted_audit_exact_candidate_v1",
+            authorization_key: normalized_approval,
+            "promotion_policy": ("persisted_audit_exact_candidate_codex_review_v1"
+                if authorization_kind == 'independent_critic' else "persisted_audit_exact_candidate_v1"),
             "audited_skill_versions": contract_versions,
             "current_render_skill_versions": {
                 "mechanism": mechanism.version,

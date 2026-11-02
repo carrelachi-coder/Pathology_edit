@@ -83,3 +83,7 @@
 为最终 GPU 技术验收补上同一入口的 `--technical-validation` 模式：必须使用单独 frozen 技术协议，scope 为 joint_gpu_technical_acceptance，formal_launch_permitted 必须为 false，来源仅 1–2 个且同时属于预留技术名单和源/患者排除表。继续执行同一 handoff、剂量、J 保护 ROI、干净代码、环境和真实模型内容检查；写出 scope 与协议/manifest 哈希记录。正式模式也拒绝来自技术患者的其他 patch，缺少患者排除字段时停止。主正式协议仍未冻结。
 
 这轮 **42 项相关 CPU 检查通过**，包括 7 个技术范围场景和真实子进程超时保留中间产物的反例；没有重跑 GPU 或将它们计为正式结果。[资产准备记录](../benchmarks/manuscript_validation_20261102/asset_preparation_report.json) 与日志单独保存。
+
+用户明确委托当前 Codex 聊天独立审查 mask 条件图。新增独立模型审查入口与原有 user-only 批准入口分开，保留原入口的严格用户身份校验。模型审查绑定实际源输入、全部展示的 passing candidates、gate/plan 文件和 board 哈希，并从源/目标 mask 重建 board 逐像素核对；不读取原始 H&E，不生成批准默认值。只有已记录的 approved 决策、至少 0.7 confidence 和完整观察说明可进入原有严格 handoff 检查；新增/失效 hard gate、目标或证据变更、伪造 board 均拒绝。provenance 标记 independent_critic_review，不写 user_approval 或医生批准。**55 项相关 CPU 测试通过**；其中端到端持久化重构测试明确使用合成 gate fixture，不能当作实际病理/生成验收。
+
+初始池的源拓扑检查已证明：即使剩余或异常来源全部可能合格，排除技术患者后仍达不到 30 位患者。用户已明确选择从同一 BCSS 数据集补充来源，保留 30 位患者目标及 19%／32% 预算。旧 300 来源的全分母和失败记录保留；新增池必须在任何新 H&E 生成前按源条件规则单独冻结和留痕。
