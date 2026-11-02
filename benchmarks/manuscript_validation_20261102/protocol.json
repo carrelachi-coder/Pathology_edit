@@ -12,10 +12,11 @@
   "generated_image_count": 150,
   "generation_manifest_sha256": null,
   "cohort_selection": {
-    "rule": "within the retained 300-source pool, source-mask qualification only; in lexicographic sample_id order retain first fully qualified source per verified patient; require both operations and two approved strengths; exclude every patient used in technical attempts; no selection by generated RGB or embedding",
+    "rule": "retain the initial 300-source census and all failures, then append user-authorized same-BCSS supplemental candidates in frozen patient/filename order; first fully qualified source per verified patient, requiring both operations and two approved strengths; exclude every technical patient; never select by generated RGB or embedding",
     "organ": "BCSS breast; current canonical annotation-boundary and generic immune-compartment mechanisms",
     "source_manifest_sha256": "a7c9e1b6e46527034ee4461375718b37ef6974e62b56e937e3931d7b4d6d8486",
-    "formal_source_list_frozen": false
+    "formal_source_list_frozen": false,
+    "supplemental_source_rule": "same canonical BCSS export and retained dataset split manifest; first 12 cheap-mask-eligible additional sources per nontechnical patient; freeze census before new H&E; not a finalized cohort"
   },
   "route": "cross-v1 global reconstruction; no routing/retry-based efficacy estimate",
   "endpoint_stage": "postprocessed_precomposite",
