@@ -54,19 +54,61 @@
       "timeout_exit124": 4,
       "approved_handoffs": 0
     },
-    "attempt_3": "in progress; U1 Moderate review_required; no approved handoff",
+    "attempt_3": {
+      "requested_targets": 4,
+      "review_required": 2,
+      "timeout_exit124": 2,
+      "timeout_seconds": 1800,
+      "approved_handoffs": 0,
+      "terminal_receipt_sha256": "b7ded4ccfafb8f43135c447646ac0231d2f690f48acc0c9766fe343e1eb531bb"
+    },
     "probnet_checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
-    "instance_library_tree_sha256": "f00d5c4b9afb3cae7ca2e22f41f698d51e36af4f3ad216599d47bb7b058433e4"
+    "instance_library_tree_sha256": "f00d5c4b9afb3cae7ca2e22f41f698d51e36af4f3ad216599d47bb7b058433e4",
+    "attempt_4": "additional excluded technical source still compiling; no acceptance claim"
   },
   "new_script_verification": {
-    "command": "python -m pytest -q tests/test_manuscript_asset_freeze.py tests/test_manuscript_roi_contract.py",
-    "passed": 9,
-    "scope": "CPU source identity/freeze and existing ROI cases, not GPU acceptance"
+    "command": "python -m pytest -q tests/test_manuscript_roi_contract.py tests/test_manuscript_review_gaps.py tests/test_manuscript_validation.py tests/test_manuscript_asset_freeze.py",
+    "passed": 42,
+    "log": "asset_preparation_pytest.txt",
+    "scope": "CPU runtime-scope/source identity/ROI and prior implementation counterexamples; explicit generation stubs, not GPU acceptance"
   },
   "next_gates": [
     "complete full source-only qualification with all failures retained",
     "complete and independently review four technical mask targets",
     "freeze hash-bound handoffs, common measurement and protected ROI",
     "run final five-state generation and six-image measurements on excluded technical source with exact stage code/environment identities"
-  ]
+  ],
+  "full_pool_necessary_capacity_screen": {
+    "requested_sources": 300,
+    "both_significant_necessary_capacity_pass": 74,
+    "passing_patient_groups": 43,
+    "source_errors": 0,
+    "not_accepted_as_four_target_pairs": true,
+    "screen_files_sha256": {
+      "full_capacity_0/capacity_screen.json": "443becbaae623f6d7432e2a6e0f44874435bcd9d2db69b84812a2836b7a3d136",
+      "full_capacity_75/capacity_screen.json": "2b064021f6c501a2d4ac2bd4fb09e0139821df535a9433c6396ec3d065f2cb63",
+      "full_capacity_150/capacity_screen.json": "d2d85e8860beaa8080d14488e61618b603cc055ec348c050161b648b405cfd49",
+      "full_capacity_225/capacity_screen.json": "edca8d6aa33b1e17aea53c41fd433931943d11cb458f0621b351d7e7b431e2cb"
+    }
+  },
+  "post_screen_source_verification": {
+    "checked_files": 900,
+    "mismatches": 0,
+    "scope": "after completion of full necessary-capacity screen; not a retroactive claim that the old screen performed a pre-read hash check",
+    "receipt_sha256": "2d53564fd5e075c1de3ab37f7853627d5554d250d498af68bb2172d859d6b52a"
+  },
+  "technical_exclusion": {
+    "sources": 4,
+    "patients": 4,
+    "audit_sha256": "b743d06561d572634e420c3862cddf53093dd9018b36e41d7571f96c755cbc76",
+    "applies_to": "all patches of each technical patient, including failed and timeout attempts"
+  },
+  "technical_entry": {
+    "flag": "--technical-validation",
+    "scope": "joint_gpu_technical_acceptance",
+    "maximum_sources": 2,
+    "formal_launch_permitted": false,
+    "same_handoff_roi_code_environment_checks": true,
+    "gpu_executed": false
+  }
 }

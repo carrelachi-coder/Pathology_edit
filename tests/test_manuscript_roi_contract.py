@@ -77,7 +77,7 @@ def cohort(tmp_path):
     rois={}
     for name,array in [('u1_roi',(source>0)&(source!=255)),('u2_roi',source==2),('protected_roi',(source>0)&(source!=255)&~binary_dilation(union,iterations=8))]:
         path=tmp_path/(name+'.png');save(path,array.astype(np.uint8)*255);rois[name]=frozen(path)
-    assets={'approved_joint_targets':{'source':targets},'protected_roi_files_and_hashes':{'source':rois},'patient_wsi_mapping_audit':{'source':{'patient_id':'TCGA-X0-0001','wsi_id':'slide-1'}},'pilot_exclusion_audit':{'excluded_reference_ids':['pilot']},'training_overlap_audits':{'source':{'status':'completed','generator':{},'segmentator':{},'cellvit':{}}}}
+    assets={'approved_joint_targets':{'source':targets},'protected_roi_files_and_hashes':{'source':rois},'patient_wsi_mapping_audit':{'source':{'patient_id':'TCGA-X0-0001','wsi_id':'slide-1'}},'pilot_exclusion_audit':{'excluded_reference_ids':['pilot'],'excluded_patient_ids':['TCGA-X0-9999']},'training_overlap_audits':{'source':{'status':'completed','generator':{},'segmentator':{},'cellvit':{}}}}
     # A clean fixture repository supplies the actual git guard; ML packages and
     # generation are explicit CPU stubs, not claims of real model execution.
     repo=tmp_path/'repo';repo.mkdir();subprocess.run(['git','init','-q',str(repo)],check=True)
@@ -89,7 +89,7 @@ def cohort(tmp_path):
     return tmp_path,repo,rows,protocol,assets,raw_union
 
 
-def run_entry(fixture):
+def run_entry(fixture, *, technical_validation=False):
     from scripts.run_manuscript_global_cohort import main
     from scripts import run_embedding_utility_generation as generation
     root,repo,rows,protocol,assets,_=fixture
@@ -99,11 +99,13 @@ def run_entry(fixture):
     for key,value in assets.items():
         path=root/(key+'.json');path.write_text(json.dumps(value));protocol['formal_assets'][key]=frozen(path)
     p=root/'protocol.json';p.write_text(json.dumps(protocol))
-    def validate(p,m,r):
+    def validate(p,m,r,**kwargs):
         with patch('importlib.metadata.version',return_value='fixture'):
-            return preflight(p,m,repo)
+            return preflight(p,m,repo,**kwargs)
     with patch('phase3_mask_edit.benchmark.manuscript_contract.preflight',side_effect=validate),patch.object(generation,'main',return_value=0) as generate:
-        try: main(['--protocol',str(p),'--cohort-manifest',str(manifest),'--output-root',str(root/'out')])
+        args=['--protocol',str(p),'--cohort-manifest',str(manifest),'--output-root',str(root/'out')]
+        if technical_validation:args.append('--technical-validation')
+        try: main(args)
         except ValueError:
             generate.assert_not_called();assert not (root/'out').exists();raise
         generate.assert_called_once()
@@ -115,6 +117,66 @@ def test_complete_five_states_pass_real_handoff_and_roi_preflight(cohort):
     assert report['source']['u1_roi']['denominator_pixels']==64*62
     assert report['source']['u2_roi']['denominator_pixels']==64*47
     assert len(report['source']['protected_roi']['binary_mask_sha256'])==64
+
+
+def prepare_technical(cohort):
+    _,_,_,protocol,assets,_=cohort
+    protocol.update(scope='joint_gpu_technical_acceptance',formal_launch_permitted=False,
+        technical_reference_ids=['source'],technical_patient_ids=['TCGA-X0-0001'])
+    protocol['cohort_selection']={'technical_source_list_frozen':True}
+    assets['pilot_exclusion_audit']={'excluded_reference_ids':['source'],'excluded_patient_ids':['TCGA-X0-0001']}
+
+
+def test_technical_mode_uses_same_five_state_contract_with_formal_disabled(cohort):
+    prepare_technical(cohort)
+    assert run_entry(cohort,technical_validation=True)['source']['u1_roi']['denominator_pixels']==64*62
+    assert cohort[3]['formal_launch_permitted'] is False
+    scope=json.loads((cohort[0]/'out/cohort_scope_validation.json').read_text())
+    assert scope['scope']=='joint_gpu_technical_acceptance'
+    assert scope['formal_launch_permitted'] is False
+    assert scope['source_count']==1
+
+
+def test_technical_protocol_cannot_run_through_formal_mode(cohort):
+    prepare_technical(cohort)
+    with pytest.raises(ValueError,match='formal cohort remains blocked'):
+        run_entry(cohort)
+
+
+def test_technical_mode_rejects_a_thirty_source_protocol(cohort):
+    prepare_technical(cohort);cohort[3]['source_count']=30
+    with pytest.raises(ValueError,match='one or two excluded sources'):
+        run_entry(cohort,technical_validation=True)
+
+
+def test_technical_mode_requires_patient_exclusion(cohort):
+    prepare_technical(cohort)
+    cohort[4]['pilot_exclusion_audit']['excluded_patient_ids']=['TCGA-X0-9999']
+    with pytest.raises(ValueError,match='reserved and excluded'):
+        run_entry(cohort,technical_validation=True)
+
+
+def test_technical_reservation_cannot_contain_unlisted_extra_sources(cohort):
+    prepare_technical(cohort)
+    cohort[3]['technical_reference_ids'].append('unlisted')
+    with pytest.raises(ValueError,match='reservation differs'):
+        run_entry(cohort,technical_validation=True)
+
+
+def test_another_patch_of_a_technical_patient_cannot_enter_formal(cohort):
+    # Source IDs differ, but the independent unit was used technically.
+    cohort[4]['pilot_exclusion_audit']['excluded_patient_ids']=['TCGA-X0-0001']
+    with pytest.raises(ValueError,match='patient cannot enter formal'):
+        run_entry(cohort)
+
+
+def test_technical_mode_still_rejects_incorrect_source_roi(cohort):
+    prepare_technical(cohort)
+    root,_,_,_,assets,_=cohort
+    path=root/'u2_roi.png';roi=np.asarray(Image.open(path)).copy();roi[:,:48]=0;save(path,roi)
+    assets['protected_roi_files_and_hashes']['source']['u2_roi']=frozen(path)
+    with pytest.raises(ValueError,match='measurement ROI differs'):
+        run_entry(cohort,technical_validation=True)
 
 
 @pytest.mark.parametrize('name',['u1_roi','u2_roi'])

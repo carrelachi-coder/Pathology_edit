@@ -75,3 +75,11 @@
 当前编译代码为 `18258d49` 的真实、干净 Git 导出；新增池清点与审计脚本版本另记，不能把后续分支 HEAD 当作已运行版本。真实 mature ProbNet checkpoint 内容哈希为 `c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211`，实例库树哈希为 `f00d5c4b9afb3cae7ca2e22f41f698d51e36af4f3ad216599d47bb7b058433e4`，均来自实际执行 trace。
 
 第三技术来源通过两个 Significant 源拓扑 witness 后启动完整四目标编译；已完成的 U1 Moderate 实现 joint 18.739%，硬性检查通过，确定性 critic 按设计返回 review_required，尚无批准 handoff。其他目标的运行状态须以终态记录为准。最终 joint GPU 技术验收和正式 30 WSI 均未启动；本节是资产准备进展，不能当作验收通过记录。
+
+全池必要容量检查已完成：**300/300 来源检查结束，74 来源、43 患者通过两操作 Significant 必要容量，226 来源未通过，无执行异常**。结束后 900 个输入文件重新计算内容哈希，全部仍与冻结 census 一致；这份后验核对另存，不能改写成旧批次在读取前运行了新增哈希检查。完整拓扑与四目标资格仍待完成，74 不是正式配对数。
+
+第三技术来源两个 Moderate 均为 review_required；两个 Significant 在 1,800 秒控制时限内未完成，退出 124。保留中间产物和独立控制记录，不伪造缺失的 producer result。另一个已通过源拓扑的技术来源也在相同预算和 1,800 秒时限下编译；所有四个尝试患者均进入患者级排除表。
+
+为最终 GPU 技术验收补上同一入口的 `--technical-validation` 模式：必须使用单独 frozen 技术协议，scope 为 joint_gpu_technical_acceptance，formal_launch_permitted 必须为 false，来源仅 1–2 个且同时属于预留技术名单和源/患者排除表。继续执行同一 handoff、剂量、J 保护 ROI、干净代码、环境和真实模型内容检查；写出 scope 与协议/manifest 哈希记录。正式模式也拒绝来自技术患者的其他 patch，缺少患者排除字段时停止。主正式协议仍未冻结。
+
+这轮 **42 项相关 CPU 检查通过**，包括 7 个技术范围场景和真实子进程超时保留中间产物的反例；没有重跑 GPU 或将它们计为正式结果。[资产准备记录](../benchmarks/manuscript_validation_20261102/asset_preparation_report.json) 与日志单独保存。

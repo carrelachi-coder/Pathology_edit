@@ -41,3 +41,15 @@ def test_capacity_screen_rejects_changed_frozen_source(tmp_path):
     Image.new('RGB',(8,8),'red').save(image)
     with pytest.raises(ValueError,match='frozen source content changed'):
         verify_source_inputs(source)
+
+
+def test_screen_timeout_retains_partial_artifacts_and_is_not_success(tmp_path):
+    import sys
+    from scripts.run_manuscript_source_qualification import run_one
+    partial=tmp_path/'partial.json'
+    code='import pathlib,sys,time; pathlib.Path(sys.argv[1]).write_text("partial"); time.sleep(10)'
+    receipt=run_one([sys.executable,'-c',code,str(partial)],
+        log_path=tmp_path/'screen.log',seconds=.5)
+    assert receipt['timed_out'] is True
+    assert receipt['controller_exit_code']==124
+    assert partial.read_text()=='partial'

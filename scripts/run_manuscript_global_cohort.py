@@ -17,7 +17,7 @@ from phase3_mask_edit.benchmark.experiment_identity import sha256_file
 EXPECTED_STATES = {'sham', 'u1_moderate', 'u1_significant', 'u2_moderate', 'u2_significant'}
 
 
-def validate_cohort(rows, *, source_count, handoff_validator, protocol, assets):
+def validate_cohort(rows, *, source_count, handoff_validator, protocol, assets, technical_validation=False):
     by_source = {}
     for row in rows:
         source = row['reference_id']
@@ -43,8 +43,20 @@ def validate_cohort(rows, *, source_count, handoff_validator, protocol, assets):
         mapping = assets['patient_wsi_mapping_audit'][sham['reference_id']]
         if mapping != {'patient_id': sham['patient_id'], 'wsi_id': sham['wsi_id']}:
             raise ValueError('source mapping differs from frozen audit')
-        if sham['reference_id'] in assets['pilot_exclusion_audit']['excluded_reference_ids']:
-            raise ValueError('pilot source cannot enter formal cohort')
+        exclusion = assets['pilot_exclusion_audit']
+        for field in ('excluded_reference_ids', 'excluded_patient_ids'):
+            if (not isinstance(exclusion.get(field), list) or not exclusion[field]
+                    or any(not isinstance(value, str) or not value for value in exclusion[field])):
+                raise ValueError('technical exclusion audit requires source and patient identities')
+        excluded_source = sham['reference_id'] in exclusion['excluded_reference_ids']
+        excluded_patient = sham['patient_id'] in exclusion['excluded_patient_ids']
+        if technical_validation:
+            if (not excluded_source or not excluded_patient
+                    or sham['reference_id'] not in protocol.get('technical_reference_ids', [])
+                    or sham['patient_id'] not in protocol.get('technical_patient_ids', [])):
+                raise ValueError('technical source and patient must be reserved and excluded from formal analysis')
+        elif excluded_source or excluded_patient:
+            raise ValueError('pilot source or patient cannot enter formal cohort')
         from phase3_mask_edit.benchmark.manuscript_contract import verified_asset, validate_target_pair
         verified_asset(assets['protected_roi_files_and_hashes'][sham['reference_id']]['protected_roi'])
         import re
@@ -111,6 +123,10 @@ def validate_cohort(rows, *, source_count, handoff_validator, protocol, assets):
             raise ValueError('protected ROI differs from frozen source/target construction')
         for operation in protocol['operations'].values():
             validate_target_pair(states, operation, assets['approved_joint_targets'][sham['reference_id']], assets['protected_roi_files_and_hashes'][sham['reference_id']])
+    if technical_validation and (
+            set(protocol.get('technical_reference_ids', [])) != set(by_source)
+            or set(protocol.get('technical_patient_ids', [])) != patients):
+        raise ValueError('technical reservation differs from the complete frozen source list')
     return by_source
 
 
@@ -121,12 +137,16 @@ def main(argv=None):
     parser.add_argument('--output-root', type=Path, required=True)
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--technical-validation', action='store_true',
+        help='Use a separately frozen one/two-source technical protocol; formal launch stays disabled.')
     args = parser.parse_args(argv)
     protocol = json.loads(args.protocol.read_text())
-    if protocol.get('status') != 'frozen' or protocol.get('blockers') or not protocol.get('formal_launch_permitted'):
-        raise ValueError('formal cohort remains blocked; protocol has not passed its prerequisites')
-    from phase3_mask_edit.benchmark.manuscript_contract import preflight
-    assets = preflight(protocol, args.cohort_manifest, Path(__file__).resolve().parents[1])
+    from phase3_mask_edit.benchmark.manuscript_contract import preflight, validate_launch_scope
+    validate_launch_scope(protocol, technical_validation=args.technical_validation)
+    if args.technical_validation:
+        assets = preflight(protocol, args.cohort_manifest, Path(__file__).resolve().parents[1], technical_validation=True)
+    else:
+        assets = preflight(protocol, args.cohort_manifest, Path(__file__).resolve().parents[1])
     if sha256_file(args.cohort_manifest) != protocol['generation_manifest_sha256']:
         raise ValueError('cohort manifest content drift')
     if protocol['endpoint_stage'] != 'postprocessed_precomposite' or protocol['cluster_unit'] != 'patient_id':
@@ -137,7 +157,7 @@ def main(argv=None):
         raise ValueError('prompt differs from frozen sampling')
     if any(row.get('generation_seed') != protocol['sampling']['seed'] for row in rows):
         raise ValueError('manifest seed differs from frozen sampling')
-    cohort = validate_cohort(rows, source_count=protocol['source_count'], handoff_validator=build_frozen_generator_inputs, protocol=protocol, assets=assets)
+    cohort = validate_cohort(rows, source_count=protocol['source_count'], handoff_validator=build_frozen_generator_inputs, protocol=protocol, assets=assets, technical_validation=args.technical_validation)
     from phase3_mask_edit.benchmark.manuscript_contract import roi_evidence
     evidence = {source: {name: roi_evidence(asset) for name, asset in
                 assets['protected_roi_files_and_hashes'][source].items()}
@@ -148,6 +168,18 @@ def main(argv=None):
     if evidence_path.exists() and evidence_path.read_text() != payload:
         raise ValueError('existing ROI validation evidence differs; use a new output root')
     evidence_path.write_text(payload)
+    scope_path = args.output_root / 'cohort_scope_validation.json'
+    scope_payload = json.dumps({
+        'scope':'joint_gpu_technical_acceptance' if args.technical_validation else 'formal_manuscript_cohort',
+        'formal_launch_permitted':protocol['formal_launch_permitted'],
+        'protocol_sha256':sha256_file(args.protocol),
+        'generation_manifest_sha256':sha256_file(args.cohort_manifest),
+        'source_count':len(cohort),
+        'expected_generated_states':sorted(EXPECTED_STATES),
+    },sort_keys=True,indent=2)
+    if scope_path.exists() and scope_path.read_text() != scope_payload:
+        raise ValueError('existing execution scope differs; use a new output root')
+    scope_path.write_text(scope_payload)
     from scripts.run_embedding_utility_generation import main as generate
     sampling = protocol['sampling']
     command = ['--cohort-manifest', str(args.cohort_manifest), '--output-root', str(args.output_root),

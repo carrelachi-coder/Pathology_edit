@@ -18,9 +18,26 @@ def verified_asset(asset):
     return path
 
 
-def preflight(protocol, manifest, repo):
-    if not protocol.get('cohort_selection', {}).get('formal_source_list_frozen'):
-        raise ValueError('formal source list is not frozen')
+def validate_launch_scope(protocol, *, technical_validation=False):
+    if protocol.get('status') != 'frozen' or protocol.get('blockers'):
+        raise ValueError('execution remains blocked; protocol has not passed its prerequisites')
+    if technical_validation:
+        count = protocol.get('source_count')
+        if (protocol.get('scope') != 'joint_gpu_technical_acceptance'
+                or protocol.get('formal_launch_permitted') is not False
+                or type(count) is not int or not 1 <= count <= 2):
+            raise ValueError('technical validation requires a separate nonformal protocol with one or two excluded sources')
+    elif (protocol.get('formal_launch_permitted') is not True
+            or protocol.get('scope') == 'joint_gpu_technical_acceptance'):
+        raise ValueError('formal cohort remains blocked; protocol has not passed its prerequisites')
+
+
+def preflight(protocol, manifest, repo, *, technical_validation=False):
+    field = 'technical_source_list_frozen' if technical_validation else 'formal_source_list_frozen'
+    if not protocol.get('cohort_selection', {}).get(field):
+        raise ValueError('technical source list is not frozen' if technical_validation else 'formal source list is not frozen')
+    if technical_validation:
+        validate_launch_scope(protocol, technical_validation=True)
     assets = {key: verified_asset(protocol.get('formal_assets', {}).get(key)) for key in ASSETS}
     if sha256_file(manifest) != sha256_file(assets['generation_manifest']):
         raise ValueError('formal manifest differs from frozen asset')
