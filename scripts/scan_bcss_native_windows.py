@@ -208,6 +208,7 @@ def scan(args):
     try:
         by_coord, by_content = index_old(root, names, output)
         aliases = conservative_native_aliases(root, records, by_coord, by_content, lookup, output)
+        invalid_names = {r['old_name'] for r in aliases}
         reproduced, window_counts, new_seen = set(), [], {}
         total_reasons, primary, candidate_sources = Counter(), Counter(), []
         with (output/'windows.jsonl').open('x') as manifest:
@@ -231,7 +232,8 @@ def scan(args):
                         'crop_xy': [x, y], 'size_wh': [SIZE, SIZE], 'decoded_sha256': hashes,
                         'same_coordinate_old_export': old['name'] if old else None,
                         'old_decode_errors': old['errors'] if old else {},
-                        'content_equal_old_exports': by_content.get(hashes, []),
+                        'content_equal_readable_old_exports': [n for n in by_content.get(hashes, []) if n not in invalid_names],
+                        'conservative_native_aliases_of_invalid_old_exports': [n for n in by_content.get(hashes, []) if n in invalid_names],
                         'overlaps': neighbors(roi, y, x, width, height)}
                     stats['windows'] += 1
                     if args.pilot:
@@ -242,7 +244,8 @@ def scan(args):
                             stroma_pixels=int(np.count_nonzero(crop[1] == 2)),
                             historical_background_fraction=float(np.mean(crop[1] == 0)))
                         if patient in excluded: status = 'excluded_technical_patient'
-                        elif row['content_equal_old_exports']: status = 'duplicate_old_content'
+                        elif row['content_equal_readable_old_exports']: status = 'duplicate_old_content'
+                        elif row['conservative_native_aliases_of_invalid_old_exports']: status = 'excluded_invalid_old_native_alias'
                         elif old: status = 'duplicate_old_coordinate'
                         elif hashes in new_seen: status = 'duplicate_new_content'
                         elif reasons: status = 'cheap_failed'
