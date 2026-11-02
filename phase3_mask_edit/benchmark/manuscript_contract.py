@@ -1,0 +1,91 @@
+"""Pre-generation checks for signed research assets and target doses."""
+import json
+import subprocess
+from pathlib import Path
+import numpy as np
+from PIL import Image
+from .experiment_identity import sha256_file
+
+ASSETS = ('generation_manifest', 'approved_joint_targets', 'protected_roi_files_and_hashes', 'patient_wsi_mapping_audit', 'training_overlap_audits', 'pilot_exclusion_audit')
+
+
+def verified_asset(asset):
+    if not isinstance(asset, dict) or asset.get('status') != 'frozen' or not asset.get('path') or not asset.get('sha256'):
+        raise ValueError('required frozen asset is unresolved')
+    path = Path(asset['path'])
+    if not path.is_file() or sha256_file(path) != asset['sha256']:
+        raise ValueError('frozen asset missing or content drift')
+    return path
+
+
+def preflight(protocol, manifest, repo):
+    if not protocol.get('cohort_selection', {}).get('formal_source_list_frozen'):
+        raise ValueError('formal source list is not frozen')
+    assets = {key: verified_asset(protocol.get('formal_assets', {}).get(key)) for key in ASSETS}
+    if sha256_file(manifest) != sha256_file(assets['generation_manifest']):
+        raise ValueError('formal manifest differs from frozen asset')
+    head = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+    if head != protocol.get('implementation_commit'):
+        raise ValueError('runtime code commit differs from frozen protocol')
+    if subprocess.check_output(['git', '-C', str(repo), 'status', '--porcelain', '--untracked-files=normal'], text=True).strip():
+        raise ValueError('runtime checkout is dirty or contains untracked execution dependencies')
+    import sys
+    expected = protocol['runtime_environments']['generation_and_cellvit']['python_path']
+    if Path(sys.executable).resolve() != Path(expected).resolve():
+        raise ValueError('runtime interpreter differs from frozen environment')
+    import importlib.metadata
+    packages = protocol['runtime_environments']['generation_and_cellvit']['packages']
+    required = {'torch', 'numpy', 'scipy', 'Pillow', 'diffusers', 'transformers', 'safetensors', 'torchvision'}
+    if not required <= packages.keys() or any(importlib.metadata.version(name) != version for name, version in packages.items()):
+        raise ValueError('execution dependencies differ from frozen environment')
+    return {key: json.loads(path.read_text()) for key, path in assets.items() if key != 'generation_manifest'}
+
+
+def target_dose(row, operation, roi_asset):
+    roi = np.asarray(Image.open(verified_asset(roi_asset))) > 0
+    from phase3_mask_edit.core.mask_io import load_id_mask
+    from dataset_config.unified_labels import FINE_TO_PARENT
+    target = load_id_mask(row['target_tissue_mask'])
+    if roi.shape != target.shape or not roi.any():
+        raise ValueError('target dose requires a nonempty fixed ROI in the source frame')
+    parents = np.zeros_like(target)
+    for label in np.unique(target):
+        if int(label) not in FINE_TO_PARENT:
+            raise ValueError('unknown target tissue label')
+        parents[target == label] = FINE_TO_PARENT[int(label)]
+    return float(np.mean(parents[roi] == operation['target_parent']))
+
+
+def validate_target_pair(states, operation, frozen_targets, rois):
+    doses = []
+    signatures = []
+    for strength in ('moderate', 'significant'):
+        state = operation['code'] + '_' + strength
+        row = states[state]; frozen = frozen_targets[state]
+        handoff_path = verified_asset(frozen['handoff'])
+        if sha256_file(row['joint_handoff_manifest']) != sha256_file(handoff_path):
+            raise ValueError('strength is bound to a different approved handoff')
+        handoff = json.loads(handoff_path.read_text())
+        budget = {key: handoff['execution_contract'].get(key) for key in ('joint_area_budget', 'cell_count_extent_budget')}
+        if budget != frozen['execution_budget'] or not any(budget.values()):
+            raise ValueError('strength budget differs from frozen definition')
+        signature = tuple(sha256_file(row[key]) for key in ('target_tissue_mask', 'target_nuclei_mask'))
+        if list(signature) != frozen['target_sha256']:
+            raise ValueError('strength target content drift')
+        signatures.append(signature)
+        dose = target_dose(row, operation, rois[operation['code'] + '_roi'])
+        interval = operation['strengths'][strength]['dose_interval']
+        if not isinstance(interval, list) or len(interval) != 2 or not isinstance(operation.get('minimum_target_gap'), (int, float)):
+            raise ValueError('strength dose definitions remain unresolved')
+        lo, hi = interval
+        if not lo <= dose <= hi:
+            raise ValueError('target dose is outside frozen strength interval')
+        doses.append(dose)
+    if signatures[0] == signatures[1]:
+        raise ValueError('duplicate or unordered target strengths')
+    source_row = dict(states['sham'], target_tissue_mask=states['sham']['reference_tissue_mask'])
+    baseline = target_dose(source_row, operation, rois[operation['code'] + '_roi'])
+    if operation['direction'] * (doses[0] - baseline) <= 0:
+        raise ValueError('moderate target does not follow frozen direction from source')
+    if signatures[0] == signatures[1] or not operation['direction'] * (doses[1] - doses[0]) >= operation['minimum_target_gap'] > 0:
+        raise ValueError('duplicate or unordered target strengths')

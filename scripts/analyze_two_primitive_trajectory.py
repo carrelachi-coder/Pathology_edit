@@ -87,9 +87,11 @@ def cluster_summary(
 ) -> dict[str, float | int]:
     values = np.asarray(values, dtype=np.float64)
     groups = np.asarray(groups).astype(str)
+    units = np.unique(groups)
+    means = np.asarray([values[groups == g].mean() for g in units])
     return summarize_scores(
-        values,
-        groups,
+        means,
+        units,
         bootstrap_repeats=repeats,
         seed=seed,
     )
@@ -596,6 +598,7 @@ def analyze_encoder(
                     repeats=bootstrap_repeats,
                     seed=prefix_seed + 601,
                 ),
+                "direction_permutation_observed_statistic": float(np.mean([paired_discrimination[groups == group].mean() for group in np.unique(groups)])),
                 "cluster_level_fixed_score_sign_flip_pvalue": wsi_sign_flip_pvalue(paired_discrimination, groups, repeats=permutation_repeats, seed=prefix_seed + 702),
                 "cluster_level_direction_label_permutation_pvalue": (
                     operation_label_permutation_pvalue(

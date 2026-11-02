@@ -460,13 +460,18 @@ class JointSkillTests(unittest.TestCase):
                 available_checker_ids=JointGateRegistry().available_checker_ids,
                 production=False,
             )
+            def planner_scene():
+                metadata = _semantic_scene_stub()
+                for index, component in enumerate(metadata['tissue']['components']):
+                    component.setdefault('component_id', f'fixture-component-{index}')
+                return metadata
             client = CapturingClient()
             with self.assertRaisesRegex(JointContractError, "abstained"):
                 OpenAIMultimodalJointPlanner(
                     client=client, max_contract_attempts=1
                 ).create_plan(
                     case=case,
-                    scene=SimpleNamespace(to_metadata=lambda: {}),
+                    scene=SimpleNamespace(to_metadata=planner_scene),
                     bundle=bundle,
                     tissue_plan=None,
                     image_paths=(),
@@ -489,6 +494,7 @@ class JointSkillTests(unittest.TestCase):
                 packet["requirements"]["mandatory_compatibility_rule_ids"],
                 list(bundle.mechanism.coupling.compatibility_rule_ids),
             )
+
 
     def test_mask_planner_direct_caller_cannot_bypass_registry(self):
         class NeverCalledClient:
@@ -1670,7 +1676,7 @@ class JointSkillTests(unittest.TestCase):
     def test_mask_condition_critic_does_not_receive_histology_veto_authority(self):
         client = _RecordingJointCriticClient()
         repository = JointSkillRepository()
-        case = _breast_case_stub()
+        case = _current_breast_case_stub()
         bundle = repository.compose(
             case=case,
             mechanism_id="breast-annotation-anchored-boundary-growth",
@@ -1692,8 +1698,9 @@ class JointSkillTests(unittest.TestCase):
         self.assertTrue(payload["requirements"]["source_H&E_is_prohibited"])
         self.assertIn("Raw H&E is prohibited", client.calls[0]["system_prompt"])
 
+
     def test_mask_condition_critic_direct_raster_bypass_fails_closed(self):
-        case = _breast_case_stub()
+        case = _current_breast_case_stub()
         repository = JointSkillRepository()
         bundle = repository.compose(
             case=case,
@@ -1717,6 +1724,7 @@ class JointSkillTests(unittest.TestCase):
                     image_paths=(disguised,),
                     artifact_registry=None,
                 )
+
 
     def test_planner_and_critic_free_text_cannot_assert_unannotated_pathology(self):
         tissue_client = _CertifiedTissueSelectionClient(
@@ -1758,7 +1766,7 @@ class JointSkillTests(unittest.TestCase):
             feedback = json.loads(feedback_path.read_text())
             self.assertIn("neutral audit token", feedback["errors"][0])
 
-        case = _breast_case_stub()
+        case = _current_breast_case_stub()
         bundle = JointSkillRepository().compose(
             case=case,
             mechanism_id="breast-annotation-anchored-boundary-growth",
@@ -1835,6 +1843,7 @@ class JointSkillTests(unittest.TestCase):
                     ),
                     image_paths=(),
                 )
+
 
     def test_semantic_and_cell_selection_text_use_closed_audit_tokens(self):
         case = _breast_case_stub()
@@ -4516,16 +4525,17 @@ class JointSkillTests(unittest.TestCase):
     def test_cross_domain_cell_population_is_rejected(self):
         repository = JointSkillRepository()
         case = replace(
-            _breast_case_stub(),
+            _current_breast_case_stub(),
             cell_population_profile_id="colorectal-cellvit-source-first-v1",
         )
         with self.assertRaisesRegex(ValueError, "domain mismatch"):
             repository.compose(
                 case=case,
-                mechanism_id="breast-cohesive-nst-front",
+                mechanism_id="breast-annotation-anchored-boundary-growth",
                 available_checker_ids=JointGateRegistry().available_checker_ids,
                 production=False,
             )
+
 
     def test_necrosis_capability_follows_annotation_semantics_not_organ(self):
         rows = [
@@ -4551,11 +4561,12 @@ class JointSkillTests(unittest.TestCase):
         repository = JointSkillRepository()
         with self.assertRaisesRegex(ValueError, "internally reviewed"):
             repository.compose(
-                case=_breast_case_stub(),
-                mechanism_id="breast-cohesive-nst-front",
+                case=_current_breast_case_stub(),
+                mechanism_id="breast-annotation-anchored-boundary-growth",
                 available_checker_ids=JointGateRegistry().available_checker_ids,
                 production=True,
             )
+
 
     def test_stroma_increase_mechanisms_reject_normal_epithelium_source(self):
         repository = JointSkillRepository()
@@ -4602,10 +4613,10 @@ class JointSkillTests(unittest.TestCase):
 
     def test_budget_broker_reserves_whole_instance_union_without_lowering_floor(self):
         repository = JointSkillRepository()
-        case = _breast_case_stub()
+        case = _current_breast_case_stub()
         bundle = repository.compose(
             case=case,
-            mechanism_id="breast-cohesive-nst-front",
+            mechanism_id="breast-annotation-anchored-boundary-growth",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -4635,6 +4646,7 @@ class JointSkillTests(unittest.TestCase):
             2000,
         )
 
+
     def test_budget_broker_keeps_seam_footprint_reserve_distinct_from_halo(self):
         repository = JointSkillRepository()
         case = replace(
@@ -4642,11 +4654,11 @@ class JointSkillTests(unittest.TestCase):
             pathology_domain_id="breast-invasive-carcinoma-v1",
             annotation_profile_id="bcss-semantic-v1",
             cell_population_profile_id="breast-cellvit-source-first-v1",
-            primitive_id="tumor-burden-increase-v1",
+            primitive_id="cohesive-boundary-expansion-v1",
         )
         bundle = repository.compose(
             case=case,
-            mechanism_id="breast-cohesive-nst-front",
+            mechanism_id="breast-annotation-anchored-boundary-growth",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -4663,6 +4675,7 @@ class JointSkillTests(unittest.TestCase):
             + allocation.reserved_cell_only_pixels,
             allocation.joint_target_pixels,
         )
+
 
     def test_fixed_point_uses_candidate_preserving_closure(self):
         self.assertEqual(
@@ -4793,10 +4806,10 @@ class JointSkillTests(unittest.TestCase):
 
     def test_budget_broker_rebalances_from_exact_executed_cell_spill(self):
         repository = JointSkillRepository()
-        case = _breast_case_stub()
+        case = _current_breast_case_stub()
         bundle = repository.compose(
             case=case,
-            mechanism_id="breast-cohesive-nst-front",
+            mechanism_id="breast-annotation-anchored-boundary-growth",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -4818,6 +4831,7 @@ class JointSkillTests(unittest.TestCase):
                 revised.joint_target_pixels - 4_457 - 3_220,
             ),
         )
+
 
     def test_exact_spill_replaces_instead_of_double_counting_layout_reserve(self):
         repository = JointSkillRepository()
@@ -4854,12 +4868,12 @@ class JointSkillTests(unittest.TestCase):
 
     def test_capacity_adaptive_budget_can_compile_below_standard_floor(self):
         repository = JointSkillRepository()
-        case = _breast_case_stub(
+        case = _current_breast_case_stub(
             budget=JointAreaBudget(capacity_floor_policy="lower_to_proven_max_safe")
         )
         bundle = repository.compose(
             case=case,
-            mechanism_id="breast-cohesive-nst-front",
+            mechanism_id="breast-annotation-anchored-boundary-growth",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -4874,6 +4888,7 @@ class JointSkillTests(unittest.TestCase):
         )
         self.assertLess(revised.tissue_target_pixels, revised.tissue_floor_pixels)
         self.assertEqual(revised.tissue_execution_floor_pixels, 0)
+
 
     def test_panda_cell_capacity_fallback_rebrokers_to_existing_hard_floor(self):
         repository = JointSkillRepository()
@@ -4920,7 +4935,7 @@ class JointSkillTests(unittest.TestCase):
 
     def test_capacity_adaptive_budget_enforces_meaningful_edit_floor(self):
         repository = JointSkillRepository()
-        case = _breast_case_stub(
+        case = _current_breast_case_stub(
             budget=JointAreaBudget(
                 capacity_floor_policy="lower_to_proven_max_safe",
                 minimum_effective_fraction=0.05,
@@ -4928,7 +4943,7 @@ class JointSkillTests(unittest.TestCase):
         )
         bundle = repository.compose(
             case=case,
-            mechanism_id="breast-cohesive-nst-front",
+            mechanism_id="breast-annotation-anchored-boundary-growth",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -4940,6 +4955,7 @@ class JointSkillTests(unittest.TestCase):
             initial.tissue_execution_floor_pixels,
             initial.tissue_floor_pixels,
         )
+
 
     def test_underfill_replan_keeps_prior_front_and_adds_unique_capacity(self):
         interfaces = [
@@ -4984,7 +5000,7 @@ class JointSkillTests(unittest.TestCase):
         self.assertEqual(sum(allocation_capacities), 140)
 
     def test_fixed_breast_fallback_compiles_against_manifest_three_percent(self):
-        case = _breast_case_stub(
+        case = _current_breast_case_stub(
             budget=JointAreaBudget(
                 target_fraction=0.08,
                 min_fraction=0.04,
@@ -4996,7 +5012,7 @@ class JointSkillTests(unittest.TestCase):
         )
         bundle = JointSkillRepository().compose(
             case=case,
-            mechanism_id="breast-cohesive-nst-front",
+            mechanism_id="breast-annotation-anchored-boundary-growth",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -5016,9 +5032,10 @@ class JointSkillTests(unittest.TestCase):
             7_865,
         )
 
+
     def test_tissue_tool_rejects_allocation_below_binding_execution_floor(self):
         repository = JointSkillRepository()
-        case = _breast_case_stub(
+        case = _current_breast_case_stub(
             budget=JointAreaBudget(
                 capacity_floor_policy="lower_to_proven_max_safe",
                 minimum_effective_fraction=0.05,
@@ -5026,7 +5043,7 @@ class JointSkillTests(unittest.TestCase):
         )
         bundle = repository.compose(
             case=case,
-            mechanism_id="breast-cohesive-nst-front",
+            mechanism_id="breast-annotation-anchored-boundary-growth",
             available_checker_ids=JointGateRegistry().available_checker_ids,
             production=False,
         )
@@ -5043,6 +5060,7 @@ class JointSkillTests(unittest.TestCase):
             JointContractError, "below the binding meaningful floor"
         ):
             _as_tissue_case(case, allocation=allocation, shape=(512, 512))
+
 
     def test_joint_router_recognizes_nuclei_only_change_as_non_noop(self):
         manifest = {
@@ -9553,13 +9571,17 @@ class JointWorkflowTests(unittest.TestCase):
                 joint_planner=HeuristicJointPlanner(),
                 critic=_ApprovingJointCritic(),
             ).run(case, output_root=root / "unanchored")
-            self.assertEqual(result.status, "abstained")
-            reason = " ".join(result.abstain_reasons)
-            self.assertNotIn("explicit mask-graph depletion anchor", reason)
-            self.assertIn(
-                "cell-only pre-LLM portfolio has no exact-capacity survivor",
-                reason,
-            )
+            self.assertEqual(result.status, "selected_research", result.abstain_reasons)
+            self.assertIsNotNone(result.condition)
+            self.assertEqual(result.condition.ledger.tissue_pixels, 0)
+            original = np.asarray(Image.open(case.source_nuclei_mask_uri))
+            removed = len(tuple(iter_instances(original))) - len(tuple(iter_instances(result.condition.target_nuclei_mask)))
+            self.assertGreaterEqual(removed, 12)
+            self.assertLessEqual(removed, 15)
+            outside = ~result.condition.generation_support
+            np.testing.assert_array_equal(original[outside], result.condition.target_nuclei_mask[outside])
+            reports = json.loads((root / 'unanchored' / case.case_id / 'joint_gate_reports.json').read_text())
+            self.assertTrue(any(report['passed'] for report in reports))
 
     def test_cell_only_budget_cannot_undercut_skill_minimum_effect(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -9878,6 +9900,10 @@ def _semantic_scene_stub() -> dict:
         },
         "reference_shape_authority": None,
     }
+
+
+def _current_breast_case_stub(*, budget=None):
+    return replace(_breast_case_stub(budget=budget), primitive_id="cohesive-boundary-expansion-v1")
 
 
 def _breast_case_stub(*, budget=None) -> JointCaseContext:

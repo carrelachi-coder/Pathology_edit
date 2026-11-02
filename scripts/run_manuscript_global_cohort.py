@@ -17,7 +17,7 @@ from phase3_mask_edit.benchmark.experiment_identity import sha256_file
 EXPECTED_STATES = {'sham', 'u1_moderate', 'u1_significant', 'u2_moderate', 'u2_significant'}
 
 
-def validate_cohort(rows, *, source_count, handoff_validator):
+def validate_cohort(rows, *, source_count, handoff_validator, protocol, assets):
     by_source = {}
     for row in rows:
         source = row['reference_id']
@@ -37,6 +37,16 @@ def validate_cohort(rows, *, source_count, handoff_validator):
         if sham['patient_id'] in patients:
             raise ValueError('minimum cohort requires one source per independent patient')
         patients.add(sham['patient_id'])
+        audit = assets['training_overlap_audits'].get(sham['reference_id'], {})
+        if audit.get('status') != 'completed' or not all(key in audit for key in ('generator', 'segmentator', 'cellvit')):
+            raise ValueError('training overlap audit is incomplete')
+        mapping = assets['patient_wsi_mapping_audit'][sham['reference_id']]
+        if mapping != {'patient_id': sham['patient_id'], 'wsi_id': sham['wsi_id']}:
+            raise ValueError('source mapping differs from frozen audit')
+        if sham['reference_id'] in assets['pilot_exclusion_audit']['excluded_reference_ids']:
+            raise ValueError('pilot source cannot enter formal cohort')
+        from phase3_mask_edit.benchmark.manuscript_contract import verified_asset, validate_target_pair
+        verified_asset(assets['protected_roi_files_and_hashes'][sham['reference_id']]['protected_roi'])
         import re
         match = re.search(r'TCGA-[A-Z0-9]{2}-[A-Z0-9]{4}', Path(sham['reference_image']).name)
         if not match or match.group() != sham['patient_id']:
@@ -61,7 +71,10 @@ def validate_cohort(rows, *, source_count, handoff_validator):
                     raise ValueError('sham target differs from source conditions')
             else:
                 inputs, _, handoff = handoff_validator(row['joint_handoff_manifest'], output_dir=Path(row['joint_handoff_manifest']).parent / 'validation-only')
-                expected_primitive = 'tumor-burden-increase-v1' if state.startswith('u1') else 'stromal-immune-infiltration-v1'
+                operation = protocol['operations'][state.split('_')[0]]
+                expected_primitive = operation['primitive_id']
+                if handoff['mechanism_id'] != operation['mechanism_id']:
+                    raise ValueError('mechanism differs from frozen operation')
                 if handoff['primitive_id'] != expected_primitive:
                     raise ValueError('operation label differs from approved joint primitive')
                 if sha256_file(_generation_change_region(row)) != sha256_file(inputs.generation_change_region):
@@ -69,6 +82,20 @@ def validate_cohort(rows, *, source_count, handoff_validator):
                 for key in (*shared, 'target_tissue_mask', 'target_nuclei_mask'):
                     if sha256_file(getattr(inputs, key)) != sha256_file(row[key]):
                         raise ValueError(f'formal row differs from approved joint handoff: {key}')
+        from phase3_mask_edit.core.mask_io import load_id_mask
+        from scipy.ndimage import binary_dilation
+        source_tissue = load_id_mask(sham['reference_tissue_mask'])
+        source_nuclei = load_id_mask(sham['reference_nuclei_mask'])
+        changed = np.zeros_like(source_tissue, dtype=bool)
+        for row in states.values():
+            changed |= (load_id_mask(row['target_tissue_mask']) != source_tissue) | (load_id_mask(row['target_nuclei_mask']) != source_nuclei)
+        expected = (source_tissue > 0) & (source_tissue != 255) & ~binary_dilation(changed, iterations=8)
+        protected_path = verified_asset(assets['protected_roi_files_and_hashes'][sham['reference_id']]['protected_roi'])
+        actual = np.asarray(Image.open(protected_path)) > 0
+        if not np.array_equal(actual, expected):
+            raise ValueError('protected ROI differs from frozen source/target construction')
+        for operation in protocol['operations'].values():
+            validate_target_pair(states, operation, assets['approved_joint_targets'][sham['reference_id']], assets['protected_roi_files_and_hashes'][sham['reference_id']])
     return by_source
 
 
@@ -83,17 +110,19 @@ def main(argv=None):
     protocol = json.loads(args.protocol.read_text())
     if protocol.get('status') != 'frozen' or protocol.get('blockers') or not protocol.get('formal_launch_permitted'):
         raise ValueError('formal cohort remains blocked; protocol has not passed its prerequisites')
-    if protocol['implementation_commit'] != subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip():
-        raise ValueError('runtime code commit differs from frozen protocol')
+    from phase3_mask_edit.benchmark.manuscript_contract import preflight
+    assets = preflight(protocol, args.cohort_manifest, Path(__file__).resolve().parents[1])
     if sha256_file(args.cohort_manifest) != protocol['generation_manifest_sha256']:
         raise ValueError('cohort manifest content drift')
     if protocol['endpoint_stage'] != 'postprocessed_precomposite' or protocol['cluster_unit'] != 'patient_id':
         raise ValueError('unsupported frozen endpoint or independent unit')
     from phase3_joint_edit_refine.generator_adapter import build_frozen_generator_inputs
     rows = [json.loads(line) for line in args.cohort_manifest.read_text().splitlines() if line.strip()]
+    if any(row.get('prompt') != protocol['sampling']['prompt'] for row in rows):
+        raise ValueError('prompt differs from frozen sampling')
     if any(row.get('generation_seed') != protocol['sampling']['seed'] for row in rows):
         raise ValueError('manifest seed differs from frozen sampling')
-    validate_cohort(rows, source_count=protocol['source_count'], handoff_validator=build_frozen_generator_inputs)
+    validate_cohort(rows, source_count=protocol['source_count'], handoff_validator=build_frozen_generator_inputs, protocol=protocol, assets=assets)
     from scripts.run_embedding_utility_generation import main as generate
     sampling = protocol['sampling']
     command = ['--cohort-manifest', str(args.cohort_manifest), '--output-root', str(args.output_root),

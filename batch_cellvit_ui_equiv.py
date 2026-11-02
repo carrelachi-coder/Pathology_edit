@@ -141,6 +141,9 @@ def main() -> int:
         if output.exists() or (canonical and canonical.exists()):
             if not args.skip_existing or canonical is None or not canonical.is_file() or not output.is_file():
                 raise ValueError(f"existing CellViT artifacts require validated reuse or new output directories: {p.name}")
+            receipt = canonical.with_suffix(".completion.json")
+            if not receipt.is_file() or json.loads(receipt.read_text()).get("json_sha256") != sha256_file(canonical):
+                raise ValueError("CellViT detection JSON lacks matching independent completion receipt")
             payload = json.loads(canonical.read_text())
             provenance = payload.get("benchmark_provenance", {})
             if (provenance.get("status") != "completed"
@@ -246,6 +249,9 @@ def main() -> int:
                 (json_output_dir / f"{image_path.stem}.json").write_text(
                     json.dumps(payload, ensure_ascii=False), encoding="utf-8"
                 )
+            if json_output_dir is not None:
+                canonical = json_output_dir / f"{image_path.stem}.json"
+                canonical.with_suffix(".completion.json").write_text(json.dumps({"json_sha256": sha256_file(canonical), "mask_sha256": sha256_file(output_path), "input_sha256": sha256_file(image_path), "model_sha256": model_sha256}), encoding="utf-8")
             cells = payload.get("cells", []) if isinstance(payload, dict) else []
             if not cells:
                 valid_zero += 1

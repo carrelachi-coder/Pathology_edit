@@ -44,7 +44,7 @@ def asset_identity(path: str | Path) -> dict:
 
 def validate_resume(record_path: Path, expected: dict, outputs: list[Path]) -> bool:
     """Reject partial/legacy/drifted runs without overwriting their artifacts."""
-    occupied = record_path.exists() or any(path.exists() for path in outputs)
+    occupied = record_path.exists() or any(path.exists() for path in outputs) or (record_path.parent.is_dir() and any(record_path.parent.iterdir()))
     if not occupied:
         return False
     if not record_path.is_file():

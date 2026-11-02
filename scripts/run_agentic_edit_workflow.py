@@ -564,14 +564,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             metadata = json.loads(existing_metadata.read_text(encoding="utf-8"))
             return GenerationArtifact(mode=mode, image_path=endpoint,
                 metadata={**metadata, "resumed_generation": True})
-        image_path, metadata = _run_generation_stage(
-            args=attempt_args,
-            output_dir=attempt_dir,
-            reference_image=inputs["reference_image"],
-            change_region=inputs["generation_change_region"],
-            target_tissue_path=args.target_tissue_mask.resolve(),
-            target_nuclei_path=args.target_nuclei_mask.resolve(),
-        )
+        identity_path.write_text(json.dumps({'identity': identity, 'status': 'started'}))
+        try:
+            image_path, metadata = _run_generation_stage(
+                args=attempt_args,
+                output_dir=attempt_dir,
+                reference_image=inputs["reference_image"],
+                change_region=inputs["generation_change_region"],
+                target_tissue_path=args.target_tissue_mask.resolve(),
+                target_nuclei_path=args.target_nuclei_mask.resolve(),
+            )
+        except Exception as error:
+            identity_path.write_text(json.dumps({'identity': identity, 'status': 'failed', 'error': str(error)}))
+            raise
         identity_path.write_text(json.dumps({"identity": identity,
             "outputs": {p.name: sha256_file(p) for p in outputs}}, indent=2), encoding="utf-8")
         return GenerationArtifact(mode=mode, image_path=image_path, metadata=metadata)

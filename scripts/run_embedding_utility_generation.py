@@ -192,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
             completed += 1
             continue
         sample_dir.mkdir(parents=True, exist_ok=True)
+        identity_path.write_text(json.dumps({"identity": identity, "status": "started"}), encoding="utf-8")
         try:
             generation_change_region = _generation_change_region(row)
             with Image.open(row["reference_image"]) as image:
@@ -225,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             recorded_outputs = [generated_path, info_path]
             if output_path not in recorded_outputs:
                 recorded_outputs.append(output_path)
-            identity_path.write_text(json.dumps({"identity": identity,
+            identity_path.write_text(json.dumps({"identity": identity, "status": "completed",
                 "outputs": {p.name: sha256_file(p) for p in recorded_outputs}}, indent=2), encoding="utf-8")
             completed += 1
         except Exception as exc:
@@ -234,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
                 "backend": args.backend,
                 "error": f"{type(exc).__name__}: {exc}",
             }
+            identity_path.write_text(json.dumps({"identity": identity, "status": "failed", "error": failure}), encoding="utf-8")
             failures.append(failure)
             (sample_dir / "failure.json").write_text(
                 json.dumps(failure, indent=2, ensure_ascii=False), encoding="utf-8"

@@ -60,6 +60,36 @@ def predict_batch(model, image_paths: list[Path], output_dir: Path, device) -> N
         save_prediction(prediction, output_dir / f"{image_path.stem}.png")
 
 
+def prediction_valid(image, output, identity, classes):
+    from PIL import Image
+    import numpy as np
+    from phase3_mask_edit.benchmark.experiment_identity import sha256_file
+    try:
+        with Image.open(image) as source, Image.open(output) as prediction:
+            values = np.asarray(prediction)
+            if prediction.size != source.size or values.ndim != 2 or not np.isin(values, range(classes)).all():
+                return False
+        receipt = json.loads(output.with_suffix('.completion.json').read_text())
+        return receipt == {'identity': identity, 'input_sha256': sha256_file(image), 'output_sha256': sha256_file(output)}
+    except (OSError, ValueError):
+        return False
+
+
+def predict_and_record(model, paths, output_dir, device, identity, classes):
+    from phase3_mask_edit.benchmark.experiment_identity import sha256_file
+    predict_batch(model, paths, output_dir, device)
+    from PIL import Image
+    import numpy as np
+    for path in paths:
+        output = output_dir / f'{path.stem}.png'
+        with Image.open(path) as source, Image.open(output) as predicted:
+            array = np.asarray(predicted)
+            if source.size != predicted.size or array.ndim != 2 or not np.isin(array, range(classes)).all():
+                raise ValueError('invalid prediction dimensions or labels')
+        output.with_suffix('.completion.json').write_text(json.dumps({'identity': identity,
+            'input_sha256': sha256_file(path), 'output_sha256': sha256_file(output)}))
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -89,6 +119,12 @@ def main(argv: list[str] | None = None) -> int:
     ).to(device)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    from phase3_mask_edit.benchmark.experiment_identity import sha256_file
+    identity = {"checkpoint_sha256": sha256_file(args.checkpoint), "configuration": {k: v for k, v in vars(args).items() if k not in {"checkpoint", "input_dir", "output_dir", "skip_existing", "limit"}}}
+    for path in image_paths:
+        output = output_dir / f"{path.stem}.png"
+        if output.exists() and not (args.skip_existing and prediction_valid(path, output, identity, args.num_classes)):
+            raise ValueError("existing segmentation lacks valid identity or decoded output; use a new output directory")
     written = 0
     skipped = 0
     failed: list[dict[str, str]] = []
@@ -104,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         if len(batch) < args.batch_size and index != len(pending):
             continue
         try:
-            predict_batch(model, batch, output_dir, device)
+            predict_and_record(model, batch, output_dir, device, identity, args.num_classes)
             written += len(batch)
             if index == 1 or index % 25 == 0 or index == len(image_paths):
                 print(f"[{index}/{len(image_paths)}] wrote {written} masks", flush=True)
@@ -112,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[{index}/{len(image_paths)}] failed batch ending at {image_path}: {exc!r}; retrying singly", file=sys.stderr, flush=True)
             for single_path in batch:
                 try:
-                    predict_batch(model, [single_path], output_dir, device)
+                    predict_and_record(model, [single_path], output_dir, device, identity, args.num_classes)
                     written += 1
                 except Exception as single_exc:  # noqa: BLE001 - keep batch jobs moving and report failures.
                     failed.append({"images": [str(single_path)], "error": repr(single_exc)})
@@ -120,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             batch = []
 
-    missing_outputs = [str(p) for p in image_paths if not (output_dir / f"{p.stem}.png").is_file()]
+    missing_outputs = [str(p) for p in image_paths if not prediction_valid(p, output_dir / f"{p.stem}.png", identity, args.num_classes)]
     summary = {
         "checkpoint": str(Path(args.checkpoint)),
         "input_dir": str(input_dir),

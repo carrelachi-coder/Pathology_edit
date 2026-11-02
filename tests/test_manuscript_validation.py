@@ -135,8 +135,9 @@ class ManuscriptCounterexamples(unittest.TestCase):
                 seen.extend(p.name for p in paths)
                 for p in paths:
                     Image.new('L', (8, 8)).save(output / f'{p.stem}.png')
-            with patch('segmentator.inference.load_checkpoint', return_value=SimpleNamespace(to=lambda x: object())), patch.object(segment, 'predict_batch', side_effect=predict):
-                code = segment.main(['--checkpoint', 'fixture', '--input-dir', str(source), '--output-dir', str(out), '--batch-size', '2', '--skip-existing', '--device', 'cpu'])
+            (root/'checkpoint').write_bytes(b'fixture')
+            with patch.object(segment, 'prediction_valid', return_value=True), patch('segmentator.inference.load_checkpoint', return_value=SimpleNamespace(to=lambda x: object())), patch.object(segment, 'predict_batch', side_effect=predict):
+                code = segment.main(['--checkpoint', str(root/'checkpoint'), '--input-dir', str(source), '--output-dir', str(out), '--batch-size', '2', '--skip-existing', '--device', 'cpu'])
             self.assertEqual(code, 0)
             self.assertEqual(seen, ['a.png'])
             report = json.loads((out / 'prediction_summary.json').read_text())
