@@ -16,7 +16,7 @@
     "organ": "BCSS breast; current canonical annotation-boundary and generic immune-compartment mechanisms",
     "source_manifest_sha256": "a7c9e1b6e46527034ee4461375718b37ef6974e62b56e937e3931d7b4d6d8486",
     "formal_source_list_frozen": false,
-    "supplemental_source_rule": "same canonical BCSS export and retained dataset split manifest; first 12 cheap-mask-eligible additional sources per nontechnical patient; freeze census before new H&E; not a finalized cohort"
+    "supplemental_source_rule": "same canonical BCSS export and dataset split manifest; append fixed-order supplemental tiers (initial 12 cheap-mask-eligible sources per patient, then all remaining eligible sources if needed); keep prior pools/failures, exclude all technical patients, freeze before formal H&E; not a finalized cohort"
   },
   "route": "cross-v1 global reconstruction; no routing/retry-based efficacy estimate",
   "endpoint_stage": "postprocessed_precomposite",

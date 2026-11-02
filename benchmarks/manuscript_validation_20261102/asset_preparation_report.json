@@ -81,6 +81,12 @@
       "timeout_seconds": 7200,
       "status": "running",
       "scope": "runtime-only retry of incomplete states; identical inputs/code/weights/budgets/seeds; no generated RGB or measurement used"
+    },
+    "attempt_5": {
+      "status": "running; both Moderate states review_required, not independently approved",
+      "timeout_seconds": 7200,
+      "selection": "first remaining source in complete initial census order passing both source topology witnesses; patient reserved and excluded before execution",
+      "formal_generation_launched": false
     }
   },
   "new_script_verification": {
@@ -115,10 +121,11 @@
     "receipt_sha256": "2d53564fd5e075c1de3ab37f7853627d5554d250d498af68bb2172d859d6b52a"
   },
   "technical_exclusion": {
-    "sources": 4,
-    "patients": 4,
-    "audit_sha256": "b743d06561d572634e420c3862cddf53093dd9018b36e41d7571f96c755cbc76",
-    "applies_to": "all patches of each technical patient, including failed and timeout attempts"
+    "sources": 5,
+    "patients": 5,
+    "audit_version": "v2",
+    "audit_sha256": "e99577970b5e4c0a09fce4768b2c6e1368b2d0454cc29fa90662848e87f30126",
+    "applies_to": "all patches of all used technical patients, including incomplete/abstained attempts"
   },
   "technical_entry": {
     "flag": "--technical-validation",
@@ -136,7 +143,7 @@
     "physician_or_user_approval_claimed": false,
     "hard_gate_waiver_permitted": false,
     "evidence": "exact source and passing candidate hashes, reconstructed mask-only board and persisted gate/plan files",
-    "handoff_status": "two Moderate conditions emitted and passed actual consumer validation; not four-target or GPU acceptance",
+    "handoff_status": "three actually reviewed conditions promoted and passed actual consumption: u1_moderate/u1_significant/u2_moderate; u2_significant unresolved",
     "promotion_and_consumer_code_commit": "3d7088aed4d64d4d589c181e089f6cb07298405b",
     "validated_conditions": [
       {
@@ -152,6 +159,13 @@
         "review_sha256": "191163002821fb853164f68c64148939ea8480f9dd3e4e80c9179e79a012cd85",
         "joint_fraction": 0.19256210327148438,
         "generation_support_fraction": 0.47049713134765625
+      },
+      {
+        "state": "u1_significant",
+        "review_sha256": "65edcf5b78b2fded19a757e76e04acda2c1b99c70ca4172f4a5cfbae41c41943",
+        "joint_fraction": 0.3184928894042969,
+        "generation_support_fraction": 0.6749763488769531,
+        "manifest_sha256": "471b70dd8fe35be57a032bb7d46ee54cee99d69dff62cf41635ca374750d132a"
       }
     ]
   },
@@ -184,7 +198,8 @@
     "maximum_possible_formal_patients": 8,
     "required_formal_patients": 30,
     "progress_snapshot_sha256": "8952838a61744a3d3943b62be6ac9626061f05f10ce12e2bd63f019e52e428d7",
-    "formal_generation_launched": false
+    "formal_generation_launched": false,
+    "exclusion_scope": "historical snapshot using v1/four technical patients; current exclusions additionally include a fifth patient"
   },
   "supplemental_census": {
     "candidate_count": 1219,
@@ -211,5 +226,37 @@
   "supplemental_census_tests": {
     "passed": 2,
     "scope": "same-export guard, fixed ordering, per-patient cap, technical exclusion and retained initial census; CPU synthetic sources"
+  },
+  "supplemental_capacity": {
+    "requested_sources": 1219,
+    "both_significant_necessary_capacity_pass": 145,
+    "passing_patients": 68,
+    "unknown_sources": 0,
+    "topology_qualified": false,
+    "progress_sha256": "a1c9b96b3d9d05799c3c779e94e021c0c2aeb05c3c7165ed8a925f97afa1d0a7"
+  },
+  "supplemental_topology": {
+    "source_candidates": 1219,
+    "capacity_qualified": 145,
+    "topology_completed": 145,
+    "topology_passing_sources": 5,
+    "topology_passing_patient_groups": 5,
+    "unknown_sources": 2,
+    "passing_nontech_patient_groups": 5,
+    "exclusion_audit_sha256": "e99577970b5e4c0a09fce4768b2c6e1368b2d0454cc29fa90662848e87f30126",
+    "progress_sha256": "5dca1e4d723afd49660a849e9bd6ad19f0dd44717dd48904ac8c617df2fc0c15",
+    "four_target_pairs_approved": false,
+    "scope": "source-only qualification, not a frozen formal cohort",
+    "unknown_reason": "two source screens reached the 1200-second controller limit; preserved as unknown, not biological failure"
+  },
+  "technical_harness": {
+    "asset_freezer": "scripts/freeze_manuscript_joint_technical.py",
+    "measurement_entry": "scripts/measure_manuscript_joint_technical.py",
+    "status": "implemented; four actual reviewed targets required before writing frozen technical protocol",
+    "cpu_tests": 75,
+    "log": "technical_readout_harness_pytest.txt",
+    "gpu_generation_and_measurement_executed": false,
+    "measurement_policy": "fixed source denominators; type-2 cell density at explicit nominal scale; terminal uncertainty stays null; no order/effect gate",
+    "version_alignment": "CellViT rasterizer is loaded by exact path from the executing snapshot; current old/live source hash comparison matched 6c210d1b53206ae8108df097beebc0894a9177c1472b0cb70c0a070e035a6fd4"
   }
 }

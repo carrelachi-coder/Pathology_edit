@@ -82,7 +82,7 @@
 
 为最终 GPU 技术验收补上同一入口的 `--technical-validation` 模式：必须使用单独 frozen 技术协议，scope 为 joint_gpu_technical_acceptance，formal_launch_permitted 必须为 false，来源仅 1–2 个且同时属于预留技术名单和源/患者排除表。继续执行同一 handoff、剂量、J 保护 ROI、干净代码、环境和真实模型内容检查；写出 scope 与协议/manifest 哈希记录。正式模式也拒绝来自技术患者的其他 patch，缺少患者排除字段时停止。主正式协议仍未冻结。
 
-这轮 **42 项相关 CPU 检查通过**，包括 7 个技术范围场景和真实子进程超时保留中间产物的反例；没有重跑 GPU 或将它们计为正式结果。[资产准备记录](../benchmarks/manuscript_validation_20261102/asset_preparation_report.json) 与日志单独保存。
+这轮 **42 项相关 CPU 检查通过**，包括 7 个技术范围场景和真实子进程超时保留中间产物的反例；这些 CPU 检查不是 H&E 生成／评价的 GPU 验收；真实 ProbNet 条件编译另外留痕，不计为正式结果。[资产准备记录](../benchmarks/manuscript_validation_20261102/asset_preparation_report.json) 与日志单独保存。
 
 用户明确委托当前 Codex 聊天独立审查 mask 条件图。新增独立模型审查入口与原有 user-only 批准入口分开，保留原入口的严格用户身份校验。模型审查绑定实际源输入、全部展示的 passing candidates、gate/plan 文件和 board 哈希，并从源/目标 mask 重建 board 逐像素核对；不读取原始 H&E，不生成批准默认值。只有已记录的 approved 决策、至少 0.7 confidence 和完整观察说明可进入原有严格 handoff 检查；新增/失效 hard gate、目标或证据变更、伪造 board 均拒绝。provenance 标记 independent_critic_review，不写 user_approval 或医生批准。**55 项相关 CPU 测试通过**；其中端到端持久化重构测试明确使用合成 gate fixture，不能当作实际病理/生成验收。
 
@@ -93,3 +93,11 @@
 两个实际 Moderate 条件的独立 Codex 决策已绑定此前确实查看的 mask-only board 哈希，通过重建、原有 ledger/实例/合同/S>J 校验后输出 handoff，并经实际消费端重新核验。晋升与消费代码为 `3d7088ae`；没有调用图像生成。模型记录不带 user_approval。另一个技术来源两个 Moderate 为 review_required，U2 Significant 因 deterministic_replan_stalled abstained，U1 Significant 超时，均未被补齐为成功配对。第三来源的两个超时 Significant 仅各做一次同输入运行时重试，时限 7,200 秒，不是看过 H&E 后的质量重试。
 
 用户授权的同 BCSS 补充 census 在 `d4ed240f` 冻结：原导出 **22,870 张 patch、151 患者组**，每位非技术患者按文件名取首 12 个满足廉价源条件的新增来源，得到 **1,219 来源、115 患者组**。廉价条件只包含已知 tissue/nucleus ID、512 对齐、已有 fine Tumor1/Stroma2/Immune4，以及至少 27% Stroma 的必要下限。原 300 和其失败不删除；技术患者整组排除，达到 cap 后的未检查来源单独记录，不能叫作资格失败。新 census 仍需两操作容量、拓扑、四目标和独立模型审查，不是正式队列。两项新增 census CPU 测试通过。
+
+第一批补充 census 的 1,219 个来源完成必要容量检查，145 来源、68 患者通过，容量检查没有未知结果；随后 145 个源拓扑检查中 5 来源、5 患者通过，另有 **2 个 1,200 秒超时保留为 unknown**，不当作形态失败。原池与第一批仍不足 30 个完整来源，因此在用户已授权的同一 BCSS 范围继续按固定顺序追加剩余廉价条件合格来源，旧池不删除，不按 H&E/读出筛选。
+
+第三来源的 U1 Significant 运行时重试完成，实际 J 为 31.8493%；Codex 在真实 mask-only board 上记录角状 sector 边界限制，选择候选 01，经原有硬门槛和精确合同检查晋升并通过消费端校验。两个 Moderate 加这个 Significant 共三个条件可用，U2 Significant 仍未完成。另按完整初始 census 的资格顺序预留第五技术患者并编译四状态，全部五位技术患者均排除于正式分析；旧四患者排除快照不覆盖。
+
+新增实际技术资产与测量入口，要求四个已审查、同源、预算精确一致的 handoff，再冻结 J 并集保护 ROI、共同全幅后处理、实际 checkpoint 内容、CellViT 实现包和两套 Python/依赖。冻结协议仅限技术来源，formal_launch_permitted 保持 false。测量端拒绝 source_composite 冒充 global sham，核对实际 endpoint/seed/权重/alpha 与 nuclei-exclusion 区域，按固定源 ROI 计组织分母和 type-2 局部多边形面积质心；密度明确使用 nominal 0.25 um/px，不宣称恢复了逐切片物理校准。缺失、失败、有效零和不可定位的 uncertain 分开记录，不要求图像读出单调。
+
+还消除了 CellViT 转换对 live 原仓库的隐式导入：改为读取当前执行快照的确定文件路径。当前原仓库与快照该文件内容哈希相同（6c210d1b…），转换算法未改；新增反例证实外部 namespace 缓存不能串入。**75 项相关 CPU 检查通过**，包括真实后处理 mask 验证和明确标为合成的 producer 记账场景。尚未运行本轮五状态 H&E 生成与六图评价，不能把这些检查记为最终 GPU 通过。

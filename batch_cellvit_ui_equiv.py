@@ -80,10 +80,14 @@ def write_openslide_tiff(image_path: Path, staged: Path) -> None:
 
 
 def rasterize_cells_json(cells_json: Path, image_path: Path) -> np.ndarray:
-    sys.path.insert(0, str(DEFAULT_REPO))
-    from scripts.run_cellvit_single_patch import rasterize_cells_json as rasterize_ui  # noqa: E402
-
-    return rasterize_ui(cells_json, image_path)
+    # Bind conversion to this checkout, rather than whichever live repository
+    # happens to precede it on sys.path or in the scripts namespace cache.
+    import importlib.util
+    path = Path(__file__).resolve().parent / 'scripts' / 'run_cellvit_single_patch.py'
+    spec = importlib.util.spec_from_file_location('_frozen_cellvit_rasterizer', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.rasterize_cells_json(cells_json, image_path)
 
 
 def main() -> int:

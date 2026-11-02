@@ -16,7 +16,7 @@ from scripts.prepare_manuscript_joint_assets import patient_from_image
 
 
 def freeze(manifest_path, initial_path, exclusion_path, source_root, output, *, per_patient=12):
-    if type(per_patient) is not int or per_patient < 1:
+    if per_patient is not None and (type(per_patient) is not int or per_patient < 1):
         raise ValueError('per-patient source cap must be positive')
     output=Path(output);output.mkdir(parents=True,exist_ok=False)
     source_root=Path(source_root).resolve()
@@ -44,7 +44,7 @@ def freeze(manifest_path, initial_path, exclusion_path, source_root, output, *, 
             patient=source['patient_id'];name=source['name'];reason=None
             if patient in excluded:reason='excluded_technical_patient'
             elif name in old_names:reason='already_in_initial_census'
-            elif patient_counts[patient]>=per_patient:reason='unexamined_after_per_patient_cap'
+            elif per_patient is not None and patient_counts[patient]>=per_patient:reason='unexamined_after_per_patient_cap'
             paths={field:source_root/folder/name for field,folder in (
                 ('reference_image','images'),('reference_tissue_mask','tissue_masks'),('reference_nuclei_mask','nuclei_masks'))}
             if reason is None:
@@ -73,7 +73,9 @@ def freeze(manifest_path, initial_path, exclusion_path, source_root, output, *, 
         'dataset_manifest':asset_identity(manifest_path),'append_to_initial_census':asset_identity(initial_path),
         'technical_patient_exclusion':asset_identity(exclusion_path),'screen_ledger':asset_identity(ledger_path),
         'screen_counts':dict(reasons),'per_patient_cap':per_patient,
-        'selection_rule':f'preserve the initial census first; append same-BCSS sources in patient/filename order, first {per_patient} passing cheap source-mask eligibility per patient; final selection still requires both Significant topology witnesses, four target gates and independent mask review; first fully qualified source per patient; no generated RGB or embedding selection',
+        'selection_rule':'preserve the supplied earlier census first; append same-BCSS sources in patient/filename order; '+
+            (f'first {per_patient} cheap-mask-eligible additional sources per patient' if per_patient is not None else 'all remaining cheap-mask-eligible additional sources')+
+            '; final selection still requires both Significant topology witnesses, four target gates and independent mask review; first fully qualified source per patient; no generated RGB or embedding selection',
         'cheap_eligibility':'aligned 512-square known tissue/nucleus IDs; existing fine Tumor1/Stroma2/Immune4 and at least 27% source Stroma; technical patients excluded',
         'authority':'user explicitly authorized supplementing the same BCSS dataset while retaining 30 patients and 19/32 budgets',
         'joint_budgets':[.19,.32],'budget_reduction_allowed':False,
@@ -87,7 +89,9 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     for flag in ('dataset-manifest','initial-census','exclusion-audit','source-root','output'):
         p.add_argument('--'+flag,type=Path,required=True)
-    args=p.parse_args();d=freeze(args.dataset_manifest,args.initial_census,args.exclusion_audit,args.source_root,args.output)
+    p.add_argument('--all-remaining',action='store_true',help='Append every remaining eligible patch, retaining earlier pools and outcomes.')
+    args=p.parse_args();d=freeze(args.dataset_manifest,args.initial_census,args.exclusion_audit,args.source_root,args.output,
+        per_patient=None if args.all_remaining else 12)
     print(json.dumps({key:d[key] for key in ('candidate_count','patient_count','raw_unique_images','screen_counts')}))
     return 0
 

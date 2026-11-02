@@ -49,3 +49,12 @@ def test_supplement_cannot_silently_change_dataset_or_patient_identity(sources):
     manifest.write_text(json.dumps(data))
     with pytest.raises(ValueError,match='same canonical BCSS export'):freeze(*sources)
     assert not (output/'supplemental_candidate_pool.json').exists()
+
+
+def test_all_remaining_appends_later_eligible_sources_without_changing_budget(sources):
+    result=freeze(*sources,per_patient=None)
+    assert result['candidate_count']==2
+    assert result['per_patient_cap'] is None
+    assert 'unexamined_after_per_patient_cap' not in result['screen_counts']
+    assert [s['inputs']['reference_image']['path'].split('_')[-1] for s in result['candidate_sources']]==['b.png','c.png']
+    assert result['joint_budgets']==[.19,.32]
