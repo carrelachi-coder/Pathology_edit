@@ -4,7 +4,7 @@
   "status": "prerequisite_validation_in_progress",
   "formal_launch_permitted": false,
   "repair_baseline": "6f481a989b57648449340a17d17b8cda3c9c818f",
-  "implementation_commit": "6b85b70c138e4e85709f4468dbe9f79f1a3c6b7a",
+  "implementation_commit": "4c61dcb5f0fb0fef425eb2a78c3b33986b1a1738",
   "formal_entry": "scripts/run_manuscript_global_cohort.py",
   "technical_pilot_entry": "scripts/run_manuscript_chain_pilot.py",
   "source_count": 30,
@@ -109,7 +109,17 @@
       "not_applicable"
     ],
     "missing_policy": "no zero imputation; report requested, generated, valid, valid_zero, failure, missing, uncertain, NA, valid pairs; complete-pair analysis plus all-requested bounds for ordinal proportions",
-    "retry_policy": "one technical retry in a new attempt directory with identical input identity; retain both attempts; never retry to improve morphology"
+    "retry_policy": "one technical retry in a new attempt directory with identical input identity; retain both attempts; never retry to improve morphology",
+    "roi_validation": {
+      "u1": "pixelwise match to source coarse parent >0, excluding background and ignore",
+      "u2": "pixelwise match to source coarse parent 2 or 4",
+      "protected": "source valid tissue minus 8-pixel dilation of four approved handoff J masks, not raw label differences",
+      "evidence": "cohort_roi_validation.json records denominator count and file/binary mask hashes"
+    },
+    "ignore_policy": {
+      "readout": "source 255 is ignored; target 255 outside fixed ROI is permitted, inside fixed ROI is invalid",
+      "formal_generation_conditions": "must contain only unified known IDs 0..15; HTE has no ignore=255 embedding; resolve unsupported IDs in separately frozen assets before launch, never silently map them to background"
+    }
   },
   "cluster_unit": "patient_id",
   "statistical_rules": {

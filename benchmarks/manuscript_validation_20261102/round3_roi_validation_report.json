@@ -1,0 +1,32 @@
+{
+  "implementation_commit": "4c61dcb5f0fb0fef425eb2a78c3b33986b1a1738",
+  "formal_launch_permitted": false,
+  "tests": {
+    "passed": 99,
+    "log": "round3_roi_pytest.txt",
+    "scope": "ROI contract, round-2 counterexamples and prior targeted suites; not the entire repository",
+    "new_roi_cases": 6
+  },
+  "measurement_roi": "coarse-mapped source valid tissue for U1; source parent 2 or 4 for U2; pixelwise equality required, including on baseline and both target doses",
+  "preservation_roi": "union of four verified handoff joint_change masks, including full native footprints and normalized nuclei semantics; dilate by 8 and exclude from source valid tissue",
+  "evidence_output": "cohort_roi_validation.json: denominator_pixels, shape, file_sha256 and binary_mask_sha256 for each ROI",
+  "ignore_policy": {
+    "readout": "255 remains ignore; allowed outside fixed source ROI, rejected inside target measurement ROI; other unknown tissue labels rejected",
+    "formal_generation": "HTE accepts known IDs 0..15 only; 255 in source/target conditions is rejected before model invocation; no silent mask repainting"
+  },
+  "acceptance": [
+    "complete five-state synthetic assets pass actual ledger, handoff, asset/environment preflight and cohort checks with explicit CPU model stubs",
+    "hash-correct cropped U1 and U2 ROI each stop before generation",
+    "protected ROI based on approved J passes, while inequivalent normalized raw-difference ROI fails",
+    "ignore outside readout ROI is accepted; inside is rejected; unsupported formal HTE condition IDs are rejected before generation"
+  ],
+  "gpu_rerun": false,
+  "formal_assets_frozen": false,
+  "final_joint_gpu_chain_accepted": false,
+  "historical_statistics_recomputed": false,
+  "remaining": [
+    "freeze approved targets, ROIs, patient/WSI mappings, overlap audits and strength definitions",
+    "accept the final joint two-operation/two-strength chain on excluded technical sources",
+    "only then open formal 30 WSI; physician study remains last"
+  ]
+}
