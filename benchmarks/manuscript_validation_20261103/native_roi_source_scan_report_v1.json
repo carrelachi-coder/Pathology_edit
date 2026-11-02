@@ -1,0 +1,212 @@
+{
+  "created_utc": "2026-11-02T23:53:03.343521+00:00",
+  "status": "complete_source_only_scan",
+  "scope": "all 151 native BCSS ROIs; fixed lattice scan and cheap filtering only",
+  "frozen_policy": "native_roi_crop_protocol_v1.json",
+  "policy_sha256": "d8078da7b874957eae960a9421cc35bfd9cd89a51a38b05f0ab5582d0ee86c70",
+  "execution_identity": {
+    "scope": "frozen_source_only_scan",
+    "started_utc": "2026-11-02T23:41:00.928902+00:00",
+    "source_audit_sha256": "b4cc3a307b02f8f3d148697854714dd8aba052285a181cdfcb46f7fe058d3dec",
+    "script_sha256": "66d26c7def3fa7886b9d819d28ff0be5c16a38f05845916fd55fdd487a239311",
+    "exclusion_sha256": "e99577970b5e4c0a09fce4768b2c6e1368b2d0454cc29fa90662848e87f30126",
+    "historical_prepare_script_sha256": "65652d4dd5bb24fb2ab297cb5a7c079a0970ee77e81e2aff3c5d982b9534d18c",
+    "policy_sha256": "d8078da7b874957eae960a9421cc35bfd9cd89a51a38b05f0ab5582d0ee86c70",
+    "execution_commit": "282e71e522e96c7714c797a08b8829931457c080",
+    "status": "complete",
+    "formal_launch_permitted": false,
+    "summary_sha256": "72c718e8e940998ac421776cefefa03cabdb52b448f932e2c1454fd4050bf118"
+  },
+  "scan_summary": {
+    "scope": "frozen_source_only_scan",
+    "roi_count": 151,
+    "patient_count": 151,
+    "patch_size": 512,
+    "stride": 256,
+    "window_count": 32753,
+    "old_export_indexed": 22870,
+    "old_export_coordinates_accounted": 22870,
+    "old_export_pixel_reconstructed": 22869,
+    "invalid_old_exports_conservatively_excluded": 1,
+    "geometry_verified": true,
+    "independent_cheap_failure_counts": {
+      "stroma_below_27_percent": 18942,
+      "missing_immune": 21409,
+      "missing_tumor": 11479,
+      "missing_stroma": 7024
+    },
+    "status_counts": {
+      "duplicate_old_content": 22148,
+      "excluded_invalid_old_native_alias": 1,
+      "cheap_failed": 9369,
+      "new_cheap_pass_not_capacity_qualified": 216,
+      "excluded_technical_patient": 1019
+    },
+    "new_cheap_sources": 216,
+    "new_cheap_patient_groups": 67,
+    "capacity_checks_run": 0,
+    "topology_checks_run": 0,
+    "four_target_compilations_run": 0,
+    "new_qualified_patients": 0,
+    "formal_launch_permitted": false,
+    "window_manifest_sha256": "08fa56d856dfa7a86550bd31601a028fe1e6cd2b23dc189eab7cd25c977ed941",
+    "old_export_index_sha256": "c4544870104ce00fd3a2a75b9ecbce31adc0a9ff46a1a319eef63a9cc04b2cdc",
+    "patient_summary_sha256": "7796b88ccf2e077706f56bf60b635767c2af228c4de103d072314736d9d8378f"
+  },
+  "patient_union": {
+    "new_cheap_source_count": 216,
+    "new_cheap_patient_groups": 67,
+    "overlap_with_old_topology_pass_patient_groups": 10,
+    "new_patient_groups_outside_old_topology_pass_set": 57,
+    "old_confirmed_topology_pass_patients": 17,
+    "old_upper_including_unknown": 19,
+    "most_optimistic_union_if_all_new_cheap_and_old_unknown_qualify": 76,
+    "actual_new_capacity_topology_or_four_target_qualified_patients": 0,
+    "historical_training_export_filter_diagnostics": {
+      "historical_bg_ge_30_percent": 94,
+      "historical_editing_max_below_5_percent": 137,
+      "would_pass_both_historical_training_filters": 0
+    },
+    "background_fraction_range": [
+      0.0,
+      0.6629791259765625
+    ],
+    "formal_launch_permitted": false,
+    "interpretation": "Union is a source-only necessary-condition upper bound, not 67 or union-many qualified patients; source quality and inference outcomes have not been selected."
+  },
+  "consistency_verification": {
+    "manifest_rows_verified": 32753,
+    "unique_candidate_refs_verified": 216,
+    "directed_overlap_edges": 237206,
+    "patient_count": 151,
+    "status_count_conservation": true,
+    "new_source_files_rehashed_and_decoded": 648,
+    "new_source_triplets_reverified": 216
+  },
+  "retained_training_reference_audit": {
+    "source_count": 216,
+    "patient_count": 67,
+    "comparisons": {
+      "cross_train": {
+        "coordinate_alias_exact_filename_references": 0,
+        "patient_group_references": 205
+      },
+      "cross_val": {
+        "coordinate_alias_exact_filename_references": 0,
+        "patient_group_references": 11
+      },
+      "segmentator_coarse_train": {
+        "coordinate_alias_exact_filename_references": 0,
+        "patient_group_references": 216
+      },
+      "segmentator_coarse_val": {
+        "coordinate_alias_exact_filename_references": 0,
+        "patient_group_references": 215
+      },
+      "segmentator_fine_train": {
+        "coordinate_alias_exact_filename_references": 0,
+        "patient_group_references": 157
+      },
+      "segmentator_fine_val": {
+        "coordinate_alias_exact_filename_references": 0,
+        "patient_group_references": 28
+      },
+      "segmentator_fine_test": {
+        "coordinate_alias_exact_filename_references": 0,
+        "patient_group_references": 31
+      }
+    },
+    "full_audit_sha256": "80bde4eb8e8b69743bec0692bd36d74050f5b9f2a7f4adebfdc3b708ebf52f02",
+    "audit_code_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+    "audit_script_sha256": "15382350bd36ea3241678c789b8d577446b2f2faf41dda5a555992b06618c04b",
+    "checkpoint_identity_basis": "prior frozen release SHA; not new training-lineage proof",
+    "FLUX_patient_overlap": "unknown",
+    "CellViT_patient_overlap": "unknown",
+    "Pix2pix_full_checkpoint_training_lineage": "unknown",
+    "automatic_evaluation_scope": "coupled computational evidence, not independent clinical validation"
+  },
+  "available_historical_cellvit_checkpoint_probe": {
+    "checkpoint_path": "/Volumes/DATA/WQX/datasets/CellViT-plus-plus-main/CellViT-plus-plus-main/checkpoints/CellViT-SAM-H-x40-AMP-001.pth",
+    "sha256": "356418f19d9d478f164c7a31f85274584fefaa02355815c09f52346c658c8ec4",
+    "matches_current_frozen_evaluator": true,
+    "historical_pseudo_label_execution_proven": false,
+    "reason": "available checkpoint content identity is known, but no historical execution receipt binds this file to the 151 JSON outputs",
+    "filelist_sha256": "76ca8fc3f2138d9e227724f0855a9cd5304fc572efbe269929635f48c9b20476"
+  },
+  "artifact_sha256": {
+    "summary.json": "72c718e8e940998ac421776cefefa03cabdb52b448f932e2c1454fd4050bf118",
+    "candidate_sources.json": "7fa546eaac90615b05025d7d4fa4f4f84846fbba3172fe995a0c2e81aad63495",
+    "patient_progress.json": "7796b88ccf2e077706f56bf60b635767c2af228c4de103d072314736d9d8378f",
+    "windows.jsonl": "08fa56d856dfa7a86550bd31601a028fe1e6cd2b23dc189eab7cd25c977ed941",
+    "old_export_index.jsonl": "c4544870104ce00fd3a2a75b9ecbce31adc0a9ff46a1a319eef63a9cc04b2cdc",
+    "invalid_old_native_aliases.json": "87162e24669036594cd8b189cad4596bfb38be4a1f50f18d548bde6fdbdbb4cb",
+    "unrun_qualification_ledger.jsonl": "1bd8625911e90bc049205a1dd1a2c5e0464f17d4d2f1eb658b6cbb14c30a0e9f",
+    "manifest_consistency_verification.json": "32938789e8f6b73729c9548f8ef9d42332c74668315bf58dac358a076a0a462d"
+  },
+  "source_integrity_interpretation": {
+    "old_readable_export_triplets_pixel_matched": 22869,
+    "old_invalid_export_triplets_not_pixel_verified": 1,
+    "old_total_coordinates_excluded": 22870,
+    "new_source_triplets_redecoded": 216,
+    "new_source_files_rehashed": 648
+  },
+  "new_source_distribution_note": "All 216 new cheap-pass windows were excluded by historical training-export filters: BG>=30% for94 and max editing tissue<5% for137 (15 overlap). User-specified cheap source rules do not add these historical training filters. No final patient/target approval is inferred.",
+  "qualification_stages": {
+    "capacity": {
+      "status": "not_run",
+      "attempted": 0,
+      "passed": null,
+      "failed": null,
+      "timeout": null
+    },
+    "topology": {
+      "status": "not_run",
+      "attempted": 0,
+      "passed": null,
+      "failed": null,
+      "timeout": null
+    },
+    "four_targets": {
+      "status": "not_run",
+      "attempted": 0,
+      "approved": null
+    },
+    "independent_mask_review": {
+      "status": "not_run",
+      "approved": null
+    },
+    "formal_he": {
+      "status": "not_run",
+      "generated": 0
+    }
+  },
+  "new_full_four_target_qualified_patients": 0,
+  "formal_launch_permitted": false,
+  "batch_probnet_started": false,
+  "thresholds_or_nominal_edit_budgets_changed": false,
+  "limits": [
+    "The67 groups are cheap-filter candidates within the same151 known patients;57 lie outside the old17 source-topology-pass patient set, not outside all previous BCSS patients.",
+    "The76-patient optimistic union assumes every new cheap candidate and old unknown eventually qualifies; it is not an achieved count. Existing confirmed source-topology patients remain17, and old-pool upper bound remains19.",
+    "New file names and new decoded contents do not prove checkpoint training independence; patient references and unknown model lineages are retained.",
+    "Historical pseudo-label generating checkpoint remains unproven despite finding a matching available AMP001 file.",
+    "Independent cheap failure counts overlap; status_counts are mutually exclusive and sum to32753.",
+    "No threshold, geometry, source data or outcomes were adjusted after inspecting full-scan results.",
+    "Invalid historical PNG remains invalid; its coordinate and native-content alias are excluded conservatively without overwriting it."
+  ],
+  "server_relocation": {
+    "sources": 216,
+    "patient_groups": 67,
+    "files_verified": 648,
+    "archive_sha256": "e7dd221d5e8727d7327b7637959900e5526405676101de4f60c6f74e413aa3cd",
+    "mac_manifest_sha256": "7fa546eaac90615b05025d7d4fa4f4f84846fbba3172fe995a0c2e81aad63495",
+    "server_manifest_sha256": "13c5b8a0e3b9da34e4b6aecff037d76bb4eb35e59b40719caadf1242cabbe623",
+    "formal_launch_permitted": false,
+    "any_qualification_run": false
+  },
+  "per_patient_evidence": {
+    "local_json": "/Users/wangqinxin/.codex/worktrees/manuscript-validation-20261102/Pathology_edit/.codex-artifacts/manuscript_validation_20261103/native_roi_scan_v1/patient_progress.json",
+    "sha256": "7796b88ccf2e077706f56bf60b635767c2af228c4de103d072314736d9d8378f",
+    "patient_records": 151,
+    "stage_status_ledger_sha256": "1bd8625911e90bc049205a1dd1a2c5e0464f17d4d2f1eb658b6cbb14c30a0e9f"
+  }
+}

@@ -587,5 +587,16 @@
     "frozen_server_input_hashes_match": 900,
     "nuclei_checkpoint_sha": "unresolved",
     "new_qualified_patients": 0
+  },
+  "native_roi_recovery_20261103": {
+    "report": "../manuscript_validation_20261103/native_roi_source_scan_report_v1.json",
+    "sha256": "f585995b0dd4184eea90404589d007ffff9df317d8341f6bad22fa86c4634943",
+    "windows": 32753,
+    "new_cheap_sources": 216,
+    "cheap_patient_groups": 67,
+    "new_group_opportunities_outside_old17": 57,
+    "expanded_optimistic_necessary_condition_upper_bound": 76,
+    "new_qualified_patients": 0,
+    "probnet_started": false
   }
 }

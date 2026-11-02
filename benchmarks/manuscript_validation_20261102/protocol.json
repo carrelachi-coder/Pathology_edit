@@ -135,7 +135,7 @@
     "estimand": "equal independent-unit mean; average sources within patient/WSI, then equal-weight units for effect, CI and test"
   },
   "blockers": [
-    "all three frozen source pools cannot supply 30 patients: 17 nontechnical patients pass source topology, maximum 19 including all unknowns; additional valid same-BCSS source assets or a separately authorized design decision are required; no threshold or endpoint relaxation",
+    "old three frozen pools have17 source-topology-pass patients, upper19 including unknowns; new native recovery adds216 cheap-only windows across67 patient groups, but capacity/topology/four-target/review remain unresolved; no formal30-patient source cohort is frozen",
     "formal 30-patient source list, four approved joint targets per source and protected ROI hashes not frozen; initial inputs and expanded censuses are provisional, not qualified cohorts",
     "final-source mapping and training-manifest reference audits must accompany frozen assets; unresolved checkpoint patient lineage is disclosed and automatic readouts remain coupled computational evidence",
     "complete formal-asset preflight on the pinned accepted execution snapshot; revalidate affected technical behavior if the execution implementation changes"
@@ -327,6 +327,14 @@
       "report": "mounted_bcss_asset_audit_v1.json",
       "sha256": "9c01b0a3faa9400c26aa21e77fc06ad9456d8f0d59da9a9fea59c0a5a573acdd",
       "status": "original triplets verified; new-crop protocol not frozen, no candidate admitted"
+    },
+    "native_crop_scan": {
+      "report": "../manuscript_validation_20261103/native_roi_source_scan_report_v1.json",
+      "sha256": "f585995b0dd4184eea90404589d007ffff9df317d8341f6bad22fa86c4634943",
+      "status": "cheap scan complete; capacity/topology/four targets/review not run",
+      "new_cheap_sources": 216,
+      "patient_groups": 67,
+      "new_qualified_patients": 0
     }
   }
 }
