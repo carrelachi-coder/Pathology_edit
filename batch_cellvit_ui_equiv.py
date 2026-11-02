@@ -133,6 +133,7 @@ def main() -> int:
     requested = len(images)
     model_sha256 = sha256_file(Path(args.model))
     reused = 0
+    valid_zero = 0
     pending = []
     for p in images:
         output = output_dir / f"{p.stem}.png"
@@ -148,6 +149,8 @@ def main() -> int:
                 or provenance.get("mask_sha256") != sha256_file(output)
                 or any(provenance.get(k) != float(getattr(args, k)) for k in ("mpp", "magnification", "resolution"))):
                 raise ValueError(f"CellViT existing run lacks matching identity: {p.name}; use new output directories")
+            if payload.get("cells") == []:
+                valid_zero += 1
             reused += 1
         else:
             pending.append(p)
@@ -221,9 +224,11 @@ def main() -> int:
                         }}), encoding="utf-8",
                     )
                 raise FileNotFoundError(f"missing CellViT raw output: {cells_json}")
+            payload = json.loads(cells_json.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict) or not isinstance(payload.get("cells"), list):
+                raise ValueError(f"invalid CellViT raw cells list: {cells_json}")
             mask = rasterize_cells_json(cells_json, image_path)
             Image.fromarray(mask, mode="L").save(output_path)
-            payload = json.loads(cells_json.read_text(encoding="utf-8"))
             if json_output_dir is not None:
                 payload["benchmark_provenance"] = {
                     "status": "completed",
@@ -242,6 +247,8 @@ def main() -> int:
                     json.dumps(payload, ensure_ascii=False), encoding="utf-8"
                 )
             cells = payload.get("cells", []) if isinstance(payload, dict) else []
+            if not cells:
+                valid_zero += 1
             ids = sorted(int(v) for v in np.unique(mask).tolist())
             log_lines.append(f"OK\t{image_path.name}\t{len(cells)} cells\tids={ids}")
             ok += 1
@@ -254,7 +261,7 @@ def main() -> int:
         shutil.rmtree(staged_dir, ignore_errors=True)
 
     (output_dir / "measurement_summary.json").write_text(json.dumps({
-        "requested": requested, "completed": ok, "reused_validated": reused,
+        "requested": requested, "completed": ok, "reused_validated": reused, "valid_zero": valid_zero,
         "failed_or_missing": failed, "status": "incomplete" if failed else "complete",
     }, indent=2), encoding="utf-8")
     print(f"Done. ok={ok} failed={failed}. Output: {output_dir}", flush=True)

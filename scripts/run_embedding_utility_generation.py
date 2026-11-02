@@ -17,7 +17,7 @@ from controlnet_train.inference import (
     DEFAULT_INPAINT_CHECKPOINT,
     DEFAULT_PIX2PIX_CHECKPOINT,
 )
-from scripts.run_phase3_inpaint_pipeline import _run_generation_stage
+from scripts.run_phase3_inpaint_pipeline import _run_generation_stage, _release_generation_model_caches
 
 from phase3_mask_edit.benchmark.experiment_identity import asset_identity, digest_payload, sha256_file, validate_resume
 
@@ -105,7 +105,7 @@ def _validate_rows(rows: list[dict]) -> None:
 
 def _pipeline_args(args: argparse.Namespace, row: dict, output: Path) -> SimpleNamespace:
     return SimpleNamespace(
-        profile="BCSS",
+        profile=row.get("profile", "BCSS"),
         reference_image=Path(row["reference_image"]),
         reference_tissue_mask=Path(row["reference_tissue_mask"]),
         reference_nuclei_mask=Path(row["reference_nuclei_mask"]),
@@ -117,7 +117,7 @@ def _pipeline_args(args: argparse.Namespace, row: dict, output: Path) -> SimpleN
         cross_v1_checkpoint=args.cross_v1_checkpoint,
         pix2pix_checkpoint=args.pix2pix_checkpoint,
         device=args.device,
-        prompt=None,
+        prompt=row.get("prompt"),
         prompt_source="dataset",
         torch_dtype=args.dtype,
         num_inference_steps=args.num_inference_steps,
@@ -125,6 +125,7 @@ def _pipeline_args(args: argparse.Namespace, row: dict, output: Path) -> SimpleN
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
         seed=int(row.get("generation_seed", 42)),
         endpoint_stage=args.endpoint_stage,
+        postprocess_eligibility_region=row.get("postprocess_eligibility_region"),
         color_match="none",
         output=output,
     )
@@ -159,6 +160,8 @@ def main(argv: list[str] | None = None) -> int:
     code_identity = digest_payload({str(p.relative_to(repo)): sha256_file(p)
         for folder in ("controlnet_train", "scripts", "phase3_mask_edit/benchmark")
         for p in sorted((repo / folder).rglob("*.py"))})
+    # A new invocation must not inherit models loaded before this content identity.
+    _release_generation_model_caches()
     backend_root = args.output_root / args.backend
     backend_root.mkdir(parents=True, exist_ok=True)
     completed = 0
@@ -169,12 +172,14 @@ def main(argv: list[str] | None = None) -> int:
         info_path = sample_dir / "generation_info.json"
         identity = {
             "row": row, "models": model_identity, "code": code_identity,
+            "cohort_manifest": asset_identity(args.cohort_manifest),
             "parameters": {k: str(v) for k, v in vars(args).items()
                 if k not in {"output_root", "resume", "limit", "shard_index", "num_shards"}},
             "inputs": {key: asset_identity(row[key]) for key in (
                 "reference_image", "reference_tissue_mask", "reference_nuclei_mask",
                 "target_tissue_mask", "target_nuclei_mask")},
             "support": asset_identity(_generation_change_region(row)),
+            "postprocess_eligibility": asset_identity(row["postprocess_eligibility_region"]) if row.get("postprocess_eligibility_region") else None,
         }
         identity_path = sample_dir / "experiment_identity.json"
         outputs = [generated_path, info_path]

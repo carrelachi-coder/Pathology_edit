@@ -520,7 +520,8 @@ def analyze_encoder(
                 "quantile": high_overlap_quantile,
                 "threshold": threshold,
                 "sample_count": int(np.count_nonzero(high_overlap)),
-                "wsi_count": int(len(np.unique(groups[high_overlap]))),
+                "cluster_count": int(len(np.unique(groups[high_overlap]))),
+                "wsi_count": len({str(row["wsi_id"]) for row, keep in zip(canonical_rows, high_overlap) if keep}),
             },
             "backends": {},
         }
@@ -595,6 +596,7 @@ def analyze_encoder(
                     repeats=bootstrap_repeats,
                     seed=prefix_seed + 601,
                 ),
+                "cluster_level_fixed_score_sign_flip_pvalue": wsi_sign_flip_pvalue(paired_discrimination, groups, repeats=permutation_repeats, seed=prefix_seed + 702),
                 "cluster_level_direction_label_permutation_pvalue": (
                     operation_label_permutation_pvalue(
                         features, groups, strength=strength, backend=backend,
@@ -612,6 +614,7 @@ def analyze_encoder(
                     "both_primitives_prefer_own_axis_fraction": (
                         selected_summary(own_preference.astype(float), 1009)
                     ),
+                    "cluster_level_fixed_score_sign_flip_pvalue": wsi_sign_flip_pvalue(paired_discrimination[high_overlap], groups[high_overlap], repeats=permutation_repeats, seed=prefix_seed + 1104),
                     "cluster_level_direction_label_permutation_pvalue": (
                         operation_label_permutation_pvalue(
                             features, groups, strength=strength, backend=backend, selection=high_overlap,
@@ -646,6 +649,8 @@ def analyze_encoder(
 
 def main() -> int:
     args = parse_args()
+    if (args.output_dir / "two_primitive_trajectory_report.json").exists():
+        raise ValueError("analysis output already exists; preserve historical results and use a new output directory")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     report: dict[str, Any] = {
         "schema_version": 2,

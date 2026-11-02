@@ -1169,6 +1169,7 @@ def _run_generation_stage(
             target_tissue_mask_path=target_tissue_path,
             target_nuclei_mask_path=target_nuclei_path,
             generation_change_region_path=generation_change_region_path,
+            postprocess_eligibility_region_path=getattr(args, "postprocess_eligibility_region", None),
             prompt=prompt,
             output_dir=output_dir / "controlnet_cross_v1_no_ip",
             device=args.device,
@@ -1405,6 +1406,7 @@ def _run_cross_v1_no_ip_generation(
     guidance_scale: float,
     controlnet_conditioning_scale: float,
     seed: int,
+    postprocess_eligibility_region_path: str | Path | None = None,
 ) -> tuple[Image.Image, Image.Image, dict[str, Any]]:
     from controlnet_train.data.common import load_nuclei_mask, load_tissue_mask
     from controlnet_train.inference.pipeline_cross_v1 import _sample_with_flux_controlnet
@@ -1479,7 +1481,8 @@ def _run_cross_v1_no_ip_generation(
         device=device,
         torch_dtype=torch_dtype,
         image_size=int(output_size[0]),
-        low_stain_protection_region_path=generation_change_region_path,
+        low_stain_protection_region_path=(postprocess_eligibility_region_path
+            if postprocess_eligibility_region_path is not None else generation_change_region_path),
     )
     final_image = Image.open(pix2pix_output_path).convert("RGB")
 

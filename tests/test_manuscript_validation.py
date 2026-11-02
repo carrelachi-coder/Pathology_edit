@@ -102,6 +102,26 @@ class ManuscriptCounterexamples(unittest.TestCase):
         self.assertTrue(torch.equal(draw(17), draw(17)))
         self.assertFalse(torch.equal(draw(17), draw(18)))
 
+    def test_same_postprocess_name_does_not_hide_different_eligibility(self):
+        from controlnet_train.pix2pix_transfer.inference import apply_cross_low_stain_protection
+        results = []
+        for region in (np.ones((64, 64), dtype=bool), np.pad(np.ones((32, 64), dtype=bool), ((0, 32), (0, 0)))):
+            _, _, info = apply_cross_low_stain_protection(cross_image=Image.new('RGB', (64, 64), 'white'),
+                pix2pix_image=Image.new('RGB', (64, 64), 'red'), target_nuclei_mask=np.zeros((64, 64)), protection_region=region)
+            results.append(info)
+        self.assertEqual(results[0]['configuration'], results[1]['configuration'])
+        self.assertNotEqual(results[0]['eligibility_region_sha256'], results[1]['eligibility_region_sha256'])
+        self.assertIn('applied_mask_sha256', results[0])
+
+    def test_formal_entry_rejects_unfrozen_protocol_before_generation(self):
+        from scripts.run_manuscript_global_cohort import main
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); protocol = root / 'protocol.json'
+            protocol.write_text(json.dumps({'status': 'draft', 'formal_launch_permitted': False}))
+            with self.assertRaisesRegex(ValueError, 'remains blocked'):
+                main(['--protocol', str(protocol), '--cohort-manifest', str(root/'not-created'), '--output-root', str(root/'out')])
+            self.assertFalse((root/'out').exists())
+
     def test_segmentation_flushes_a_before_existing_b_c(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); source = root / 'in'; out = root / 'out'
@@ -169,6 +189,29 @@ class ManuscriptCounterexamples(unittest.TestCase):
         with patch.object(trajectory, 'cross_fitted_axes', side_effect=capture):
             value = trajectory.operation_label_permutation_pvalue(features, groups, strength='moderate', backend='cross', repeats=8, seed=1)
         self.assertEqual(len(seen), 9)  # observed and every one of 2^3 raw-label swaps
+        def enumerated_stat(swaps):
+            flip = np.isin(groups, np.unique(groups)[np.asarray(swaps, dtype=bool)])[:, None]
+            candidate = {p: {strength: {backend: np.where(flip, features[other][strength][backend], values)
+                for backend, values in features[p][strength].items()} for strength in trajectory.STRENGTHS}
+                for p, other in (("u1", "u2"), ("u2", "u1"))}
+            def unit(x):
+                return x / np.linalg.norm(x)
+            axes = {p: np.zeros((6, 5)) for p in trajectory.PRIMITIVES}
+            displacements = {}
+            for p in trajectory.PRIMITIVES:
+                cell = candidate[p]['moderate']
+                delta = cell['cross'] - cell['reference']
+                displacements[p] = delta / np.linalg.norm(delta, axis=1)[:, None]
+                for patient in np.unique(groups):
+                    train = groups != patient
+                    local = (cell['inpaint'] - cell['reference'])[train].mean(axis=0)
+                    global_ = delta[train].mean(axis=0)
+                    axes[p][~train] = unit(unit(local) + unit(global_))
+            margin = .5 * np.sum((displacements['u1']-displacements['u2']) * (axes['u1']-axes['u2']), axis=1)
+            return np.mean([margin[groups == p].mean() for p in np.unique(groups)])
+        observed = enumerated_stat((False, False, False))
+        expected = sum(enumerated_stat(swap) >= observed - 1e-12 for swap in itertools.product((False, True), repeat=3)) / 8
+        self.assertAlmostEqual(value, expected)
         self.assertEqual(len(set(seen)), 8)
         self.assertTrue(0 <= value <= 1)
         rows[0].pop('patient_id')

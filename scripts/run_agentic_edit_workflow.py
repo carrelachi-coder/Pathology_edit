@@ -525,6 +525,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             source_nuclei_calibration,
         )
 
+    _release_generation_model_caches()
     previous_generation_mode: str | None = None
 
     def generate(mode: str, attempt_dir: Path) -> GenerationArtifact:
