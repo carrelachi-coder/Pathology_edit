@@ -258,5 +258,146 @@
     "gpu_generation_and_measurement_executed": false,
     "measurement_policy": "fixed source denominators; type-2 cell density at explicit nominal scale; terminal uncertainty stays null; no order/effect gate",
     "version_alignment": "CellViT rasterizer is loaded by exact path from the executing snapshot; current old/live source hash comparison matched 6c210d1b53206ae8108df097beebc0894a9177c1472b0cb70c0a070e035a6fd4"
+  },
+  "technical_v5_independent_review": {
+    "compile_code": "18258d49",
+    "promotion_code": "3d7088ae",
+    "reviewer": "codex_current_chat",
+    "scope": "research mask conditions only; no user/physician approval or H&E efficacy claim",
+    "receipt_sha256": "f37879bb8c86f2cd2458913b36fdb70caddd679215a4da05a40b0003643a5c9a",
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "fallback_policy": "predeclared max_feasible_below_target; hard tissue floors .14/.27 and capacity_floor_policy strict unchanged",
+    "records": [
+      {
+        "state": "u1_moderate",
+        "candidate_id": "joint-cand:001-mature-cells-02",
+        "decision": "approved",
+        "confidence": 0.78,
+        "review_sha256": "ddd090a14b8b7a087cf8609bcadf13634979f099d0179bdd01736b0f6d8939f8",
+        "board_sha256": "822b4f48d73124034ffabe079d5361f671d9aac7b0e2f3a50da64e992317c273",
+        "manifest_sha256": "a7c599bdaeb79299109ba7ba6ac73ee2e26ffb2a3e1ec9f2e398a0a926adcff3",
+        "joint_fraction": 0.163238525390625,
+        "tissue_fraction": 0.14000320434570312,
+        "generation_support_fraction": 0.4524574279785156,
+        "declared_batch_max_safe_fallback_used": true,
+        "limitations": "Mask-only research condition, not H&E morphology or clinical validation. Some sector boundaries are angular. The display collapses nuclear classes; typed compatibility relies on contracts and source semantic-mask watershed, not native instance JSON. Nominal joint targets remain 19%/32%, with the previously frozen batch-max-safe fallback and unchanged hard floors where recorded; realized J is not claimed equal to the nominal target."
+      },
+      {
+        "state": "u1_significant",
+        "candidate_id": "joint-cand:001-mature-cells-02",
+        "decision": "approved",
+        "confidence": 0.8,
+        "review_sha256": "5c92ddea498b161ef8edd8907cc5fac416ef82a981bdae8216d43584e30311ad",
+        "board_sha256": "f2ec65897cea0cf0e8a74c5504db33e1f8ee18565545c8bbe4d782a356717efd",
+        "manifest_sha256": "fb10d6d8a428ba121d7a092d23ed5ea0ff904d45f4fd22284323eec01c676283",
+        "joint_fraction": 0.3167457580566406,
+        "tissue_fraction": 0.2700004577636719,
+        "generation_support_fraction": 0.6216888427734375,
+        "declared_batch_max_safe_fallback_used": false,
+        "limitations": "Mask-only research condition, not H&E morphology or clinical validation. Some sector boundaries are angular. The display collapses nuclear classes; typed compatibility relies on contracts and source semantic-mask watershed, not native instance JSON. Nominal joint targets remain 19%/32%, with the previously frozen batch-max-safe fallback and unchanged hard floors where recorded; realized J is not claimed equal to the nominal target."
+      },
+      {
+        "state": "u2_moderate",
+        "candidate_id": "joint-cand:001-mature-cells-01",
+        "decision": "approved",
+        "confidence": 0.8,
+        "review_sha256": "5e1e9aa5ad833b54938af6da6d6de6485d3a1511f2f834738531d663f9163eb5",
+        "board_sha256": "4b5ecc5cfd7f9f85881e70e7280412a83508e6af8a70623e484a18fa94b05850",
+        "manifest_sha256": "1a2e642d43dc74a2c851aeb6c0ead3d9efb608493e7c1583b6fbd0ab5964b3ee",
+        "joint_fraction": 0.184661865234375,
+        "tissue_fraction": 0.16807937622070312,
+        "generation_support_fraction": 0.29845428466796875,
+        "declared_batch_max_safe_fallback_used": true,
+        "limitations": "Mask-only research condition, not H&E morphology or clinical validation. Some sector boundaries are angular. The display collapses nuclear classes; typed compatibility relies on contracts and source semantic-mask watershed, not native instance JSON. Nominal joint targets remain 19%/32%, with the previously frozen batch-max-safe fallback and unchanged hard floors where recorded; realized J is not claimed equal to the nominal target."
+      },
+      {
+        "state": "u2_significant",
+        "candidate_id": "joint-cand:001-mature-cells-01",
+        "decision": "approved",
+        "confidence": 0.78,
+        "review_sha256": "f5439bb7fd036cf451998e61f73ab2def0876076a5d69a1fa681374717b67da1",
+        "board_sha256": "658c039aafc4e95baf55be517e747e6747ebaeb839a41c7d8b2ea0a08a15da5b",
+        "manifest_sha256": "c3a67e2b4e17e4fdafeeee083fc58ce276e0cc76242042326860fe3ec6c51df7",
+        "joint_fraction": 0.30512237548828125,
+        "tissue_fraction": 0.2740592956542969,
+        "generation_support_fraction": 0.45855712890625,
+        "declared_batch_max_safe_fallback_used": true,
+        "limitations": "Mask-only research condition, not H&E morphology or clinical validation. Some sector boundaries are angular. The display collapses nuclear classes; typed compatibility relies on contracts and source semantic-mask watershed, not native instance JSON. Nominal joint targets remain 19%/32%, with the previously frozen batch-max-safe fallback and unchanged hard floors where recorded; realized J is not claimed equal to the nominal target."
+      }
+    ],
+    "all_four_promoted": true,
+    "real_generation_status": "five-state controller launched; pending complete generation and measurements"
+  },
+  "supplemental_census_v2": {
+    "candidate_count": 1918,
+    "patient_count": 79,
+    "raw_unique_images": 22870,
+    "raw_patient_groups": 151,
+    "screen_counts": {
+      "stroma_below_27_percent_tissue_floor": 2319,
+      "missing_source_tumor_stroma_or_immune": 16424,
+      "already_in_initial_census": 1488,
+      "candidate_for_expensive_qualification": 1918,
+      "excluded_technical_patient": 721
+    },
+    "per_patient_cap": null,
+    "selection_rule": "preserve the supplied earlier census first; append same-BCSS sources in patient/filename order; all remaining cheap-mask-eligible additional sources; final selection still requires both Significant topology witnesses, four target gates and independent mask review; first fully qualified source per patient; no generated RGB or embedding selection",
+    "scope": "supplemental candidate census only, not accepted targets or a frozen formal cohort",
+    "joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "formal_generation_launched": false,
+    "code_commit": "20ace976",
+    "sha256": "85cfdd00fa2ec638ecc0f24fc7ce69cfdd71a9191c5f3c36f851c1ae63657aba",
+    "capacity_status": "running",
+    "topology_status": "not yet run"
+  },
+  "technical_v5_asset_freeze": {
+    "status": "frozen",
+    "scope": "joint_gpu_technical_acceptance",
+    "implementation_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+    "protocol_sha256": "7c778f0d8fcd08afd46ca6a05641c7725371d6a4be5ed5632bcbc198f82b964e",
+    "manifest_sha256": "39050f988325e94c2fbcc94da8ba8e53119eafd7889c9681abad3c83e49a438b",
+    "source_count": 1,
+    "generated_image_count": 5,
+    "measurement_image_count": 6,
+    "formal_launch_permitted": false,
+    "joint_targets_count": 4,
+    "asset_identities": {
+      "generation_manifest": {
+        "sha256": "39050f988325e94c2fbcc94da8ba8e53119eafd7889c9681abad3c83e49a438b",
+        "status": "frozen"
+      },
+      "approved_joint_targets": {
+        "sha256": "566c8200073e3b699b47717c21e7fcd5084db553b60ddce29919ff87f401bc9e",
+        "status": "frozen"
+      },
+      "protected_roi_files_and_hashes": {
+        "sha256": "787d6e3b695df932e9e6f9d948b9df51a0816f7d7552b2ae175c0d5d84876a7f",
+        "status": "frozen"
+      },
+      "patient_wsi_mapping_audit": {
+        "sha256": "7a33628b44582522c5926f556cb2c754253991fe2b7b62e6d9f2f5c36c7efd36",
+        "status": "frozen"
+      },
+      "training_overlap_audits": {
+        "sha256": "e42df2f544012b7a78b9258ea406bf2d277796af40059fbb1f25d90f8bf61c78",
+        "status": "frozen"
+      },
+      "pilot_exclusion_audit": {
+        "sha256": "e99577970b5e4c0a09fce4768b2c6e1368b2d0454cc29fa90662848e87f30126",
+        "status": "frozen"
+      }
+    },
+    "measurement": {
+      "nominal_mpp": 0.25,
+      "cell_point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame",
+      "scale_basis": "frozen nominal patch scale; no recovered full-slide physical calibration"
+    },
+    "acceptance_status": "pending_real_generation_and_measurements"
   }
 }

@@ -101,3 +101,7 @@
 新增实际技术资产与测量入口，要求四个已审查、同源、预算精确一致的 handoff，再冻结 J 并集保护 ROI、共同全幅后处理、实际 checkpoint 内容、CellViT 实现包和两套 Python/依赖。冻结协议仅限技术来源，formal_launch_permitted 保持 false。测量端拒绝 source_composite 冒充 global sham，核对实际 endpoint/seed/权重/alpha 与 nuclei-exclusion 区域，按固定源 ROI 计组织分母和 type-2 局部多边形面积质心；密度明确使用 nominal 0.25 um/px，不宣称恢复了逐切片物理校准。缺失、失败、有效零和不可定位的 uncertain 分开记录，不要求图像读出单调。
 
 还消除了 CellViT 转换对 live 原仓库的隐式导入：改为读取当前执行快照的确定文件路径。当前原仓库与快照该文件内容哈希相同（6c210d1b…），转换算法未改；新增反例证实外部 namespace 缓存不能串入。**75 项相关 CPU 检查通过**，包括真实后处理 mask 验证和明确标为合成的 producer 记账场景。尚未运行本轮五状态 H&E 生成与六图评价，不能把这些检查记为最终 GPU 通过。
+
+第五技术来源的四个状态均通过硬门槛，Codex 已实际查看全部 passing-candidate mask-only board，记录独立决定并晋升四个 handoff。按 U1 Moderate/Significant、U2 Moderate/Significant 排列，实际 J 分别为 16.3239%、31.6746%、18.4662%、30.5122%。名义 19%／32% 没有改写；其中三个状态使用生成前已经声明的 batch-max-safe 回退，严格组织下限 14%／27% 不降低，不宣称实际 J 等于名义目标。审查记录保留角状边界及 mask-only 局限，未赋予医生或用户批准。技术协议正在核对实际模型和环境，尚无本轮 H&E 验收结果。
+
+在同一 BCSS 导出内追加全部剩余廉价源条件合格来源，第二补充 census 冻结 1,918 个来源、79 个患者组，保持旧 300 和第一批 1,219 的记录；五位技术患者整组排除。映射及训练清单引用审计完成，必要容量筛查正在运行；不能把新增候选数当作正式合格患者数。
