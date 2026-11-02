@@ -25,7 +25,7 @@ def index_strings(value):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source-freeze',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
-    freeze=json.loads(args.source_freeze.read_text());sources=[freeze['technical_source'],*freeze['formal_sources']]
+    freeze=json.loads(args.source_freeze.read_text());sources=freeze.get('candidate_sources') or [freeze['technical_source'],*freeze['formal_sources']]
     base=Path('/home/lyw/wqx-DL/flow-edit/FlowEdit-main')
     specs={
         'cross_train':(base/'phase5_runs/cross_meta/metadata_cross_train.json',None),
