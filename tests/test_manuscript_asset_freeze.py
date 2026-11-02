@@ -21,3 +21,10 @@ def test_freeze_keeps_technical_patient_outside_formal_and_preserves_budgets(tmp
     assert {c['joint_area_budget']['capacity_floor_policy'] for c in cases}=={'strict'}
     assert not rules['formal_generation_launched']
     with pytest.raises(FileExistsError):prepare(rows,tmp_path/'freeze',formal_count=1)
+
+
+def test_overlap_index_matches_exact_filenames_and_patient_groups():
+    from scripts.audit_manuscript_training_overlap import index_strings
+    names,patients=index_strings({'train':[{'reference_image':r'images\TCGA-AA-0001_roi.png'}, {'image':'/data/TCGA-BB-0002_other.png'}]})
+    assert names=={'TCGA-AA-0001_roi.png','TCGA-BB-0002_other.png'}
+    assert patients=={'TCGA-AA-0001','TCGA-BB-0002'}
