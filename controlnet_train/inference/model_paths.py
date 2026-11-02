@@ -321,6 +321,28 @@ def validate_production_controlnet_checkpoint(
             f"{mode} packaged ControlNet size mismatch: "
             f"{weight_file.stat().st_size} != {expected_size}"
         )
+    import hashlib
+
+    def content_hash(file):
+        digest = hashlib.sha256()
+        with file.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    if content_hash(weight_file) != expected_sha256:
+        raise ValueError(f"{mode} packaged ControlNet content SHA256 mismatch")
+    artifact_hashes = {}
+    for filename in ("config.json", "phase5_conditioning.pt"):
+        artifact = path / filename
+        if not artifact.is_file():
+            raise FileNotFoundError(artifact)
+        actual = content_hash(artifact)
+        relative = str(artifact.relative_to(package_root))
+        declared = file_records.get(relative)
+        if declared is None or declared.get("sha256") != actual:
+            raise ValueError(f"{mode} package content mismatch: {relative}")
+        artifact_hashes[filename] = actual
     return {
         "mode": mode,
         "checkpoint": str(path),
@@ -330,6 +352,7 @@ def validate_production_controlnet_checkpoint(
         "weight": str(weight_file),
         "weight_size_bytes": expected_size,
         "weight_sha256": expected_sha256,
+        "artifact_sha256": artifact_hashes,
     }
 
 

@@ -1110,6 +1110,7 @@ def _run_generation_stage(
             "generation_mode": "dry-run",
             "status": "skipped_model_generation",
             "generated_image": str(generated),
+
             "selected_mode": selected_mode,
             "change_ratio": change_ratio,
             "generation_change_region": str(generation_change_region_path),
@@ -1188,10 +1189,17 @@ def _run_generation_stage(
             change_region,
         )
         image.save(generated)
+        endpoint_stage = getattr(args, "endpoint_stage", "source_composite")
+        if endpoint_stage not in {"source_composite", "postprocessed_precomposite"}:
+            raise ValueError(f"unknown endpoint stage: {endpoint_stage}")
+        endpoint = precomposite_generated if endpoint_stage == "postprocessed_precomposite" else generated
         info = {
             "generation_mode": args.generation_mode,
             "status": "generated",
             "generated_image": str(generated),
+            "endpoint_stage": endpoint_stage,
+            "endpoint_image": str(endpoint),
+            "real_generation_completed": True,
             "raw_generated_image": str(raw_generated),
             "precomposite_generated_image": str(precomposite_generated),
             "source_exact_generation_composite": composite_info,
@@ -1206,7 +1214,7 @@ def _run_generation_stage(
             "cross_v1": no_ip_info,
         }
         save_metadata(info, output_dir / "generation_info.json")
-        return generated, info
+        return endpoint, info
 
     controlnet_dir = output_dir / f"controlnet_{selected_mode.replace('-', '_')}"
     with torch.inference_mode():
@@ -1234,6 +1242,11 @@ def _run_generation_stage(
                     pretrained_model_name_or_path=args.pretrained_model_name_or_path,
                     checkpoint_path=args.inpaint_checkpoint,
                     device=args.device,
+                    torch_dtype=_parse_torch_dtype(getattr(args, "torch_dtype", "bf16")),
+                    num_inference_steps=getattr(args, "num_inference_steps", 28),
+                    guidance_scale=getattr(args, "guidance_scale", 3.5),
+                    controlnet_conditioning_scale=getattr(args, "controlnet_conditioning_scale", 1.0),
+                    seed=getattr(args, "seed", 42),
                 )
                 if selected_mode == "inpaint"
                 else object()
@@ -1260,6 +1273,11 @@ def _run_generation_stage(
         "precomposite_generated_image": str(raw_generated),
         "source_exact_generation_composite": composite_info,
         "controlnet_output_dir": str(controlnet_dir),
+        "effective_sampling": {"seed": getattr(args, "seed", 42),
+            "num_inference_steps": getattr(args, "num_inference_steps", 28),
+            "guidance_scale": getattr(args, "guidance_scale", 3.5),
+            "controlnet_conditioning_scale": getattr(args, "controlnet_conditioning_scale", 1.0),
+            "rng_policy": "single_device_generator_vae_then_diffusion_v1"},
         "selected_mode": selected_mode,
         "change_ratio": result.change_ratio,
         "semantic_change_ratio": result.change_ratio,
@@ -1280,17 +1298,29 @@ def _cached_inpaint_bundle(
     pretrained_model_name_or_path: str | Path,
     checkpoint_path: str | Path,
     device: str,
+    torch_dtype=None,
+    num_inference_steps: int = 28,
+    guidance_scale: float = 3.5,
+    controlnet_conditioning_scale: float = 1.0,
+    seed: int = 42,
 ):
+    from phase3_mask_edit.benchmark.experiment_identity import sha256_file
+    conditioning_identity = tuple(sha256_file(Path(checkpoint_path) / name) for name in ("config.json", "phase5_conditioning.pt"))
     key = (
+        conditioning_identity,
         str(pretrained_model_name_or_path),
         str(checkpoint_path),
-        str(device),
+        str(device), str(torch_dtype), int(num_inference_steps),
+        float(guidance_scale), float(controlnet_conditioning_scale), int(seed),
     )
     if key not in _INPAINT_BUNDLE_CACHE:
         _INPAINT_BUNDLE_CACHE[key] = load_inpaint_bundle(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             checkpoint_path=checkpoint_path,
             device=device,
+            torch_dtype=torch_dtype, num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale, controlnet_conditioning_scale=controlnet_conditioning_scale,
+            seed=seed,
         )
     return _INPAINT_BUNDLE_CACHE[key]
 
@@ -1309,7 +1339,10 @@ def _cached_cross_v1_no_ip_components(
     guidance_scale: float,
     controlnet_conditioning_scale: float,
 ):
+    from phase3_mask_edit.benchmark.experiment_identity import sha256_file
+    conditioning_identity = tuple(sha256_file(Path(checkpoint_path) / name) for name in ("config.json", "phase5_conditioning.pt"))
     key = (
+        conditioning_identity,
         str(pretrained_model_name_or_path),
         str(checkpoint_path),
         str(device),

@@ -21,6 +21,9 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
+
+from phase3_mask_edit.benchmark.experiment_identity import sha256_file
 from pathlib import Path
 from typing import Any
 
@@ -111,7 +114,7 @@ def main() -> int:
     json_output_dir = Path(args.json_output_dir).resolve() if args.json_output_dir else None
     raw_outdir = Path(args.raw_outdir).resolve()
     staged_dir = raw_outdir / "openslide_inputs"
-    result_dir = raw_outdir / "cellvit_results"
+    result_dir = raw_outdir / "cellvit_results" / uuid.uuid4().hex
     output_dir.mkdir(parents=True, exist_ok=True)
     if json_output_dir is not None:
         json_output_dir.mkdir(parents=True, exist_ok=True)
@@ -127,16 +130,28 @@ def main() -> int:
     if args.limit:
         all_images = all_images[: args.limit]
     images = [p for idx, p in enumerate(all_images) if idx % args.shards == args.shard_index]
-    if args.skip_existing:
-        images = [
-            p
-            for p in images
-            if not (output_dir / f"{p.stem}.png").exists()
-            or (
-                json_output_dir is not None
-                and not (json_output_dir / f"{p.stem}.json").exists()
-            )
-        ]
+    requested = len(images)
+    model_sha256 = sha256_file(Path(args.model))
+    reused = 0
+    pending = []
+    for p in images:
+        output = output_dir / f"{p.stem}.png"
+        canonical = json_output_dir / f"{p.stem}.json" if json_output_dir else None
+        if output.exists() or (canonical and canonical.exists()):
+            if not args.skip_existing or canonical is None or not canonical.is_file() or not output.is_file():
+                raise ValueError(f"existing CellViT artifacts require validated reuse or new output directories: {p.name}")
+            payload = json.loads(canonical.read_text())
+            provenance = payload.get("benchmark_provenance", {})
+            if (provenance.get("status") != "completed"
+                or provenance.get("image_sha256") != sha256_file(p)
+                or provenance.get("model_sha256") != model_sha256
+                or provenance.get("mask_sha256") != sha256_file(output)
+                or any(provenance.get(k) != float(getattr(args, k)) for k in ("mpp", "magnification", "resolution"))):
+                raise ValueError(f"CellViT existing run lacks matching identity: {p.name}; use new output directories")
+            reused += 1
+        else:
+            pending.append(p)
+    images = pending
 
     print(
         f"Staging {len(images)} images as OpenSlide TIFFs "
@@ -149,7 +164,7 @@ def main() -> int:
         writer = csv.DictWriter(f, fieldnames=["path", "slide_mpp", "magnification"])
         writer.writeheader()
         for idx, image_path in enumerate(images):
-            staged_path = staged_dir / f"{safe_staged_stem(idx, image_path)}.tiff"
+            staged_path = staged_dir / f"{safe_staged_stem(idx, image_path)}_{sha256_file(image_path)[:16]}.tiff"
             if not staged_path.exists():
                 write_openslide_tiff(image_path, staged_path)
             writer.writerow(
@@ -186,7 +201,8 @@ def main() -> int:
     env["PYTHONPATH"] = str(Path(args.cellvit_root).resolve()) + os.pathsep + env.get("PYTHONPATH", "")
     print("Running CellViT++ process_dataset...", flush=True)
     print(" ".join(cmd), flush=True)
-    subprocess.run(cmd, cwd=str(args.cellvit_root), env=env, check=True)
+    if mappings:
+        subprocess.run(cmd, cwd=str(args.cellvit_root), env=env, check=True)
 
     print("Rasterizing CellViT JSON outputs...", flush=True)
     ok = 0
@@ -197,41 +213,24 @@ def main() -> int:
         output_path = output_dir / f"{image_path.stem}.png"
         try:
             if not cells_json.exists():
-                with Image.open(image_path) as image:
-                    width, height = image.size
-                mask = np.zeros((height, width), dtype=np.uint8)
-                Image.fromarray(mask, mode="L").save(output_path)
                 if json_output_dir is not None:
                     (json_output_dir / f"{image_path.stem}.json").write_text(
-                        json.dumps(
-                            {
-                                "wsi_metadata": {
-                                    "slide_mpp": float(args.mpp),
-                                    "magnification": float(args.magnification),
-                                },
-                                "type_map": {},
-                                "cells": [],
-                                "benchmark_provenance": {
-                                    "status": "empty_missing_raw_json",
-                                    "image": str(image_path),
-                                    "model": str(Path(args.model).resolve()),
-                                    "resolution": float(args.resolution),
-                                },
-                            },
-                            indent=2,
-                            ensure_ascii=False,
-                        ),
-                        encoding="utf-8",
+                        json.dumps({"benchmark_provenance": {
+                            "status": "missing", "image": str(image_path),
+                            "raw_cells_json": str(cells_json),
+                        }}), encoding="utf-8",
                     )
-                log_lines.append(f"OK_EMPTY\t{image_path.name}\t0 cells\tids=[0]\tmissing {cells_json.name}")
-                ok += 1
-                continue
+                raise FileNotFoundError(f"missing CellViT raw output: {cells_json}")
             mask = rasterize_cells_json(cells_json, image_path)
             Image.fromarray(mask, mode="L").save(output_path)
             payload = json.loads(cells_json.read_text(encoding="utf-8"))
             if json_output_dir is not None:
                 payload["benchmark_provenance"] = {
                     "status": "completed",
+                    "image_sha256": sha256_file(image_path),
+                    "model_sha256": model_sha256,
+                    "mask_sha256": sha256_file(output_path),
+                    "mpp": float(args.mpp),
                     "image": str(image_path),
                     "raw_cells_json": str(cells_json),
                     "model": str(Path(args.model).resolve()),
@@ -254,6 +253,10 @@ def main() -> int:
     if args.clean_staged:
         shutil.rmtree(staged_dir, ignore_errors=True)
 
+    (output_dir / "measurement_summary.json").write_text(json.dumps({
+        "requested": requested, "completed": ok, "reused_validated": reused,
+        "failed_or_missing": failed, "status": "incomplete" if failed else "complete",
+    }, indent=2), encoding="utf-8")
     print(f"Done. ok={ok} failed={failed}. Output: {output_dir}", flush=True)
     return 0 if failed == 0 else 1
 

@@ -280,6 +280,8 @@ def promote_audited_joint_candidate(
         paths[name] = str(path)
         digests[name + "_sha256"] = _file_sha256(path)
 
+    digests.update({key: _file_sha256(path) for key, path in source_digest_fields.items()})
+
     ledger = reconstructed_ledger
     manifest = {
         "schema_version": HANDOFF_SCHEMA_VERSION,

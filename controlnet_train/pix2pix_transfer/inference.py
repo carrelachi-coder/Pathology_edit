@@ -630,6 +630,12 @@ def apply_cross_low_stain_protection(
         np.round(blended).clip(0, 255).astype(np.uint8),
         mode="RGB",
     )
+    import hashlib
+    from dataclasses import asdict
+    info["configuration"] = asdict(config)
+    info["eligibility_region_sha256"] = hashlib.sha256(region.astype(np.uint8).tobytes()).hexdigest()
+    info["applied_mask_sha256"] = hashlib.sha256(np.asarray(mask).tobytes()).hexdigest()
+    info["target_nuclei_exclusion_sha256"] = hashlib.sha256(nuclei_exclusion.astype(np.uint8).tobytes()).hexdigest()
     return output, mask, info
 
 

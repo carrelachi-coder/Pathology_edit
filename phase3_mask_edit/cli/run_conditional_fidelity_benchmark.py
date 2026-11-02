@@ -172,7 +172,7 @@ def main() -> int:
             sample_id = require(record, args.sample_id_field, "unknown")
             organ = require(record, args.organ_field, sample_id)
             target_annotation_id = require(record, args.target_annotation_field, sample_id)
-            group = str(record.get(args.group_field) or record.get("pair_id") or sample_id)
+            group = str(require(record, args.group_field, sample_id))
             row = {
                 "model_id": model_id,
                 "sample_id": sample_id,

@@ -143,6 +143,11 @@ class ProductionControlnetReleaseTests(unittest.TestCase):
                     }
                 ],
             }
+            for name in ("config.json", "phase5_conditioning.pt"):
+                artifact = root / name
+                artifact.write_bytes(b"fixture")
+                manifest["files"].append({"path": name, "size_bytes": 7,
+                    "sha256": hashlib.sha256(b"fixture").hexdigest()})
             (root / "manifest.json").write_text(
                 json.dumps(manifest),
                 encoding="utf-8",
@@ -171,6 +176,10 @@ class ProductionControlnetReleaseTests(unittest.TestCase):
                     root,
                     mode="inpaint",
                 )
+
+                weight.write_bytes(b"changed")  # same length, actual content differs
+                with self.assertRaisesRegex(ValueError, "content SHA256"):
+                    validate_production_controlnet_checkpoint(root, mode="inpaint")
 
             self.assertEqual(result["weight_sha256"], sha256)
             self.assertEqual(result["code_commit"], "release-commit")

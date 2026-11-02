@@ -93,6 +93,7 @@ class InpaintInferenceBundle:
     num_inference_steps: int = 28
     guidance_scale: float = 3.5
     controlnet_conditioning_scale: float = 1.0
+    seed: int = 42
     flux_pipeline: object | None = None
     controlnet: object | None = None
     condition_modules: dict[str, torch.nn.Module] = field(default_factory=dict)
@@ -172,6 +173,7 @@ def load_inpaint_bundle(
     num_inference_steps: int = 28,
     guidance_scale: float = 3.5,
     controlnet_conditioning_scale: float = 1.0,
+    seed: int = 42,
 ) -> InpaintInferenceBundle:
     device = _resolve_device(device)
     dtype = _resolve_torch_dtype(torch_dtype, device)
@@ -196,6 +198,7 @@ def load_inpaint_bundle(
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         controlnet_conditioning_scale=controlnet_conditioning_scale,
+        seed=seed,
         flux_pipeline=pipe,
         controlnet=controlnet,
         condition_modules=modules,
@@ -210,10 +213,12 @@ def run_inpaint_bundle(
 ) -> Image.Image:
     reference_image = inputs.reference_image.unsqueeze(0)
     source_image = _erase_reference_image(reference_image, change_region_mask)
+    generator = torch.Generator(device=bundle.device).manual_seed(bundle.seed)
     source_latent = _encode_images_to_latents(
         bundle.flux_pipeline.vae,
         source_image,
         bundle.torch_dtype,
+        generator=generator,
     )
     target_tissue_feat = bundle.condition_modules["tissue_downsampler"](
         bundle.condition_modules["hte"](
@@ -251,6 +256,7 @@ def run_inpaint_bundle(
         num_inference_steps=bundle.num_inference_steps,
         guidance_scale=bundle.guidance_scale,
         controlnet_conditioning_scale=bundle.controlnet_conditioning_scale,
+        generator=generator,
     )
 
 
@@ -599,11 +605,11 @@ def _erase_reference_image(reference_image: torch.Tensor, change_region_mask: to
     return reference_image * (1.0 - mask) + 0.5 * mask
 
 
-def _encode_images_to_latents(vae, images: torch.Tensor, torch_dtype: torch.dtype) -> torch.Tensor:
+def _encode_images_to_latents(vae, images: torch.Tensor, torch_dtype: torch.dtype, *, generator=None) -> torch.Tensor:
     device = next(vae.parameters()).device
     images = images.to(device=device, dtype=torch_dtype)
     images = images * 2.0 - 1.0
-    latents = vae.encode(images).latent_dist.sample()
+    latents = vae.encode(images).latent_dist.sample(generator=generator)
     return (latents - vae.config.shift_factor) * vae.config.scaling_factor
 
 
@@ -619,6 +625,7 @@ def _sample_with_flux_controlnet(
     num_inference_steps: int,
     guidance_scale: float,
     controlnet_conditioning_scale: float,
+    generator=None,
 ) -> Image.Image:
     from diffusers import FluxControlNetPipeline
     from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
@@ -648,7 +655,7 @@ def _sample_with_flux_controlnet(
         width,
         prompt_embeds.dtype,
         torch_device,
-        generator=torch.Generator(device=torch_device).manual_seed(42),
+        generator=generator,
         latents=None,
     )
     sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)

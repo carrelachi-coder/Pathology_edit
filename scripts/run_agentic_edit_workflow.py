@@ -19,6 +19,8 @@ import numpy as np
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from phase3_mask_edit.benchmark.experiment_identity import asset_identity, digest_payload, sha256_file, validate_resume
+
 from controlnet_train.inference.agentic import (
     AgenticWorkflowConfig,
     FidelityThresholds,
@@ -143,6 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
             "backward compatibility."
         ),
     )
+    parser.add_argument("--endpoint-stage", choices=("source_composite", "postprocessed_precomposite"), default="source_composite")
     parser.add_argument(
         "--generation-change-region",
         type=Path,
@@ -536,24 +539,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         _validate_generation_runtime(args, generation_mode)
         existing_image = attempt_dir / "generated_image.png"
         existing_metadata = attempt_dir / "generation_info.json"
-        if (
-            args.reuse_existing_generation
-            and existing_image.is_file()
-            and existing_metadata.is_file()
-        ):
-            metadata = json.loads(existing_metadata.read_text(encoding="utf-8"))
-            metadata = {
-                **metadata,
-                "resumed_generation": True,
-                "resumed_image_path": str(existing_image),
-            }
-            return GenerationArtifact(
-                mode=mode,
-                image_path=existing_image,
-                metadata=metadata,
-            )
         attempt_args = SimpleNamespace(**vars(generation_args))
         attempt_args.generation_mode = generation_mode
+        attempt_args.endpoint_stage = args.endpoint_stage
+        identity = {
+            "parameters": {k: str(v) for k, v in vars(attempt_args).items() if k != "output"},
+            "inputs": {name: asset_identity(getattr(args, name)) for name in (
+                "reference_image", "reference_tissue_mask", "reference_nuclei_mask", "target_tissue_mask", "target_nuclei_mask")},
+            "support": digest_payload(inputs["generation_change_region"].astype(int).tolist()),
+            "models": {name: asset_identity(getattr(attempt_args, name)) for name in (
+                "pretrained_model_name_or_path", "inpaint_checkpoint" if generation_mode == "inpaint" else "cross_v1_checkpoint",
+                *(["pix2pix_checkpoint"] if generation_mode == "cross-v1" else []))},
+            "code": digest_payload({str(p.relative_to(Path(__file__).resolve().parents[1])): sha256_file(p)
+                for folder in ("scripts", "controlnet_train", "phase3_joint_edit_refine", "phase3_mask_edit")
+                for p in sorted((Path(__file__).resolve().parents[1] / folder).rglob("*.py"))}),
+        }
+        identity_path = attempt_dir / "experiment_identity.json"
+        endpoint = attempt_dir / ("generated_image_precomposite.png" if args.endpoint_stage == "postprocessed_precomposite" else "generated_image.png")
+        outputs = list(dict.fromkeys([existing_image, existing_metadata, endpoint]))
+        if validate_resume(identity_path, identity, outputs):
+            if not args.reuse_existing_generation:
+                raise ValueError("existing run requires explicit reuse or a new output root")
+            metadata = json.loads(existing_metadata.read_text(encoding="utf-8"))
+            return GenerationArtifact(mode=mode, image_path=endpoint,
+                metadata={**metadata, "resumed_generation": True})
         image_path, metadata = _run_generation_stage(
             args=attempt_args,
             output_dir=attempt_dir,
@@ -562,6 +571,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             target_tissue_path=args.target_tissue_mask.resolve(),
             target_nuclei_path=args.target_nuclei_mask.resolve(),
         )
+        identity_path.write_text(json.dumps({"identity": identity,
+            "outputs": {p.name: sha256_file(p) for p in outputs}}, indent=2), encoding="utf-8")
         return GenerationArtifact(mode=mode, image_path=image_path, metadata=metadata)
 
     def verify(artifact: GenerationArtifact):
@@ -1751,10 +1762,11 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
         ("target nuclei mask", target_nuclei),
     ):
         _validate_same_size(reference_image, mask, label)
+    actual_joint_change = (reference_tissue != target_tissue) | (reference_nuclei != target_nuclei)
     semantic_change_region = (
         load_change_region(semantic_change_region_path)
         if semantic_change_region_path is not None
-        else reference_tissue != target_tissue
+        else actual_joint_change
     )
     generation_change_region = (
         load_change_region(args.generation_change_region)
@@ -1771,6 +1783,9 @@ def _load_and_validate_inputs(args: argparse.Namespace) -> dict[str, np.ndarray]
         generation_change_region,
         "generation change region",
     )
+    uncovered = actual_joint_change & ~np.asarray(semantic_change_region, dtype=bool)
+    if np.any(uncovered):
+        raise ValueError(f"semantic change region omits {int(uncovered.sum())} actual joint change pixels")
     missing_generation_pixels = (
         np.asarray(semantic_change_region, dtype=bool)
         & ~np.asarray(generation_change_region, dtype=bool)

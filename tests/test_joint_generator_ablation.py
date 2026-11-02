@@ -163,6 +163,8 @@ def _write_handoff(root: Path) -> Path:
         if name.startswith("source_"):
             continue
         digests[name + "_sha256"] = _sha256(Path(path))
+    for asset, digest_key in (("source_image", "source_image_sha256"), ("source_tissue", "source_tissue_mask_sha256"), ("source_nuclei", "source_nuclei_mask_sha256")):
+        digests[digest_key] = _sha256(Path(paths[asset]))
     binding = {
         "schema_version": "joint-result-binding-v2",
         "contract_id": contract_id,

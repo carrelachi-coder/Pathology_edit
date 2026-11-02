@@ -19,6 +19,8 @@ from controlnet_train.inference import (
 )
 from scripts.run_phase3_inpaint_pipeline import _run_generation_stage
 
+from phase3_mask_edit.benchmark.experiment_identity import asset_identity, digest_payload, sha256_file, validate_resume
+
 
 DEFAULT_FLUX = Path("/data/huggingface/FLUX.1-dev")
 
@@ -64,6 +66,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--num-shards", type=int, default=1)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--endpoint-stage", choices=("source_composite", "postprocessed_precomposite"), default="source_composite")
     return parser.parse_args(argv)
 
 
@@ -121,6 +124,7 @@ def _pipeline_args(args: argparse.Namespace, row: dict, output: Path) -> SimpleN
         guidance_scale=args.guidance_scale,
         controlnet_conditioning_scale=args.controlnet_conditioning_scale,
         seed=int(row.get("generation_seed", 42)),
+        endpoint_stage=args.endpoint_stage,
         color_match="none",
         output=output,
     )
@@ -146,6 +150,15 @@ def main(argv: list[str] | None = None) -> int:
         if path is not None and not path.exists():
             raise FileNotFoundError(path)
 
+    model_identity = {str(p): asset_identity(p) for p in (
+        args.pretrained_model,
+        args.inpaint_checkpoint if args.backend == "inpaint" else args.cross_v1_checkpoint,
+        *([args.pix2pix_checkpoint] if args.backend == "cross-v1" else []),
+    )}
+    repo = Path(__file__).resolve().parents[1]
+    code_identity = digest_payload({str(p.relative_to(repo)): sha256_file(p)
+        for folder in ("controlnet_train", "scripts", "phase3_mask_edit/benchmark")
+        for p in sorted((repo / folder).rglob("*.py"))})
     backend_root = args.output_root / args.backend
     backend_root.mkdir(parents=True, exist_ok=True)
     completed = 0
@@ -154,7 +167,23 @@ def main(argv: list[str] | None = None) -> int:
         sample_dir = backend_root / row["sample_id"]
         generated_path = sample_dir / "generated_image.png"
         info_path = sample_dir / "generation_info.json"
-        if args.resume and generated_path.is_file() and info_path.is_file():
+        identity = {
+            "row": row, "models": model_identity, "code": code_identity,
+            "parameters": {k: str(v) for k, v in vars(args).items()
+                if k not in {"output_root", "resume", "limit", "shard_index", "num_shards"}},
+            "inputs": {key: asset_identity(row[key]) for key in (
+                "reference_image", "reference_tissue_mask", "reference_nuclei_mask",
+                "target_tissue_mask", "target_nuclei_mask")},
+            "support": asset_identity(_generation_change_region(row)),
+        }
+        identity_path = sample_dir / "experiment_identity.json"
+        outputs = [generated_path, info_path]
+        if args.endpoint_stage == "postprocessed_precomposite":
+            outputs.append(sample_dir / "generated_image_precomposite.png")
+        reusable = validate_resume(identity_path, identity, outputs)
+        if reusable:
+            if not args.resume:
+                raise ValueError("existing run requires --resume or a new output root")
             completed += 1
             continue
         sample_dir.mkdir(parents=True, exist_ok=True)
@@ -172,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
                 target_tissue_path=Path(row["target_tissue_mask"]),
                 target_nuclei_path=Path(row["target_nuclei_mask"]),
             )
-            if output_path != generated_path or not generated_path.is_file():
+            if not output_path.is_file() or not generated_path.is_file():
                 raise RuntimeError(f"unexpected generation output: {output_path}")
             provenance = {
                 "sample_id": row["sample_id"],
@@ -188,6 +217,11 @@ def main(argv: list[str] | None = None) -> int:
             (sample_dir / "utility_generation.json").write_text(
                 json.dumps(provenance, indent=2, ensure_ascii=False), encoding="utf-8"
             )
+            recorded_outputs = [generated_path, info_path]
+            if output_path not in recorded_outputs:
+                recorded_outputs.append(output_path)
+            identity_path.write_text(json.dumps({"identity": identity,
+                "outputs": {p.name: sha256_file(p) for p in recorded_outputs}}, indent=2), encoding="utf-8")
             completed += 1
         except Exception as exc:
             failure = {

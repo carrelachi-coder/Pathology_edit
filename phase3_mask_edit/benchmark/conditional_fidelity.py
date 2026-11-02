@@ -257,9 +257,15 @@ def detections_from_cellvit_json(
     path: Path, *, mpp: float, image_size: tuple[int, int]
 ) -> Detections:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    provenance = payload.get("benchmark_provenance") or {}
+    status = provenance.get("status")
+    if status is not None and status not in {"completed", "valid_zero"}:
+        raise ValueError(f"CellViT measurement is not completed ({status}): {path}")
     cells = payload.get("cells")
     if not isinstance(cells, list):
         raise ValueError(f"CellViT JSON has no cells list: {path}")
+    if not cells and status not in {"completed", "valid_zero"}:
+        raise ValueError(f"empty CellViT detection lacks completion provenance: {path}")
     metadata = payload.get("wsi_metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
     width, height = image_size

@@ -230,6 +230,14 @@ def build_frozen_generator_inputs(
     source = manifest.get("source_assets")
     if not all(isinstance(item, dict) for item in (paths, digests, source)):
         raise JointContractError("joint handoff paths/digests/source assets are incomplete")
+    for asset, digest_key in (
+        ("image", "source_image_sha256"),
+        ("tissue", "source_tissue_mask_sha256"),
+        ("nuclei", "source_nuclei_mask_sha256"),
+    ):
+        asset_path = Path(source.get(asset, ""))
+        if not asset_path.is_file() or _sha256(asset_path) != digests.get(digest_key):
+            raise JointContractError(f"joint handoff source asset missing or digest drift: {asset}")
     required_artifacts = (
         "target_tissue_mask",
         "target_nuclei_mask",

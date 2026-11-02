@@ -37,6 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bootstrap-repeats", type=int, default=5000)
     parser.add_argument("--permutation-repeats", type=int, default=20000)
     parser.add_argument("--high-overlap-quantile", type=float, default=0.75)
+    parser.add_argument("--cluster-unit", choices=("wsi_id", "patient_id"), default="wsi_id")
     parser.add_argument("--seed", type=int, default=20260724)
     return parser.parse_args()
 
@@ -115,21 +116,78 @@ def wsi_sign_flip_pvalue(
     return float((np.count_nonzero(null >= observed) + 1) / (repeats + 1))
 
 
-def spearman_summary(left: np.ndarray, right: np.ndarray) -> dict[str, Any]:
-    left = np.asarray(left, dtype=np.float64)
-    right = np.asarray(right, dtype=np.float64)
+def independent_groups(rows: list[dict], unit_name: str) -> np.ndarray:
+    if unit_name not in {"wsi_id", "patient_id"}:
+        raise ValueError("unknown independent unit")
+    if any(not row.get(unit_name) for row in rows):
+        raise ValueError(f"missing verified {unit_name}; cannot freeze independent groups")
+    mapping = {}
+    for row in rows:
+        previous = mapping.setdefault(str(row["wsi_id"]), str(row[unit_name]))
+        if previous != str(row[unit_name]):
+            raise ValueError("one WSI maps to inconsistent independent units")
+    groups = np.asarray([str(row[unit_name]) for row in rows])
+    if len(np.unique(groups)) < 2:
+        raise ValueError("cross-fitting requires at least two independent units")
+    return groups
+
+
+def spearman_summary(left, right, groups, *, repeats, seed) -> dict[str, Any]:
+    left, right, groups = np.asarray(left), np.asarray(right), np.asarray(groups)
     if np.ptp(left) <= 1e-12 or np.ptp(right) <= 1e-12:
-        return {
-            "rho": None,
-            "pvalue": None,
-            "status": "undefined_constant_input",
-        }
-    result = spearmanr(left, right)
-    return {
-        "rho": float(result.statistic),
-        "pvalue": float(result.pvalue),
-        "status": "complete",
-    }
+        return {"rho": None, "pvalue": None, "status": "undefined_constant_input"}
+    unique = np.unique(groups)
+    rng = np.random.default_rng(seed)
+    estimates = []
+    for _ in range(repeats):
+        sampled = rng.choice(unique, len(unique), replace=True)
+        indices = np.concatenate([np.flatnonzero(groups == group) for group in sampled])
+        if np.ptp(left[indices]) > 1e-12 and np.ptp(right[indices]) > 1e-12:
+            estimates.append(float(spearmanr(left[indices], right[indices]).statistic))
+    return {"rho": float(spearmanr(left, right).statistic), "pvalue": None,
+        "cluster_bootstrap_ci95": np.quantile(estimates, [0.025, 0.975]).tolist() if estimates else None,
+        "valid_bootstrap_repeats": len(estimates), "status": "complete",
+        "inference": "paired_cluster_bootstrap_percentile; no IID pvalue"}
+
+
+def operation_label_permutation_pvalue(features, groups, *, strength, backend,
+        repeats, seed, selection=None) -> float:
+    """Swap raw operation labels by independent unit and refit held-out axes."""
+    groups = np.asarray(groups)
+    unique = np.unique(groups)
+    selected = np.ones(len(groups), dtype=bool) if selection is None else np.asarray(selection, dtype=bool)
+
+    def statistic(candidate):
+        fitted = cross_fitted_axes(candidate, groups)
+        displacements = {}
+        for primitive in PRIMITIVES:
+            cell = candidate[primitive][strength]
+            displacements[primitive] = unit_rows(cell[backend] - cell["reference"])
+        margin = .5 * np.sum((displacements["u1"] - displacements["u2"]) *
+                            (fitted["u1"] - fitted["u2"]), axis=1)
+        units = np.unique(groups[selected])
+        if not len(units):
+            raise ValueError("empty selected permutation analysis")
+        return float(np.mean([margin[selected & (groups == g)].mean() for g in units]))
+
+    observed = statistic(features)
+    exhaustive = len(unique) < 20 and 2 ** len(unique) <= repeats
+    if exhaustive:
+        import itertools
+        swaps = itertools.product((False, True), repeat=len(unique))
+        total = 2 ** len(unique)
+    else:
+        swaps = np.random.default_rng(seed).integers(0, 2, size=(repeats, len(unique)))
+        total = repeats
+    exceed = 0
+    for swap in swaps:
+        mask = np.isin(groups, unique[np.asarray(swap, dtype=bool)])[:, None]
+        candidate = {primitive: {s: {b: np.where(mask, features[other][s][b], values)
+            for b, values in features[primitive][s].items()}
+            for s in STRENGTHS}
+            for primitive, other in (("u1", "u2"), ("u2", "u1"))}
+        exceed += statistic(candidate) >= observed - 1e-12
+    return float(exceed / total if exhaustive else (exceed + 1) / (total + 1))
 
 
 def load_encoder(
@@ -226,14 +284,20 @@ def analyze_encoder(
     permutation_repeats: int,
     high_overlap_quantile: float,
     seed: int,
+    cluster_unit: str = "wsi_id",
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     canonical_rows = manifests["u1_moderate"]
-    groups = np.asarray([str(row["wsi_id"]) for row in canonical_rows])
+    groups = independent_groups(canonical_rows, cluster_unit)
+    for cell_rows in manifests.values():
+        if not np.array_equal(groups, independent_groups(cell_rows, cluster_unit)):
+            raise ValueError("independent-unit mapping differs between paired manifests")
     axes = cross_fitted_axes(features, groups)
     axis_cosine = np.sum(axes["u1"] * axes["u2"], axis=1)
     output: dict[str, Any] = {
         "sample_count": int(len(groups)),
-        "wsi_count": int(len(np.unique(groups))),
+        "wsi_count": len({str(row["wsi_id"]) for row in canonical_rows}),
+        "cluster_unit": cluster_unit,
+        "cluster_count": int(len(np.unique(groups))),
         "cross_fitted_mean_direction_cosine_u1_vs_u2": cluster_summary(
             axis_cosine,
             groups,
@@ -350,7 +414,7 @@ def analyze_encoder(
                     repeats=bootstrap_repeats,
                     seed=prefix_seed + 503,
                 ),
-                "incremental_projection_wsi_sign_flip_pvalue": (
+                "incremental_projection_cluster_sign_flip_pvalue": (
                     wsi_sign_flip_pvalue(
                         incremental_projection,
                         groups,
@@ -391,11 +455,11 @@ def analyze_encoder(
                 "dose_correlations": {
                     "dose_increase_vs_incremental_projection": spearman_summary(
                         significant_dose - moderate_dose,
-                        incremental_projection,
+                        incremental_projection, groups, repeats=bootstrap_repeats, seed=prefix_seed + 1201,
                     ),
                     "significant_dose_vs_displacement_norm": spearman_summary(
                         significant_dose,
-                        scores.significant_displacement_norm,
+                        scores.significant_displacement_norm, groups, repeats=bootstrap_repeats, seed=prefix_seed + 1301,
                     ),
                 },
             }
@@ -531,10 +595,9 @@ def analyze_encoder(
                     repeats=bootstrap_repeats,
                     seed=prefix_seed + 601,
                 ),
-                "wsi_level_direction_label_permutation_pvalue": (
-                    wsi_sign_flip_pvalue(
-                        paired_discrimination,
-                        groups,
+                "cluster_level_direction_label_permutation_pvalue": (
+                    operation_label_permutation_pvalue(
+                        features, groups, strength=strength, backend=backend,
                         repeats=permutation_repeats,
                         seed=prefix_seed + 701,
                     )
@@ -549,10 +612,9 @@ def analyze_encoder(
                     "both_primitives_prefer_own_axis_fraction": (
                         selected_summary(own_preference.astype(float), 1009)
                     ),
-                    "wsi_level_direction_label_permutation_pvalue": (
-                        wsi_sign_flip_pvalue(
-                            paired_discrimination[high_overlap],
-                            groups[high_overlap],
+                    "cluster_level_direction_label_permutation_pvalue": (
+                        operation_label_permutation_pvalue(
+                            features, groups, strength=strength, backend=backend, selection=high_overlap,
                             repeats=permutation_repeats,
                             seed=prefix_seed + 1103,
                         )
@@ -586,19 +648,21 @@ def main() -> int:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     report: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "complete",
         "analysis": "paired_two_primitive_wsi_cross_fitted_trajectory",
         "run_root": str(args.run_root),
         "inference": {
             "direction_fit": (
-                "leave_one_wsi_out; within primitive, equal-weight unit mean "
+                "leave_one_independent_unit_out; within primitive, equal-weight unit mean "
                 "of local and global Moderate mean directions"
             ),
-            "bootstrap_unit": "wsi_id",
+            "bootstrap_unit": args.cluster_unit,
+            "permutation_unit": args.cluster_unit,
+            "correlation_unit": args.cluster_unit,
             "bootstrap_repeats": args.bootstrap_repeats,
             "direction_label_null": (
-                "paired primitive-label swap implemented as WSI-level sign flip"
+                "raw paired operation-label swaps by independent unit; refit held-out axes each permutation"
             ),
             "permutation_repeats": args.permutation_repeats,
             "high_overlap_quantile": args.high_overlap_quantile,
@@ -625,6 +689,7 @@ def main() -> int:
             permutation_repeats=args.permutation_repeats,
             high_overlap_quantile=args.high_overlap_quantile,
             seed=args.seed + encoder_index * 100000,
+            cluster_unit=args.cluster_unit,
         )
         report["encoders"][encoder] = encoder_report
         all_rows[encoder] = encoder_rows

@@ -71,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
     if not input_dir.is_dir():
         raise FileNotFoundError(input_dir)
 
+    if args.batch_size < 1:
+        raise ValueError("batch-size must be positive")
     image_paths = iter_images(input_dir)
     if args.limit is not None:
         image_paths = image_paths[: args.limit]
@@ -91,12 +93,15 @@ def main(argv: list[str] | None = None) -> int:
     skipped = 0
     failed: list[dict[str, str]] = []
     batch: list[Path] = []
-    for index, image_path in enumerate(image_paths, start=1):
+    # Flush pending work before skipped trailing inputs can end the loop.
+    pending = [p for p in image_paths if not (args.skip_existing and (output_dir / f"{p.stem}.png").exists())]
+    skipped = len(image_paths) - len(pending)
+    for index, image_path in enumerate(pending, start=1):
         if args.skip_existing and (output_dir / f"{image_path.stem}.png").exists():
             skipped += 1
             continue
         batch.append(image_path)
-        if len(batch) < args.batch_size and index != len(image_paths):
+        if len(batch) < args.batch_size and index != len(pending):
             continue
         try:
             predict_batch(model, batch, output_dir, device)
@@ -115,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             batch = []
 
+    missing_outputs = [str(p) for p in image_paths if not (output_dir / f"{p.stem}.png").is_file()]
     summary = {
         "checkpoint": str(Path(args.checkpoint)),
         "input_dir": str(input_dir),
@@ -123,10 +129,12 @@ def main(argv: list[str] | None = None) -> int:
         "written": written,
         "skipped": skipped,
         "failed": failed,
+        "missing_outputs": missing_outputs,
+        "status": "incomplete" if failed or missing_outputs else "complete",
     }
     (output_dir / "prediction_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False), flush=True)
-    return 1 if failed else 0
+    return 1 if failed or missing_outputs else 0
 
 
 if __name__ == "__main__":
