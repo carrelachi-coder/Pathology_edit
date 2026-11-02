@@ -1,0 +1,11 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_ JointWorkflowTests.test_non_breast_cellularity_decrease_uses_compiler_owned_anchors _
+tests/test_joint_edit_refine.py:9556: in test_non_breast_cellularity_decrease_uses_compiler_owned_anchors
+    self.assertEqual(result.status, "abstained")
+E   AssertionError: 'selected_research' != 'abstained'
+E   - selected_research
+E   + abstained
+=========================== short test summary info ============================
+FAILED tests/test_joint_edit_refine.py::JointWorkflowTests::test_non_breast_cellularity_decrease_uses_compiler_owned_anchors
+1 failed in 1.62s

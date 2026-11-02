@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "experiment_id": "manuscript_global_reconstruction_20261102",
+  "status": "prerequisite_validation_in_progress",
+  "formal_launch_permitted": false,
+  "repair_baseline": "6f481a989b57648449340a17d17b8cda3c9c818f",
+  "implementation_commit": "8ed6882fd35e907cb5132f29676a4fac52025ab4",
+  "formal_entry": "scripts/run_manuscript_global_cohort.py",
+  "technical_pilot_entry": "scripts/run_manuscript_chain_pilot.py",
+  "source_count": 30,
+  "unique_image_count_if_shared_sham": 180,
+  "generated_image_count": 150,
+  "generation_manifest_sha256": null,
+  "cohort_selection": {
+    "rule": "one source per verified patient; exclude technical pilot source; lexicographic source ID order before generation; require both operations and two approved target strengths",
+    "organ": "BCSS breast candidate; mechanism support is unresolved",
+    "source_manifest_sha256": "a7c9e1b6e46527034ee4461375718b37ef6974e62b56e937e3931d7b4d6d8486",
+    "formal_source_list_frozen": false
+  },
+  "route": "cross-v1 global reconstruction; no routing/retry-based efficacy estimate",
+  "endpoint_stage": "postprocessed_precomposite",
+  "postprocess": {
+    "policy": "cross_rgb_od_near_white_v2",
+    "eligibility": "fixed full-frame mask, content identity shared across paired states, separate from approved joint generation support",
+    "adaptive_applied_mask": "retain per-image alpha mask and hash, nuclei exclusion hash, actual configuration and thresholds; equality of policy name alone is insufficient",
+    "require_matching_enablement": true
+  },
+  "sampling": {
+    "steps": 28,
+    "guidance": 3.5,
+    "conditioning_scale": 1.0,
+    "seed": 42,
+    "dtype": "bf16",
+    "prompt": "H&E stained breast cancer histopathology at 40x magnification",
+    "seed_policy": "paired states share seed; record effective parameters"
+  },
+  "model_assets": {
+    "cross": {
+      "path": "/home/lyw/wqx-DL/flow-edit/hf_generation_release/pathology-cross-v1-pix2pix/cross_v1",
+      "sha256": "f3f5f448cb3752f72b12740bf368795aaf5bf833d3d5d63808ee3819e2d7ba61",
+      "files": {
+        "config.json": "8617d348881d9148e021b6c58d0fc8dc8ccd367f4a8ec31195f34e836dfe9468",
+        "diffusion_pytorch_model.safetensors": "b0442d93aa2b2649e3506620c36c4cc54ba55d377f4c7f767f19147ea83d276e",
+        "phase5_conditioning.pt": "e8f82949ef82d0cd2db057467cedd6ba353c4879f0ee60c6ebbc08ac19c77961"
+      }
+    },
+    "pix2pix": {
+      "path": "/home/lyw/wqx-DL/flow-edit/hf_generation_release/pathology-cross-v1-pix2pix/pix2pix/pix2pix_epoch26_step214895.pt",
+      "sha256": "be5fe9376efdb5620a57481082f6d5738b6353796fb00fe6e58f6b212ba7c2ac"
+    },
+    "segmentator": {
+      "path": "/data1/zhao/wqx/segmentator_fine/legacy_anchor_fine_seed42/best_composite.pt",
+      "sha256": "5165e0fb20aca68f64fb06403eff846173fba3a3373deeedb36b3feb81727b3f"
+    },
+    "cellvit": {
+      "path": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/CellViT-plus-plus-main/CellViT-plus-plus-main/checkpoints/CellViT-SAM-H-x40-AMP-001.pth",
+      "sha256": "356418f19d9d478f164c7a31f85274584fefaa02355815c09f52346c658c8ec4"
+    },
+    "base_model": {
+      "status": "complete",
+      "path": "/data/huggingface/FLUX.1-dev",
+      "sha256": "5e18b019ee9543edc1a5299c33a6161f214aac7c1ecdbf8c51e06e80570209b5",
+      "files": {
+        "model_index.json": "24946df21ff25e210486b5f6b14208983a90c9c73f8d48cfa724c0e4e03f7201",
+        "scheduler/scheduler_config.json": "63b6d2fa93579e383a308009bfd5ae12e61f8950017dd749302f8d54bb3520b6",
+        "text_encoder/config.json": "d79d5c8c6ce85112a923d621a5412886ddbbb0636210fc0f72f450582e675542",
+        "text_encoder/model.safetensors": "893d67a23f4693ed42cdab4cbad7fe3e727cf59609c40da28a46b5470f9ed082",
+        "text_encoder_2/config.json": "9001e5a8ae0571a362f806b87b6105dd1a15c33dca237b606d2561164109beeb",
+        "text_encoder_2/model-00001-of-00002.safetensors": "ec87bffd1923e8b2774a6d240c922a41f6143081d52cf83b8fe39e9d838c893e",
+        "text_encoder_2/model-00002-of-00002.safetensors": "a5640855b301fcdbceddfa90ae8066cd9414aff020552a201a255ecf2059da00",
+        "text_encoder_2/model.safetensors.index.json": "3bacec0f0cf392399d4a385908f67dd73df99c9e9cfee669f148858ba9fbdb0a",
+        "tokenizer/merges.txt": "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+        "tokenizer/special_tokens_map.json": "2cdb3b8331a60c92fc1e55a13e9fd61fd2293c5a51275fdcccd62b780052530e",
+        "tokenizer/tokenizer_config.json": "6bdcee9ccce2a16ca2b4c0c5ed00b42c50ea225f4472a8c4c1e963a2902c2881",
+        "tokenizer/vocab.json": "e089ad92ba36837a0d31433e555c8f45fe601ab5c221d4f607ded32d9f7a4349",
+        "tokenizer_2/special_tokens_map.json": "7a1985a994c41886db38c719d2a3d2f40606663cc19d7c5d6a85d349320e06d2",
+        "tokenizer_2/spiece.model": "d60acb128cf7b7f2536e8f38a5b18a05535c9e14c7a355904270e15b0945ea86",
+        "tokenizer_2/tokenizer.json": "f5dfec163765e18e270537fe896c49f5fad74db1525641d9b255a3008b999596",
+        "tokenizer_2/tokenizer_config.json": "1a3d2db64215ed77854dd4208aac5f8361c1b5471cabd19c0ef1472d1a895eb0",
+        "transformer/config.json": "4f601e115ed85ab891646f03d17dca39d61278eca4b618e8c642cad71495fee8",
+        "transformer/diffusion_pytorch_model-00001-of-00003.safetensors": "d86a3038eacaa720682cb9b1da3c49fecf8a3ded605af4def6061eaa18903eb8",
+        "transformer/diffusion_pytorch_model-00002-of-00003.safetensors": "5e830704a83aa938dfaf23da308100a1c44b83fa084283abf1d163ea727e5f7a",
+        "transformer/diffusion_pytorch_model-00003-of-00003.safetensors": "0d9c7c663217d1c3d44a6deed4e1cf1ac09fbc2c4137c47de1e3d74c959833de",
+        "transformer/diffusion_pytorch_model.safetensors.index.json": "780ee2abafdd8abcb64d97be0154f1481f51e3cce1899fbad98723e4fb6c15e0",
+        "vae/config.json": "ad6f0acb584ceb3d136d1e32b684dec65db24bffe9223df2bac0b45539d4e6b5",
+        "vae/diffusion_pytorch_model.safetensors": "f5b59a26851551b67ae1fe58d32e76486e1e812def4696a4bea97f16604d40a3"
+      },
+      "hash_scope": "model_index.json and declared component directories, excluding cache metadata"
+    }
+  },
+  "evaluator_release": "benchmark_configs/releases/segmentator_fine_legacy_anchor.json",
+  "cellvit_release": "frozen CellViT-SAM-H-x40-AMP-001",
+  "label_space": "dataset_config/unified_labels.py: coarse 1 tumor, 2 stroma, 3 necrosis, 4 immune infiltrate; CellViT type 2 inflammatory",
+  "evaluation": {
+    "tumor_primary": "coarse tumor pixels / fixed source valid tissue pixels; ignore 0 and 255; fine labels mapped through FINE_TO_PARENT",
+    "immune_primary": "coarse immune-infiltrate pixels / fixed source stromal-or-immune ROI (source parents 2 or 4); not a cell-density endpoint",
+    "secondary_inflammatory_cell_density": "CellViT type 2 centroids inside fixed source stromal-or-immune ROI per mm2 at 0.25 um/px; not interchangeable with compartment fraction",
+    "target_fidelity": "signed and absolute difference from target measured in the same fixed ROI; no binary success threshold",
+    "protected_roi": "source valid tissue outside the union of all pre-generation approved joint semantic changes dilated by 8 pixels; freeze actual mask and hash before generation; empty ROI is not_applicable",
+    "preservation": "protected-ROI coarse-label agreement and RGB mean absolute drift / 255; global reconstruction evidence only",
+    "ordinal": "sham, Moderate, Significant for increasing operations; report continuous paired differences, strict order, ties and reversals; exact pixel-count ties only, no post-result tolerance tuning",
+    "generation_drift": "original vs sham measured separately; never prespecify original<sham",
+    "measurement_statuses": [
+      "valid_nonzero",
+      "valid_zero_with_completion",
+      "failure",
+      "missing",
+      "evaluator_uncertain",
+      "not_applicable"
+    ],
+    "missing_policy": "no zero imputation; report requested, generated, valid, valid_zero, failure, missing, uncertain, NA, valid pairs; complete-pair analysis plus all-requested bounds for ordinal proportions",
+    "retry_policy": "one technical retry in a new attempt directory with identical input identity; retain both attempts; never retry to improve morphology"
+  },
+  "cluster_unit": "patient_id",
+  "statistical_rules": {
+    "identity_verification": "verify TCGA patient prefix against source paths and manifest; one WSI cannot map to multiple patients; reject missing mappings",
+    "all_analyses": "patient grouping shared by axis holdout, operation-label permutation, bootstrap, correlation inference, KID and physician analysis",
+    "permutation": "raw paired operation label swap for all WSIs of each patient together; refit held-out axes for each swap; exact enumeration when feasible, otherwise 20000 draws",
+    "bootstrap": "resample all records of each patient together; 5000 repeats; percentile 95% intervals",
+    "correlation": "patient-cluster bootstrap 95% interval for Spearman rho; no ordinary IID pvalue",
+    "multiplicity": "four prespecified operation-by-strength edit-minus-sham comparisons form one Holm family at alpha .05; descriptive intervals reported as such; other comparisons exploratory",
+    "physicians": "retain reader-specific estimates and patient clustering; allow ties, cannot distinguish and cannot judge; sham-vs-original drift separate",
+    "seed": 20261102
+  },
+  "blockers": [
+    "14 failures reproduced on unmodified repair baseline; mechanism/primitive scope and stale expectations need resolution before formal freeze",
+    "formal approved joint target manifest and protected ROI hashes not frozen; pilot uses historical targets only",
+    "generator and evaluator training-overlap audits for the chosen formal sources are pending; automatic readouts remain computational evidence",
+    "technical multi-stage chain passed; formal joint chain on the eventual frozen snapshot remains to be accepted"
+  ],
+  "historical_analysis_status": "corrected inference code tested on synthetic data; historical 2400-image statistics not rerun by this implementation change",
+  "technical_pilot_status": "complete: 2 real outputs and 3 paired tissue/cell measurement records; stage versions recorded in validation_report.json",
+  "runtime_environments": {
+    "generation_and_cellvit": {
+      "python_path": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+      "python": "3.11.15 | packaged by conda-forge | (main, Mar  5 2026, 16:45:40) [GCC 14.3.0]",
+      "torch": "2.4.1",
+      "cuda": "12.1"
+    },
+    "segmentator": {
+      "python_path": "/home/lyw/anaconda3/envs/pathology-segmentator-mmseg/bin/python",
+      "python": "3.10.20 | packaged by conda-forge | (main, Mar  5 2026, 16:42:22) [GCC 14.3.0]",
+      "torch": "2.4.0+cu121",
+      "numpy": "2.2.6",
+      "mmseg": "1.2.2",
+      "mmengine": "0.10.4"
+    }
+  },
+  "formal_assets": {
+    "generation_manifest": "unresolved",
+    "approved_joint_targets": "unresolved",
+    "protected_roi_files_and_hashes": "unresolved",
+    "patient_wsi_mapping_audit": "unresolved",
+    "training_overlap_audits": "unresolved"
+  }
+}

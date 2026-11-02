@@ -1,0 +1,104 @@
+..........FFFFF..... [ 13%]
+.....F....................F............F............FF..........................................F..F..............................F..  [100%]
+=================================== FAILURES ===================================
+_ JointSkillTests.test_budget_broker_keeps_seam_footprint_reserve_distinct_from_halo _
+tests/test_joint_edit_refine.py:4647: in test_budget_broker_keeps_seam_footprint_reserve_distinct_from_halo
+    bundle = repository.compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+_ JointSkillTests.test_budget_broker_rebalances_from_exact_executed_cell_spill _
+tests/test_joint_edit_refine.py:4797: in test_budget_broker_rebalances_from_exact_executed_cell_spill
+    bundle = repository.compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+_ JointSkillTests.test_budget_broker_reserves_whole_instance_union_without_lowering_floor _
+tests/test_joint_edit_refine.py:4606: in test_budget_broker_reserves_whole_instance_union_without_lowering_floor
+    bundle = repository.compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+_ JointSkillTests.test_capacity_adaptive_budget_can_compile_below_standard_floor _
+tests/test_joint_edit_refine.py:4860: in test_capacity_adaptive_budget_can_compile_below_standard_floor
+    bundle = repository.compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+_ JointSkillTests.test_capacity_adaptive_budget_enforces_meaningful_edit_floor _
+tests/test_joint_edit_refine.py:4929: in test_capacity_adaptive_budget_enforces_meaningful_edit_floor
+    bundle = repository.compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+________ JointSkillTests.test_cross_domain_cell_population_is_rejected _________
+phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+
+During handling of the above exception, another exception occurred:
+tests/test_joint_edit_refine.py:4522: in test_cross_domain_cell_population_is_rejected
+    with self.assertRaisesRegex(ValueError, "domain mismatch"):
+E   AssertionError: "domain mismatch" does not match "joint mechanism does not support requested primitive"
+_ JointSkillTests.test_fixed_breast_fallback_compiles_against_manifest_three_percent _
+tests/test_joint_edit_refine.py:4997: in test_fixed_breast_fallback_compiles_against_manifest_three_percent
+    bundle = JointSkillRepository().compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+__ JointSkillTests.test_joint_planner_schema_binds_skill_owned_program_fields __
+tests/test_joint_edit_refine.py:467: in test_joint_planner_schema_binds_skill_owned_program_fields
+    ).create_plan(
+phase3_joint_edit_refine/agents.py:506: in create_plan
+    "scene": _compact_joint_plan_scene_metadata(
+phase3_joint_edit_refine/agents.py:227: in _compact_joint_plan_scene_metadata
+    result = _compact_semantic_scene_metadata(metadata)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+phase3_joint_edit_refine/agents.py:126: in _compact_semantic_scene_metadata
+    tissue = metadata["tissue"]
+             ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'tissue'
+_ JointSkillTests.test_mask_condition_critic_direct_raster_bypass_fails_closed _
+tests/test_joint_edit_refine.py:1698: in test_mask_condition_critic_direct_raster_bypass_fails_closed
+    bundle = repository.compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+_ JointSkillTests.test_mask_condition_critic_does_not_receive_histology_veto_authority _
+tests/test_joint_edit_refine.py:1674: in test_mask_condition_critic_does_not_receive_histology_veto_authority
+    bundle = repository.compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+_ JointSkillTests.test_planner_and_critic_free_text_cannot_assert_unannotated_pathology _
+tests/test_joint_edit_refine.py:1762: in test_planner_and_critic_free_text_cannot_assert_unannotated_pathology
+    bundle = JointSkillRepository().compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+__________ JointSkillTests.test_production_rejects_draft_joint_skills __________
+phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+
+During handling of the above exception, another exception occurred:
+tests/test_joint_edit_refine.py:4552: in test_production_rejects_draft_joint_skills
+    with self.assertRaisesRegex(ValueError, "internally reviewed"):
+E   AssertionError: "internally reviewed" does not match "joint mechanism does not support requested primitive"
+_ JointSkillTests.test_tissue_tool_rejects_allocation_below_binding_execution_floor _
+tests/test_joint_edit_refine.py:5027: in test_tissue_tool_rejects_allocation_below_binding_execution_floor
+    bundle = repository.compose(
+phase3_joint_edit_refine/skills/repository.py:826: in compose
+    raise JointContractError("joint mechanism does not support requested primitive")
+E   phase3_joint_edit_refine.models.JointContractError: joint mechanism does not support requested primitive
+=========================== short test summary info ============================
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_budget_broker_keeps_seam_footprint_reserve_distinct_from_halo
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_budget_broker_rebalances_from_exact_executed_cell_spill
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_budget_broker_reserves_whole_instance_union_without_lowering_floor
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_capacity_adaptive_budget_can_compile_below_standard_floor
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_capacity_adaptive_budget_enforces_meaningful_edit_floor
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_cross_domain_cell_population_is_rejected
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_fixed_breast_fallback_compiles_against_manifest_three_percent
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_joint_planner_schema_binds_skill_owned_program_fields
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_mask_condition_critic_direct_raster_bypass_fails_closed
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_mask_condition_critic_does_not_receive_histology_veto_authority
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_planner_and_critic_free_text_cannot_assert_unannotated_pathology
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_production_rejects_draft_joint_skills
+FAILED tests/test_joint_edit_refine.py::JointSkillTests::test_tissue_tool_rejects_allocation_below_binding_execution_floor
+13 failed, 140 passed, 206 subtests passed in 8.12s

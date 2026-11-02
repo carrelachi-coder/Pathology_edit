@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "implementation_commit": "8ed6882fd35e907cb5132f29676a4fac52025ab4",
+  "formal_launch_permitted": false,
+  "targeted_regression": {
+    "passed": 83,
+    "new_counterexample_tests": 15,
+    "result_file": "targeted_pytest.txt",
+    "command": "python -m pytest -q tests/test_manuscript_validation.py tests/test_conditional_fidelity.py tests/test_controlnet_phase5_inference.py tests/test_phase5_inpaint_inference_loader.py tests/test_phase3_inpaint_pipeline.py tests/test_pix2pix_postprocess_inference.py tests/test_joint_generator_ablation.py tests/test_approval_handoff.py tests/test_program_generator_adapter.py --tb=short"
+  },
+  "joint_regression": {
+    "passed": 211,
+    "subtests_passed": 334,
+    "deselected_baseline_failures": 14,
+    "result_file": "joint_regression_pytest.txt",
+    "command": "python -m pytest -q tests/test_joint_edit_refine.py --tb=short; add --deselect for each exact test ID in baseline_failures.json"
+  },
+  "baseline_failures": {
+    "count": 14,
+    "baseline_commit": "6f481a989b57648449340a17d17b8cda3c9c818f",
+    "reproduced_on_unmodified_baseline": true,
+    "list": "baseline_failures.json"
+  },
+  "local_test_environment": {
+    "python": "3.11.6 (main, Nov  2 2023, 04:39:43) [Clang 14.0.3 (clang-1403.0.22.14.1)]",
+    "packages": {
+      "torch": "2.15.0",
+      "numpy": "2.4.6",
+      "scipy": "1.17.1",
+      "Pillow": "13.0.0",
+      "pytest": "9.2.0",
+      "scikit-image": "0.26.0",
+      "PyYAML": "6.0.3"
+    }
+  },
+  "pilot": {
+    "status": "complete_nonformal_wiring_only",
+    "generation_code_commit": "f7b47139336f9d1e5f85003da3bf852c223cdf6f",
+    "measurement_code_commit": "8ed6882fd35e907cb5132f29676a4fac52025ab4",
+    "real_generated": 2,
+    "requested_measurements": 3,
+    "completed_measurements": 3,
+    "generation_version_sha256": "83892ef8f7384db5a2d0dc521d63c2ba7c89616987507810f583567e85386939",
+    "generation_checks_sha256": "9916833e13299beb222b667528e1fcc1b63712a884c29af65b51aa182b1c3dd0",
+    "measurement_version_sha256": "8d769dadbb6602029fb372390626334620682036c88c5353f16ededa9444b181",
+    "full_report_sha256": "53a31a48dbdd09881d205004cdc89dc384a3840ec45a98765e699306df50eb0d",
+    "postprocess_eligibility_match": true,
+    "generated_endpoints": [
+      {
+        "state": "sham",
+        "sha256": "3f3b4d510f7c53eec18a015072bcb84a9baf5128221f4dedf313522320ae1176",
+        "postprocess": {
+          "policy": "cross_rgb_od_near_white_v2",
+          "enabled": true,
+          "applied": false,
+          "region_scope": "generation_change_region",
+          "raw_otsu_od_threshold": 0.5052131414413452,
+          "effective_od_threshold": 0.12,
+          "maximum_otsu_od": 0.12,
+          "minimum_luma": 0.9,
+          "minimum_rgb_channel": 0.86,
+          "maximum_chroma": 0.1,
+          "nuclei_exclusion_radius_px": 5,
+          "minimum_component_area_px": 500,
+          "feather_sigma_px": 4.0,
+          "candidate_components": 48,
+          "protected_pixels": 0,
+          "protected_fraction_image": 0.0,
+          "protected_fraction_region": 0.0,
+          "organ_specific_constraints": false,
+          "configuration": {
+            "policy": "cross_rgb_od_near_white_v2",
+            "minimum_luma": 0.9,
+            "minimum_rgb_channel": 0.86,
+            "maximum_chroma": 0.1,
+            "maximum_otsu_od": 0.12,
+            "nuclei_exclusion_radius_at_512": 5,
+            "closing_iterations_at_512": 4,
+            "opening_iterations_at_512": 2,
+            "minimum_component_area_at_512": 500,
+            "erosion_iterations_at_512": 2,
+            "feather_sigma_at_512": 4.0
+          },
+          "eligibility_region_sha256": "f317dd9d6ba01c465d82e4c4d55d01d270dda69db4a01a64c587a5593ac6084d",
+          "applied_mask_sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+          "target_nuclei_exclusion_sha256": "0a1c80d8c68748b2595f2a0b917cad4f41a9a8129a5cc1d8d879a2358f04dc9c",
+          "mask": "/data1/zhao/wqx/benchmarks/runs/manuscript_chain_pilot_20261102_v2/sham/controlnet_cross_v1_no_ip/stage2_pix2pix_low_stain_protection_mask.png",
+          "unprotected_output": "/data1/zhao/wqx/benchmarks/runs/manuscript_chain_pilot_20261102_v2/sham/controlnet_cross_v1_no_ip/stage2_pix2pix_unprotected.png"
+        }
+      },
+      {
+        "state": "edited",
+        "sha256": "887f0d6cb0f002e4a1c20b61f25d1046f9baef7e0d728615b2d3c790bb2cf2e0",
+        "postprocess": {
+          "policy": "cross_rgb_od_near_white_v2",
+          "enabled": true,
+          "applied": false,
+          "region_scope": "generation_change_region",
+          "raw_otsu_od_threshold": 0.5348497629165649,
+          "effective_od_threshold": 0.12,
+          "maximum_otsu_od": 0.12,
+          "minimum_luma": 0.9,
+          "minimum_rgb_channel": 0.86,
+          "maximum_chroma": 0.1,
+          "nuclei_exclusion_radius_px": 5,
+          "minimum_component_area_px": 500,
+          "feather_sigma_px": 4.0,
+          "candidate_components": 46,
+          "protected_pixels": 0,
+          "protected_fraction_image": 0.0,
+          "protected_fraction_region": 0.0,
+          "organ_specific_constraints": false,
+          "configuration": {
+            "policy": "cross_rgb_od_near_white_v2",
+            "minimum_luma": 0.9,
+            "minimum_rgb_channel": 0.86,
+            "maximum_chroma": 0.1,
+            "maximum_otsu_od": 0.12,
+            "nuclei_exclusion_radius_at_512": 5,
+            "closing_iterations_at_512": 4,
+            "opening_iterations_at_512": 2,
+            "minimum_component_area_at_512": 500,
+            "erosion_iterations_at_512": 2,
+            "feather_sigma_at_512": 4.0
+          },
+          "eligibility_region_sha256": "f317dd9d6ba01c465d82e4c4d55d01d270dda69db4a01a64c587a5593ac6084d",
+          "applied_mask_sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+          "target_nuclei_exclusion_sha256": "e8bfeee71d75c9d060d99967db76b480cbe5e6324a92da1acf622c46fc78ecb3",
+          "mask": "/data1/zhao/wqx/benchmarks/runs/manuscript_chain_pilot_20261102_v2/edited/controlnet_cross_v1_no_ip/stage2_pix2pix_low_stain_protection_mask.png",
+          "unprotected_output": "/data1/zhao/wqx/benchmarks/runs/manuscript_chain_pilot_20261102_v2/edited/controlnet_cross_v1_no_ip/stage2_pix2pix_unprotected.png"
+        }
+      }
+    ],
+    "measurements": [
+      {
+        "state": "edited",
+        "tissue_status": "completed",
+        "tissue_mask_sha256": "bb7ea9364a7ea2d9bd0b1974ea2c6e091b811b7ca081d9274a377286f8b337a8",
+        "cell_status": "valid_nonzero",
+        "cell_count": 188,
+        "cell_json_sha256": "fe58239090ea80218677a8f27d0f5920db30e9aafe62ad69a936a8cfe4a3c75a"
+      },
+      {
+        "state": "original",
+        "tissue_status": "completed",
+        "tissue_mask_sha256": "b4c3c93057b9bb9fdb853d7d783eecad9b1a24fda19f3ba4fb96a46335880e60",
+        "cell_status": "valid_nonzero",
+        "cell_count": 165,
+        "cell_json_sha256": "e54bbb743641af81b319eb4cb807fa247e5ac27c61ea92bd5efb56b69b9469e7"
+      },
+      {
+        "state": "sham",
+        "tissue_status": "completed",
+        "tissue_mask_sha256": "2a6b296540a5e872561e1a33b7e963844df9ef5f437ebcff75b5dd22d45d7468",
+        "cell_status": "valid_nonzero",
+        "cell_count": 177,
+        "cell_json_sha256": "e62782ecee5a1d41c060394c6407e2fb329bd7c920b73f0680eda1c4e809b0f9"
+      }
+    ],
+    "stage_history": [
+      "v1 stopped before generation to correct immune label mapping; retained",
+      "v2 generated two images; initial segmentation failed because generation environment lacked MMSegmentation; retained",
+      "measurement_attempt_001 validated immutable endpoint hashes, used dedicated segmentation environment, and completed tissue and cell measurements"
+    ],
+    "limitations": [
+      "historical targets; approved formal joint cohort not exercised",
+      "technical pilot readouts are not efficacy results",
+      "different stage commits are recorded explicitly"
+    ]
+  },
+  "not_completed": [
+    "formal joint target and protected ROI freeze",
+    "selected cohort generator/evaluator training overlap audit",
+    "resolution of baseline regression failures",
+    "formal 30-source run",
+    "historical 2400-image statistical recomputation",
+    "real GPU Inpaint acceptance",
+    "physician study"
+  ]
+}

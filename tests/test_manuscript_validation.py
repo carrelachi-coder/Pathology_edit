@@ -156,6 +156,21 @@ class ManuscriptCounterexamples(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'output content'):
                 validate_resume(record, identity, [output])
 
+    def test_measurement_resume_rejects_changed_generated_endpoint(self):
+        from scripts import measure_manuscript_chain_pilot as measure
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); generation=root/'generation'; generation.mkdir()
+            endpoint=generation/'endpoint.png'; Image.new('RGB',(8,8)).save(endpoint)
+            version={'endpoint_stage':'postprocessed_precomposite'}
+            (generation/'experiment_version.json').write_text(json.dumps(version))
+            records=[{'state':state,'endpoint':asset_identity(endpoint)} for state in ('sham','edited')]
+            (generation/'generation_checks.json').write_text(json.dumps(records))
+            Image.new('RGB',(8,8),'red').save(endpoint)
+            with patch('sys.argv',['measure','--generation-output',str(generation),'--output',str(root/'measure')]), patch.object(measure.subprocess,'run') as runner:
+                with self.assertRaisesRegex(ValueError,'endpoint content drift'):
+                    measure.main()
+                runner.assert_not_called()
+
     def test_base_model_identity_follows_declared_runtime_components(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); (root/'model').mkdir()

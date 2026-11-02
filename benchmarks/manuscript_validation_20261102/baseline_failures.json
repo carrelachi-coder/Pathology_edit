@@ -1,0 +1,30 @@
+{
+  "baseline": "6f481a989b57648449340a17d17b8cda3c9c818f",
+  "reproduced_on_unmodified_baseline": true,
+  "failure_count": 14,
+  "tests": [
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_budget_broker_keeps_seam_footprint_reserve_distinct_from_halo",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_budget_broker_rebalances_from_exact_executed_cell_spill",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_budget_broker_reserves_whole_instance_union_without_lowering_floor",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_capacity_adaptive_budget_can_compile_below_standard_floor",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_capacity_adaptive_budget_enforces_meaningful_edit_floor",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_cross_domain_cell_population_is_rejected",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_fixed_breast_fallback_compiles_against_manifest_three_percent",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_joint_planner_schema_binds_skill_owned_program_fields",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_mask_condition_critic_direct_raster_bypass_fails_closed",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_mask_condition_critic_does_not_receive_histology_veto_authority",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_planner_and_critic_free_text_cannot_assert_unannotated_pathology",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_production_rejects_draft_joint_skills",
+    "tests/test_joint_edit_refine.py::JointSkillTests::test_tissue_tool_rejects_allocation_below_binding_execution_floor",
+    "tests/test_joint_edit_refine.py::JointWorkflowTests::test_non_breast_cellularity_decrease_uses_compiler_owned_anchors"
+  ],
+  "commands": [
+    "python -m pytest -q tests/test_joint_edit_refine.py::JointSkillTests --tb=short",
+    "python -m pytest -q tests/test_joint_edit_refine.py::JointWorkflowTests::test_non_breast_cellularity_decrease_uses_compiler_owned_anchors --tb=short"
+  ],
+  "results": [
+    "13 failed, 140 passed, 206 subtests passed",
+    "1 failed"
+  ],
+  "policy": "not waived, not relabeled passed; formal launch remains blocked"
+}
