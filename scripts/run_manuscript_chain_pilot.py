@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--manifest', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--device', default='cuda:0')
+    parser.add_argument('--segmentator-python', default='/home/lyw/anaconda3/envs/pathology-segmentator-mmseg/bin/python')
     parser.add_argument('--segmentator-release', type=Path, default=Path('benchmark_configs/releases/segmentator_fine_legacy_anchor.json'))
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -83,7 +84,7 @@ def main():
         raise ValueError('invalid fixed source tissue ROI')
     for image in sorted(images.glob('*.png')):
         out = args.output / 'measurements' / image.stem
-        subprocess.run([sys.executable, str(repo / 'scripts/predict_segmentator_mask.py'), '--release', str(args.segmentator_release),
+        subprocess.run([args.segmentator_python, str(repo / 'scripts/predict_segmentator_mask.py'), '--release', str(args.segmentator_release),
             '--input', str(image), '--output-dir', str(out), '--profile', 'BCSS', '--device', args.device], check=True)
         mask_path = out / 'coarse_mask.png'
         mask = np.asarray(Image.open(mask_path))

@@ -23,7 +23,20 @@ def asset_identity(path: str | Path) -> dict:
         return {'path': str(path), 'sha256': sha256_file(path)}
     if not path.is_dir():
         raise FileNotFoundError(path)
-    files = {str(p.relative_to(path)): sha256_file(p) for p in sorted(path.rglob('*')) if p.is_file() and not any(part in {'.git', '.cache', '__pycache__'} for part in p.relative_to(path).parts)}
+    index = path / 'model_index.json'
+    if index.is_file():
+        # Diffusers loads its declared component folders, not duplicate monolithic
+        # exports or preview images stored beside them.
+        definition = json.loads(index.read_text())
+        components = [path / name for name, value in definition.items()
+                      if not name.startswith('_') and isinstance(value, list) and any(value)]
+        if any(not component.is_dir() for component in components):
+            raise FileNotFoundError('missing model_index component directory')
+        candidates = [index] + [p for component in components for p in component.rglob('*')]
+    else:
+        candidates = path.rglob('*')
+    files = {str(p.relative_to(path)): sha256_file(p) for p in sorted(candidates)
+             if p.is_file() and not any(part in {'.git', '.cache', '__pycache__'} for part in p.relative_to(path).parts)}
     if not files:
         raise ValueError(f'empty model directory: {path}')
     return {'path': str(path), 'sha256': digest_payload(files), 'files': files}

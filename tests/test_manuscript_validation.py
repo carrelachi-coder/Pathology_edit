@@ -156,6 +156,57 @@ class ManuscriptCounterexamples(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'output content'):
                 validate_resume(record, identity, [output])
 
+    def test_base_model_identity_follows_declared_runtime_components(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); (root/'model').mkdir()
+            (root/'model_index.json').write_text(json.dumps({'_class_name': 'FixturePipeline', 'model': ['library', 'Model']}))
+            loaded = root/'model/weights'; loaded.write_bytes(b'active')
+            unused = root/'old_model.safetensors'; unused.write_bytes(b'unused')
+            first = asset_identity(root)
+            unused.write_bytes(b'changed unused export')
+            self.assertEqual(first['sha256'], asset_identity(root)['sha256'])
+            loaded.write_bytes(b'changed active weights')
+            self.assertNotEqual(first['sha256'], asset_identity(root)['sha256'])
+
+    def test_generation_entry_reuses_only_matching_input_and_model_content(self):
+        from scripts import run_embedding_utility_generation as utility
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('base', 'cross'):
+                (root/name).mkdir(); (root/name/'weights').write_bytes(b'weights')
+            (root/'pix').write_bytes(b'pix')
+            for name in ('source', 'tissue', 'nuclei', 'target', 'support'):
+                Image.new('RGB' if name == 'source' else 'L', (8, 8), 1).save(root/f'{name}.png')
+            row = {'sample_id': 'case', 'wsi_id': 'wsi', 'reference_image': str(root/'source.png'),
+                'reference_tissue_mask': str(root/'tissue.png'), 'reference_nuclei_mask': str(root/'nuclei.png'),
+                'target_tissue_mask': str(root/'target.png'), 'target_nuclei_mask': str(root/'nuclei.png'),
+                'generation_change_region': str(root/'support.png'), 'generation_seed': 42}
+            manifest = root/'cohort.jsonl'; manifest.write_text(json.dumps(row)+'\n')
+            command = ['--cohort-manifest', str(manifest), '--output-root', str(root/'output'),
+                '--backend', 'cross-v1', '--pretrained-model', str(root/'base'), '--cross-v1-checkpoint', str(root/'cross'),
+                '--pix2pix-checkpoint', str(root/'pix'), '--expected-count', '1', '--device', 'cpu']
+            def generate(**kwargs):
+                directory = kwargs['output_dir']
+                path = directory/'generated_image.png'
+                Image.new('RGB', (8, 8), 'red').save(path)
+                (directory/'generation_info.json').write_text('{"status":"generated"}')
+                return path, {'status': 'generated'}
+            with patch.object(utility, '_run_generation_stage', side_effect=generate) as runner:
+                self.assertEqual(utility.main(command), 0)
+                self.assertEqual(utility.main(command+['--resume']), 0)
+                self.assertEqual(runner.call_count, 1)
+                output = root/'output/cross-v1/case/generated_image.png'
+                original_output = output.read_bytes()
+                for path in (root/'source.png', root/'target.png', root/'cross/weights', root/'support.png'):
+                    old = path.read_bytes(); path.write_bytes(bytes([old[0] ^ 1]) + old[1:])
+                    with self.assertRaisesRegex(ValueError, 'identity drift'):
+                        utility.main(command+['--resume'])
+                    path.write_bytes(old)
+                    self.assertEqual(output.read_bytes(), original_output)
+                with self.assertRaisesRegex(ValueError, 'identity drift'):
+                    utility.main(command+['--resume', '--num-inference-steps', '9'])
+                self.assertEqual(runner.call_count, 1)
+
     def test_sham_returns_real_precomposite_even_if_empty_support_composite_copies_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
