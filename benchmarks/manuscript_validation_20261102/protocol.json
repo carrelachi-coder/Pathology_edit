@@ -135,6 +135,7 @@
     "estimand": "equal independent-unit mean; average sources within patient/WSI, then equal-weight units for effect, CI and test"
   },
   "blockers": [
+    "all three frozen source pools cannot supply 30 patients: 17 nontechnical patients pass source topology, maximum 19 including all unknowns; additional valid same-BCSS source assets or a separately authorized design decision are required; no threshold or endpoint relaxation",
     "formal 30-patient source list, four approved joint targets per source and protected ROI hashes not frozen; initial inputs and expanded censuses are provisional, not qualified cohorts",
     "final-source mapping and training-manifest reference audits must accompany frozen assets; unresolved checkpoint patient lineage is disclosed and automatic readouts remain coupled computational evidence",
     "complete formal-asset preflight on the pinned accepted execution snapshot; revalidate affected technical behavior if the execution implementation changes"
@@ -279,5 +280,11 @@
     "nominal_mpp": 0.25,
     "cell_point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame",
     "scale_basis": "frozen nominal patch scale; no recovered full-slide physical calibration"
+  },
+  "cohort_feasibility": {
+    "report": "cohort_feasibility_bound_after_all_topology_v1.json",
+    "passing_patients": 17,
+    "upper_bound_including_unknown": 19,
+    "required": 30
   }
 }

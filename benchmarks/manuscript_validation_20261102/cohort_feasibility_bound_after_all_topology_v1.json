@@ -1,0 +1,53 @@
+{
+  "created_utc": "2026-11-02T12:44:32.521812+00:00",
+  "scope": "source-topology feasibility bound across all three frozen BCSS censuses; not four-target approval",
+  "required_independent_patients": 30,
+  "candidate_sources": 3437,
+  "source_topology_completed": 529,
+  "passing_nontechnical_sources": 31,
+  "passing_nontechnical_patients": 17,
+  "unknown_nontechnical_sources": 3,
+  "unknown_patient_groups": 3,
+  "maximum_patients_if_all_unknown_pass": 19,
+  "current_frozen_pools_can_supply_30": false,
+  "formal_launch_permitted": false,
+  "census_sha256": [
+    "81161a185f40a1c13c84989679a770ede4649871f25947861720417ccf27f17c",
+    "5d6f2e09b3678927dcd55fa998c51c207b0e7499c824777a1fa3b99c6b581704",
+    "85cfdd00fa2ec638ecc0f24fc7ce69cfdd71a9191c5f3c36f851c1ae63657aba"
+  ],
+  "exclusion_sha256": "e99577970b5e4c0a09fce4768b2c6e1368b2d0454cc29fa90662848e87f30126",
+  "waves": [
+    {
+      "progress_sha256": "8952838a61744a3d3943b62be6ac9626061f05f10ce12e2bd63f019e52e428d7",
+      "completed": 74,
+      "passing_sources_including_technical": 14,
+      "unknown_sources": 0
+    },
+    {
+      "progress_sha256": "5dca1e4d723afd49660a849e9bd6ad19f0dd44717dd48904ac8c617df2fc0c15",
+      "completed": 145,
+      "passing_sources_including_technical": 5,
+      "unknown_sources": 2
+    },
+    {
+      "progress_sha256": "048c170a4804893ed73dda99b898879a2da2e11a6a0ab20652c200ab19b6b19c",
+      "completed": 51,
+      "passing_sources_including_technical": 2,
+      "unknown_sources": 1
+    },
+    {
+      "progress_sha256": "f6c573c4d5d355c31dd79ca03fe9e406839e34dd0dc8a620ec95f39f0d1ef3b0",
+      "completed": 89,
+      "passing_sources_including_technical": 11,
+      "unknown_sources": 0
+    },
+    {
+      "progress_sha256": "896ada6971b828305748d9a8ba5a49d2d1b01212f286b235f286b8827a0df032",
+      "completed": 170,
+      "passing_sources_including_technical": 5,
+      "unknown_sources": 0
+    }
+  ],
+  "interpretation": "Passing topology is necessary, not sufficient for four targets. Unknowns stay unknown. No budget, hard floor, endpoint or cohort count has been relaxed."
+}
