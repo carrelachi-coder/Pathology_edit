@@ -1259,16 +1259,24 @@ def _run_generation_stage(
     generated = output_dir / "generated_image.png"
     raw_generated = output_dir / "generated_image_raw.png"
     result.image.save(raw_generated)
+    precomposite_generated = output_dir / "generated_image_precomposite.png"
+    result.image.save(precomposite_generated)
     composited_image, composite_info = source_exact_generation_composite(
         reference_image,
         result.image,
         change_region,
     )
     composited_image.save(generated)
+    endpoint_stage = getattr(args, "endpoint_stage", "source_composite")
+    if endpoint_stage not in {"source_composite", "postprocessed_precomposite"}:
+        raise ValueError(f"unknown endpoint stage: {endpoint_stage}")
+    endpoint = precomposite_generated if endpoint_stage == "postprocessed_precomposite" else generated
     info = {
         "generation_mode": args.generation_mode,
         "status": "generated",
         "generated_image": str(generated),
+        "endpoint_stage": endpoint_stage, "endpoint_image": str(endpoint),
+        "real_generation_completed": True,
         "raw_generated_image": str(raw_generated),
         "precomposite_generated_image": str(raw_generated),
         "source_exact_generation_composite": composite_info,
@@ -1290,7 +1298,7 @@ def _run_generation_stage(
         "controlnet_release": controlnet_release,
     }
     save_metadata(info, output_dir / "generation_info.json")
-    return generated, info
+    return endpoint, info
 
 
 def _cached_inpaint_bundle(

@@ -28,6 +28,80 @@ class ManuscriptCounterexamples(unittest.TestCase):
             p.write_text(json.dumps({'cells': [], 'benchmark_provenance': {'status': 'completed'}}))
             self.assertEqual(len(detections_from_cellvit_json(p, mpp=.25, image_size=(8, 8)).xy), 0)
 
+    def test_cellvit_producer_missing_raw_is_failure_without_zero_mask(self):
+        import batch_cellvit_ui_equiv as producer
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); images = root / 'images'; images.mkdir()
+            Image.new('RGB', (8, 8)).save(images / 'a.png')
+            model = root / 'model'; model.write_bytes(b'fixture')
+            argv = ['batch', '--images-dir', str(images), '--output-dir', str(root/'masks'),
+                '--json-output-dir', str(root/'json'), '--raw-outdir', str(root/'raw'),
+                '--model', str(model), '--cellvit-root', str(root)]
+            with patch('sys.argv', argv), patch.object(producer, 'write_openslide_tiff', side_effect=lambda source, dest: dest.write_bytes(b'fixture')), patch.object(producer.subprocess, 'run'):
+                self.assertEqual(producer.main(), 1)
+            self.assertFalse((root/'masks/a.png').exists())
+            self.assertEqual(json.loads((root/'json/a.json').read_text())['benchmark_provenance']['status'], 'missing')
+
+    def test_source_mutation_after_handoff_is_rejected(self):
+        from tests.test_joint_generator_ablation import _write_handoff
+        from phase3_joint_edit_refine.generator_adapter import build_frozen_generator_inputs
+        from phase3_joint_edit_refine.models import JointContractError
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); manifest = _write_handoff(root)
+            build_frozen_generator_inputs(manifest, output_dir=root/'out')
+            source = Path(json.loads(manifest.read_text())['source_assets']['image'])
+            source.write_bytes(b'replaced source at same path')
+            with self.assertRaisesRegex(JointContractError, 'source asset.*drift'):
+                build_frozen_generator_inputs(manifest, output_dir=root/'out')
+
+    def test_inpaint_effective_parameters_and_cache_key_include_sampling(self):
+        from scripts import run_phase3_inpaint_pipeline as gen
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('config.json', 'phase5_conditioning.pt'):
+                (root / name).write_bytes(b'fixture')
+            gen._INPAINT_BUNDLE_CACHE.clear()
+            with patch.object(gen, 'load_inpaint_bundle', side_effect=lambda **kw: SimpleNamespace(**kw)) as loader:
+                first = gen._cached_inpaint_bundle(pretrained_model_name_or_path='fixture', checkpoint_path=root, device='cpu', seed=19, num_inference_steps=7, guidance_scale=2.)
+                same = gen._cached_inpaint_bundle(pretrained_model_name_or_path='fixture', checkpoint_path=root, device='cpu', seed=19, num_inference_steps=7, guidance_scale=2.)
+                changed = gen._cached_inpaint_bundle(pretrained_model_name_or_path='fixture', checkpoint_path=root, device='cpu', seed=20, num_inference_steps=9, guidance_scale=4.)
+            self.assertIs(first, same)
+            self.assertEqual(loader.call_count, 2)
+            self.assertEqual((changed.seed, changed.num_inference_steps, changed.guidance_scale), (20, 9, 4.))
+            gen._INPAINT_BUNDLE_CACHE.clear()
+
+    def test_generic_semantic_region_cannot_omit_joint_changes(self):
+        from scripts import run_agentic_edit_workflow as agentic
+        from phase3_mask_edit.core.mask_io import save_id_mask
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            Image.new('RGB', (8, 8)).save(root / 'image.png')
+            save_id_mask(np.ones((8, 8), dtype=np.int64), root / 'source.png')
+            save_id_mask(np.full((8, 8), 2, dtype=np.int64), root / 'target.png')
+            Image.new('L', (8, 8)).save(root / 'nuclei.png')
+            Image.fromarray(np.pad(np.ones((4, 8), dtype=np.uint8)*255, ((0, 4), (0, 0)))).save(root/'region.png')
+            args = agentic.build_parser().parse_args(['--profile', 'BCSS', '--reference-image', str(root/'image.png'),
+                '--reference-tissue-mask', str(root/'source.png'), '--reference-nuclei-mask', str(root/'nuclei.png'),
+                '--target-tissue-mask', str(root/'target.png'), '--target-nuclei-mask', str(root/'nuclei.png'),
+                '--semantic-change-region', str(root/'region.png'), '--output', str(root/'out')])
+            with self.assertRaisesRegex(ValueError, 'omits 32 actual joint'):
+                agentic._load_and_validate_inputs(args)
+
+    def test_vae_sampling_uses_explicit_generator(self):
+        import torch
+        from controlnet_train.inference.pipeline import _encode_images_to_latents
+        class VAE:
+            config = SimpleNamespace(shift_factor=0., scaling_factor=1.)
+            def parameters(self):
+                return iter([torch.zeros(1)])
+            def encode(self, images):
+                return SimpleNamespace(latent_dist=SimpleNamespace(sample=lambda generator: torch.rand(1, generator=generator)))
+        def draw(seed):
+            return _encode_images_to_latents(VAE(), torch.zeros(1, 3, 8, 8), torch.float32,
+                generator=torch.Generator().manual_seed(seed))
+        self.assertTrue(torch.equal(draw(17), draw(17)))
+        self.assertFalse(torch.equal(draw(17), draw(18)))
+
     def test_segmentation_flushes_a_before_existing_b_c(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); source = root / 'in'; out = root / 'out'
@@ -90,11 +164,12 @@ class ManuscriptCounterexamples(unittest.TestCase):
             for indices in (np.flatnonzero(groups == p) for p in np.unique(groups)):
                 changed = np.any(candidate['u1']['moderate']['cross'][indices] != features['u1']['moderate']['cross'][indices], axis=1)
                 self.assertEqual(len(set(changed)), 1)
-            seen.append(True)
+            seen.append(tuple(np.any(candidate["u1"]["moderate"]["cross"] != features["u1"]["moderate"]["cross"], axis=1)))
             return original(candidate, units)
         with patch.object(trajectory, 'cross_fitted_axes', side_effect=capture):
             value = trajectory.operation_label_permutation_pvalue(features, groups, strength='moderate', backend='cross', repeats=8, seed=1)
         self.assertEqual(len(seen), 9)  # observed and every one of 2^3 raw-label swaps
+        self.assertEqual(len(set(seen)), 8)
         self.assertTrue(0 <= value <= 1)
         rows[0].pop('patient_id')
         with self.assertRaisesRegex(ValueError, 'missing verified'):

@@ -91,7 +91,7 @@ def main():
             raise ValueError('measurement frame mismatch')
         measurements.append({'state': image.stem, 'status': 'completed', 'mask': asset_identity(mask_path),
             'fixed_roi_pixels': int(source_roi.sum()), 'tumor_fraction': float(np.mean(mask[source_roi] == 1)),
-            'inflammatory_compartment_fraction': float(np.mean(mask[source_roi] == 3))})
+            'inflammatory_compartment_fraction': float(np.mean(mask[source_roi] == 4))})
     subprocess.run([sys.executable, str(repo / 'batch_cellvit_ui_equiv.py'), '--images-dir', str(images), '--output-dir', str(args.output / 'cell_masks'),
         '--json-output-dir', str(args.output / 'cell_json'), '--raw-outdir', str(args.output / 'cell_raw'),
         '--model', DEFAULT_CELLVIT_MODEL, '--cellvit-root', DEFAULT_CELLVIT_ROOT, '--gpu', args.device.split(':')[-1], '--batch-size', '3'], check=True)

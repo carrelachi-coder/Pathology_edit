@@ -74,6 +74,14 @@ def write_generation_handoff(
         _save(path, array)
         paths[name] = str(path)
         digests[name + "_sha256"] = _sha256(path)
+    for uri, key in ((case.source_image_uri, "source_image_sha256"),
+                     (case.source_tissue_mask_uri, "source_tissue_mask_sha256"),
+                     (case.source_nuclei_mask_uri, "source_nuclei_mask_sha256")):
+        actual = _sha256(Path(uri))
+        if actual != case.provenance.get(key):
+            from .models import JointContractError
+            raise JointContractError(f"source asset differs from audited provenance: {key}")
+        digests[key] = actual
     manifest = {
         "schema_version": "joint-generation-handoff-v3",
         "case_id": case.case_id,
