@@ -13,7 +13,7 @@
   "generation_manifest_sha256": null,
   "cohort_selection": {
     "rule": "one source per verified patient; exclude technical pilot source; lexicographic source ID order before generation; require both operations and two approved target strengths",
-    "organ": "BCSS breast candidate; mechanism support is unresolved",
+    "organ": "BCSS breast; current canonical annotation-boundary and generic immune-compartment mechanisms",
     "source_manifest_sha256": "a7c9e1b6e46527034ee4461375718b37ef6974e62b56e937e3931d7b4d6d8486",
     "formal_source_list_frozen": false
   },
@@ -206,13 +206,19 @@
       "mechanism_id": "breast-annotation-anchored-boundary-growth",
       "target_parent": 1,
       "direction": 1,
-      "minimum_target_gap": null,
+      "minimum_target_gap": 0.05,
       "strengths": {
         "moderate": {
-          "dose_interval": null
+          "dose_interval": [
+            0.0,
+            1.0
+          ]
         },
         "significant": {
-          "dose_interval": null
+          "dose_interval": [
+            0.0,
+            1.0
+          ]
         }
       }
     },
@@ -222,15 +228,38 @@
       "mechanism_id": "breast-generic-immune-compartment-turnover",
       "target_parent": 4,
       "direction": 1,
-      "minimum_target_gap": null,
+      "minimum_target_gap": 0.05,
       "strengths": {
         "moderate": {
-          "dose_interval": null
+          "dose_interval": [
+            0.0,
+            1.0
+          ]
         },
         "significant": {
-          "dose_interval": null
+          "dose_interval": [
+            0.0,
+            1.0
+          ]
         }
       }
     }
+  },
+  "joint_budget_definitions": {
+    "authority": "user selected historical 19% / 32% in current chat before new targets and H&E",
+    "moderate": {
+      "target_fraction": 0.19,
+      "min_fraction": 0.14,
+      "max_fraction": 0.24,
+      "tissue_min_fraction": 0.14
+    },
+    "significant": {
+      "target_fraction": 0.32,
+      "min_fraction": 0.27,
+      "max_fraction": 0.37,
+      "tissue_min_fraction": 0.27
+    },
+    "capacity_floor_policy": "strict",
+    "interpretation": "disjoint planned whole-patch joint-area budgets; actual ROI fraction must rise from source and between strengths by at least .05; no clinical grade interpretation"
   }
 }
