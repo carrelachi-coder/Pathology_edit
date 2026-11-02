@@ -1,5 +1,9 @@
 # Pathology Edit Benchmark Implementation Plan
 
+## Status for the November 2026 manuscript
+
+For the current manuscript, follow [the revised manuscript work plan](manuscript_work_plan_20261102.md). It supersedes this document's section organization, cohort expansion, DoctorCond publication-primary scheduling, and physician-study execution order. Historical experiment definitions and results remain tied to their original snapshots. For new cohorts, freeze the actual code, evaluator, output stage and compositing policy under the revised plan before execution; neither this document's no-pasteback rule nor a newer runtime's default compositing behavior may be inherited silently. This document is retained as the historical July benchmark plan, not the active execution checklist for the November cohort.
+
 ## Manuscript narrative contract
 
 The active scientific framing is defined in
@@ -16,7 +20,7 @@ rollout or clinical utility.
 
 ## 0. Current Scope and Frozen Decisions
 
-This document is the active execution plan as of 2026-07-27. Historical
+This document records the execution plan as of 2026-07-27. Historical
 checkpoint-selection logs, superseded ProbNet count/density experiments, and
 completed pilot commands are intentionally excluded from the active plan.
 
