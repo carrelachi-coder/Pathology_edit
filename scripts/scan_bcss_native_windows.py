@@ -93,19 +93,59 @@ def index_old(root, names, output):
         for i, name in enumerate(sorted(names)):
             match = re.fullmatch(r'(TCGA-..-....)_x(\d+)_y(\d+)_py(\d+)_px(\d+)\.png', name)
             if match is None: raise ValueError('unsupported exported identity')
-            arrays, identities = [], {}
+            arrays, identities, errors = [], {}, {}
             for folder, mode in [('images', 'RGB'), ('tissue_masks', None), ('nuclei_masks', None)]:
-                a, file_hash = read_array(root/'BCSS_PATCHES'/folder/name, mode)
-                arrays.append(a); identities[folder] = file_hash
-            hashes = triplet(*arrays)
+                path = root/'BCSS_PATCHES'/folder/name
+                try:
+                    a, file_hash = read_array(path, mode)
+                    arrays.append(a)
+                except (OSError, ValueError) as exc:
+                    arrays.append(None); file_hash = sha(path)
+                    errors[folder] = type(exc).__name__+': '+str(exc)
+                identities[folder] = file_hash
+            hashes = triplet(*arrays) if not errors else None
             key = (match[1], int(match[2]), int(match[3]), int(match[4]), int(match[5]))
             if key in by_coord: raise ValueError('ambiguous old coordinates')
-            by_coord[key] = (name, hashes)
-            by_content.setdefault(hashes, []).append(name)
+            by_coord[key] = {'name': name, 'hashes': hashes, 'errors': errors,
+                'readable_hashes': [digest(a) if a is not None else None for a in arrays]}
+            if hashes is not None: by_content.setdefault(hashes, []).append(name)
             handle.write(json.dumps({'name': name, 'coordinate_key': key,
-                'file_sha256': identities, 'decoded_sha256': hashes})+'\n')
+                'file_sha256': identities, 'decoded_sha256': hashes,
+                'decode_errors': errors})+'\n')
             if (i+1) % 2000 == 0: print(json.dumps({'old_indexed': i+1}), flush=True)
     return by_coord, by_content
+
+
+def conservative_native_aliases(root, records, by_coord, by_content, lookup, output):
+    """Never repair old files: bind intended native crops to exclude duplicates.
+
+    Every old coordinate remains excluded. Invalid old PNGs remain invalid;
+    native crop identities add conservative exclusions, not verified old pixels.
+    """
+    aliases = []
+    for record in records:
+        patient, ox, oy = roi_parts(record['raw_name'])
+        bad = [(key, value) for key, value in by_coord.items()
+               if key[:3] == (patient,ox,oy) and value['errors']]
+        if not bad: continue
+        arrays = [read_array(root/folder/record['raw_name'], mode,
+            record['inputs'][key]['sha256'])[0] for key,folder,mode in
+            [('rgb','rgbs','RGB'),('tissue','masks',None),('nuclei','nuclei_masks',None)]]
+        rgb, raw, nuclei = arrays; tissue = lookup[raw]
+        for key, value in bad:
+            y,x = key[-2:]; crop = (rgb[y:y+SIZE,x:x+SIZE], tissue[y:y+SIZE,x:x+SIZE], nuclei[y:y+SIZE,x:x+SIZE])
+            if any(a.shape[:2] != (SIZE,SIZE) for a in crop):
+                raise ValueError('invalid old coordinate cannot be conservatively bound')
+            hashes = triplet(*crop)
+            if any(saved is not None and saved != actual for saved,actual in zip(value['readable_hashes'],hashes)):
+                raise ValueError('readable old component differs from native coordinate')
+            value['hashes'] = hashes
+            by_content.setdefault(hashes, []).append(value['name'])
+            aliases.append({'old_name': value['name'], 'decode_errors': value['errors'],
+                'native_coordinate_content_sha256': hashes, 'old_pixel_identity_verified': False,
+                'action': 'exclude old coordinate and native-content duplicates; preserve invalid old file'})
+    (output/'invalid_old_native_aliases.json').write_text(json.dumps(aliases,indent=2))
+    return aliases
 
 
 def scan(args):
@@ -126,6 +166,7 @@ def scan(args):
                 or policy['qualification']['stroma_minimum_pixels'] != 70779
                 or policy['padding_allowed'] is not False
                 or policy['coordinate_origin'] != 'native_roi_top_left'
+                or policy['invalid_old_export_policy'] != 'preserve_error_exclude_coordinate_and_native_content_alias'
                 or policy['formal_launch_permitted'] is not False):
             raise ValueError('unsupported or drifted frozen policy')
         if sha(args.exclusion) != policy['technical_exclusion_sha256']:
@@ -166,6 +207,7 @@ def scan(args):
     save_identity()
     try:
         by_coord, by_content = index_old(root, names, output)
+        aliases = conservative_native_aliases(root, records, by_coord, by_content, lookup, output)
         reproduced, window_counts, new_seen = set(), [], {}
         total_reasons, primary, candidate_sources = Counter(), Counter(), []
         with (output/'windows.jsonl').open('x') as manifest:
@@ -182,12 +224,13 @@ def scan(args):
                     crop = (rgb[y:y+SIZE, x:x+SIZE], tissue[y:y+SIZE, x:x+SIZE], nuclei[y:y+SIZE, x:x+SIZE])
                     hashes = triplet(*crop); key = (patient, origin_x, origin_y, y, x)
                     old = by_coord.get(key)
-                    if old and hashes != old[1]: raise ValueError('old crop fails pixel reconstruction: '+old[0])
-                    if old: reproduced.add(old[0])
+                    if old and hashes != old['hashes']: raise ValueError('old crop fails pixel reconstruction: '+old['name'])
+                    if old: reproduced.add(old['name'])
                     row = {'window_id': f'{roi}:y{y}:x{x}', 'roi_id': roi,
                         'patient_id': patient, 'roi_origin_base_pixels': [origin_x, origin_y],
                         'crop_xy': [x, y], 'size_wh': [SIZE, SIZE], 'decoded_sha256': hashes,
-                        'same_coordinate_old_export': old[0] if old else None,
+                        'same_coordinate_old_export': old['name'] if old else None,
+                        'old_decode_errors': old['errors'] if old else {},
                         'content_equal_old_exports': by_content.get(hashes, []),
                         'overlaps': neighbors(roi, y, x, width, height)}
                     stats['windows'] += 1
@@ -231,7 +274,9 @@ def scan(args):
         if reproduced != names: raise ValueError('not all old exported coordinates were reproduced')
         summary = {'scope': mode, 'roi_count': len(records), 'patient_count': len(window_counts),
             'patch_size': SIZE, 'stride': STRIDE, 'window_count': sum(r['counts']['windows'] for r in window_counts),
-            'old_export_indexed': len(names), 'old_export_pixel_reconstructed': len(reproduced),
+            'old_export_indexed': len(names), 'old_export_coordinates_accounted': len(reproduced),
+            'old_export_pixel_reconstructed': len(reproduced)-len(aliases),
+            'invalid_old_exports_conservatively_excluded': len(aliases),
             'geometry_verified': True, 'independent_cheap_failure_counts': dict(total_reasons),
             'status_counts': dict(primary), 'new_cheap_sources': len(candidate_sources),
             'new_cheap_patient_groups': len({r['patient_id'] for r in candidate_sources}),
