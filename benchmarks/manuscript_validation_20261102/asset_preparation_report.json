@@ -484,7 +484,7 @@
       27
     ],
     "diagnosis_report": "census_coverage_and_compile_diagnosis_v1.json",
-    "single_case_environment_verification": "running in fresh directory; case0, cwd corrected, 900-second bound; no batch restart"
+    "single_case_environment_verification": "complete: 492.19s, controller exit0, three mature candidates; producer abstained on joint-area and seam-continuity gates; no approved handoff"
   },
   "supplemental_capacity_v2": {
     "scope": "source-only necessary capacity; not topology or four target approval",
@@ -568,5 +568,13 @@
     },
     "old_ledger_sha256": "24f87311b040285113fe317c990e86fe9dbe6dbdd757505b254d078dd9a2decd",
     "all_remaining_ledger_sha256": "dfbfbd7fce26d29d0e5299fc1c9cec9fe613606308078c1fb67ecc7f62cd3265"
+  },
+  "bcss_source_recovery": {
+    "report": "bcss_source_recovery_audit_v1.json",
+    "sha256": "e7e5e7b366682c7153a4b855166907551f82d85b0b554c4dacfcdb9247989fe4",
+    "novel_official_patients": 0,
+    "out_of_manifest_complete_triplets": 0,
+    "metadata_full_slide_mappings": 151,
+    "at_least_11_qualified_patients_recovered": false
   }
 }

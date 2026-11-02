@@ -315,5 +315,13 @@
     ],
     "unknown_is_not_no_overlap": true,
     "full_slide_barcode_recovered": false
+  },
+  "source_recovery_audit": {
+    "status": "no additional patient IDs or canonical triplets found; original ROI recovery assets still unresolved",
+    "report": "bcss_source_recovery_audit_v1.json",
+    "sha256": "e7e5e7b366682c7153a4b855166907551f82d85b0b554c4dacfcdb9247989fe4",
+    "official_patient_set_matches_retained_151": true,
+    "recovered_slide_metadata_count": 151,
+    "historical_aliases_unchanged": true
   }
 }

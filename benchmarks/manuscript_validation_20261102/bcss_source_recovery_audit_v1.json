@@ -1,0 +1,398 @@
+{
+  "created_utc": "2026-11-02T13:34:37.875023+00:00",
+  "scope": "BCSS Source Recovery provenance audit; no new cohort, conditions or H&E generated",
+  "upstream": {
+    "repo": "PathologyDataScience/BCSS",
+    "commit": "3c49d554497dd896cd02ffe382503ef4ce28b1c1",
+    "files": {
+      "README.md": {
+        "sha256": "16f2ee5c66f84bf274c594a51720fc3f9a358a309030ff15f062ed998caab05c",
+        "bytes": 4151
+      },
+      "download_crowdsource_dataset.py": {
+        "sha256": "04a0cd2ed3286f1606c8f4ff169f635ff39877c370afe819cc49a7e7f643d548",
+        "bytes": 7492
+      },
+      "meta/roiBounds.csv": {
+        "sha256": "564bc31fdd5808e5d57de40cc65541aad2c1dbc9415e2e0448f25c00ed144d28",
+        "bytes": 13615
+      },
+      "meta/gtruth_codes.tsv": {
+        "sha256": "78b9ffda84febf95a454d49c83d29031af7be1032aa2413e7e535126d1d9a55f",
+        "bytes": 369
+      },
+      "LICENSE": {
+        "sha256": "75489b3d10d5be1bb6d3d1a33df9c00a70e4069d4c23ce0701e9d353df554aac",
+        "bytes": 1096
+      }
+    }
+  },
+  "primary_sources": {
+    "readme": "https://github.com/PathologyDataScience/BCSS/blob/3c49d554497dd896cd02ffe382503ef4ce28b1c1/README.md",
+    "roi_bounds": "https://github.com/PathologyDataScience/BCSS/blob/3c49d554497dd896cd02ffe382503ef4ce28b1c1/meta/roiBounds.csv",
+    "downloader": "https://github.com/PathologyDataScience/BCSS/blob/3c49d554497dd896cd02ffe382503ef4ce28b1c1/download_crowdsource_dataset.py",
+    "labels": "https://github.com/PathologyDataScience/BCSS/blob/3c49d554497dd896cd02ffe382503ef4ce28b1c1/meta/gtruth_codes.tsv"
+  },
+  "release_manifest_and_filesystem_comparison": {
+    "scope": "official BCSS release versus retained manifest and actual canonical export directories",
+    "official_roi_rows": 151,
+    "official_unique_patient_prefixes": 151,
+    "retained_manifest_unique_patches": 22870,
+    "retained_manifest_patient_groups": 151,
+    "official_patients_absent_from_retained_manifest": 0,
+    "retained_patients_absent_from_official": 0,
+    "directory_png_counts": {
+      "images": 22870,
+      "tissue_masks": 22870,
+      "nuclei_masks": 22870
+    },
+    "complete_triplets": 22870,
+    "complete_triplets_outside_manifest": 0,
+    "patient_groups_of_outside_triplets": 0,
+    "new_patient_groups_of_outside_triplets": 0,
+    "manifest_patch_roi_origin_matches_official": 22870,
+    "manifest_patch_roi_origin_unmatched": 0,
+    "full_slide_barcode_status": "official ROI names include DX identifier, not independently recovered full TCGA slide barcode",
+    "formal_launch_permitted": false
+  },
+  "public_official_girder_probe": {
+    "endpoint": "https://demo.kitware.com/histomicstk/api/v1/item?folderId=5bbdeba3e629140048d017bb&limit=1000000",
+    "authenticated": false,
+    "status": "response_received",
+    "response_sha256": "c4f87664c3e0c6748b61f8e10459543953ac37fa2073b9dbbe8091c6e85e023a",
+    "type": "list",
+    "item_count": 151,
+    "unique_patient_prefixes": 151,
+    "full_names_available": 151
+  },
+  "metadata_full_slide_recovery": {
+    "mapped_patient_groups": 151,
+    "ambiguities": 0,
+    "mapping_sha256": "c0699f62237ebfac4b0dec0ca0883d8008a24266b298c60ef084c4d3e0923622",
+    "scope": "metadata-derived full slide name recovery; not pixel or physical calibration validation",
+    "historical_frozen_aliases_modified": false
+  },
+  "single_case_environment_verification": {
+    "controller": {
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 492.1934836935252
+    },
+    "producer_status": "abstained",
+    "approved_handoff_exists": false,
+    "cell_execution_failures": [],
+    "candidate_gates": [
+      {
+        "candidate_id": "joint-cand:001-mature-cells-01",
+        "failed_checks": [
+          {
+            "check_id": "joint_area",
+            "detail": "joint union violates target or was not proven maximum-safe",
+            "metrics": {
+              "actual_pixels": 52505,
+              "batch_max_safe_joint_certified": false,
+              "batch_max_safe_joint_pixels": -1,
+              "batch_min_safe_joint_certified": false,
+              "batch_min_safe_joint_pixels": -1,
+              "capacity_exhausted": false,
+              "desired_interval": [
+                48810,
+                50804
+              ],
+              "hard_interval": [
+                36701,
+                62914
+              ],
+              "joint_area_rebalance_exhausted": false,
+              "used_capacity_adaptive_fallback": false,
+              "used_fallback": false,
+              "used_whole_instance_closure_fallback": false
+            }
+          },
+          {
+            "check_id": "interface_seam_continuity",
+            "detail": "cell density has an artificial discontinuity at the edit seam",
+            "metrics": {
+              "allowed_inner_center_count_interval": [
+                6,
+                22
+              ],
+              "anchor_coverage_fraction": 1.0,
+              "anchor_pixels": 1342,
+              "applicable": true,
+              "center_ledger_source": "retained_scene_instances_plus_executor_center_ledger",
+              "continuity_mode": "adaptive_population_continuity",
+              "continuity_region_pixels": 28111,
+              "continuity_width_px": 33,
+              "coverage_passed": true,
+              "density_discretization_policy": "ratio_envelope_compiled_to_integer_center_interval_v1",
+              "density_passed": false,
+              "density_ratio_range": [
+                0.5,
+                2.0
+              ],
+              "density_upper_bound_applied": true,
+              "effective_allowed_inner_center_count_interval": [
+                6,
+                22
+              ],
+              "expected_inner_center_count": 10.980469443556693,
+              "geometry_exists": true,
+              "inner_center_count": 27,
+              "inner_density": 0.0009604781046565401,
+              "inner_outer_ratio": 2.458911264112075,
+              "mature_probnet_may_not_bypass_continuity_gate": true,
+              "maximum_empty_run_px": 66,
+              "minimum_anchor_coverage_fraction": 0.55,
+              "minimum_reference_centers_for_density_upper_bound": 9,
+              "outer_center_count": 11,
+              "outer_density": 0.00039061112886616244,
+              "requires_new_target_cells": true
+            }
+          },
+          {
+            "check_id": "mechanism_postcondition:breast-annotation-anchored-boundary-growth",
+            "detail": "breast-annotation-anchored-boundary-growth lacks one or more required observable outcomes",
+            "metrics": {
+              "binding_passed": true,
+              "expected_mechanism_id": "breast-annotation-anchored-boundary-growth",
+              "layout_binding_passed": true,
+              "layout_program": "boundary_aligned",
+              "primitive_id": "cohesive-boundary-expansion-v1",
+              "primitive_scope": "tissue_and_cell",
+              "scope_passed": true,
+              "subcheck_results": {
+                "external_boundary_binding": true,
+                "interface_seam_continuity": false,
+                "mechanism_realization": true
+              }
+            }
+          }
+        ]
+      },
+      {
+        "candidate_id": "joint-cand:001-mature-cells-02",
+        "failed_checks": [
+          {
+            "check_id": "joint_area",
+            "detail": "joint union violates target or was not proven maximum-safe",
+            "metrics": {
+              "actual_pixels": 51545,
+              "batch_max_safe_joint_certified": false,
+              "batch_max_safe_joint_pixels": -1,
+              "batch_min_safe_joint_certified": false,
+              "batch_min_safe_joint_pixels": -1,
+              "capacity_exhausted": false,
+              "desired_interval": [
+                48810,
+                50804
+              ],
+              "hard_interval": [
+                36701,
+                62914
+              ],
+              "joint_area_rebalance_exhausted": false,
+              "used_capacity_adaptive_fallback": false,
+              "used_fallback": false,
+              "used_whole_instance_closure_fallback": false
+            }
+          },
+          {
+            "check_id": "interface_seam_continuity",
+            "detail": "cell density has an artificial discontinuity at the edit seam",
+            "metrics": {
+              "allowed_inner_center_count_interval": [
+                6,
+                22
+              ],
+              "anchor_coverage_fraction": 1.0,
+              "anchor_pixels": 1342,
+              "applicable": true,
+              "center_ledger_source": "retained_scene_instances_plus_executor_center_ledger",
+              "continuity_mode": "adaptive_population_continuity",
+              "continuity_region_pixels": 28111,
+              "continuity_width_px": 33,
+              "coverage_passed": true,
+              "density_discretization_policy": "ratio_envelope_compiled_to_integer_center_interval_v1",
+              "density_passed": false,
+              "density_ratio_range": [
+                0.5,
+                2.0
+              ],
+              "density_upper_bound_applied": true,
+              "effective_allowed_inner_center_count_interval": [
+                6,
+                22
+              ],
+              "expected_inner_center_count": 10.980469443556693,
+              "geometry_exists": true,
+              "inner_center_count": 27,
+              "inner_density": 0.0009604781046565401,
+              "inner_outer_ratio": 2.458911264112075,
+              "mature_probnet_may_not_bypass_continuity_gate": true,
+              "maximum_empty_run_px": 66,
+              "minimum_anchor_coverage_fraction": 0.55,
+              "minimum_reference_centers_for_density_upper_bound": 9,
+              "outer_center_count": 11,
+              "outer_density": 0.00039061112886616244,
+              "requires_new_target_cells": true
+            }
+          },
+          {
+            "check_id": "mechanism_postcondition:breast-annotation-anchored-boundary-growth",
+            "detail": "breast-annotation-anchored-boundary-growth lacks one or more required observable outcomes",
+            "metrics": {
+              "binding_passed": true,
+              "expected_mechanism_id": "breast-annotation-anchored-boundary-growth",
+              "layout_binding_passed": true,
+              "layout_program": "boundary_aligned",
+              "primitive_id": "cohesive-boundary-expansion-v1",
+              "primitive_scope": "tissue_and_cell",
+              "scope_passed": true,
+              "subcheck_results": {
+                "external_boundary_binding": true,
+                "interface_seam_continuity": false,
+                "mechanism_realization": true
+              }
+            }
+          }
+        ]
+      },
+      {
+        "candidate_id": "joint-cand:001-mature-cells-03",
+        "failed_checks": [
+          {
+            "check_id": "joint_area",
+            "detail": "joint union violates target or was not proven maximum-safe",
+            "metrics": {
+              "actual_pixels": 51833,
+              "batch_max_safe_joint_certified": false,
+              "batch_max_safe_joint_pixels": -1,
+              "batch_min_safe_joint_certified": false,
+              "batch_min_safe_joint_pixels": -1,
+              "capacity_exhausted": false,
+              "desired_interval": [
+                48810,
+                50804
+              ],
+              "hard_interval": [
+                36701,
+                62914
+              ],
+              "joint_area_rebalance_exhausted": false,
+              "used_capacity_adaptive_fallback": false,
+              "used_fallback": false,
+              "used_whole_instance_closure_fallback": false
+            }
+          },
+          {
+            "check_id": "interface_seam_continuity",
+            "detail": "cell density has an artificial discontinuity at the edit seam",
+            "metrics": {
+              "allowed_inner_center_count_interval": [
+                6,
+                22
+              ],
+              "anchor_coverage_fraction": 1.0,
+              "anchor_pixels": 1342,
+              "applicable": true,
+              "center_ledger_source": "retained_scene_instances_plus_executor_center_ledger",
+              "continuity_mode": "adaptive_population_continuity",
+              "continuity_region_pixels": 28111,
+              "continuity_width_px": 33,
+              "coverage_passed": true,
+              "density_discretization_policy": "ratio_envelope_compiled_to_integer_center_interval_v1",
+              "density_passed": false,
+              "density_ratio_range": [
+                0.5,
+                2.0
+              ],
+              "density_upper_bound_applied": true,
+              "effective_allowed_inner_center_count_interval": [
+                6,
+                22
+              ],
+              "expected_inner_center_count": 10.980469443556693,
+              "geometry_exists": true,
+              "inner_center_count": 27,
+              "inner_density": 0.0009604781046565401,
+              "inner_outer_ratio": 2.458911264112075,
+              "mature_probnet_may_not_bypass_continuity_gate": true,
+              "maximum_empty_run_px": 66,
+              "minimum_anchor_coverage_fraction": 0.55,
+              "minimum_reference_centers_for_density_upper_bound": 9,
+              "outer_center_count": 11,
+              "outer_density": 0.00039061112886616244,
+              "requires_new_target_cells": true
+            }
+          },
+          {
+            "check_id": "mechanism_postcondition:breast-annotation-anchored-boundary-growth",
+            "detail": "breast-annotation-anchored-boundary-growth lacks one or more required observable outcomes",
+            "metrics": {
+              "binding_passed": true,
+              "expected_mechanism_id": "breast-annotation-anchored-boundary-growth",
+              "layout_binding_passed": true,
+              "layout_program": "boundary_aligned",
+              "primitive_id": "cohesive-boundary-expansion-v1",
+              "primitive_scope": "tissue_and_cell",
+              "scope_passed": true,
+              "subcheck_results": {
+                "external_boundary_binding": true,
+                "interface_seam_continuity": false,
+                "mechanism_realization": true
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "evidence_sha256": {
+      "joint_gate_reports.json": "9650f47b1805c085cca8431e0387fd2671376f7c6f0d964feefcb75e40a2a8ff",
+      "cell_execution_failures.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "result.json": "9d4a91e3132fdf73164c47c91340f45aeb972ae0d5a6100c8ff819cd45e13ff4"
+    },
+    "nuclei_diagnostics_files": 3
+  },
+  "answer": {
+    "at_least_11_new_qualifying_patients_recovered": false,
+    "official_patient_ids_not_already_in_retained_manifest": 0,
+    "canonical_complete_triplets_not_already_in_manifest": 0,
+    "existing_topology_qualified_patients": 17,
+    "maximum_existing_patients_with_all_unknowns": 19,
+    "interpretation": "Official release and retained manifest patient sets coincide. This excludes 11 previously unseen patient IDs in this release; it does not prove that new valid crops from original ROIs cannot qualify other patients outside the currently qualified 17."
+  },
+  "source_recovery_limits": [
+    "The 22870 coordinate matches compare file-name ROI origins, not source RGB pixel hashes against downloaded original images.",
+    "Original large RGB/tissue/nuclei triplets were not found in the bounded project data roots searched. A retained UI path points to Windows D:\\WQX\\datasets\\BCSS; this path is not accessible on this Mac/server.",
+    "Official upstream documents RGB, tissue region masks and slide annotations. It does not establish the provenance of the project nuclei_masks; do not label these automatically as original nuclear ground truth.",
+    "New crops of existing patients must retain the original aligned RGB/tissue/nuclei derivation, frozen crop policy and hashes, avoid counting any patient twice, and pass all existing capacity/topology/four-target/review checks. No additional crop has been admitted.",
+    "Full slide names were recovered from official metadata with unique patient and DX matches; pixel provenance and per-image physical scale have not been independently verified. Historical frozen aliases were not rewritten.",
+    "No external dataset has been mixed into BCSS and no official whole-slide images were downloaded.",
+    "Absence of references in a training manifest is not evidence of checkpoint non-exposure; overlap audits remain required for all admitted sources."
+  ],
+  "searched_scope": {
+    "bounded_server_project_roots": [
+      "/data/wqx/flowedit",
+      "/data1/zhao/wqx",
+      "/home/lyw/wqx-DL/flow-edit/FlowEdit-main",
+      "/data/lyw/wqx_patheval",
+      "/data1/lyw/pathology_edit_eval"
+    ],
+    "not_a_claim_of_exhaustive_server_search": true,
+    "retained_scripts": [
+      "scripts/prepare_phase4_edit_datasets.py",
+      "scripts/build_segmentator_multidataset_manifest.py",
+      "scripts/phase3_end_to_end_ui.py"
+    ],
+    "missing_preprocessing_evidence": "staging and split scripts found; original large-ROI crop and nuclei derivation provenance still needed"
+  },
+  "next_required_assets": [
+    "accessible original aligned BCSS ROI data or a reproducible documented nuclear-condition derivation",
+    "frozen source-only crop recovery specification before any recovered candidate screening"
+  ],
+  "formal_launch_permitted": false,
+  "batch_compilation_restarted": false,
+  "thresholds_or_nominal_budgets_changed": false,
+  "audit_script_sha256": "d9fa5cd9890b747f2bf7b30b0aac3ba3ddeca720f2392e34c61450a64ea51a95"
+}

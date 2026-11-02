@@ -133,3 +133,15 @@
 批次共 6 个 producer abstained：索引 0/1/2/6 的真实底层原因是 mature ProbNet 子进程从错误工作目录启动，找不到 inpaint_cells.generate；索引 4/5 是 candidate_anchor_continuity_coverage_below_contract。前者是执行无效，不能当作生物学或来源资格失败；原始 abstained 记录保留，诊断另存。入口脚本遗漏工作目录的接线问题已定位：同一解释器在 /home/lyw 复现模块缺失，从干净 18258d49 根目录可定位模块。已停止批次，4 个活动任务记 cancelled_for_diagnosis，18 项未启动，不记 timeout/abstained。只在新目录对索引 0 做 cwd 修正后的单例验证，900 秒上限、不改输入/预算/seed；尚未据 import probe 宣称真实编译通过。anchor 失败无新证据不重试。
 
 名义预算、实际 J、实际 tissue fraction 始终分别保存。技术来源实际 J 档间差 U1=15.3507 个百分点、U2=12.0461 个百分点，均大于 5；正式目标还需逐对核对实际 J 差，不能只检查 ROI 剂量差。最终逐患者模型审计需同时绑定 checkpoint SHA、审计代码版本、证据哈希和训练/验证/测试引用；未知不改写为无重叠，WSI 别名不冒充完整 slide barcode。正式 H&E 仍未启动。
+
+## BCSS Source Recovery：官方发布与实际目录追溯
+
+[来源追溯审计](../benchmarks/manuscript_validation_20261102/bcss_source_recovery_audit_v1.json) 固定官方 `PathologyDataScience/BCSS` 的 `3c49d554497dd896cd02ffe382503ef4ce28b1c1`，保存 README、下载脚本、ROI 清单和标签表的内容哈希。官方 ROI 清单为 **151 ROI／151 患者前缀**，与保留 manifest 的 151 个患者集合完全相同，新增患者 ID 为 **0**。22,870 个文件名中的患者及 ROI x/y 起点全部匹配官方清单；这是文件名与坐标级来源证据，不是逐像素原始 RGB 验真。
+
+独立枚举真实导出目录：RGB、tissue、nuclei 各 22,870 个 PNG，完整同名三联为 22,870；manifest 之外完整三联为 **0**。因而没有从当前官方清单或规范目录补出至少 11 位此前未覆盖的患者；17 位通过／19 位理论上限仍保持。未宣称排除了原始较大 ROI 新裁块使其他既有患者首次合格的可能性：这需要可访问的原始对齐三联、固定裁块规则和新的全部资格检查，不能重复计算已入选患者。
+
+官方公开 Girder 文件夹可匿名读取，151 个完整 SVS 文件名与患者前缀、ROI DX 标识一一匹配，恢复了 151 条无歧义的**元数据来源完整切片名映射**。完整私有映射及其哈希另存；旧冻结 patient/WSI alias 不改写，也未据此宣称逐像素身份或逐图物理尺度已经独立验真。
+
+在限定项目数据根与保留预处理入口中，尚未定位可访问的原始大 ROI RGB/tissue/nuclei 三联；UI 留有 `D:\WQX\datasets\BCSS` 的 Windows 路径。发现的 staging/split 脚本只能解释文件分发和分组，不能补齐原始裁块及核 mask 生成谱系。官方发布列出的 RGB、组织 mask 和注释不能直接证明项目 nuclei_masks 是原始核标注；数据配置里的该注释不作为证据。需要原始资产位置及核条件生成记录后，才能评估新裁块恢复路线；本轮未下载 WSI、未混入其他数据集、未生成新 H&E。
+
+修正工作目录的单例在 **492.19 秒**结束，控制退出 0，无 cell_execution_failures，真实 mature ProbNet 产生三个候选及 diagnostics。但三个候选的实际 J 像素数为 52,505／51,545／51,833，高于该次 desired interval 的上界 50,804，且没有合法 fallback 证明；接缝内中心数 27 也超过该合同允许的 6–22。它们仍未通过 joint-area 和 seam-continuity 等硬门槛，producer 为 abstained，无批准 handoff。结论是模块加载与实际执行已走通，**目标编译资格没有通过**；批量队列不恢复，不进行无新证据重试。
