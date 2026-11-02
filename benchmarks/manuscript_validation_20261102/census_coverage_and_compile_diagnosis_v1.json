@@ -1,0 +1,185 @@
+{
+  "scope": "census coverage and failed-execution diagnosis; no new generation or approval",
+  "cap_coverage": {
+    "previously_unexamined": 8791,
+    "covered_in_all_remaining_ledger": 8791,
+    "still_unexamined_due_cap": 0,
+    "outcomes": {
+      "candidate_for_expensive_qualification": 1918,
+      "missing_source_tumor_stroma_or_immune": 5884,
+      "stroma_below_27_percent_tissue_floor": 874,
+      "excluded_technical_patient": 115
+    },
+    "old_ledger_sha256": "24f87311b040285113fe317c990e86fe9dbe6dbdd757505b254d078dd9a2decd",
+    "all_remaining_ledger_sha256": "dfbfbd7fce26d29d0e5299fc1c9cec9fe613606308078c1fb67ecc7f62cd3265"
+  },
+  "import_probes": [
+    {
+      "cwd": "/home/lyw",
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"<frozen importlib.util>\", line 95, in find_spec\nModuleNotFoundError: No module named 'inpaint_cells'"
+    },
+    {
+      "cwd": "/home/lyw/wqx-DL/flow-edit/manuscript-final-joint-18258d49",
+      "exit_code": 0,
+      "stdout": "/home/lyw/wqx-DL/flow-edit/manuscript-final-joint-18258d49/inpaint_cells/generate.py",
+      "stderr": ""
+    }
+  ],
+  "completed_case_diagnoses": [
+    {
+      "index": 0,
+      "producer_status": "abstained",
+      "classification": "execution_environment_module_not_found",
+      "evidence": [
+        {
+          "file": "execution_feedback_pass_2.json",
+          "sha256": "b43b853c74975a62e21679a6d570c001d265e464f5c60bc4a74280caef863b73",
+          "stage": "cell_execution",
+          "errors": [
+            "mature ProbNet cell execution failed: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python: Error while finding module specification for 'inpaint_cells.generate' (ModuleNotFoundError: No module named 'inpaint_cells')\n"
+          ],
+          "cell_feasibility_failure_counts": {}
+        },
+        {
+          "file": "execution_feedback_pass_3.json",
+          "sha256": "2f86c6491f3cfcfec3d4d919910d37cb1ccb640cbbed1bda5ee0e9645044f3b0",
+          "stage": "cell_execution",
+          "errors": [
+            "mature ProbNet cell execution failed: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python: Error while finding module specification for 'inpaint_cells.generate' (ModuleNotFoundError: No module named 'inpaint_cells')\n"
+          ],
+          "cell_feasibility_failure_counts": {}
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "producer_status": "abstained",
+      "classification": "execution_environment_module_not_found",
+      "evidence": [
+        {
+          "file": "execution_feedback_pass_1.json",
+          "sha256": "7afdfde48c26441d937fe5cbc4cd65e31c8a45b709e1d91563a4767df7702011",
+          "stage": "cell_execution",
+          "errors": [
+            "mature ProbNet cell execution failed: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python: Error while finding module specification for 'inpaint_cells.generate' (ModuleNotFoundError: No module named 'inpaint_cells')\n"
+          ],
+          "cell_feasibility_failure_counts": {}
+        },
+        {
+          "file": "execution_feedback_pass_3.json",
+          "sha256": "5402a7f344e8598eba60c0fe1ca731fdb018cc6cb762c8010580a6984cbbdae4",
+          "stage": "cell_execution",
+          "errors": [
+            "mature ProbNet cell execution failed: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python: Error while finding module specification for 'inpaint_cells.generate' (ModuleNotFoundError: No module named 'inpaint_cells')\n"
+          ],
+          "cell_feasibility_failure_counts": {}
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "producer_status": "abstained",
+      "classification": "execution_environment_module_not_found",
+      "evidence": [
+        {
+          "file": "execution_feedback_pass_2.json",
+          "sha256": "da5db00e5caf0e2340a6fc334277194ae3bbdd0c91f17a887679454acd0fe897",
+          "stage": "cell_execution",
+          "errors": [
+            "mature ProbNet cell execution failed: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python: Error while finding module specification for 'inpaint_cells.generate' (ModuleNotFoundError: No module named 'inpaint_cells')\n"
+          ],
+          "cell_feasibility_failure_counts": {}
+        },
+        {
+          "file": "execution_feedback_pass_3.json",
+          "sha256": "c2c933d97f8eee4eed827c4577ad94adb8de9e718a3982f3d0f20f3e18a9bb4d",
+          "stage": "cell_execution",
+          "errors": [
+            "mature ProbNet cell execution failed: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python: Error while finding module specification for 'inpaint_cells.generate' (ModuleNotFoundError: No module named 'inpaint_cells')\n"
+          ],
+          "cell_feasibility_failure_counts": {}
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "producer_status": "abstained",
+      "classification": "contract_or_feasibility_failure",
+      "evidence": [
+        {
+          "file": "execution_feedback_pass_1.json",
+          "sha256": "0229e44706202edd576eaadd35373cc01df6d37f0ca3a5ef45ec96f925ce06b4",
+          "stage": "cell_feasibility",
+          "errors": [],
+          "cell_feasibility_failure_counts": {
+            "candidate_anchor_continuity_coverage_below_contract": 1
+          }
+        },
+        {
+          "file": "execution_feedback_pass_2.json",
+          "sha256": "2b3d6040cd9d0d1ab66a34f0798f8c8931975983da68c8746e0070d5824761d9",
+          "stage": "cell_feasibility",
+          "errors": [],
+          "cell_feasibility_failure_counts": {
+            "candidate_anchor_continuity_coverage_below_contract": 1
+          }
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "producer_status": "abstained",
+      "classification": "contract_or_feasibility_failure",
+      "evidence": [
+        {
+          "file": "execution_feedback_pass_1.json",
+          "sha256": "0229e44706202edd576eaadd35373cc01df6d37f0ca3a5ef45ec96f925ce06b4",
+          "stage": "cell_feasibility",
+          "errors": [],
+          "cell_feasibility_failure_counts": {
+            "candidate_anchor_continuity_coverage_below_contract": 1
+          }
+        },
+        {
+          "file": "execution_feedback_pass_2.json",
+          "sha256": "2b3d6040cd9d0d1ab66a34f0798f8c8931975983da68c8746e0070d5824761d9",
+          "stage": "cell_feasibility",
+          "errors": [],
+          "cell_feasibility_failure_counts": {
+            "candidate_anchor_continuity_coverage_below_contract": 1
+          }
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "producer_status": "abstained",
+      "classification": "execution_environment_module_not_found",
+      "evidence": [
+        {
+          "file": "execution_feedback_pass_2.json",
+          "sha256": "67ff97454474284d2a8d67266446160e7ad4b4b137e6ebb5739b05d904921805",
+          "stage": "cell_execution",
+          "errors": [
+            "mature ProbNet cell execution failed: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python: Error while finding module specification for 'inpaint_cells.generate' (ModuleNotFoundError: No module named 'inpaint_cells')\n"
+          ],
+          "cell_feasibility_failure_counts": {}
+        },
+        {
+          "file": "execution_feedback_pass_3.json",
+          "sha256": "7be0e3eec535d3bd5703ad2e967e2a75fbabdc5d8a752e157dc5525aa81d97f8",
+          "stage": "cell_execution",
+          "errors": [
+            "mature ProbNet cell execution failed: /home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python: Error while finding module specification for 'inpaint_cells.generate' (ModuleNotFoundError: No module named 'inpaint_cells')\n"
+          ],
+          "cell_feasibility_failure_counts": {}
+        }
+      ]
+    }
+  ],
+  "formal_launch_permitted": false,
+  "retry_policy": "no batch restart; environment-only failures require a working-directory correction and one real single-case verification; contract failures require new anchor/tool/capacity evidence",
+  "actual_J_policy": "persist nominal budget, actual joint fraction and actual tissue fraction separately; retain ROI dose gap and additionally check actual J Significant-minus-Moderate >=0.05 before approval"
+}

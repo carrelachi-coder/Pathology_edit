@@ -329,7 +329,19 @@
       }
     ],
     "all_four_promoted": true,
-    "real_generation_status": "complete: 5 real generated states; 6 verified image measurements"
+    "real_generation_status": "complete: 5 real generated states; 6 verified image measurements",
+    "actual_joint_pair_gap_checks": {
+      "u1": {
+        "actual_joint_fraction_gap": 0.15350723266601562,
+        "minimum_gap": 0.05,
+        "passed": true
+      },
+      "u2": {
+        "actual_joint_fraction_gap": 0.12046051025390625,
+        "minimum_gap": 0.05,
+        "passed": true
+      }
+    }
   },
   "supplemental_census_v2": {
     "candidate_count": 1918,
@@ -432,8 +444,47 @@
     "workers": 4,
     "seconds_per_case": 7200,
     "gpu": "physical6 mapped cuda0",
-    "status": "running; no automatic target approval",
-    "controller_identity_sha256": "20298e0a543964760f15e65bd664e8363053b81f8d03fad37f2ba4757d17159a"
+    "status": "stopped_for_diagnosis",
+    "controller_identity_sha256": "20298e0a543964760f15e65bd664e8363053b81f8d03fad37f2ba4757d17159a",
+    "completed_producer_abstained": 6,
+    "environment_invalid_cases": [
+      0,
+      1,
+      2,
+      6
+    ],
+    "anchor_contract_failed_cases": [
+      4,
+      5
+    ],
+    "cancelled_active_cases": [
+      3,
+      7,
+      8,
+      9
+    ],
+    "not_started_cases": [
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27
+    ],
+    "diagnosis_report": "census_coverage_and_compile_diagnosis_v1.json",
+    "single_case_environment_verification": "running in fresh directory; case0, cwd corrected, 900-second bound; no batch restart"
   },
   "supplemental_capacity_v2": {
     "scope": "source-only necessary capacity; not topology or four target approval",
@@ -504,5 +555,18 @@
       }
     ],
     "interpretation": "Passing topology is necessary, not sufficient for four targets. Unknowns stay unknown. No budget, hard floor, endpoint or cohort count has been relaxed."
+  },
+  "all_remaining_cap_coverage": {
+    "previously_unexamined": 8791,
+    "covered_in_all_remaining_ledger": 8791,
+    "still_unexamined_due_cap": 0,
+    "outcomes": {
+      "candidate_for_expensive_qualification": 1918,
+      "missing_source_tumor_stroma_or_immune": 5884,
+      "stroma_below_27_percent_tissue_floor": 874,
+      "excluded_technical_patient": 115
+    },
+    "old_ledger_sha256": "24f87311b040285113fe317c990e86fe9dbe6dbdd757505b254d078dd9a2decd",
+    "all_remaining_ledger_sha256": "dfbfbd7fce26d29d0e5299fc1c9cec9fe613606308078c1fb67ecc7f62cd3265"
   }
 }

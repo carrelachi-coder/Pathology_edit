@@ -125,3 +125,11 @@
 310 个第二补充池来源已全部结束拓扑检查，三波通过数为 2/11/5，共 18 来源，另有 1 个超时保留 unknown。合并原始池及第一补充池，共 3,437 个候选、529 项必要容量通过后的拓扑检查均有控制终态。排除五位技术患者后，31 来源属于 17 位拓扑通过患者；另有 3 个未知来源涉及 3 位患者，其中一位已在通过集合，因此即使全部未知均通过，上限也只有 **19 位患者**。见 [不可变快照及资格上限](../benchmarks/manuscript_validation_20261102/cohort_feasibility_bound_after_all_topology_v1.json)。这仍不是四目标批准数，现有冻结池不能满足 30 位患者。
 
 首批四目标编译仍在执行，当前已结束的 4 个条件均 abstained（索引 0/1/2/4，deterministic_replan_stalled），没有自动批准或成功补齐。后续需核查额外合法的同 BCSS 源资产或取得明确的研究设计决定，不能降低严格门槛、改主终点或按生成 H&E 重选。训练审计仍须随最终来源逐模型绑定 checkpoint SHA 与审计身份；患者/WSI 别名不能冒充完整 slide barcode。
+
+## 无上限来源覆盖与编译停滞诊断
+
+此前第一补充池按每患者 12 项上限留下的 8,791 项，已全部被第二补充池无上限账本覆盖：1,918 项成为新增候选，5,884 项缺少既定源组织类别，874 项低于源 Stroma 27% 必要下限，115 项属于新增排除的技术患者。没有仍因 12 项上限未检查的条目；不能重复执行同一扩池或据此增加患者上限。[覆盖与诊断证据](../benchmarks/manuscript_validation_20261102/census_coverage_and_compile_diagnosis_v1.json)。当前规范 BCSS patch 导出在既定规则下仍受 17／19 位来源上限约束。
+
+批次共 6 个 producer abstained：索引 0/1/2/6 的真实底层原因是 mature ProbNet 子进程从错误工作目录启动，找不到 inpaint_cells.generate；索引 4/5 是 candidate_anchor_continuity_coverage_below_contract。前者是执行无效，不能当作生物学或来源资格失败；原始 abstained 记录保留，诊断另存。入口脚本遗漏工作目录的接线问题已定位：同一解释器在 /home/lyw 复现模块缺失，从干净 18258d49 根目录可定位模块。已停止批次，4 个活动任务记 cancelled_for_diagnosis，18 项未启动，不记 timeout/abstained。只在新目录对索引 0 做 cwd 修正后的单例验证，900 秒上限、不改输入/预算/seed；尚未据 import probe 宣称真实编译通过。anchor 失败无新证据不重试。
+
+名义预算、实际 J、实际 tissue fraction 始终分别保存。技术来源实际 J 档间差 U1=15.3507 个百分点、U2=12.0461 个百分点，均大于 5；正式目标还需逐对核对实际 J 差，不能只检查 ROI 剂量差。最终逐患者模型审计需同时绑定 checkpoint SHA、审计代码版本、证据哈希和训练/验证/测试引用；未知不改写为无重叠，WSI 别名不冒充完整 slide barcode。正式 H&E 仍未启动。

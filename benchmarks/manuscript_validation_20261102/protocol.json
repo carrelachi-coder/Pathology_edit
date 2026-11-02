@@ -261,7 +261,14 @@
       "tissue_min_fraction": 0.27
     },
     "capacity_floor_policy": "strict",
-    "interpretation": "disjoint planned whole-patch joint-area budgets; actual ROI fraction must rise from source and between strengths by at least .05; no clinical grade interpretation"
+    "interpretation": "disjoint planned whole-patch joint-area budgets; actual ROI fraction must rise from source and between strengths by at least .05; no clinical grade interpretation",
+    "required_target_record_columns": [
+      "nominal_budget",
+      "actual_joint_fraction",
+      "actual_tissue_fraction"
+    ],
+    "minimum_actual_joint_fraction_gap": 0.05,
+    "gap_scope": "check actual Significant-minus-Moderate J separately from the existing fixed-source ROI target dose gap; no post-result mask alteration"
   },
   "implementation_commit_scope": "clean execution snapshot accepted for the excluded-source five-state technical chain; formal cohort assets remain unfrozen; rerun affected acceptance if execution code changes",
   "technical_joint_acceptance": {
@@ -286,5 +293,27 @@
     "passing_patients": 17,
     "upper_bound_including_unknown": 19,
     "required": 30
+  },
+  "final_source_overlap_audit_contract": {
+    "status": "required before final cohort freeze",
+    "per_patient_per_model_fields": [
+      "model_name",
+      "checkpoint_sha256",
+      "audit_code_commit",
+      "audit_evidence_sha256",
+      "exact_image_train_val_test_references",
+      "patient_group_train_val_test_references",
+      "lineage_status",
+      "unknown_overlap_disclosure"
+    ],
+    "models": [
+      "Cross",
+      "Segmentator",
+      "Pix2pix",
+      "FLUX",
+      "CellViT"
+    ],
+    "unknown_is_not_no_overlap": true,
+    "full_slide_barcode_recovered": false
   }
 }
