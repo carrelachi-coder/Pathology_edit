@@ -53,6 +53,15 @@ def validate_cohort(rows, *, source_count, handoff_validator, protocol, assets):
             raise ValueError('TCGA patient identity does not match the source filename')
         shared = ('reference_image', 'reference_tissue_mask', 'reference_nuclei_mask')
         source_hashes = {key: sha256_file(sham[key]) for key in shared}
+        approved_joint_changes = []
+        # Frozen HTE generation accepts unified IDs 0..15, not ignore=255.
+        # Do not silently repaint an approved condition into background.
+        from phase3_mask_edit.core.mask_io import load_id_mask
+        from dataset_config.unified_labels import FINE_TO_PARENT
+        for row in states.values():
+            for key in ('reference_tissue_mask', 'target_tissue_mask'):
+                if not np.isin(load_id_mask(row[key]), list(FINE_TO_PARENT)).all():
+                    raise ValueError('formal generation tissue conditions require known IDs 0..15; ignore must be resolved before freezing')
         for state, row in states.items():
             for key in shared:
                 if sha256_file(row[key]) != source_hashes[key]:
@@ -79,17 +88,23 @@ def validate_cohort(rows, *, source_count, handoff_validator, protocol, assets):
                     raise ValueError('operation label differs from approved joint primitive')
                 if sha256_file(_generation_change_region(row)) != sha256_file(inputs.generation_change_region):
                     raise ValueError('generation support differs from approved joint handoff')
+                # Consume the same hash-bound semantic J already checked by
+                # the handoff validator, including complete native footprints.
+                joint_path = Path(handoff['paths']['joint_change'])
+                if sha256_file(joint_path) != handoff['digests']['joint_change_sha256']:
+                    raise ValueError('approved joint change content drift')
+                joint = np.asarray(Image.open(joint_path)) > 0
+                if joint.shape != expected_shape or joint.ndim != 2:
+                    raise ValueError('approved joint change frame mismatch')
+                approved_joint_changes.append(joint)
                 for key in (*shared, 'target_tissue_mask', 'target_nuclei_mask'):
                     if sha256_file(getattr(inputs, key)) != sha256_file(row[key]):
                         raise ValueError(f'formal row differs from approved joint handoff: {key}')
-        from phase3_mask_edit.core.mask_io import load_id_mask
+        from phase3_mask_edit.benchmark.manuscript_contract import coarse_tissue
         from scipy.ndimage import binary_dilation
-        source_tissue = load_id_mask(sham['reference_tissue_mask'])
-        source_nuclei = load_id_mask(sham['reference_nuclei_mask'])
-        changed = np.zeros_like(source_tissue, dtype=bool)
-        for row in states.values():
-            changed |= (load_id_mask(row['target_tissue_mask']) != source_tissue) | (load_id_mask(row['target_nuclei_mask']) != source_nuclei)
-        expected = (source_tissue > 0) & (source_tissue != 255) & ~binary_dilation(changed, iterations=8)
+        source_parents = coarse_tissue(sham['reference_tissue_mask'])
+        changed = np.logical_or.reduce(approved_joint_changes)
+        expected = (source_parents > 0) & ~binary_dilation(changed, iterations=8)
         protected_path = verified_asset(assets['protected_roi_files_and_hashes'][sham['reference_id']]['protected_roi'])
         actual = np.asarray(Image.open(protected_path)) > 0
         if not np.array_equal(actual, expected):
@@ -122,7 +137,17 @@ def main(argv=None):
         raise ValueError('prompt differs from frozen sampling')
     if any(row.get('generation_seed') != protocol['sampling']['seed'] for row in rows):
         raise ValueError('manifest seed differs from frozen sampling')
-    validate_cohort(rows, source_count=protocol['source_count'], handoff_validator=build_frozen_generator_inputs, protocol=protocol, assets=assets)
+    cohort = validate_cohort(rows, source_count=protocol['source_count'], handoff_validator=build_frozen_generator_inputs, protocol=protocol, assets=assets)
+    from phase3_mask_edit.benchmark.manuscript_contract import roi_evidence
+    evidence = {source: {name: roi_evidence(asset) for name, asset in
+                assets['protected_roi_files_and_hashes'][source].items()}
+                for source in cohort}
+    args.output_root.mkdir(parents=True, exist_ok=True)
+    evidence_path = args.output_root / 'cohort_roi_validation.json'
+    payload = json.dumps(evidence, sort_keys=True, indent=2)
+    if evidence_path.exists() and evidence_path.read_text() != payload:
+        raise ValueError('existing ROI validation evidence differs; use a new output root')
+    evidence_path.write_text(payload)
     from scripts.run_embedding_utility_generation import main as generate
     sampling = protocol['sampling']
     command = ['--cohort-manifest', str(args.cohort_manifest), '--output-root', str(args.output_root),

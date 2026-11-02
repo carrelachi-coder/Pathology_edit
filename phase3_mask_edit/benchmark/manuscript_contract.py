@@ -1,4 +1,4 @@
-"""Pre-generation checks for signed research assets and target doses."""
+"""Pre-generation checks for frozen research assets and target doses."""
 import json
 import subprocess
 from pathlib import Path
@@ -41,18 +41,51 @@ def preflight(protocol, manifest, repo):
     return {key: json.loads(path.read_text()) for key, path in assets.items() if key != 'generation_manifest'}
 
 
-def target_dose(row, operation, roi_asset):
-    roi = np.asarray(Image.open(verified_asset(roi_asset))) > 0
+def coarse_tissue(path):
+    """Map known fine labels; 255 stays ignore and is never tissue."""
     from phase3_mask_edit.core.mask_io import load_id_mask
     from dataset_config.unified_labels import FINE_TO_PARENT
-    target = load_id_mask(row['target_tissue_mask'])
-    if roi.shape != target.shape or not roi.any():
-        raise ValueError('target dose requires a nonempty fixed ROI in the source frame')
-    parents = np.zeros_like(target)
-    for label in np.unique(target):
+    labels = load_id_mask(path)
+    parents = np.full(labels.shape, -1, dtype=np.int16)
+    for label in np.unique(labels):
+        if int(label) == 255:
+            continue
         if int(label) not in FINE_TO_PARENT:
-            raise ValueError('unknown target tissue label')
-        parents[target == label] = FINE_TO_PARENT[int(label)]
+            raise ValueError('unknown tissue label')
+        parents[labels == label] = FINE_TO_PARENT[int(label)]
+    return parents
+
+
+def validate_source_roi(source_path, operation, roi_asset):
+    parents = coarse_tissue(source_path)
+    if operation['code'] == 'u1' and operation['target_parent'] == 1:
+        expected = parents > 0
+    elif operation['code'] == 'u2' and operation['target_parent'] == 4:
+        expected = np.isin(parents, (2, 4))
+    else:
+        raise ValueError('unsupported measurement ROI definition')
+    roi = np.asarray(Image.open(verified_asset(roi_asset))) > 0
+    if roi.ndim != 2 or not np.array_equal(roi, expected) or not roi.any():
+        raise ValueError('measurement ROI differs from protocol source definition or is empty')
+    return roi
+
+
+def roi_evidence(roi_asset):
+    import hashlib
+    path = verified_asset(roi_asset)
+    roi = np.asarray(Image.open(path)) > 0
+    if roi.ndim != 2:
+        raise ValueError('ROI must be a two-dimensional mask')
+    return {'file_sha256': sha256_file(path), 'shape': list(roi.shape),
+            'denominator_pixels': int(roi.sum()),
+            'binary_mask_sha256': hashlib.sha256(roi.astype(np.uint8).tobytes()).hexdigest()}
+
+
+def target_dose(row, operation, roi_asset):
+    roi = validate_source_roi(row['reference_tissue_mask'], operation, roi_asset)
+    parents = coarse_tissue(row['target_tissue_mask'])
+    if parents.shape != roi.shape or np.any(parents[roi] < 0):
+        raise ValueError('target has ignore or invalid frame inside fixed source ROI')
     return float(np.mean(parents[roi] == operation['target_parent']))
 
 

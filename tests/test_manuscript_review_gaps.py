@@ -66,7 +66,7 @@ def test_duplicate_and_reversed_target_strengths_rejected(tmp_path):
     nuclei=tmp_path/'nuclei.png'; Image.new('L',(8,8)).save(nuclei)
     handoff=tmp_path/'handoff.json'; handoff.write_text(json.dumps({'execution_contract':{'joint_area_budget':{'floor':.1}}}))
     tissue=tmp_path/'target.png'; Image.new('L',(8,8),1).save(tissue)
-    row={'joint_handoff_manifest':str(handoff),'target_tissue_mask':str(tissue),'target_nuclei_mask':str(nuclei)}
+    row={'reference_tissue_mask':str(tissue),'joint_handoff_manifest':str(handoff),'target_tissue_mask':str(tissue),'target_nuclei_mask':str(nuclei)}
     states={f'u1_{s}':dict(row) for s in ('moderate','significant')}
     frozen={s:{'handoff':asset(handoff),'execution_budget':{'joint_area_budget':{'floor':.1},'cell_count_extent_budget':None},'target_sha256':[sha256_file(tissue),sha256_file(nuclei)]} for s in states}
     op={'code':'u1','target_parent':1,'direction':1,'minimum_target_gap':.1,'strengths':{s:{'dose_interval':[0.,1.]} for s in ('moderate','significant')}}
@@ -112,7 +112,7 @@ def test_target_doses_must_increase_from_source_then_between_strengths(tmp_path)
     op={'code':'u1','target_parent':1,'direction':1,'minimum_target_gap':.1,'strengths':{s:{'dose_interval':[0.,1.]} for s in ('moderate','significant')}}
     for strength,count in [('moderate',16),('significant',48)]:
         target=tmp_path/(strength+'.png'); values=np.full(64,2,dtype=np.uint8); values[:count]=1; Image.fromarray(values.reshape(8,8)).save(target)
-        state='u1_'+strength; states[state]={'joint_handoff_manifest':str(handoff),'target_tissue_mask':str(target),'target_nuclei_mask':str(nuclei)}
+        state='u1_'+strength; states[state]={'reference_tissue_mask':str(source),'joint_handoff_manifest':str(handoff),'target_tissue_mask':str(target),'target_nuclei_mask':str(nuclei)}
         frozen[state]={'handoff':asset(handoff),'execution_budget':{'joint_area_budget':{'floor':.1},'cell_count_extent_budget':None},'target_sha256':[sha256_file(target),sha256_file(nuclei)]}
     validate_target_pair(states,op,frozen,{'u1_roi':asset(roi)})
     Image.new('L',(8,8),1).save(source)
