@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "status": "frozen",
+  "frozen_utc": "2026-11-02T23:41:00.345216+00:00",
+  "authority": "user explicitly requested fixed 512x512 stride256 native top-left lattice and full 151-ROI source-only scan before ProbNet",
+  "scope": "source-only native ROI window census; not formal cohort or target approval",
+  "patch_size": 512,
+  "stride": 256,
+  "coordinate_origin": "native_roi_top_left",
+  "window_order": "patient_id, ROI filename, crop_y, crop_x ascending",
+  "padding_allowed": false,
+  "resize_allowed": false,
+  "last_edge_shift_allowed": false,
+  "boundary_policy": "only complete in-bounds lattice windows; no shifted edge windows",
+  "source_audit_sha256": "b4cc3a307b02f8f3d148697854714dd8aba052285a181cdfcb46f7fe058d3dec",
+  "expected_roi_count": 151,
+  "raw_asset_identity": "each RGB/tissue/nuclei read is SHA verified against the audited native asset bytes before decoding",
+  "remap_22_to_unified": [
+    0,
+    1,
+    2,
+    4,
+    3,
+    2,
+    7,
+    0,
+    7,
+    7,
+    4,
+    4,
+    7,
+    5,
+    6,
+    0,
+    7,
+    7,
+    6,
+    15,
+    14,
+    7
+  ],
+  "qualification": {
+    "required_tissue_ids": [
+      1,
+      2,
+      4
+    ],
+    "tumor_rule": "exact ID1 present, retain existing frozen cheap-source definition; not a new relaxation to fine tumor children",
+    "stroma_minimum_fraction": 0.27,
+    "stroma_minimum_pixels": 70779,
+    "known_tissue_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "nuclear_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      101,
+      102,
+      103,
+      104,
+      105
+    ],
+    "rgb_tissue_nuclei_aligned": [
+      512,
+      512
+    ],
+    "failure_reasons": "all independent cheap failures retained per window, including duplicate and excluded windows",
+    "historical_training_background_filter": "record fraction only; not an additional gate in user-specified cheap-source rules"
+  },
+  "old_export_count": 22870,
+  "old_export_filename_set_sha256": "8ba2d5f3107ed7cadff6dd70c3367639e32a9c148cf6a37d10fe08d015925741",
+  "deduplication": {
+    "decoded_hash_header": "canonical JSON shape/dtype uint8, NUL delimiter, contiguous decoded bytes; RGB converted to RGB, masks unmodified uint8",
+    "components": [
+      "RGB",
+      "unified_tissue",
+      "historical_nuclei"
+    ],
+    "same_coordinate_excluded": true,
+    "same_triplet_content_excluded": true,
+    "different_png_encoding_not_a_new_source": true,
+    "overlap_graph": "all positive-overlap in-bounds lattice neighbors; overlap pixels and window IDs recorded; one independent unit per patient"
+  },
+  "invalid_old_export_policy": "preserve_error_exclude_coordinate_and_native_content_alias",
+  "invalid_old_export_limit": "never mark unreadable historical PNG as pixel verified or repair/overwrite it; retain file SHA and error; readable components must match native coordinates before conservative aliasing",
+  "technical_exclusion_sha256": "e99577970b5e4c0a09fce4768b2c6e1368b2d0454cc29fa90662848e87f30126",
+  "geometry_pilot_sha256": "db0d0d93e3777812fbc606e25702379d9a053b1c2afdc1b2599aa5356ea4d787",
+  "scan_script_sha256": "66d26c7def3fa7886b9d819d28ff0be5c16a38f05845916fd55fdd487a239311",
+  "implementation_commit": "3fe55cbc461e9e7c8110224d0de4588ef88dab55",
+  "prior_pool_census_sha256": [
+    "81161a185f40a1c13c84989679a770ede4649871f25947861720417ccf27f17c",
+    "5d6f2e09b3678927dcd55fa998c51c207b0e7499c824777a1fa3b99c6b581704",
+    "85cfdd00fa2ec638ecc0f24fc7ce69cfdd71a9191c5f3c36f851c1ae63657aba"
+  ],
+  "joint_budgets": [
+    0.19,
+    0.32
+  ],
+  "hard_tissue_floors": [
+    0.14,
+    0.27
+  ],
+  "threshold_changes_allowed": false,
+  "patient_selection": "eventually first fully four-target-qualified and independently reviewed source in fixed source order; never by H&E, model readout, actual-J proximity or multiple crops per patient",
+  "nuclei_provenance": "historical CellViT-derived pseudo-labels; original checkpoint SHA unresolved, original JSON and raster kept unchanged",
+  "run_probnet": false,
+  "run_technical_or_formal_he": false,
+  "formal_launch_permitted": false
+}
