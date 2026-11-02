@@ -87,3 +87,9 @@
 用户明确委托当前 Codex 聊天独立审查 mask 条件图。新增独立模型审查入口与原有 user-only 批准入口分开，保留原入口的严格用户身份校验。模型审查绑定实际源输入、全部展示的 passing candidates、gate/plan 文件和 board 哈希，并从源/目标 mask 重建 board 逐像素核对；不读取原始 H&E，不生成批准默认值。只有已记录的 approved 决策、至少 0.7 confidence 和完整观察说明可进入原有严格 handoff 检查；新增/失效 hard gate、目标或证据变更、伪造 board 均拒绝。provenance 标记 independent_critic_review，不写 user_approval 或医生批准。**55 项相关 CPU 测试通过**；其中端到端持久化重构测试明确使用合成 gate fixture，不能当作实际病理/生成验收。
 
 初始池的源拓扑检查已证明：即使剩余或异常来源全部可能合格，排除技术患者后仍达不到 30 位患者。用户已明确选择从同一 BCSS 数据集补充来源，保留 30 位患者目标及 19%／32% 预算。旧 300 来源的全分母和失败记录保留；新增池必须在任何新 H&E 生成前按源条件规则单独冻结和留痕。
+
+初始池最终 74/74 个必要容量合格来源完成两操作源拓扑检查：**14 来源、10 患者通过；排除全部技术患者后，只剩 10 来源、8 患者，且尚未通过完整四目标与模型审查**。无超时或异常结果冒充失败；完整控制记录已另存为不可变快照。原池不能提供正式 30 位患者。
+
+两个实际 Moderate 条件的独立 Codex 决策已绑定此前确实查看的 mask-only board 哈希，通过重建、原有 ledger/实例/合同/S>J 校验后输出 handoff，并经实际消费端重新核验。晋升与消费代码为 `3d7088ae`；没有调用图像生成。模型记录不带 user_approval。另一个技术来源两个 Moderate 为 review_required，U2 Significant 因 deterministic_replan_stalled abstained，U1 Significant 超时，均未被补齐为成功配对。第三来源的两个超时 Significant 仅各做一次同输入运行时重试，时限 7,200 秒，不是看过 H&E 后的质量重试。
+
+用户授权的同 BCSS 补充 census 在 `d4ed240f` 冻结：原导出 **22,870 张 patch、151 患者组**，每位非技术患者按文件名取首 12 个满足廉价源条件的新增来源，得到 **1,219 来源、115 患者组**。廉价条件只包含已知 tissue/nucleus ID、512 对齐、已有 fine Tumor1/Stroma2/Immune4，以及至少 27% Stroma 的必要下限。原 300 和其失败不删除；技术患者整组排除，达到 cap 后的未检查来源单独记录，不能叫作资格失败。新 census 仍需两操作容量、拓扑、四目标和独立模型审查，不是正式队列。两项新增 census CPU 测试通过。

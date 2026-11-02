@@ -64,7 +64,24 @@
     },
     "probnet_checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
     "instance_library_tree_sha256": "f00d5c4b9afb3cae7ca2e22f41f698d51e36af4f3ad216599d47bb7b058433e4",
-    "attempt_4": "additional excluded technical source still compiling; no acceptance claim"
+    "attempt_4": {
+      "requested_targets": 4,
+      "review_required": 2,
+      "abstained": 1,
+      "timeout_exit124": 1,
+      "approved_handoffs": 0,
+      "abstention": "deterministic_replan_stalled: same executable failure without new interface/anchor/tool/capacity witness"
+    },
+    "attempt_3_significant_retry": {
+      "case_indices": [
+        1,
+        3
+      ],
+      "retry_number": 1,
+      "timeout_seconds": 7200,
+      "status": "running",
+      "scope": "runtime-only retry of incomplete states; identical inputs/code/weights/budgets/seeds; no generated RGB or measurement used"
+    }
   },
   "new_script_verification": {
     "command": "python -m pytest -q tests/test_manuscript_roi_contract.py tests/test_manuscript_review_gaps.py tests/test_manuscript_validation.py tests/test_manuscript_asset_freeze.py",
@@ -119,7 +136,24 @@
     "physician_or_user_approval_claimed": false,
     "hard_gate_waiver_permitted": false,
     "evidence": "exact source and passing candidate hashes, reconstructed mask-only board and persisted gate/plan files",
-    "handoff_status": "pending actual recorded review promotion; no final joint acceptance yet"
+    "handoff_status": "two Moderate conditions emitted and passed actual consumer validation; not four-target or GPU acceptance",
+    "promotion_and_consumer_code_commit": "3d7088aed4d64d4d589c181e089f6cb07298405b",
+    "validated_conditions": [
+      {
+        "state": "u1_moderate",
+        "manifest_sha256": "bb6419ffc1e1389810e2851f3142be67e435358dbc83ea6b53d4fea22024c889",
+        "review_sha256": "c5dc0a116e9a18795d8b0a4bb593f7bf519fb032fdd6a0b55033726dc569a271",
+        "joint_fraction": 0.18738937377929688,
+        "generation_support_fraction": 0.49495697021484375
+      },
+      {
+        "state": "u2_moderate",
+        "manifest_sha256": "2ff9e01f7b70a4c3b5a615ccf6762a7287518bc827c1b7c7daddfa5751fb751f",
+        "review_sha256": "191163002821fb853164f68c64148939ea8480f9dd3e4e80c9179e79a012cd85",
+        "joint_fraction": 0.19256210327148438,
+        "generation_support_fraction": 0.47049713134765625
+      }
+    ]
   },
   "supplemental_pool_authorization": {
     "authority": "user explicitly requested additional candidate sources from the same BCSS dataset in current chat",
@@ -129,11 +163,53 @@
       0.32
     ],
     "retain_initial_300_denominator": true,
-    "supplemental_census_status": "not frozen yet"
+    "supplemental_census_status": "candidate census frozen; expensive qualification and final cohort still unresolved"
   },
   "independent_review_tests": {
     "passed": 55,
     "log": "independent_review_pytest.txt",
     "scope": "13 independent review/legacy approval tests plus 42 prior relevant cases; CPU fixtures explicitly stub workflow gates in the promotion reconstruction test, not real visual/GPU acceptance"
+  },
+  "initial_pool_final_topology": {
+    "scope": "source topology qualification only, not four approved targets",
+    "initial_sources": 300,
+    "necessary_capacity_pass": 74,
+    "topology_requested": 74,
+    "topology_completed": 74,
+    "topology_passing_sources": 14,
+    "topology_passing_patient_groups": 10,
+    "passing_nontechnical_sources": 10,
+    "passing_nontechnical_patients": 8,
+    "unknown_sources": 0,
+    "maximum_possible_formal_patients": 8,
+    "required_formal_patients": 30,
+    "progress_snapshot_sha256": "8952838a61744a3d3943b62be6ac9626061f05f10ce12e2bd63f019e52e428d7",
+    "formal_generation_launched": false
+  },
+  "supplemental_census": {
+    "candidate_count": 1219,
+    "patient_count": 115,
+    "raw_dataset_manifest_rows": 22870,
+    "raw_unique_images": 22870,
+    "raw_patient_groups": 151,
+    "screen_counts": {
+      "stroma_below_27_percent_tissue_floor": 1445,
+      "missing_source_tumor_stroma_or_immune": 10562,
+      "candidate_for_expensive_qualification": 1219,
+      "already_in_initial_census": 285,
+      "unexamined_after_per_patient_cap": 8791,
+      "excluded_technical_patient": 568
+    },
+    "per_patient_cap": 12,
+    "selection_rule": "preserve the initial census first; append same-BCSS sources in patient/filename order, first 12 passing cheap source-mask eligibility per patient; final selection still requires both Significant topology witnesses, four target gates and independent mask review; first fully qualified source per patient; no generated RGB or embedding selection",
+    "cheap_eligibility": "aligned 512-square known tissue/nucleus IDs; existing fine Tumor1/Stroma2/Immune4 and at least 27% source Stroma; technical patients excluded",
+    "formal_generation_launched": false,
+    "scope": "supplemental candidate census only, not accepted targets or a frozen formal cohort",
+    "sha256": "5d6f2e09b3678927dcd55fa998c51c207b0e7499c824777a1fa3b99c6b581704",
+    "code_commit": "d4ed240f"
+  },
+  "supplemental_census_tests": {
+    "passed": 2,
+    "scope": "same-export guard, fixed ordering, per-patient cap, technical exclusion and retained initial census; CPU synthetic sources"
   }
 }

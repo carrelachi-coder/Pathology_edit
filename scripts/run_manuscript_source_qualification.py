@@ -43,6 +43,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--seconds-per-source', type=int, default=1200)
+    parser.add_argument('--capacity-only', action='store_true',
+        help='Check both necessary capacities before spending time on topology witnesses.')
     args = parser.parse_args()
     if not 1 <= args.workers <= 16 or args.seconds_per_source <= 0:
         raise ValueError('invalid resource bounds')
@@ -56,7 +58,8 @@ def main():
         'probe_script':asset_identity(script), 'controller_script':asset_identity(__file__),
         'requested_sources':len(pool), 'workers':args.workers,
         'seconds_per_source':args.seconds_per_source,
-        'scope':'source-only topology qualification; no target approval or H&E generation',
+        'screen_mode':'necessary_capacity_only' if args.capacity_only else 'source_topology_witness',
+        'scope':'source-only qualification; no target approval or H&E generation',
     }
     (args.output/'controller_identity.json').write_text(json.dumps(identity,indent=2))
 
@@ -64,7 +67,8 @@ def main():
         output = args.output/f'source_{index:03d}'
         command = [sys.executable, str(script), '--source-freeze',str(args.source_freeze),
             '--cases',str(args.cases), '--output',str(output), '--start-index',str(index),
-            '--limit','1', '--topology-witness']
+            '--limit','1']
+        if not args.capacity_only:command.append('--topology-witness')
         receipt = run_one(command, log_path=args.output/f'source_{index:03d}.log',
                           seconds=args.seconds_per_source)
         receipt.update(index=index, reference_id=pool[index]['reference_id'])
@@ -86,6 +90,7 @@ def main():
             (args.output/'controller_progress.json').write_text(json.dumps(sorted(completed,key=lambda x:x['index']),indent=2))
             print(json.dumps({'completed':len(completed),'requested':len(pool),
                 'topology_pass':sum(r.get('result',{}).get('both_significant_topology_pass',False) for r in completed),
+                'necessary_capacity_pass':sum(r.get('result',{}).get('both_significant_capacity_pass',False) for r in completed),
                 'timeout':sum(r['timed_out'] for r in completed)}),flush=True)
     return 0
 
