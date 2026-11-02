@@ -4,7 +4,7 @@
   "status": "prerequisite_validation_in_progress",
   "formal_launch_permitted": false,
   "repair_baseline": "6f481a989b57648449340a17d17b8cda3c9c818f",
-  "implementation_commit": "4c61dcb5f0fb0fef425eb2a78c3b33986b1a1738",
+  "implementation_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
   "formal_entry": "scripts/run_manuscript_global_cohort.py",
   "technical_pilot_entry": "scripts/run_manuscript_chain_pilot.py",
   "source_count": 30,
@@ -135,10 +135,9 @@
     "estimand": "equal independent-unit mean; average sources within patient/WSI, then equal-weight units for effect, CI and test"
   },
   "blockers": [
-    "formal 30-patient source list, four approved joint targets per source and protected ROI hashes not frozen; initial 30 inputs are provisional, not a qualified cohort",
-    "training-manifest references and unresolved checkpoint patient lineage must accompany final sources; automatic readouts remain coupled computational evidence",
-    "technical multi-stage chain passed; formal joint chain on the eventual frozen snapshot remains to be accepted",
-    "final approved joint two-operation/two-strength chain has not been run on the eventual frozen formal snapshot"
+    "formal 30-patient source list, four approved joint targets per source and protected ROI hashes not frozen; initial inputs and expanded censuses are provisional, not qualified cohorts",
+    "final-source mapping and training-manifest reference audits must accompany frozen assets; unresolved checkpoint patient lineage is disclosed and automatic readouts remain coupled computational evidence",
+    "complete formal-asset preflight on the pinned accepted execution snapshot; revalidate affected technical behavior if the execution implementation changes"
   ],
   "historical_analysis_status": "corrected inference code tested on synthetic data; historical 2400-image statistics not rerun by this implementation change",
   "technical_pilot_status": "complete: 2 real outputs and 3 paired tissue/cell measurement records; stage versions recorded in validation_report.json",
@@ -262,5 +261,23 @@
     },
     "capacity_floor_policy": "strict",
     "interpretation": "disjoint planned whole-patch joint-area budgets; actual ROI fraction must rise from source and between strengths by at least .05; no clinical grade interpretation"
+  },
+  "implementation_commit_scope": "clean execution snapshot accepted for the excluded-source five-state technical chain; formal cohort assets remain unfrozen; rerun affected acceptance if execution code changes",
+  "technical_joint_acceptance": {
+    "status": "complete",
+    "code_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+    "report": "final_joint_gpu_validation_report.json",
+    "report_sha256": "2ac50e5feb1756ef33f27a18675de1a8719192dca33f4f2f8a1cde0a17f100b8",
+    "source_count": 1,
+    "generated": 5,
+    "measured": 6,
+    "chain_integrity_accepted": true,
+    "formal_launch_permitted": false,
+    "u2_primary_ties_retained": true
+  },
+  "measurement": {
+    "nominal_mpp": 0.25,
+    "cell_point_policy": "UI_localized_polygon_area_centroid_else_offset_corrected_native_centroid; floor_xy_into_fixed_roi; exclude_outside_frame",
+    "scale_basis": "frozen nominal patch scale; no recovered full-slide physical calibration"
   }
 }

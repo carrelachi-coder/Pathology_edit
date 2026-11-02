@@ -353,8 +353,13 @@
     "formal_generation_launched": false,
     "code_commit": "20ace976",
     "sha256": "85cfdd00fa2ec638ecc0f24fc7ce69cfdd71a9191c5f3c36f851c1ae63657aba",
-    "capacity_status": "running",
-    "topology_status": "not yet run"
+    "capacity_status": "complete: 1918/1918; 310 sources, 56 patients pass necessary capacity; no unknowns",
+    "topology_status": "all 310 passing sources scheduled in disjoint waves 51/89/170; ongoing; no four-target approval implied",
+    "followthrough": {
+      "driver_sha256": "466f71c057abd9ed96d1e071c1e8f80cb1a3ac3ed3cb53fd66f033ce16eeb13c",
+      "behavior": "after all 1918 capacity screens terminate, freeze their complete progress and schedule only remaining passing sources not already in topology waves 00/01; preserve timeouts/errors; no H&E generation",
+      "formal_launch_permitted": false
+    }
   },
   "technical_v5_asset_freeze": {
     "status": "frozen",
@@ -408,5 +413,43 @@
     "generated": 5,
     "measured": 6,
     "u2_primary_tissue_tie_retained": true
+  },
+  "initial7_candidate_condition_preparation": {
+    "started_utc": "2026-11-02T11:34:39.512835+00:00",
+    "scope": "candidate condition preparation only; no H&E generation or automatic target approval",
+    "formal_launch_permitted": false,
+    "patient_count": 7,
+    "candidate_case_count": 28,
+    "selection": "initial census order, first source-topology-qualified nontechnical source per patient; full four-target qualification still required",
+    "source_census_sha256": "81161a185f40a1c13c84989679a770ede4649871f25947861720417ccf27f17c",
+    "exclusion_sha256": "e99577970b5e4c0a09fce4768b2c6e1368b2d0454cc29fa90662848e87f30126",
+    "topology_progress_sha256": "8952838a61744a3d3943b62be6ac9626061f05f10ce12e2bd63f019e52e428d7",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+    "cases_sha256": "ddcfa9dc6e4fe7ad8fadedd87e3ecf81d1a1afa1b0b0b4967278a8d9692e6a0e",
+    "driver_sha256": "1f171468b4f058933591036354e97fc6ed5415c66e319efba6f4ff3d58366f60",
+    "compile_code_commit": "18258d49e6295903473f84d431734373735a83ce",
+    "controller_helper_sha256": "43c08cff3b34460193367c4f5dccf84fb48c3051b82b6dc402f37bc2203cb1d9",
+    "workers": 4,
+    "seconds_per_case": 7200,
+    "gpu": "physical6 mapped cuda0",
+    "status": "running; no automatic target approval",
+    "controller_identity_sha256": "20298e0a543964760f15e65bd664e8363053b81f8d03fad37f2ba4757d17159a"
+  },
+  "supplemental_capacity_v2": {
+    "scope": "source-only necessary capacity; not topology or four target approval",
+    "requested": 1918,
+    "completed": 1918,
+    "passing_sources": 310,
+    "passing_patients": 56,
+    "unknown_sources": 0,
+    "nonpassing_known_sources": 1608,
+    "progress_sha256": "d7998154ad350e8c040fbd4675b93f023d5382c3a96d628f1753845befc99b1c",
+    "formal_launch_permitted": false,
+    "code_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+    "topology_waves": {
+      "00": 51,
+      "01": 89,
+      "02": 170
+    }
   }
 }
