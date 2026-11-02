@@ -576,5 +576,16 @@
     "out_of_manifest_complete_triplets": 0,
     "metadata_full_slide_mappings": 151,
     "at_least_11_qualified_patients_recovered": false
+  },
+  "mounted_bcss_original_assets": {
+    "report": "mounted_bcss_asset_audit_v1.json",
+    "report_sha256": "9c01b0a3faa9400c26aa21e77fc06ad9456d8f0d59da9a9fea59c0a5a573acdd",
+    "raw_triplets": 151,
+    "all_aligned": true,
+    "nuclear_raster_reconstruction_matches": 151,
+    "old_patch_samples_match": 151,
+    "frozen_server_input_hashes_match": 900,
+    "nuclei_checkpoint_sha": "unresolved",
+    "new_qualified_patients": 0
   }
 }

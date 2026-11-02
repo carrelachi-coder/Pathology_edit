@@ -145,3 +145,13 @@
 在限定项目数据根与保留预处理入口中，尚未定位可访问的原始大 ROI RGB/tissue/nuclei 三联；UI 留有 `D:\WQX\datasets\BCSS` 的 Windows 路径。发现的 staging/split 脚本只能解释文件分发和分组，不能补齐原始裁块及核 mask 生成谱系。官方发布列出的 RGB、组织 mask 和注释不能直接证明项目 nuclei_masks 是原始核标注；数据配置里的该注释不作为证据。需要原始资产位置及核条件生成记录后，才能评估新裁块恢复路线；本轮未下载 WSI、未混入其他数据集、未生成新 H&E。
 
 修正工作目录的单例在 **492.19 秒**结束，控制退出 0，无 cell_execution_failures，真实 mature ProbNet 产生三个候选及 diagnostics。但三个候选的实际 J 像素数为 52,505／51,545／51,833，高于该次 desired interval 的上界 50,804，且没有合法 fallback 证明；接缝内中心数 27 也超过该合同允许的 6–22。它们仍未通过 joint-area 和 seam-continuity 等硬门槛，producer 为 abstained，无批准 handoff。结论是模块加载与实际执行已走通，**目标编译资格没有通过**；批量队列不恢复，不进行无新证据重试。
+
+## 本机挂载原始 BCSS 资产核验
+
+用户挂载后，已定位 `/Volumes/DATA/WQX/datasets/BCSS`。只读核验记录见 [挂载原始资产审计](../benchmarks/manuscript_validation_20261102/mounted_bcss_asset_audit_v1.json)。原始 RGB、22 类组织 mask 和核 mask 为 151 个同名三联，全部尺寸一致、标签合法。挂载盘还保留 151 份 CellViT cells.json 及推理、转换、裁块脚本；按历史 contour clipping、type+100 和 fillPoly 规则重建，**151/151 核 mask 均逐像素完全相同**。由此确认核条件为 CellViT 伪标签，不是原始人工核标注。
+
+每位患者固定抽查文件名排序第一张旧 patch，共 151 张；RGB、组织重映射和核 mask 的同位裁块均逐像素匹配。原始 300 来源的全部 900 个输入另与冻结服务器 census SHA 比较，全部一致。该核验不等于对所有 22,870 个 patch 都做了原图像素比对；检查范围及完整私有证据哈希已分开记录。
+
+历史裁块 CLI 默认 stride=256，窗口 512，组织 22 类经固定表映射为统一标签；核 mask 由原始 CellViT JSON 转换后同位裁块。原始 JSON 元数据记录 MPP0.25。核伪标签的精确 checkpoint SHA 尚未恢复，脚本默认 AMP-002 不能证明实际执行权重，也不能冒充当前冻结 AMP-001 评价器。挂载 README 与当前上游许可文字不同，两份来源文字及署名要求均保留，不覆盖历史记录。
+
+这些原始 ROI 仍属于已知 151 个患者，并没有新增独立患者。现在可在冻结新裁块规则后，寻找让尚未合格患者首次通过的新条件；不得重复计数已纳入患者，也不得按 H&E 效果挑选。此轮仅核验原始资产，未筛选新窗口、未增加合格患者、未恢复批量编译、未启动正式 H&E。

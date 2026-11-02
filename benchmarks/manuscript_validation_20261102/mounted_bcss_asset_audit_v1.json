@@ -1,0 +1,92 @@
+{
+  "scope": "read-only mounted original-ROI and historical conversion audit; no new targets or H&E",
+  "mount_root": "/Volumes/DATA/WQX/datasets/BCSS",
+  "raw_triplets": 151,
+  "patient_groups": 151,
+  "all_dimensions_aligned": true,
+  "all_raw_labels_known": true,
+  "cellvit_raster_exact_matches": 151,
+  "patch_samples": 151,
+  "patch_sample_matches": {
+    "rgb_equal": 151,
+    "tissue_equal": 151,
+    "nuclei_equal": 151
+  },
+  "scripts_sha256": {
+    "prepare_bcss_dataset.py": "65652d4dd5bb24fb2ab297cb5a7c079a0970ee77e81e2aff3c5d982b9534d18c",
+    "convert_cellvit_to_masks.py": "190f7456346484a686d314a049f36fda02789653b80665f4a199f8d7d92de7a9",
+    "run_cellvit_inference.py": "ae668129da5ea940caa38c5c9e698f1354d9b669d13cbad6f64f9d5498c9e7e9"
+  },
+  "private_full_evidence_sha256": "b4cc3a307b02f8f3d148697854714dd8aba052285a181cdfcb46f7fe058d3dec",
+  "nuclei_provenance": "CellViT pseudo-labels; exact JSON-to-raster reconstruction checked; checkpoint SHA not yet recovered",
+  "formal_launch_permitted": false,
+  "created_utc": "2026-11-02T15:05:35.462445+00:00",
+  "status": "mounted_assets_verified_with_remaining_lineage_limit",
+  "server_census_comparison": {
+    "scope": "all 300 original candidate source inputs compared to actual frozen server census SHA",
+    "files_checked": 900,
+    "mismatches": [],
+    "mounted_directory_counts": {
+      "images": 22870,
+      "tissue_masks": 22870,
+      "nuclei_masks": 22870
+    },
+    "formal_launch_permitted": false
+  },
+  "audit_script_sha256": "a11b6580b6320c736d59d2a23af0f0c7ebc8c477d59b4d82c9bfa41ae2b9872f",
+  "runtime": {
+    "python": "3.11.6 (main, Nov  2 2023, 04:39:43) [Clang 14.0.3 (clang-1403.0.22.14.1)]",
+    "numpy": "2.4.6",
+    "opencv": "5.0.0",
+    "pillow": "13.0.0"
+  },
+  "native_cellvit_metadata_scale_pairs": [
+    [
+      0.25,
+      0.25
+    ]
+  ],
+  "provenance_files": {
+    "README.md": {
+      "path": "/Volumes/DATA/WQX/datasets/BCSS/README.md",
+      "sha256": "0b07c64296ac54ad12d1daf5a17fc9103307d6c1fb1ffafaa2f9d6430edef27f"
+    },
+    "prepare_bcss_dataset.py": {
+      "path": "/Volumes/DATA/WQX/datasets/BCSS/prepare_bcss_dataset.py",
+      "sha256": "65652d4dd5bb24fb2ab297cb5a7c079a0970ee77e81e2aff3c5d982b9534d18c"
+    },
+    "magnification.csv": {
+      "path": "/Volumes/DATA/WQX/datasets/BCSS/magnification.csv",
+      "sha256": "61db0ae5beafe7dc3ef51fb2be2188c0ca5232befdfba2c584228a4aeabde9cf"
+    },
+    "roiBounds_BaseMagnification.csv": {
+      "path": "/Volumes/DATA/WQX/datasets/BCSS/roiBounds_BaseMagnification.csv",
+      "sha256": "564bc31fdd5808e5d57de40cc65541aad2c1dbc9415e2e0448f25c00ed144d28"
+    },
+    "gtruth_codes.tsv": {
+      "path": "/Volumes/DATA/WQX/datasets/BCSS/gtruth_codes.tsv",
+      "sha256": "78b9ffda84febf95a454d49c83d29031af7be1032aa2413e7e535126d1d9a55f"
+    }
+  },
+  "historical_crop_policy": {
+    "patch_size": 512,
+    "cli_default_stride": 256,
+    "label_map": "mounted script REMAP_TABLE (22 original labels to unified IDs)",
+    "quality_filter": "background <0.30; editing tissue maximum >=0.05",
+    "nuclei_encoding": "CellViT type +100; 0 background"
+  },
+  "limitations": [
+    "Dimensions and labels checked for all 151 raw triplets.",
+    "JSON-to-nuclear-raster equality checked for all 151 ROIs with historical clipping/type+100 rules.",
+    "Old patch pixel correspondence checked for the first filename-sorted patch of each patient, not all 22870 patches.",
+    "All 900 files from the original 300-source server census were SHA-matched, not all exported files.",
+    "Nuclear masks are CellViT pseudo-labels. Exact original checkpoint SHA and executed command remain unproven; script default AMP-002 is not execution evidence or equivalence to the frozen AMP-001 evaluator.",
+    "Native JSON records MPP0.25; no independent physical calibration.",
+    "These are the same 151 patient groups. A different valid crop could qualify a patient not yet counted in the cohort, but multiple crops cannot count as independent patients.",
+    "No new crop or qualified patient added.",
+    "Mounted README records CC BY4.0; pinned upstream README records CC0. Both texts retained and attribution retained."
+  ],
+  "recovery_readiness": "original aligned ROI assets and historical nuclear raster derivation now accessible; freeze source-only crop policy before screening new windows",
+  "new_qualified_patients": 0,
+  "batch_compilation_restarted": false
+}

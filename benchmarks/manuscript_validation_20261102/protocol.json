@@ -322,6 +322,11 @@
     "sha256": "e7e5e7b366682c7153a4b855166907551f82d85b0b554c4dacfcdb9247989fe4",
     "official_patient_set_matches_retained_151": true,
     "recovered_slide_metadata_count": 151,
-    "historical_aliases_unchanged": true
+    "historical_aliases_unchanged": true,
+    "mounted_original_asset_audit": {
+      "report": "mounted_bcss_asset_audit_v1.json",
+      "sha256": "9c01b0a3faa9400c26aa21e77fc06ad9456d8f0d59da9a9fea59c0a5a573acdd",
+      "status": "original triplets verified; new-crop protocol not frozen, no candidate admitted"
+    }
   }
 }
