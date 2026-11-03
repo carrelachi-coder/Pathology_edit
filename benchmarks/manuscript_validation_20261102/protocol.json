@@ -364,5 +364,15 @@
       "upper_including_old_unknown": 19
     },
     "formal_launch_permitted": false
+  },
+  "passive_observer_implementation_20261103": {
+    "report": "../manuscript_validation_20261103/passive_observer_implementation_report_v1.json",
+    "report_sha256": "d370878edbf1411cc8f52a5a1c70c764d75b35d3d63c2e9d9eaa860fcec273af",
+    "status": "implemented_local_checks_passed_pending_independent_review",
+    "frozen_capture_protocol_unchanged": true,
+    "historical_protocol_implementation_status": "status at protocol freeze; see this separate implementation progress report",
+    "execution_permitted": false,
+    "formal_launch_permitted": false,
+    "S07_replayed": false
   }
 }

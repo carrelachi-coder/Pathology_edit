@@ -19,6 +19,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from phase3_mask_edit_refine.passive_observer import observe
+
 from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_mask_edit_refine.gates import GateRegistry
 from phase3_mask_edit_refine.skills import (
@@ -337,6 +339,7 @@ def _qualify_tissue_case(
     mask_skills,
     budget_solver,
 ) -> tuple[dict[str, Any], list[str]]:
+    observe("qualification.begin", case=case, source_tissue=source_tissue)
     allocation = budget_solver.allocate(
         shape=source_tissue.shape,
         budget=case.joint_area_budget,
@@ -373,6 +376,7 @@ def _qualify_tissue_case(
         joint_bundle=bundle,
         allocation=allocation,
     )
+    observe("qualification.preflight", allocation=allocation, preflight=preflight)
     failures = []
     if preflight.required_auxiliary_missing:
         failures.append("required_auxiliary_missing")
@@ -411,12 +415,14 @@ def _qualify_tissue_case(
                 ),
             ).to_metadata()
         except Exception as exc:  # noqa: BLE001 - qualification is fail closed
+            observe("qualification.exception", exception=exc)
             failures.append("whole_mask_topology_witness_not_executable")
             witness = {
                 "schema_version": "joint-candidate-feasibility-compiler-v2",
                 "errors": [f"{type(exc).__name__}: {exc}"],
                 "persisted_target_mask": False,
             }
+    observe("qualification.complete", failures=failures, witness=witness)
     return (
         {
             "budget_allocation": allocation.to_metadata(),

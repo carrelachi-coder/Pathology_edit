@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
+from .passive_observer import observe
+
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.candidates import (
     compile_depth_profile_map,
@@ -161,6 +163,7 @@ def compile_edit_plan_with_witness(
     below the task's hard minimum and never expands to an unselected interface.
     """
 
+    observe("execution.begin", plan=plan, source_mask=source_mask)
     mask = np.asarray(source_mask)
     source_ids = tuple(
         int(value)
@@ -188,6 +191,8 @@ def compile_edit_plan_with_witness(
         source_region=source_region,
         scene=scene,
     )
+    observe("execution.works", works=works, source_region=source_region, target_region=target_region,
+            desired_pixels=desired_pixels, hard_min_pixels=hard_min_pixels, hard_max_pixels=hard_max_pixels)
     if not works:
         raise RefineContractError(
             "execution solver found no legal pixels on the selected interfaces"
@@ -784,6 +789,7 @@ def _prepare_compiler_work(
                 "protected_source_necks": protected_narrow_necks(source_component),
             }
         )
+    observe("envelopes.ready", provisional=provisional, prohibited=prohibited)
     if not provisional:
         return ()
 
@@ -795,6 +801,7 @@ def _prepare_compiler_work(
     )
     assignment = np.argmin(owner_cost, axis=0)
     has_owner = np.any(np.isfinite(owner_cost), axis=0)
+    observe("ownership.ready", assignment=assignment, has_owner=has_owner, owner_cost=owner_cost)
     works: list[_CompilerWork] = []
     for index, item in enumerate(provisional):
         legal = item["legal_envelope"] & has_owner & (assignment == index)
@@ -817,6 +824,7 @@ def _prepare_compiler_work(
                 ),
             )
         )
+    observe("ownership.works", works=works)
     return tuple(item for item in works if item.item_capacity_px > 0)
 
 
@@ -1699,6 +1707,10 @@ def _resolve_topology_safe_area(
                 "valid": bool(valid),
             }
         )
+        observe("probe.complete", allocations=allocations, selected=selected, audits=audits, topology=topology,
+                total=total, desired_pixels=desired_pixels, hard_min_pixels=hard_min_pixels,
+                source_region=source_region, target_region=target_region, combined_change=combined_change,
+                realized=realized, valid=valid)
         return allocations, selected, audits, topology, realized, valid
 
     first = attempt(desired_pixels)
@@ -2139,6 +2151,9 @@ def _simulate_topology_safe_execution(
             allow_target_hole_resolution=allow_target_hole_resolution,
             allow_source_component_split=allow_source_component_split,
         )
+        observe("front.contribution", index=index, requested=requested, pass_index=pass_index,
+                frontier=frontier, selected=selected, audit=audit, deleted_by_source=deleted_by_source,
+                source_states=source_states, target_state=target_state)
         realized = int(np.count_nonzero(selected))
         selected_by_work[index] |= selected
         deleted_by_source[component_id] += realized

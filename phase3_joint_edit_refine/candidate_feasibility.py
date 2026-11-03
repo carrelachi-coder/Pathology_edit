@@ -11,6 +11,8 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
+from phase3_mask_edit_refine.passive_observer import observe
+
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import validate_edit_plan
 from phase3_mask_edit_refine.candidates import (
@@ -861,7 +863,9 @@ class CandidateFeasibilityCompiler:
             # deterministic single-cord operation; later cell-feasibility
             # feedback can revoke it and advance to the next ranked sector.
             maximum_candidates = 1
+        observe("portfolio.preferences", preference_orders=preference_orders, authority_binding=authority_binding)
         for deprioritized, preferred_anchor_ids in preference_orders:
+            observe("portfolio.preference", deprioritized=deprioritized, preferred_anchor_ids=preferred_anchor_ids)
             try:
                 witness = self._compile_one(
                     tissue_case=tissue_case,
@@ -987,6 +991,8 @@ class CandidateFeasibilityCompiler:
             else self.maximum_attempts
         )
         for attempt in range(1, attempt_limit + 1):
+            observe("compiler.attempt", attempt=attempt, feedback=feedback,
+                    preferred_anchor_ids=preferred_anchor_ids, tissue_case=tissue_case)
             raw_plan: EditPlan | None = None
             try:
                 raw_plan, planner_usage = planner.create_joint_tissue_plan(
@@ -998,6 +1004,7 @@ class CandidateFeasibilityCompiler:
                     nuclei_preflight=nuclei_preflight,
                     execution_feedback=feedback,
                 )
+                observe("planner.ready", raw_plan=raw_plan, planner_usage=planner_usage)
                 validate_edit_plan(
                     raw_plan,
                     case=tissue_case,
@@ -1254,6 +1261,7 @@ class CandidateFeasibilityCompiler:
                 )
             except TopologySafeAreaUnderfillError as exc:
                 error = f"{type(exc).__name__}: {exc}"
+                observe("compiler.exception", exception=exc, rendered_error=error, raw_plan=raw_plan, attempt=attempt)
                 errors.append(error)
                 if raw_plan is None:
                     feedback = {
@@ -1274,6 +1282,7 @@ class CandidateFeasibilityCompiler:
                     )
             except Exception as exc:  # noqa: BLE001 - fail closed and audit any compiler failure
                 error = f"{type(exc).__name__}: {exc}"
+                observe("compiler.exception", exception=exc, rendered_error=error, raw_plan=raw_plan, attempt=attempt)
                 errors.append(error)
                 attempted_interface_ids = (
                     [

@@ -11,6 +11,8 @@ from typing import Any
 
 import numpy as np
 from scipy import ndimage
+
+from phase3_mask_edit_refine.passive_observer import observe
 from skimage.morphology import convex_hull_image
 
 from phase3_mask_edit_refine.agents import (
@@ -973,9 +975,11 @@ class MultiInterfaceResearchTissuePlanner:
             item for item in scene.graph.interfaces
             if item.source_label in allowed_sources and item.target_label == bundle.edit_contract.target_label
         ]
+        observe("planner.label_filter", legal=legal, allowed_sources=allowed_sources, front_contract=front_contract)
         if nuclei_preflight is not None:
             feasible_ids = set(nuclei_preflight.feasible_interface_ids)
             legal = [item for item in legal if item.interface_id in feasible_ids]
+        observe("planner.preflight_filter", legal=legal)
         if front_contract.directional_sector_required:
             legal = [
                 item
@@ -1000,6 +1004,7 @@ class MultiInterfaceResearchTissuePlanner:
                 )
                 >= 1
             ]
+        observe("planner.front_filter", legal=legal, front_contract=front_contract)
         if not legal:
             raise RefineContractError(
                 "no directed interface satisfies both the tissue and preflight nuclei contracts"
@@ -1213,6 +1218,9 @@ class MultiInterfaceResearchTissuePlanner:
             if component_turnover or area_underfill_replan
             else min(8, retry_index * 4)
         )
+        observe("planner.ranking", ranked=ranked, capacity_by_id=capacity_by_id,
+                marginal_capacity_by_id=marginal_capacity_by_id, component_capacity_limits=component_capacity_limits,
+                target_pixels=target_pixels, hard_min_pixels=hard_min_pixels)
         capacity_reached_at: int | None = None
         for item in ranked[:32]:
             capacity = capacity_by_id[item.interface_id]
@@ -1234,6 +1242,7 @@ class MultiInterfaceResearchTissuePlanner:
                 and len(selected) >= capacity_reached_at + extra_after_capacity
             ):
                 break
+        observe("planner.selection", selected=selected, capacities=capacities, cumulative=cumulative)
         if not selected:
             raise RefineContractError("preflight left no executable tissue capacity")
         allocation_capacities = _component_capped_allocation_capacities(
@@ -1984,6 +1993,10 @@ def _directional_sector_selection_limit(
     selectable_count = sum(
         not allowed or anchor_id in allowed for anchor_id in interface_ids
     )
+    observe("planner.directional_limit_inputs", interface_ids=interface_ids, allowed_anchor_ids=allowed_anchor_ids,
+            selectable_count=selectable_count, total_anchor_count=total_anchor_count,
+            maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
+            minimum_unselected_anchor_count=minimum_unselected_anchor_count)
     return max(
         0,
         min(

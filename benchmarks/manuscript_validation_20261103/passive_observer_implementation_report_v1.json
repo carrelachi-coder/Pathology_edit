@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "scope": "Local implementation and static/synthetic noninterference checks only; no BCSS qualification replay.",
+  "status": "implemented_local_checks_passed_pending_independent_review",
+  "execution_permitted": false,
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false,
+  "stages": {
+    "P0": "frozen protocol unchanged",
+    "P1": "observer-only implementation complete",
+    "P2": "local static and synthetic checks passed; independent review pending",
+    "P3": "A/B/C not authorized and not executed",
+    "P4": "no new S07 process evidence",
+    "P5": "no algorithm development"
+  },
+  "build_identity": {
+    "business_baseline_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+    "parent_commit": "3b0e74e0b07038ba4d114b6f47f1a8da96714461",
+    "code_files": {
+      "phase3_mask_edit_refine/passive_observer.py": "e5795668c4709a2b258cc8377f7ed353103e0ba200b7c951b94661dfcce031c0",
+      "phase3_mask_edit_refine/observer_comparison.py": "62487f42122a688991fccd2ee3d6367d35ae352c8d1d455ee31550b7e4a2dea5",
+      "scripts/review_passive_topology_observer.py": "fb12712130d3bd35b421f405b19d9cfe67a813fc69a3a0f9b2cc39dbf66f2494",
+      "tests/test_passive_topology_observer.py": "ec14508007e2b611cfcaff6d4549a48837167ecf3d920f47fede116b4d92c6cd",
+      "phase3_mask_edit_refine/execution.py": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e",
+      "phase3_mask_edit_refine/topology.py": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
+      "phase3_joint_edit_refine/candidate_feasibility.py": "4dbf11fa491c943c25e9139c4b26d24d577ffbc39d8cdf1e525fb6a197901993",
+      "phase3_joint_edit_refine/tissue_planner.py": "1f992413da188490e2a66f06a0bc3d661602b3eb736f0e48c0fdd01c10f5954a",
+      "phase3_joint_edit_refine/g2_execution_qualification.py": "f77ebc1958992ccd68887b918bc0f026cb496eea3b842de5dce34976de2552dc"
+    },
+    "commit_binding": "Introducing commit binds these file hashes; a separately frozen execution manifest must record the full observer-build commit and runtime before any replay."
+  },
+  "activation": {
+    "default": "disabled; no active ContextVar observer",
+    "explicit_api": "observation_session(PassiveObserver(...))",
+    "automatic_cli_or_environment_activation": false,
+    "source_probe_or_controller_modified": false,
+    "server_build_installed": false
+  },
+  "static_review": {
+    "path": "passive_observer_validation_v1/static_review.json",
+    "sha256": "e09c7d42cc75f55d2f3ef350db445a1f525e5e9eaa2d586dc6732b46af61565c",
+    "business_files": 5,
+    "observation_calls": 38,
+    "business_ast_unchanged_after_stripping_observer_import_and_calls": true,
+    "argument_review": "Hook arguments are existing names, attributes and constants; no eager function calls/comprehensions, no calls to planner/guard/RNG for logging."
+  },
+  "validation": {
+    "log": "passive_observer_validation_v1/pytest.txt",
+    "log_sha256": "015445282666a05116163ec4184071ac38b351216510a00dc475e7b44847c2db",
+    "tests_passed": 120,
+    "subtests_passed": 85,
+    "new_observer_tests": 43,
+    "command": "python -m pytest -q tests/test_mask_edit_refine.py tests/test_native_topology_diagnosis.py tests/test_passive_topology_observer.py tests/test_joint_edit_refine.py::JointSkillTests::test_single_anchor_interface_is_not_a_directional_sector tests/test_joint_edit_refine.py::StructuralHierarchyTests::test_colorectal_gland_front_requires_a_directional_boundary_sector tests/test_joint_edit_refine.py::StructuralHierarchyTests::test_footprint_front_requires_one_long_shallow_anchor_sector tests/test_joint_edit_refine.py::StructuralHierarchyTests::test_anchor_selection_follows_interface_path_not_opposing_cleft_bank tests/test_joint_edit_refine.py::StructuralHierarchyTests::test_footprint_anchor_selection_prefers_shallow_external_front --disable-warnings",
+    "runtime": {
+      "platform": "macOS-26.5.1-arm64-arm-64bit",
+      "python": "3.11.4 (main, Jul  5 2023, 08:54:11) [Clang 14.0.6 ]",
+      "packages": {
+        "numpy": "1.24.3",
+        "scipy": "1.10.1",
+        "scikit-image": "0.20.0",
+        "Pillow": "10.0.1",
+        "pytest": "9.1.1"
+      }
+    },
+    "fixtures": [
+      "Actual deterministic mask executor on a small synthetic labelled image, observer off/hash_only/full_capture: exact result, plan/audit/selected-raster equality and unchanged input/global RNG states.",
+      "Actual ranged-area underfill path on synthetic image: exact exception type/text/feedback and desired/floor masks, unchanged in off/B/C.",
+      "Actual bounded compiler retry handler with explicitly mocked planner/executor dependencies: three attempts and fixed anchor preferences unchanged under all six recorder faults.",
+      "Actual deterministic directed-interface planner filter with synthetic preflight and stubbed tool compilation: identical pre-plan RefineContractError with retained filter states.",
+      "B/C negative comparisons for input, contract, plan order, anchor order, allocation, mask, topology, exception and RNG differences.",
+      "Lossless detached view copies, explicit nonfinite values, no consumption of lazy iterators, no extra RNG creation/reseeding or CUDA access.",
+      "Truncated event logs, deleted/modified rasters, missing manifest entries and output-directory collisions rejected; event/storage caps invalidate evidence.",
+      "Rejection event counts kept separate from unique pixel sets and cross-guard intersections."
+    ],
+    "fault_injection": [
+      {
+        "fault": "semantic disk write raises",
+        "business_unchanged": true,
+        "evidence_invalid": true
+      },
+      {
+        "fault": "ENOSPC in semantic/raster write",
+        "business_unchanged": true,
+        "evidence_invalid": true
+      },
+      {
+        "fault": "JSON serializer raises, including explicitly encoded nonfinite values",
+        "business_unchanged": true,
+        "evidence_invalid": true
+      },
+      {
+        "fault": "mask copy raises MemoryError",
+        "business_unchanged": true,
+        "evidence_invalid": true
+      },
+      {
+        "fault": "event queue put raises",
+        "business_unchanged": true,
+        "evidence_invalid": true
+      },
+      {
+        "fault": "recorder record() raises",
+        "business_unchanged": true,
+        "evidence_invalid": true
+      },
+      {
+        "fault": "stream close raises",
+        "business_unchanged": true,
+        "evidence_invalid": true
+      }
+    ]
+  },
+  "capture_coverage": [
+    "Source/case and joint preflight, ordered portfolio preferences and retry feedback.",
+    "Planner label/preflight/front filters, existing directional-limit inputs, interface ranking, capacities and selected plans.",
+    "Per-interface pre-ownership legal envelopes/protection/anchors, owner assignment, post-ownership legal masks and deletion budgets.",
+    "Requested allocations and realized contribution masks, desired/floor probe topology, combined change, original source/target binary regions and mutated per-grow source/target states.",
+    "Ordered passed guard stages, first rejection reason/coordinate, accepted coordinates and grow seed/seen/deferred rasters.",
+    "Already existing Python/NumPy RNG state at checkpoints and explicitly passed local generator state; CPU Torch state only when already loaded.",
+    "Structured exceptions and already-rendered compiler error strings; final qualification errors captured without changing the old failed-mask persistence flag."
+  ],
+  "remaining_evidence_limits": [
+    "No real S07 execution or A-versus-historical / real B-versus-C equivalence has been demonstrated. The tests are synthetic CPU evidence, not new qualification.",
+    "AST equivalence and finite fault tests do not prove universal noninterference, unchanged timing, or resistance to OS process termination/resource pressure.",
+    "Only actual evaluated guard-stage outcomes are recorded; short-circuited conditions are not re-evaluated. Offline reconstruction must preserve not_evaluated/unavailable.",
+    "A dense fine-labelled failed target is not materialized by every failing business probe. Selected and before/after binary masks are captured; any later dense reconstruction must be labelled derived, not a saved historical target.",
+    "Ownership, legal-envelope unions/reachability summaries and unique guard sets can be derived offline from recorded arrays/events; they are not additional business guards and do not establish a causal area-loss decomposition.",
+    "CUDA RNG and inaccessible/unpassed local generator states remain explicitly unavailable. Observer does not create or discover generators to fill gaps.",
+    "The strict B/C comparator currently excludes no semantic fields. Any future necessary metadata exclusion must be frozen before execution; none was selected after observing real data.",
+    "Unsupported evidence types or recorder failures invalidate evidence out of band; they never silently become successful capture.",
+    "Old execution environment, full RNG states and internal plans remain unavailable; an unexplained A-versus-old mismatch must remain mismatch_hold."
+  ],
+  "before_any_P3": [
+    "Independent review of observer implementation and this finite synthetic evidence.",
+    "Freeze full observer-build commit, input/case/contract identities, runtime/dependencies, comparison fields and storage reservation in a separate execution manifest.",
+    "Obtain separate explicit authorization for the already frozen maximum three-arm/six-witness replay.",
+    "Keep old results immutable; stop subsequent arms on mismatch/incomplete evidence/recorder fault/timeout; no retry, tuning or new qualification credit."
+  ],
+  "qualification_counts_unchanged": {
+    "source_topology_pass_patients": 17,
+    "upper_including_old_unknown": 19,
+    "new_fully_four_target_approved_patients": 0
+  },
+  "research_invariants": {
+    "patient_target": 30,
+    "nominal_joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "historical_files_preserved": {
+    "limited_topology_capture_protocol_v1.json": {
+      "sha256": "9f8c962ba2f70e588fe527c2b0a8b6a3478d21fee87c4c181335c5920b12da7c",
+      "unchanged_from": "3b0e74e0b07038ba4d114b6f47f1a8da96714461"
+    },
+    "topology_diagnostic_followup_proposal_v1.json": {
+      "sha256": "2a09d65169b75341f304b94f5440901637539e42adb0cf05f08efa097eb58c69",
+      "unchanged_from": "3b0e74e0b07038ba4d114b6f47f1a8da96714461"
+    },
+    "topology_bottleneck_diagnosis_v1.json": {
+      "sha256": "6b43015fe07d454e0746e984bd5366222ac4223a2a36f98412afbb84ad327abf",
+      "unchanged_from": "3b0e74e0b07038ba4d114b6f47f1a8da96714461"
+    },
+    "topology_bottleneck_matrix_v1.csv": {
+      "sha256": "6ae7492b6de6b1dc6a018ba1f6c4e870a2474ebd71bc29b88b0455b0202b02b8",
+      "unchanged_from": "3b0e74e0b07038ba4d114b6f47f1a8da96714461"
+    },
+    "native_source_qualification_report_v1.json": {
+      "sha256": "59a4a0c9ac04f9f8730e8f6ca3edf76428e261202e531ac660256693081e6fc8",
+      "unchanged_from": "3b0e74e0b07038ba4d114b6f47f1a8da96714461"
+    }
+  }
+}

@@ -9,6 +9,8 @@ from functools import lru_cache
 import numpy as np
 from scipy import ndimage
 
+from .passive_observer import observe
+
 
 @dataclass(frozen=True)
 class TopologyGrowAudit:
@@ -61,6 +63,13 @@ def topology_safe_priority_grow(
     in place so several planned interfaces share one auditable topology state.
     """
 
+    observe("grow.begin", allowed=allowed, interface_mask=interface_mask, priority=priority,
+            target_pixels=target_pixels, source_component_state=source_component_state,
+            target_state=target_state, unselected_target=unselected_target,
+            maximum_source_deletions=maximum_source_deletions, already_deleted_from_source=already_deleted_from_source,
+            protected_source_necks=protected_source_necks, seed=seed,
+            allow_source_component_resolution=allow_source_component_resolution,
+            allow_target_hole_resolution=allow_target_hole_resolution, allow_source_component_split=allow_source_component_split)
     legal = np.asarray(allowed, dtype=bool)
     selected = np.zeros_like(legal, dtype=bool)
     requested = max(0, int(target_pixels))
@@ -73,6 +82,7 @@ def topology_safe_priority_grow(
         "source_retention": 0,
     }
     if requested <= 0 or not np.any(legal):
+        observe("grow.empty", selected=selected, counters=counters, reason="no_request_or_legal_pixels")
         return selected, _audit(requested, 0, counters)
 
     seed_region = legal & (
@@ -80,7 +90,9 @@ def topology_safe_priority_grow(
         | _binary_dilation_8(np.asarray(interface_mask, dtype=bool))
     )
     seeds = np.argwhere(seed_region)
+    observe("grow.seeds", seed_region=seed_region, seeds=seeds)
     if seeds.size == 0:
+        observe("grow.empty", selected=selected, counters=counters, reason="no_seeds")
         return selected, _audit(requested, 0, counters)
 
     rng = np.random.default_rng(seed)
@@ -113,12 +125,15 @@ def topology_safe_priority_grow(
     while heap and selected_count < requested:
         _, _, row, col = heapq.heappop(heap)
         if not legal[row, col] or not source_component_state[row, col]:
+            observe("guard.reject", row=row, col=col, reason="not_legal_or_not_source", downstream="not_evaluated")
             continue
         if protected_source_necks is not None and protected_source_necks[row, col]:
             counters["source_connectivity"] += 1
+            observe("guard.reject", row=row, col=col, reason="protected_source_neck", downstream="not_evaluated")
             continue
         if already_deleted_from_source + selected_count >= maximum_source_deletions:
             counters["source_retention"] += 1
+            observe("guard.reject", row=row, col=col, reason="source_retention", downstream="not_evaluated")
             break
 
         reason = _topology_rejection_reason(
@@ -133,6 +148,7 @@ def topology_safe_priority_grow(
             allow_target_hole_resolution=allow_target_hole_resolution,
             allow_source_component_split=allow_source_component_split,
         )
+        observe("guard.local_result", row=row, col=col, reason=reason)
         if reason is not None:
             counters[reason] += 1
             if reason != "unselected_target_contact":
@@ -148,6 +164,7 @@ def topology_safe_priority_grow(
         source_component_state[row, col] = False
         target_state[row, col] = True
         selected_count += 1
+        observe("guard.accept", row=row, col=col, selected_count=selected_count)
         for row_offset, col_offset in neighbor_offsets:
             next_row, next_col = row + row_offset, col + col_offset
             if not (
@@ -179,6 +196,9 @@ def topology_safe_priority_grow(
                     int(next_col),
                 ),
             )
+    observe("grow.end", selected=selected, counters=counters, selected_count=selected_count,
+            source_component_state=source_component_state, target_state=target_state, rng=rng,
+            seen=seen, deferred=deferred)
     return selected, _audit(requested, selected_count, counters)
 
 
@@ -260,6 +280,7 @@ def _topology_rejection_reason(
 
     if not source_component_state[row, col]:
         return "source_connectivity"
+    observe("guard.stage", stage="source_present", row=row, col=col)
     source_pattern = _neighbor_pattern_at(
         source_component_state, row, col, outside=False
     )
@@ -272,6 +293,7 @@ def _topology_rejection_reason(
     ):
         return "source_connectivity"
 
+    observe("guard.stage", stage="source_connectivity_passed", row=row, col=col, value=source_neighbor_components)
     # Removing a source pixel adds one background pixel.  Zero adjacent
     # background components creates a new source hole; more than one joins
     # previously separate background regions and removes a protected hole.
@@ -291,6 +313,7 @@ def _topology_rejection_reason(
     ):
         return "source_hole_change"
 
+    observe("guard.stage", stage="source_hole_passed", row=row, col=col, value=source_background_components)
     target_pattern = _neighbor_pattern_at(target_state, row, col, outside=False)
     target_neighbor_components = _cached_local_component_count(
         target_pattern, 8, False
@@ -302,6 +325,7 @@ def _topology_rejection_reason(
     ):
         return "target_hole_change"
 
+    observe("guard.stage", stage="target_connectivity_passed", row=row, col=col, value=target_neighbor_components)
     # Adding a target pixel removes one background pixel.  If that pixel is a
     # local articulation of target background, the new target front closes a
     # ring and creates a target hole.  If it is an isolated background pixel,
@@ -323,6 +347,7 @@ def _topology_rejection_reason(
     ):
         return "target_hole_change"
 
+    observe("guard.stage", stage="target_hole_passed", row=row, col=col, value=target_background_components)
     if _neighbor_pattern_at(unselected_target, row, col, outside=False):
         return "unselected_target_contact"
     return None
