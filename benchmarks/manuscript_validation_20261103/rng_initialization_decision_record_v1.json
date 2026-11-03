@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "status": "candidate_decision_pending_independent_approval",
+  "execution_permitted": false,
+  "protocol_amendment_approved": false,
+  "scope": "RNG initialization decision only; original capture protocol and execution manifest v1 remain immutable. No business modules or S07 witnesses executed.",
+  "options": [
+    {
+      "id": "A_natural_exec",
+      "assessment": "reject for strict noninterference",
+      "reason": "Independent interpreter RNG and hash secrets differ; v1 preflight already demonstrates uncontrolled RNG mismatch."
+    },
+    {
+      "id": "B_controlled_exec",
+      "assessment": "possible alternative, not selected",
+      "reason": "Requires explicit pre-start PYTHONHASHSEED and reviewed default-generator restore/import order; cannot set the interpreter hash secret through random.setstate()."
+    },
+    {
+      "id": "C_raw_fork",
+      "assessment": "reject as sufficient control",
+      "evidence": "Same native hash secret/NumPy/Torch CPU states are inherited, but target CPython reseeds Python random in the child; raw fork probe failed complete initial-state equality."
+    },
+    {
+      "id": "C_controlled_postfork_restore",
+      "assessment": "recommended candidate for separate review; not authorized",
+      "method": "A single CPU-only, single-native-thread parent preloads standard RNG modules, NumPy and Torch CPU in fixed order, captures/seals a new common live-startup state, and forks A/B/C sequentially without exec. Each child explicitly restores Python, NumPy legacy and Torch CPU defaults to that common state before any business import; checks full initial digest and inherited hash fingerprint. No numeric reseeding or local-Generator replacement."
+    }
+  ],
+  "recommended_policy": "common_parent_explicit_postfork_restore_v1",
+  "experimental_semantics": {
+    "new_condition": true,
+    "applies_to": [
+      "A_controlled_legacy",
+      "B_hash_only",
+      "C_full_capture"
+    ],
+    "A_meaning": "Original 20ace976 business code under a newly disclosed controlled startup condition, not recovery/replay of the historical random trajectory. Compare all actually retained old business fields; mismatch remains hold.",
+    "parent_import_order": [
+      "controller standard library identity checks",
+      "NumPy",
+      "Torch CPU, CUDA_VISIBLE_DEVICES empty",
+      "startup helper; no phase3_ or inpaint_cells business modules"
+    ],
+    "fork_guards": [
+      "Linux actual native-thread count exactly one",
+      "CUDA must remain uninitialized",
+      "no business modules in parent",
+      "no exec between fork and business",
+      "same inherited CPython hash secret, PYTHONHASHSEED and fixed-string hash fingerprint"
+    ],
+    "state_control": [
+      "Python random default getstate/setstate",
+      "NumPy legacy get_state/set_state",
+      "preloaded Torch default CPU generator get_state/set_state",
+      "live state sealed to exclusive private file before arm A; digest in each child before business imports"
+    ],
+    "hash_control": "Inherit one parent interpreter hash secret without exec; PYTHONHASHSEED may remain null. Fingerprint supports same-run identity; it neither exposes the secret nor recovers the old one.",
+    "local_generators": "Never discover/reseed/replace business-local Generators; preserve case seed 42 and existing creation code. Observe those passed to the recorder; inaccessible states remain unavailable, not asserted equal.",
+    "non_claims": [
+      "not historical RNG recovery",
+      "not proof of runtime noninterference",
+      "not a replacement for full B/C semantic comparison",
+      "not approved by code-review acceptance alone"
+    ],
+    "required_before_launch": "Explicit review/approval of this startup-control addendum, then a separate manifest-bound S07 execution authorization. The frozen protocol is not silently rewritten."
+  },
+  "server_nonbusiness_evidence": {
+    "report": "controller_startup_validation_v1/server_startup_probe.json",
+    "sha256": "636004a67fc172e6baedb7020cab2958ae94541ea5f341d8482b156b8c31af9e",
+    "witness_calls": 0,
+    "helper_children": 4,
+    "torch_cpu_preloaded": true,
+    "raw_fork_equal": false,
+    "controlled_restore_equal": true,
+    "hash_numpy_torch_inheritance": "Individual digests retained in report; raw children differ in Python state."
+  },
+  "controller_design": {
+    "source": "scripts/run_limited_topology_controller.py",
+    "sha256": "79506d1bdddb9461185d2a23ba0992f948c473a26e4fca47a11f7fea2e4e8bd9",
+    "authorization_before_import_or_output": true,
+    "finite_limits": {
+      "source_processes": 3,
+      "witness_calls": 6,
+      "seconds_per_source_pair": 1200,
+      "retries": 0
+    },
+    "source_scope": "exact original probe, frozen source subset index7, limit1, original templates; two operations per source",
+    "stop_on": [
+      "historical A mismatch",
+      "A/B business mismatch",
+      "B evidence invalid",
+      "B/C semantic mismatch",
+      "arm timeout/nonzero exit/signal",
+      "comparison exception or helper timeout",
+      "identity/storage drift",
+      "parent interruption"
+    ],
+    "comparison_import_isolation": "Observer/comparator are imported only in arm/helper children; parent does not import them between B/C, preserving module availability/import-order control.",
+    "additional_helper_budget": "At most two offline evidence-check children, each30s; zero witness calls. Three source processes / six logical witness reservations remain the business budget.",
+    "receipt_policy": "Exact complete business receipt equality; no post-hoc exclusions. Raw auxiliary/output path differences can still hold the run; no normalization is introduced."
+  },
+  "local_validation": {
+    "log": "controller_startup_validation_v1/pytest.txt",
+    "sha256": "4ab4492c7a262f6309fe9d2ff91d3e721f6ad2892f636996efb3ecbcc3519bfc",
+    "controller_startup_tests": 38,
+    "specified_collection_tests_passed": 177,
+    "subtests_passed": 85,
+    "whole_repository_CI": false,
+    "real_S07_tested": false,
+    "faults": "A/B/C-stage nonzero exits, SIGKILL, timeout, mismatches, invalid evidence and assessment exceptions; no later launch or retry; source-limit/args/mode mutations rejected; parent cancellation kills/reaps child."
+  },
+  "preserved": {
+    "observer_and_business_source_unchanged_from": "c119c600e7479aef9046087745e7be34f57cbc29",
+    "qualification_patients": 17,
+    "upper_including_old_unknown": 19,
+    "new_four_target_approved": 0,
+    "formal_target": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}

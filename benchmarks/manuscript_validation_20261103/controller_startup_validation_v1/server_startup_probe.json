@@ -1,0 +1,102 @@
+{
+  "scope": "non-business startup control experiment; not A/B/C",
+  "execution_permitted": false,
+  "witness_calls": 0,
+  "parent_native_threads": 1,
+  "torch_preloaded_cpu_only": true,
+  "PYTHONHASHSEED": null,
+  "parent_digests": {
+    "python": "64fd6bc0dc94ed61fcf2a1f5f92d45244dff52d5afab4f4efe6bdc1e43f6286f",
+    "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+    "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+    "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+    "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+  },
+  "children": [
+    {
+      "mode": "raw_fork",
+      "index": 0,
+      "native_threads": 1,
+      "before": {
+        "python": "88a20e889e45eb5ad41510e75fc09a2adc8c5431e45c3372939a0a4805d5f0ad",
+        "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+        "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+        "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "after": {
+        "python": "88a20e889e45eb5ad41510e75fc09a2adc8c5431e45c3372939a0a4805d5f0ad",
+        "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+        "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+        "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "after_matches_parent": false,
+      "business_modules_loaded": false
+    },
+    {
+      "mode": "raw_fork",
+      "index": 1,
+      "native_threads": 1,
+      "before": {
+        "python": "afa7421aa039697cc92f30675400517337e44a21417532480d4ab3b6e5b189e4",
+        "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+        "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+        "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "after": {
+        "python": "afa7421aa039697cc92f30675400517337e44a21417532480d4ab3b6e5b189e4",
+        "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+        "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+        "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "after_matches_parent": false,
+      "business_modules_loaded": false
+    },
+    {
+      "mode": "controlled_postfork_restore",
+      "index": 0,
+      "native_threads": 1,
+      "before": {
+        "python": "67b4fb3b6e53cbcb90ad40a24749dd7209f8ed0ee98858a875125f4883b7f966",
+        "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+        "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+        "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "after": {
+        "python": "64fd6bc0dc94ed61fcf2a1f5f92d45244dff52d5afab4f4efe6bdc1e43f6286f",
+        "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+        "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+        "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "after_matches_parent": true,
+      "business_modules_loaded": false
+    },
+    {
+      "mode": "controlled_postfork_restore",
+      "index": 1,
+      "native_threads": 1,
+      "before": {
+        "python": "bd713f585b65a8c392aef195bfb6154b0211e41c43ab65736282037ad784147e",
+        "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+        "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+        "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "after": {
+        "python": "64fd6bc0dc94ed61fcf2a1f5f92d45244dff52d5afab4f4efe6bdc1e43f6286f",
+        "numpy": "11bda857b4dcaccffd89fc53e783868bb88f9a8de13a33a7775a351ca0387ef3",
+        "torch_cpu": "8f662faec047b6010ad550ad688a8c58952eeebf76fbcd1a73ea7d376f777d5c",
+        "hash_fingerprint": "efe081269bebef0722310dc9a58d15cdd18864fd88c2efd80e4230f1dced7440",
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "after_matches_parent": true,
+      "business_modules_loaded": false
+    }
+  ],
+  "historical_rng_recovered": false
+}
