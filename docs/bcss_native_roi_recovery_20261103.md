@@ -174,3 +174,19 @@ Hash-only与full-capture使用完全相同的语义序列；完整模式额外�
 本轮结果只支持“记录器已实现、本地静态及合成检查通过，待独立审查”。不证明S07实跑的非干扰性，不补齐旧运行缺失的随机状态或计划；CUDA和未传入的局部生成器状态仍明确不可获取。失败probe若未生成完整fine-label目标图，只记录实际存在的变化mask及源／目标二值状态，后续重建必须标为derived，不能声称捕获了不存在的历史目标。合法域／可达性和guard唯一像素汇总留给离线分析，不增加业务判定。
 
 进入P3前仍须独立审查实现、冻结observer完整commit与运行环境／输入合同／比较字段／存储配置，并另行取得有限复验授权。若未来利用S07开发算法，须另定患者级开发／独立验收划分。当前仍为17位源拓扑通过、含旧unknown上限19位、新增四目标批准0位；30位目标、19%／32%名义预算和14%／27%组织硬下限不变，批量四目标、H&E和医生研究继续关闭。
+
+## 记录器资源保护及完成证据补强：本地验收，不执行S07
+
+[本轮报告](../benchmarks/manuscript_validation_20261103/passive_observer_resource_report_v1.json) 将资源保护与前轮实现验收分开留存；冻结协议、前轮120项测试日志及报告均保持原样。
+
+复制数组前先核查逻辑`nbytes`、剩余存储、单个独立数组上限和artifact数量上限，连巨大broadcast view也不能先复制再检查。默认独立数组payload上限64 MiB、每事件metadata保守计费上限8 MiB、artifact库存上限100,000。文件哈希使用1 MiB分块读取，数组哈希使用分块memoryview，消除`read_bytes()`和`tobytes()`产生的整块副本。比较器对raster采用只读mmap校验。超限仍只使诊断无效，不改变业务结果。上述限额约束受控payload与库存，不能解释成整个进程RSS或OS资源压力已有硬保证；离线比较仍保留解码后的事件列表。
+
+本轮还关闭了一个实际完成状态漏洞：summary写出后、关闭时报错，磁盘上可能已留下`valid=true`内容。因此v2证据必须额外具有完成标记，绑定summary SHA。只有summary成功关闭、pending完成标记写出／fsync／关闭成功后才发布最终标记；任何一步失败均不得据有效外观的summary接受证据。异常离开观测session也标记无效，并原样重新抛出业务异常。
+
+比较器要求语义数组计数、summary计数与完整捕获manifest逐项对应，拒绝重复引用、孤立／缺失raster、符号链接、错误序号及有fault却标为valid的summary。每个文件和解码内容仍检查哈希、dtype、shape。旧v1 summary不会被静默升级为新v2完成证据。完成标记用于检测意外缺失和损坏，不是防篡改签名。
+
+[本轮指定测试集合](../benchmarks/manuscript_validation_20261103/passive_observer_resource_validation_v1/pytest.txt) **137项通过，另85项subtest通过**；观测器测试60项，新增17个资源与完成状态边界场景，包括复制回调前拒绝、禁止整文件读取、部分写入、重复引用、孤立文件、关闭失败和异常退出。专门验证：即使summary内容已完整写出且写着`valid=true`，summary关闭或完成标记关闭失败也不会被比较器接受；自洽更新summary哈希也无法使重复artifact引用合法。
+
+[静态审查](../benchmarks/manuscript_validation_20261103/passive_observer_resource_validation_v1/static_review.json) 仍为5个业务文件、38处观测调用；本轮没有修改这些业务文件。上述结果是本地静态／合成及指定回归集合，不是全仓CI，也不是Vercel部署状态的替代解释。未运行真实S07、未验证真实B/C一致性或OS级终止／严重压力。
+
+当前实现待独立代码终审。P3前还须另存并冻结实际observer完整commit、源输入和case mapping／合同、Python与依赖、资源限额及存储身份，并取得单独执行授权；本轮未将这些执行准备描述为已经完成。S07 A/B/C仍未授权、未执行；17／19资格记录、30位患者目标、19%／32%名义预算、14%／27%组织硬下限及正式实验关闭状态均不变。

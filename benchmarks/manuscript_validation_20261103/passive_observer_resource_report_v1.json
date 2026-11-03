@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "status": "resource_hardening_local_checks_passed_pending_independent_review",
+  "scope": "Observer resource protection and evidence-integrity follow-up only; local specified static/synthetic regression set, not whole-repository CI or real replay.",
+  "parent_commit": "558d03362612a03b58795e1b77b02bae3bce506f",
+  "execution_permitted": false,
+  "S07_ABC_executed": false,
+  "server_build_installed": false,
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false,
+  "code_files_sha256": {
+    "phase3_mask_edit_refine/passive_observer.py": "7228aecb6d47078ca56d221dae2f850e9c3d2cdc7ec9b131e5a309eb501625cc",
+    "phase3_mask_edit_refine/observer_comparison.py": "434fc10a8171a1fd17554ff0ba43a5bcd677f375ad4f021712ea8d1a26afc692",
+    "tests/test_passive_topology_observer.py": "9624ef84da5b7e5a44e920d568639897597eba74c6c1a996cb522812a401155f"
+  },
+  "resource_protection": {
+    "checks_before_copy": [
+      "logical ndarray nbytes including broadcast/strided views",
+      "remaining declared storage including 4096-byte header reservation",
+      "maximum detached array payload",
+      "maximum artifact inventory"
+    ],
+    "defaults": {
+      "max_array_bytes": 67108864,
+      "max_event_metadata_bytes": 8388608,
+      "max_artifacts": 100000,
+      "hash_chunk_bytes": 1048576,
+      "existing_max_storage_bytes": 4294967296
+    },
+    "metadata_limit_scope": "Conservative encoded-payload accounting, checked during recursive encoding before constructing the corresponding metadata; not a measured Python heap cap.",
+    "hashing": "Detached array content is hashed through chunked memoryviews; file SHA256 uses bounded 1 MiB reads. No whole-raster read_bytes or array.tobytes allocation.",
+    "comparison": "Raster verification uses read-only mmap and the same chunked hashes; semantic log is read line-by-line, but decoded events are retained for strict comparison.",
+    "failure_policy": "Any limit/copy/hash/write failure invalidates diagnosis out of band without changing business decisions or retry behavior.",
+    "limits": "These bounds cover observer-controlled payloads/inventory and avoid the identified large duplicate allocations. They do not cap total process RSS, allocator overhead, NumPy internals, OS page cache or the whole offline event list; OS termination and severe pressure remain unvalidated."
+  },
+  "evidence_integrity": {
+    "summary_schema_version": 2,
+    "completion": "After summary close succeeds, write and fsync a deterministic pending completion marker, close it, then publish completion. Marker binds the summary SHA256. Missing/unfinished marker causes mismatch_hold.",
+    "summary_rules": [
+      "reject recorded faults even if valid flag says true",
+      "semantic array count must equal summary array count",
+      "full-capture array occurrences and artifact inventory must match one-to-one in order",
+      "reject duplicate file references, missing/orphan raster files, symlinks and unexpected indexed names",
+      "verify file digest, dtype, shape and decoded array digest"
+    ],
+    "aborted_scope": "An uncaught exception leaving observation_session marks evidence invalid and re-raises the same business exception; no completion marker is published.",
+    "compatibility": "New comparator requires summary schema v2 and completion marker; old v1 evidence remains historical and is not silently upgraded or accepted as v2.",
+    "limitations": "Completion hashes detect accidental incomplete/modified evidence; they are not signatures and cannot prevent malicious rewriting of an entire self-consistent evidence directory."
+  },
+  "validation": {
+    "tests_passed": 137,
+    "subtests_passed": 85,
+    "observer_tests": 60,
+    "new_resource_boundary_cases": 17,
+    "log": "passive_observer_resource_validation_v1/pytest.txt",
+    "log_sha256": "9aa5923521d75089a8269183e39e2acaa6aeb23156a2045fd7fa393f0f63d1e6",
+    "static_review": "passive_observer_resource_validation_v1/static_review.json",
+    "static_review_sha256": "8b849b20b8d139eebe8fc8bcd9c1871dda5e3b54ec8ce8cb82f39801b8fba4a1",
+    "business_files_AST_unchanged": 5,
+    "business_observation_calls_unchanged": 38,
+    "new_cases": [
+      "both modes reject array/storage/inventory limits before detached-copy callback (six cases)",
+      "bounded read sizes in chunked file hashing",
+      "full capture and comparison work while Path.read_bytes is forbidden",
+      "partial raster write, duplicate reference, orphan file and fault hidden behind valid flag (four cases)",
+      "metadata limit leaves actual synthetic executor result unchanged",
+      "aborted session preserves exception identity and invalidates evidence",
+      "summary-close and completion-close failures leave no accepted completion marker (two cases)",
+      "duplicate artifact rejected even with self-consistent edited summary/completion hash"
+    ],
+    "runtime": {
+      "python": "3.11.4 (main, Jul  5 2023, 08:54:11) [Clang 14.0.6 ]",
+      "platform": "macOS-26.5.1-arm64-arm-64bit",
+      "packages": {
+        "numpy": "1.24.3",
+        "scipy": "1.10.1",
+        "scikit-image": "0.20.0",
+        "Pillow": "10.0.1",
+        "pytest": "9.1.1"
+      }
+    },
+    "claim_boundary": "Local selected static and synthetic checks only. No Python CI claim, no interpretation of Vercel deployment status as test evidence, no real S07 B/C noninterference result."
+  },
+  "preserved_historical_files_sha256": {
+    "limited_topology_capture_protocol_v1.json": "9f8c962ba2f70e588fe527c2b0a8b6a3478d21fee87c4c181335c5920b12da7c",
+    "topology_diagnostic_followup_proposal_v1.json": "2a09d65169b75341f304b94f5440901637539e42adb0cf05f08efa097eb58c69",
+    "passive_observer_implementation_report_v1.json": "d370878edbf1411cc8f52a5a1c70c764d75b35d3d63c2e9d9eaa860fcec273af",
+    "passive_observer_validation_v1/static_review.json": "e09c7d42cc75f55d2f3ef350db445a1f525e5e9eaa2d586dc6732b46af61565c",
+    "passive_observer_validation_v1/pytest.txt": "015445282666a05116163ec4184071ac38b351216510a00dc475e7b44847c2db",
+    "native_source_qualification_report_v1.json": "59a4a0c9ac04f9f8730e8f6ca3edf76428e261202e531ac660256693081e6fc8"
+  },
+  "qualification_counts_unchanged": {
+    "source_topology_pass_patients": 17,
+    "upper_including_old_unknown": 19,
+    "new_fully_four_target_approved_patients": 0
+  },
+  "research_invariants": {
+    "patient_target": 30,
+    "nominal_joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "remaining_before_P3": [
+    "independent final code review",
+    "freeze full observer build commit, actual inputs/case mapping/contracts, runtime/dependencies and resource/storage configuration in a separate execution manifest",
+    "separate explicit authorization for S07/U1 and S07/U2 only, A then B then C, at most six witness calls; mismatch/timeout/incomplete evidence stops subsequent arms"
+  ],
+  "execution_preparation_scope": "No execution identity manifest is represented as complete here; environment/storage freeze and any authorized deployment remain future work."
+}

@@ -642,5 +642,14 @@
     "execution_permitted": false,
     "formal_launch_permitted": false,
     "S07_replayed": false
+  },
+  "passive_observer_resource_hardening_20261103": {
+    "report": "../manuscript_validation_20261103/passive_observer_resource_report_v1.json",
+    "report_sha256": "95b4f4d473b8e1badfb5ed7848d237ed82d22f1ca2ef06b8fa66eab1dcc26f59",
+    "status": "resource_hardening_local_checks_passed_pending_independent_review",
+    "frozen_capture_protocol_unchanged": true,
+    "execution_permitted": false,
+    "formal_launch_permitted": false,
+    "S07_replayed": false
   }
 }

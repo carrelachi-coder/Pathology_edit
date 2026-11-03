@@ -43,6 +43,8 @@ def _compile(fixture, observer=None):
             # Normalize results with the strict passive encoder, not by final area alone.
             encoder = po.PassiveObserver.__new__(po.PassiveObserver)
             encoder.mode = 'hash_only'; encoder._arrays = 0; encoder.bytes_written = 0; encoder.max_bytes = 10**9
+            encoder.max_array_bytes = 64 * 1024**2; encoder.max_artifacts = 100_000
+            encoder.max_event_metadata_bytes = 8 * 1024**2; encoder._metadata_used = 0
             return ('success', encoder._encode(result))
         except RefineContractError as exc:
             return ('failure', type(exc).__name__, str(exc), getattr(exc, 'feedback', None))
@@ -399,3 +401,131 @@ def test_directed_interface_rejection_keeps_pre_plan_filter_evidence(tmp_path):
     events, _ = _load(tmp_path/'C')
     assert [e['event'] for e in events] == ['planner.label_filter', 'planner.preflight_filter', 'planner.front_filter']
     assert dict(events[-1]['values']['mapping'])['legal']['items'] == []
+
+
+@pytest.mark.parametrize('mode', ['hash_only', 'full_capture'])
+@pytest.mark.parametrize('limit', ['array', 'storage', 'inventory'])
+def test_resource_limit_checked_before_detached_copy(tmp_path, monkeypatch, mode, limit):
+    options = {'array':{'max_array_bytes':8}, 'storage':{'max_bytes':8}, 'inventory':{'max_artifacts':0}}[limit]
+    obs = po.PassiveObserver(tmp_path/(mode+limit), mode=mode, **options)
+    copies = []
+    monkeypatch.setattr(obs, '_copy_array', lambda value: copies.append('must not copy'))
+    # Broadcast view has huge logical nbytes but occupies a single source byte.
+    large_view = np.broadcast_to(np.zeros(1, dtype=np.uint8), (1024, 1024))
+    with po.observation_session(obs):
+        po.observe('large', mask=large_view)
+    assert not copies and not obs.status()['valid']
+    assert not list(obs.directory.glob('array_*.npy'))
+
+
+def test_chunked_file_hashing_without_whole_file_read(tmp_path, monkeypatch):
+    import hashlib
+    data = bytes(range(251)) * 9000
+    path = tmp_path/'chunked'; path.write_bytes(data)
+    expected = hashlib.sha256(data).hexdigest()
+    sizes = []
+    original = Path.open
+    class BoundedReader:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self
+        def __exit__(self, *args): self.stream.close()
+        def read(self, size):
+            sizes.append(size)
+            assert 0 < size <= po.HASH_CHUNK_BYTES
+            return self.stream.read(size)
+    def wrapped(self, mode='r', *args, **kwargs):
+        stream = original(self, mode, *args, **kwargs)
+        return BoundedReader(stream) if self == path and mode == 'rb' else stream
+    monkeypatch.setattr(Path, 'open', wrapped)
+    monkeypatch.setattr(Path, 'read_bytes', lambda *a: pytest.fail('whole-file allocation'))
+    assert po.file_sha256(path) == expected and len(sizes) > 2
+
+
+def test_full_capture_and_comparison_do_not_read_entire_raster(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, 'read_bytes', lambda *a: pytest.fail('whole-file allocation'))
+    for mode, name in [('hash_only','B'), ('full_capture','C')]:
+        obs = po.PassiveObserver(tmp_path/name, mode=mode)
+        with po.observation_session(obs):
+            po.observe('mask', value=np.arange(300, dtype=np.uint16).reshape(15,20))
+        assert obs.status()['valid']
+    assert compare_observer_runs(tmp_path/'B', tmp_path/'C')['status'] == 'semantic_match'
+
+
+@pytest.mark.parametrize('case', ['partial_write', 'duplicate_reference', 'orphan', 'fault_hidden_by_valid_flag'])
+def test_raster_summary_boundaries_fail_closed(tmp_path, monkeypatch, case):
+    for mode, name in [('hash_only','B'), ('full_capture','C')]:
+        obs = po.PassiveObserver(tmp_path/name, mode=mode)
+        if case == 'partial_write' and name == 'C':
+            def broken(array):
+                (obs.directory/'array_00000001.npy').write_bytes(b'partial raster')
+                raise OSError(errno.ENOSPC, 'partial write')
+            monkeypatch.setattr(obs, '_write_raster', broken)
+        with po.observation_session(obs):
+            po.observe('masks', first=np.eye(2, dtype=np.uint8), second=np.eye(2, dtype=np.uint8))
+    path = tmp_path/'C/observer_status.json'; data = json.loads(path.read_text())
+    if case == 'partial_write':
+        assert data['status']['valid'] is False
+        assert data['status']['faults']
+    elif case == 'duplicate_reference':
+        # Equal content/shape/dtype must not make a duplicated file reference legal.
+        data['artifacts'][1] = dict(data['artifacts'][0])
+    elif case == 'orphan':
+        (tmp_path/'C/array_99999999.npy').write_bytes(b'partial orphan')
+    else:
+        data['status']['faults'] = [{'stage':'write', 'type':'OSError'}]
+        data['status']['valid'] = True
+    path.write_text(json.dumps(data))
+    assert compare_observer_runs(tmp_path/'B', tmp_path/'C')['status'] == 'mismatch_hold'
+
+
+def test_metadata_limit_invalidates_without_affecting_business(tmp_path):
+    obs = po.PassiveObserver(tmp_path/'metadata', mode='full_capture', max_event_metadata_bytes=32)
+    assert _compile(_fixture(), obs) == _compile(_fixture())
+    assert not obs.status()['valid']
+
+
+def test_aborted_session_is_invalid_and_business_exception_is_unchanged(tmp_path):
+    obs = po.PassiveObserver(tmp_path/'aborted', mode='hash_only')
+    original = RuntimeError('synthetic external interruption')
+    with pytest.raises(RuntimeError) as raised:
+        with po.observation_session(obs):
+            po.observe('before_interruption', value=1)
+            raise original
+    assert raised.value is original and not obs.status()['valid']
+    assert not (obs.directory/'observer_complete.json').exists()
+
+
+@pytest.mark.parametrize('fault', ['summary_close', 'completion_close'])
+def test_valid_looking_summary_cannot_hide_a_close_failure(tmp_path, monkeypatch, fault):
+    obs = po.PassiveObserver(tmp_path/fault, mode='hash_only')
+    original_open = Path.open
+    target = obs.directory / ('observer_status.json' if fault == 'summary_close' else 'observer_complete.pending')
+    class FailAfterClose:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self.stream
+        def __exit__(self, *args):
+            self.stream.close()
+            raise OSError('failure after all bytes reached file')
+    def patched(self, *args, **kwargs):
+        stream = original_open(self, *args, **kwargs)
+        return FailAfterClose(stream) if self == target and args and args[0] == 'x' else stream
+    with monkeypatch.context() as m:
+        m.setattr(Path, 'open', patched)
+        with po.observation_session(obs):
+            po.observe('complete_data', mask=np.eye(2, dtype=np.uint8))
+    assert json.loads((obs.directory/'observer_status.json').read_text())['status']['valid'] is True
+    assert not obs.status()['valid'] and not (obs.directory/'observer_complete.json').exists()
+    with pytest.raises(FileNotFoundError):
+        _load(obs.directory)
+
+
+def test_duplicate_artifact_is_rejected_even_with_a_self_consistent_completion_marker(tmp_path):
+    obs = po.PassiveObserver(tmp_path/'duplicate', mode='full_capture')
+    with po.observation_session(obs):
+        po.observe('same_bytes', a=np.eye(2, dtype=np.uint8), b=np.eye(2, dtype=np.uint8))
+    path = obs.directory/'observer_status.json'
+    data = json.loads(path.read_text()); data['artifacts'][1] = dict(data['artifacts'][0])
+    path.write_text(json.dumps(data))
+    (obs.directory/'observer_complete.json').write_text(json.dumps({'summary_sha256':po.file_sha256(path)}))
+    with pytest.raises(ValueError, match='duplicate artifact reference'):
+        _load(obs.directory)

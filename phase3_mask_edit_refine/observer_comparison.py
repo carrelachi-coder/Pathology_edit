@@ -5,22 +5,29 @@ from pathlib import Path
 
 import numpy as np
 
+from .passive_observer import array_sha256, file_sha256
+
 
 def _load(directory):
     root = Path(directory)
+    complete = json.loads((root / 'observer_complete.json').read_text())
+    if complete['summary_sha256'] != file_sha256(root / 'observer_status.json'):
+        raise ValueError('summary does not match completed capture')
     saved = json.loads((root / 'observer_status.json').read_text())
     status = saved['status']
-    if not (status['valid'] and status['closed'] and status['interpretation_permitted']):
+    if status.get('schema_version') != 2:
+        raise ValueError('unsupported observer summary schema')
+    if not (status['valid'] and status['closed'] and status['interpretation_permitted']) or status.get('faults'):
         raise ValueError('invalid or incomplete observer evidence')
-    lines = (root / 'semantic.jsonl').read_text().splitlines(keepends=True)
     chain = '0' * 64
     events = []
-    for i, line in enumerate(lines):
-        event = json.loads(line)
-        if event['sequence'] != i:
-            raise ValueError('event sequence gap')
-        events.append(event)
-        chain = hashlib.sha256((chain + line).encode('utf-8')).hexdigest()
+    with (root / 'semantic.jsonl').open(encoding='utf-8') as stream:
+        for i, line in enumerate(stream):
+            event = json.loads(line)
+            if event['sequence'] != i:
+                raise ValueError('event sequence gap')
+            events.append(event)
+            chain = hashlib.sha256((chain + line).encode('utf-8')).hexdigest()
     if not events or len(events) != status['events'] or chain != status['semantic_chain_sha256']:
         raise ValueError('semantic evidence truncated or modified')
     arrays = []
@@ -36,19 +43,26 @@ def _load(directory):
                 walk(nested)
     for event in events:
         walk(event)
+    if len(arrays) != status['arrays']:
+        raise ValueError('semantic array count does not match summary')
     if status['mode'] == 'full_capture' and len(arrays) != len(saved['artifacts']):
         raise ValueError('full capture raster inventory incomplete')
     if status['mode'] == 'hash_only' and saved['artifacts']:
         raise ValueError('hash-only evidence contains unexpected raster artifacts')
+    names = [item['file'] for item in saved['artifacts']]
+    if len(set(names)) != len(names):
+        raise ValueError('duplicate artifact reference')
+    if set(p.name for p in root.glob('array_*.npy')) != set(names):
+        raise ValueError('unreferenced or missing raster file')
     for index, item in enumerate(saved['artifacts']):
         name = item['file']
-        if Path(name).name != name:
+        if Path(name).name != name or name != f'array_{index + 1:08d}.npy' or (root / name).is_symlink():
             raise ValueError('artifact path escapes evidence directory')
-        if hashlib.sha256((root / name).read_bytes()).hexdigest() != item['sha256']:
+        if file_sha256(root / name) != item['sha256']:
             raise ValueError('raster artifact modified or missing')
-        array = np.load(root / name, allow_pickle=False)
+        array = np.load(root / name, allow_pickle=False, mmap_mode='r')
         expected = arrays[index]
-        if array.dtype.str != expected['dtype'] or list(array.shape) != expected['shape'] or hashlib.sha256(array.tobytes(order='C')).hexdigest() != expected['content_sha256']:
+        if array.dtype.str != expected['dtype'] or list(array.shape) != expected['shape'] or array_sha256(array) != expected['content_sha256']:
             raise ValueError('raster content does not match semantic transcript')
     return events, status
 

@@ -12,6 +12,7 @@ from dataclasses import fields, is_dataclass
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import queue
 import sys
@@ -28,6 +29,27 @@ def _json(value):
     return json.dumps(value, ensure_ascii=True, allow_nan=False, separators=(',', ':'))
 
 
+HASH_CHUNK_BYTES = 1024 * 1024
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        for block in iter(lambda: stream.read(HASH_CHUNK_BYTES), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def array_sha256(array):
+    # Caller supplies a C-contiguous detached array or read-only mmap. No tobytes().
+    digest = hashlib.sha256()
+    if array.nbytes:
+        data = memoryview(array).cast('B')
+        for start in range(0, len(data), HASH_CHUNK_BYTES):
+            digest.update(data[start:start + HASH_CHUNK_BYTES])
+    return digest.hexdigest()
+
+
 def _digest(value):
     return hashlib.sha256(_json(value).encode('utf-8')).hexdigest()
 
@@ -39,12 +61,16 @@ class PassiveObserver:
     worker thread, random file names, cache lookup, or policy decisions.
     """
     def __init__(self, directory, *, mode, max_events=2_000_000,
-                 max_bytes=4 * 1024**3):
+                 max_bytes=4 * 1024**3, max_array_bytes=64 * 1024**2,
+                 max_artifacts=100_000, max_event_metadata_bytes=8 * 1024**2):
         if mode not in ('hash_only', 'full_capture'):
             raise ValueError('mode must be hash_only or full_capture')
         self.directory = Path(directory)
         self.mode = mode
         self.max_events, self.max_bytes = max_events, max_bytes
+        self.max_array_bytes, self.max_artifacts = max_array_bytes, max_artifacts
+        self.max_event_metadata_bytes = max_event_metadata_bytes
+        self._metadata_used = 0
         self.valid = True
         self.faults = []
         self.events = 0
@@ -81,9 +107,21 @@ class PassiveObserver:
         with path.open('xb') as stream:
             np.save(stream, array, allow_pickle=False)
         self.bytes_written += path.stat().st_size
-        self.artifacts.append({'file': filename, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+        self.artifacts.append({'file': filename, 'sha256': file_sha256(path)})
+
+    def _reserve_metadata(self, value):
+        # Conservative payload accounting, not a claim to cap Python/process RSS.
+        charge = 512
+        if type(value) is str:
+            charge += 12 * len(value)  # ensure_ascii can use two Unicode escapes.
+        elif type(value) is int:
+            charge += value.bit_length() // 3 + 2
+        self._metadata_used += charge
+        if self._metadata_used > self.max_event_metadata_bytes:
+            raise MemoryError('diagnostic event metadata limit')
 
     def _encode(self, value):
+        self._reserve_metadata(value)
         if value is None or type(value) in (str, bool, int):
             return value
         if type(value) is float:
@@ -93,13 +131,20 @@ class PassiveObserver:
         if isinstance(value, np.generic):
             return self._encode(value.item())
         if type(value) is np.ndarray:
+            # Check the logical size even for a huge strided/broadcast view BEFORE
+            # allocating a detached copy. Storage and buffer limits are separate.
+            if value.dtype.hasobject:
+                raise TypeError('object arrays are not passive evidence')
+            if value.nbytes > self.max_array_bytes:
+                raise MemoryError('diagnostic detached-array limit')
+            if self._arrays >= self.max_artifacts:
+                raise MemoryError('diagnostic artifact inventory limit')
+            if self.bytes_written + value.nbytes + 4096 > self.max_bytes:
+                raise OSError('diagnostic storage limit before copy')
             array = self._copy_array(value)
             self._arrays += 1
             encoded = {'array': {'dtype': array.dtype.str, 'shape': list(array.shape),
-                                 'content_sha256': hashlib.sha256(array.tobytes(order='C')).hexdigest()}}
-            # One array cannot overshoot the declared storage budget.
-            if self.bytes_written + array.nbytes + 4096 > self.max_bytes:
-                raise OSError('diagnostic storage limit')
+                                 'content_sha256': array_sha256(array)}}
             if self.mode == 'full_capture':
                 self._write_raster(array)
             return encoded
@@ -139,6 +184,8 @@ class PassiveObserver:
             return
         if self._closed or self.events >= self.max_events:
             raise RuntimeError('closed observer or event limit')
+        self._metadata_used = 0
+        self._reserve_metadata(event)
         record = {'sequence': self.events, 'event': event, 'values': self._encode(values)}
         if event in _CHECKPOINTS:
             # Read existing states without draws; buffers use the same lossless encoding.
@@ -157,10 +204,14 @@ class PassiveObserver:
         self._stream.write(line)
 
     def status(self):
-        return {'valid': self.valid, 'interpretation_permitted': self.valid and self._closed and self.events > 0,
+        return {'schema_version': 2, 'valid': self.valid, 'interpretation_permitted': self.valid and self._closed and self.events > 0,
                 'mode': self.mode, 'events': self.events, 'semantic_chain_sha256': self._chain,
                 'faults': [dict(f) for f in self.faults], 'closed': self._closed,
-                'bytes_written': self.bytes_written,
+                'bytes_written': self.bytes_written, 'arrays': self._arrays,
+                'resource_limits': {'max_array_bytes': self.max_array_bytes,
+                                    'max_artifacts': self.max_artifacts,
+                                    'max_event_metadata_bytes': self.max_event_metadata_bytes,
+                                    'hash_chunk_bytes': HASH_CHUNK_BYTES},
                 'qualification_updates_permitted': False}
 
     def close(self):
@@ -178,9 +229,25 @@ class PassiveObserver:
             # Refuse existing summary files as well; output is never a resume source.
             with (self.directory / 'observer_status.json').open('x', encoding='utf-8') as out:
                 out.write(_json({'status': self.status(), 'artifacts': self.artifacts}) + '\n')
+            if self.valid and self.events:
+                self._publish_completion()
         except Exception as exc:
             self.invalidate('close_summary', exc)
         # status() remains available even if no file could be written.
+
+
+    def _publish_completion(self):
+        # Only publish after summary close succeeds. A failed pending-marker close
+        # cannot leave an apparently complete run. No random names or overwrite.
+        pending = self.directory / 'observer_complete.pending'
+        final = self.directory / 'observer_complete.json'
+        with pending.open('x', encoding='utf-8') as stream:
+            stream.write(_json({'summary_sha256': file_sha256(self.directory / 'observer_status.json')}) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        if final.exists():
+            raise FileExistsError('completion marker already exists')
+        pending.rename(final)
 
 
 def observe(event, **values):
@@ -201,6 +268,9 @@ def observation_session(observer):
     token = _ACTIVE.set(observer)
     try:
         yield observer
+    except BaseException as exc:
+        observer.invalidate('session_aborted', exc)
+        raise
     finally:
         _ACTIVE.reset(token)
         observer.close()
