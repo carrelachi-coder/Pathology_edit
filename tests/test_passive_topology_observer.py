@@ -529,3 +529,36 @@ def test_duplicate_artifact_is_rejected_even_with_a_self_consistent_completion_m
     (obs.directory/'observer_complete.json').write_text(json.dumps({'summary_sha256':po.file_sha256(path)}))
     with pytest.raises(ValueError, match='duplicate artifact reference'):
         _load(obs.directory)
+
+
+def test_concurrent_completion_target_is_never_overwritten(tmp_path, monkeypatch):
+    obs = po.PassiveObserver(tmp_path/'publication-race', mode='hash_only')
+    link = po.os.link
+    competing_bytes = b'{"competing_writer":"preserve exactly"}\n'
+    def race(source, target):
+        # Simulate another publisher winning immediately before the atomic syscall.
+        with Path(target).open('xb') as stream:
+            stream.write(competing_bytes)
+        return link(source, target)
+    monkeypatch.setattr(po.os, 'link', race)
+    with po.observation_session(obs):
+        po.observe('event', value=1)
+    assert (obs.directory/'observer_complete.json').read_bytes() == competing_bytes
+    assert not obs.status()['valid'] and obs.status()['faults'][0]['type'] == 'FileExistsError'
+    with pytest.raises((KeyError, ValueError)):
+        _load(obs.directory)
+
+
+def test_completion_hardlink_is_published_once_without_mutation(tmp_path):
+    obs = po.PassiveObserver(tmp_path/'atomic-link', mode='hash_only')
+    with po.observation_session(obs):
+        po.observe('event', value=1)
+    pending = obs.directory/'observer_complete.pending'
+    final = obs.directory/'observer_complete.json'
+    assert pending.stat().st_ino == final.stat().st_ino
+    before = final.read_bytes()
+    with pytest.raises(FileExistsError):
+        po.os.link(pending, final)
+    obs.close()
+    assert final.read_bytes() == before and obs.status()['valid']
+    assert _load(obs.directory)[1]['interpretation_permitted']

@@ -1,0 +1,22 @@
+{
+  "status": "atomic_publication_fixed_local_checks_passed",
+  "execution_permitted": false,
+  "S07_ABC_executed": false,
+  "mechanism": "os.link(pending, final) atomically fails EEXIST without replacement; pending retained as immutable hardlink, no fallible cleanup after publication",
+  "precondition": "Output filesystem must support same-filesystem hardlink creation; check on intended storage before execution. No overwrite-style fallback.",
+  "validation": {
+    "tests_passed": 139,
+    "subtests_passed": 85,
+    "observer_tests": 62,
+    "new_cases": [
+      "competing publisher appears immediately before link syscall; bytes preserved, evidence invalid",
+      "successful publish shares inode with closed pending marker; subsequent publication fails without mutation"
+    ],
+    "log": "passive_observer_atomic_validation_v1/pytest.txt",
+    "log_sha256": "6465b22c98aac7d5bfe4c7a7cd56f18bab0bedfe53dc22fcc51026eeaabdbeaa",
+    "static_review": "passive_observer_atomic_validation_v1/static_review.json",
+    "static_review_sha256": "04164c91b78a9e4b50a73a84a92088fe65dc8eebaff42882f758940e670a2b36"
+  },
+  "code_sha256": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+  "scope": "Local specified synthetic/regression collection, not whole-repository CI or S07 real noninterference. Business files unchanged from f49dc24a."
+}

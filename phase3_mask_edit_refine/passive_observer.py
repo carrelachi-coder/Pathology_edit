@@ -245,9 +245,10 @@ class PassiveObserver:
             stream.write(_json({'summary_sha256': file_sha256(self.directory / 'observer_status.json')}) + '\n')
             stream.flush()
             os.fsync(stream.fileno())
-        if final.exists():
-            raise FileExistsError('completion marker already exists')
-        pending.rename(final)
+        # link() publishes the fully closed inode atomically and fails with
+        # EEXIST if another writer wins. Keep pending as immutable evidence;
+        # no fallible cleanup follows successful publication.
+        os.link(pending, final)
 
 
 def observe(event, **values):
