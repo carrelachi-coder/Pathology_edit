@@ -1,0 +1,35 @@
+{
+  "scope": "source deployment verification and finite physical reservation only; zero business/witness calls",
+  "utc": "2026-11-03T02:36:06.789597+00:00",
+  "snapshots": [
+    {
+      "role": "legacy",
+      "commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+      "files_checked": 1327,
+      "mismatches": []
+    },
+    {
+      "role": "observer",
+      "commit": "c119c600e7479aef9046087745e7be34f57cbc29",
+      "files_checked": 1364,
+      "mismatches": []
+    },
+    {
+      "role": "controller",
+      "commit": "53575c7c415c9d1fb5e0234467c7753176de181f",
+      "files_checked": 1374,
+      "mismatches": []
+    }
+  ],
+  "reservation": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/execution_preparation_v2/reservation_12gib.bin",
+    "bytes": 12884901888,
+    "allocated_bytes": 12884905984,
+    "device_id": 2080,
+    "free_bytes_after": 16500629504000,
+    "is_quota": false,
+    "purpose": "headroom held outside output tree; no guarantee against other writers consuming remaining unreserved space"
+  },
+  "execution_permitted": false,
+  "formal_launch_permitted": false
+}

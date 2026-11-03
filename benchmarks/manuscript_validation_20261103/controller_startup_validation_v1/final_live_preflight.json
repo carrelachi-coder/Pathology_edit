@@ -1,0 +1,19 @@
+{
+  "scope": "direct read-only identity/scope checks plus negative authorization gate check; no run arm executed",
+  "manifest_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+  "controller_sha256": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+  "controller_commit": "80fbbfc28a4d915680211e749f42cbea9e2a891a",
+  "identity_gate_passed": true,
+  "scope_gate_passed": true,
+  "authorization_denied_before_output_or_business_import": true,
+  "output_root_exists": false,
+  "business_modules_loaded": [],
+  "witness_calls": 0,
+  "reservation": {
+    "requested_bytes": 12884901888,
+    "allocated_bytes": 12884905984
+  },
+  "snapshot_files_verified": 4066,
+  "runtime_packages_verified": 220,
+  "execution_permitted": false
+}

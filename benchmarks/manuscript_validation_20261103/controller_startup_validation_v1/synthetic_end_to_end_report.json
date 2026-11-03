@@ -1,0 +1,52 @@
+{
+  "scope": "Deployed controller CLI with exclusively synthetic probe scripts and fake source JSON; real observer/comparator and their package model definitions may load. No BCSS assets or actual pathology qualification/witness call.",
+  "controller_sha256": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+  "results": [
+    {
+      "scenario": "success",
+      "returncode": 0,
+      "result": {
+        "launched": [
+          "A",
+          "B",
+          "C"
+        ],
+        "qualification_updates_permitted": false,
+        "reserved_witness_calls": 6,
+        "status": "diagnostic_comparison_complete"
+      },
+      "real_witness_calls": 0,
+      "synthetic_only": true
+    },
+    {
+      "scenario": "fail_A",
+      "returncode": 78,
+      "result": {
+        "launched": [
+          "A"
+        ],
+        "reserved_witness_calls": 2,
+        "status": "mismatch_hold"
+      },
+      "real_witness_calls": 0,
+      "synthetic_only": true
+    },
+    {
+      "scenario": "invalid_B",
+      "returncode": 78,
+      "result": {
+        "launched": [
+          "A",
+          "B"
+        ],
+        "reserved_witness_calls": 4,
+        "status": "mismatch_hold"
+      },
+      "real_witness_calls": 0,
+      "synthetic_only": true
+    }
+  ],
+  "S07_witness_calls": 0,
+  "S07_authorized": false,
+  "raw_private_report_sha256": "0218648a23f6d01266ba00e281a5a84f7875d11f9953ded0b2ba838ea827986e"
+}

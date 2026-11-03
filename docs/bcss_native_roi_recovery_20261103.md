@@ -204,3 +204,33 @@ Hash-only与full-capture使用完全相同的语义序列；完整模式额外�
 比较字段已事先列明：A对照旧保存的业务结果／错误列表SHA和既有trial状态，不比较从未保存的旧内部计划；A/B比较业务终态和确定性指标；B/C完整语义序列比较，不排除任何语义字段。输出／控制器时间等账务字段只按各臂身份另核验。任一差异、身份漂移、超时或证据不全进入`mismatch_hold`，不启动下一臂。raw路径若造成未解释差异，同样暂停，不在观察后增加排除。
 
 以上是执行身份与启动规格的冻结，不是执行准备全部完成：RNG规则、observer不可变快照安装核验、资源预留／live preflight及单独执行授权仍为显式门槛。S07 A/B/C未授权、未执行；17／19患者资格、新增四目标批准0、30位目标及预算／硬下限均不变，批量四目标、H&E和医生研究继续关闭。
+
+## RNG决策、外层controller及部署／预留准备
+
+本轮交付三件事：[独立RNG决策记录](../benchmarks/manuscript_validation_20261103/rng_initialization_decision_record_v1.json)、[最终controller及准备报告](../benchmarks/manuscript_validation_20261103/controller_startup_preparation_report_v1.json)、[候选execution manifest v2](../benchmarks/manuscript_validation_20261103/limited_topology_execution_manifest_v2.json)。旧冻结协议、execution manifest v1及Observer主体未改；启动策略仍待单独审查，不能将这些交付物解释为执行授权。
+
+### C方案的技术结论与科学边界
+
+目标服务器仅运行了不涉及业务来源的启动探针：父进程为1个native线程，预加载NumPy和CPU Torch，CUDA未初始化，没有导入pathology业务包。直接fork的两个子进程保留了hash／NumPy／Torch CPU状态，但Python random被子进程初始化钩子改变，完整初始状态不相等。因此原始“自然继承即可”方案不成立。
+
+候选改为 **共同父进程＋显式postfork恢复**：固定导入顺序、父进程无业务模块／单线程／无CUDA，保存一份新的共同启动状态；A/B/C顺序fork、不exec，每个子进程在业务导入前显式恢复Python random、NumPy legacy及CPU Torch默认生成器，并检查共同状态摘要和继承的hash指纹。两项非业务探针的恢复后摘要均与父进程一致。`PYTHONHASHSEED`仍可为null，因为同一次父进程的hash secret被继承；指纹不是旧secret恢复，也不保证不同控制实验批次的secret相同。业务局部Generator不被发现、重置或替换，原案例seed不改；不可访问状态仍标记不可获取。
+
+这不是纯fork，也不是对历史状态的恢复，而是必须披露和单独批准的实验控制变更，**同样适用于使用旧业务代码的A**。因此A应解释为controlled legacy baseline；若它与历史保存业务结果不同，仍进入hold。恢复初始状态仅去除一个混杂因素，不能证明记录器运行时无干扰；完整语义比较仍不排除RNG字段。`rng_decision_approved=false`、`execution_permitted=false`继续有效，未为S07实施该控制。
+
+### Controller的强制停止规则
+
+生产controller固定为`80fbbfc28a4d915680211e749f42cbea9e2a891a`。三个门槛——允许执行、RNG决策获批、准备检查完成——以及独立manifest／decision哈希绑定的授权均在输出创建和状态恢复之前检查。来源限定为原probe、subset索引7、limit1、原模板，严格校验参数和模式，最多三次来源进程／六次逻辑witness预算；每次1200秒，零自动重试。
+
+只有A完整业务receipt与历史一致，才启动B；B须与A业务receipt一致、证据有效，才启动C；C需通过完整B/C比较。任一异常、超时、信号退出、不一致或证据无效都会停止后续阶段。比较器只在独立的离线helper子进程中导入，不在共同父进程中导入，以免改变B/C的模块可用性和导入顺序；最多两个helper、各30秒、零witness调用。controller保留PID、退出码、超时和耗时记录；父进程中断会终止并回收子进程。所有业务receipt严格相等，尚未增加路径规范化或事后字段排除；辅助输出路径若不一致，同样hold。
+
+新增38项controller／startup合成测试通过；指定组合回归177项通过、另85项subtest通过，最终controller的38项定向测试也通过，几个数字不相加。目标服务器还使用完全独立的假来源JSON和合成probe脚本验证了实际CLI：成功时A/B/C完整通过真实Observer比较；A退出时仅启动A；B记录无效时仅启动A、B。实际使用Observer／比较器及其包内类型定义，未读取BCSS图像／mask，未调用真实规划、资格搜索或witness。合成授权记录只覆盖这些fixture，绝不覆盖S07。
+
+### 代码部署、物理预留及拒绝授权核验
+
+A的`20ace976`快照、B/C的`c119c600`快照以及controller的`80fbbfc2`快照已置于三个独立目录，按归档内容核验共4066个文件，未改原代码目录或共享Python环境。目标服务器直接身份／scope检查通过，220项distribution身份与冻结环境一致；这不是OS／二进制依赖的完整hermetic证明。完整source inventory在v2 manifest内固定，来源文件、原合同及比较器身份在每臂前重验。
+
+已在同设备`execution_preparation_v2/reservation_12gib.bin`用`posix_fallocate`实际预留 **12 GiB**，并核对size／allocated blocks，不是稀疏文件或仅free-space数字。该文件是有限headroom，不是独占quota，无法保证其他任务不会耗尽未预留空间；controller在每臂前核对预留和可用空间，ENOSPC仍使诊断无效并停止。此预留当前保留，后续应明确释放，不会自动删除历史数据。
+
+S07实际输出根目录仍未创建。真实部署的controller以关闭授权记录核验，确实在输出创建及业务导入前拒绝执行；直接只读preflight不调用任何来源witness。实际输出位置的hardlink不覆盖测试会在获准后、A启动前再次进行，不能以准备目录的结果替代。v2的`preflight_complete=true`仅表示本轮准备核验完成，`ready_for_execution=false`和另外两个授权门槛仍关闭；后续必须另存获批版本，不能修改已冻结的v1或本次review候选来伪装授权历史。
+
+当前仍为17位源拓扑通过、含unknown上限19位、新增四目标批准0位。30位患者目标、19%／32%名义预算及14%／27%组织硬下限不变；S07 A/B/C未获授权、未执行，批量四目标、正式H&E和医生研究继续关闭。

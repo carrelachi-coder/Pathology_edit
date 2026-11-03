@@ -1,0 +1,105 @@
+{
+  "status": "delivery_complete_pending_RNG_addendum_and_controller_review",
+  "scope": "Startup decision, gated controller, source deployment and reservation preparation only. No S07 study execution.",
+  "execution_permitted": false,
+  "rng_decision_approved": false,
+  "S07_witness_calls": 0,
+  "rng_decision": {
+    "file": "rng_initialization_decision_record_v1.json",
+    "sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+    "recommended": "C with disclosed explicit postfork restoration, not raw inheritance",
+    "approval_required": "New controlled-startup experimental condition applies to A as well; it is not historical RNG recovery and requires separate approval before any S07 authorization."
+  },
+  "controller": {
+    "commit": "80fbbfc28a4d915680211e749f42cbea9e2a891a",
+    "sha256": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+    "business_source_limit": 3,
+    "logical_witness_reservations_max": 6,
+    "timeout_per_pair": 1200,
+    "retries": 0,
+    "stop_conditions": "Controller enforces identity/scope/approval gates and A->B->C; mismatch/invalid evidence/timeout/nonzero/signal/assessment failure stops subsequent launches. Parent cancellation kills/reaps child.",
+    "review_boundary": "Synthetic checks do not establish S07 behavior or real runtime noninterference."
+  },
+  "execution_manifest": {
+    "file": "limited_topology_execution_manifest_v2.json",
+    "sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+    "version1_preserved": true,
+    "original_protocol_preserved": true
+  },
+  "deployment_and_storage": {
+    "snapshot_files_verified": 4066,
+    "runtime_distributions_verified": 220,
+    "observer_commit": "c119c600e7479aef9046087745e7be34f57cbc29",
+    "controller_commit": "80fbbfc28a4d915680211e749f42cbea9e2a891a",
+    "reserved_bytes": 12884901888,
+    "allocated_bytes": 12884905984,
+    "is_quota": false,
+    "reservation_purpose": "Finite physical headroom, not exclusive protection from concurrent writers; recheck allocation/free space before every arm. Keep reservation file until reviewed completion/release; no sparse-file claim.",
+    "real_output_location_preflight": "Actual output root remains absent; controller verifies hardlink no-replace at that exact root before A only after authorization."
+  },
+  "evidence": {
+    "server_startup_probe.json": {
+      "file": "controller_startup_validation_v1/server_startup_probe.json",
+      "sha256": "636004a67fc172e6baedb7020cab2958ae94541ea5f341d8482b156b8c31af9e"
+    },
+    "pytest.txt": {
+      "file": "controller_startup_validation_v1/pytest.txt",
+      "sha256": "4ab4492c7a262f6309fe9d2ff91d3e721f6ad2892f636996efb3ecbcc3519bfc"
+    },
+    "controller_final_pytest.txt": {
+      "file": "controller_startup_validation_v1/controller_final_pytest.txt",
+      "sha256": "cbc308da77c74050e1936865b0fbc2646db67638a775d68209393c107e740d8b"
+    },
+    "final_live_preflight.json": {
+      "file": "controller_startup_validation_v1/final_live_preflight.json",
+      "sha256": "2c0fe00268b5c49cac8d2cdb53cd513dd174ec7d92e3416f97016e342202ff6f"
+    },
+    "synthetic_end_to_end_report.json": {
+      "file": "controller_startup_validation_v1/synthetic_end_to_end_report.json",
+      "sha256": "88a235c9d40616746aabee04f95d36d0ca1636896629729c9cc1885a8ae6e1f7"
+    },
+    "deployment_reservation_report.json": {
+      "file": "controller_startup_validation_v1/deployment_reservation_report.json",
+      "sha256": "8b481eb1b0fe0e87232054539a7e1b242045cc83de3e8b5ad7ce21128d1a6864"
+    }
+  },
+  "validation_counts": {
+    "controller_startup_tests_passed": 38,
+    "specified_combined_regression_passed": 177,
+    "subtests_passed": 85,
+    "final_controller_targeted_passed": 38,
+    "deployed_CLI_synthetic_scenarios": 3,
+    "not_additive": true,
+    "whole_repository_CI": false
+  },
+  "synthetic_CLI_findings": [
+    "Success launches A,B,C and completes strict B/C evidence comparison.",
+    "Synthetic A exit7 stops with A only.",
+    "Synthetic B observer-invalid stops with A,B only.",
+    "Real S07 manifest/authorization both closed; run() denies before output creation or business import."
+  ],
+  "preserved_qualification": {
+    "source_topology_patients": 17,
+    "upper_including_old_unknown": 19,
+    "new_four_target_approved": 0,
+    "formal_target": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "remaining": [
+    "Independent approval of the initialization-control addendum, including CPU Torch preload/import-order and A semantics",
+    "Independent final controller review",
+    "A separately sealed authorized manifest and explicit manifest-bound execution approval",
+    "Repeat live source/runtime/filesystem/thread/CUDA/free-space preflight at actual launch"
+  ],
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}

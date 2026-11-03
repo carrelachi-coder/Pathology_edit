@@ -393,5 +393,16 @@
     "ready_for_execution": false,
     "open_rng_initialization_gate": true,
     "S07_replayed": false
+  },
+  "controlled_startup_controller_preparation_20261103": {
+    "report": "../manuscript_validation_20261103/controller_startup_preparation_report_v1.json",
+    "sha256": "5518df0bfbc14f2442d4dbcedc9b98a384348fe077866870a3fdef112465daec",
+    "execution_manifest": "../manuscript_validation_20261103/limited_topology_execution_manifest_v2.json",
+    "manifest_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+    "controller_commit": "80fbbfc28a4d915680211e749f42cbea9e2a891a",
+    "reserved_bytes": 12884901888,
+    "execution_permitted": false,
+    "rng_control_addendum_approved": false,
+    "S07_witness_calls": 0
   }
 }
