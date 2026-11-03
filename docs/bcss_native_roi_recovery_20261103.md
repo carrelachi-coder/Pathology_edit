@@ -379,3 +379,35 @@ P0–P3的独立实现与合成验证已完成；P4生产Observer接入尚未开
 未来实现验收矩阵已列入方案：旧编码器合成差分；Sink/core双重故障隔离；业务返回／异常／重规划／RNG不变；缺终态、错误映射和负面完整receipt；真正Adapter链路的超200万事件和整树4 GiB压力；流式wrapper的模式、身份、完整迭代、外层marker及发布竞争。届时复用已验收Codec，不重复分析原S07前缀，也不能将这些合成验收称为真实B/C非干扰性结果。
 
 当前仅为**P4设计完成、待审查；Adapter未实现，P5未获执行授权**。既有受控RNG条件批准在初始化策略不变时继续作为依据，不因新设计重复申请；新模块导入兼容性和新运行身份仍需审查，初始化策略若改变才另作决定。原S07一次性授权已消费，新诊断必须另行绑定新manifest授权；本轮不制作可启动manifest、不复用旧授权。17／19患者资格、新增四目标批准0、30位目标、19%／32%预算、14%／27%组织硬下限均不变，正式H&E、批量四目标和医生研究继续关闭。
+
+
+## 独立 Observer Adapter 已实现：定向测试通过，大规模比较保留时间 hold
+
+按用户最新授权，P1–P3推进独立Adapter实现与合成验收，不接入生产Observer、不改变旧Codec或业务逻辑。本轮[实现接口与资源合同](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_contract_v1.json)另存，保留上一版设计原文和所有历史协议／授权。[完整实现报告](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_report_v1.json)的整体状态是 **`independent_adapter_implemented_local_tests_passed_large_comparison_timeout_hold`**，不是已可执行S07。
+
+三个新模块分别负责[有界文件／receipt合同](../diagnostic_storage/observer_adapter_contract_v1.py)、[类型编码core和故障隔离Sink](../diagnostic_storage/observer_adapter_v1.py)、[独立外层流式验证器](../diagnostic_storage/observer_adapter_validation_v1.py)。Adapter不继承旧Observer，不修改其ContextVar、2M默认限制、38个业务观测点、Controller或RNG控制。只有显式把Sink交给原`observation_session`才启用；Codec继续固定为`c2fd0741`对应文件SHA，原56项Codec及2M／3M／5M证据复用，没有再跑一遍。
+
+Sink先锁定自己的无效位，再通知core；`record`或`quiesce`与core故障处理同时抛错时，也不会把普通记录器异常交给业务catch／重规划。core类型编码AST与旧版只有ndarray分支委托给公开`Writer.add_array()`这一处变化；metadata计费与`_rng`的AST一致、检查点集合一致。数组不预先复制，不去重、不改dtype，Codec承担唯一一次预算检查后的独立拷贝。异常消息不通过自定义str/repr写故障日志，原业务返回／异常继续沿原路径处理。
+
+session退出只quiesce。显式`finalize(normal_invocation_end, business_receipt_path)`在业务调用返回后检查原文件，绑定真实SHA和完整case ID。后续重复finalize是无写入的幂等返回，不是重试。外层验证器独立核对完整case／primitive映射、两个qualification开始／结束、终态failures／witness与receipt对应内容、Sink/core无fault、模式与身份、完整迭代的Codec Reader及整树预算，再发布根目录接受标记。内层Codec marker只是必要条件；其存在不能掩盖外层缺失或错误。失败witness可以被完整记录，但永远不等于患者合格。
+
+[113项定向测试](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v1/pytest.txt)通过：51项新Adapter场景、62项旧Observer回归，不是全仓CI。覆盖普通写入／ENOSPC／copy／编码／队列／RNG读取故障，record+invalidate及quiesce+invalidate双重故障，原业务异常对象保留，receipt错配／缺终态／exit0部分结果，数组预算前拒绝，封存／控制文件关闭失败、发布竞争、进程中断、身份／模式／外层proof损坏，以及硬链接统计反例。64×64合成执行器与有界重规划fixture比较了off/hash/full/fault结果、mask、ownership／guard／计划有序事件、RNG和固定anchor／重规划序列；这些是合成函数测试，未调用BCSS／S07来源资格入口，不能替代真实非干扰性验收。
+
+[210万事件Adapter整链压力](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v1/pressure_2100000.json)经过新的类型编码、单槽队列、Codec、receipt和独立验证进程：
+
+| 合成模式 | 事件／块 | 数组occurrence | 编码秒 | 单流外层验证秒 |
+| --- | ---: | ---: | ---: | ---: |
+| Hash-only | 2,100,000／54 | 685 | 37.76 | 7.99 |
+| Full Capture | 2,100,000／54 | 685 | 52.01 | 21.54 |
+
+两流完整sequence和字节SHA一致，Python／NumPy全局RNG状态未改变。685包含683份新512×512 float64快照和2份既有NumPy legacy RNG状态快照；不能把它混写成原S07的683份Raster。独立重新生成683份合成快照，1,432,354,816字节原始payload逐字节一致。生产者进程累计峰值约106.47 MiB，两个验证子进程峰值约95.98／78.48 MiB；生产者B/C在同一进程运行，因此其峰值不是每模式隔离测量，更不是硬RSS保证。
+
+**大规模完整包装比较没有通过原时间门槛。**两份单流均在30秒内完成，但重新验证两流并做严格流式比较的完整wrapper耗时 **41.55秒**，超过保留的30秒，返回`timeout_hold`，没有`semantic_match`，未增加限额或自动重试。各臂根marker仅表示单流完整性，不代表B/C或整个实验已接受。压力脚本返回0表示完成报告生成，不能据此覆盖报告内的hold。库内比较deadline是协作式前后检查，不能强行中断正在执行的公开Codec.compare；未来Controller仍须单独提供硬进程超时并审查helper／总wall预算，本轮没有实现或部署新的Controller。1200秒来源对和6次／0重试范围不变。
+
+[整树4 GiB边界](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v1/whole_tree_budget.json)将外层控制文件也包括在内：256 KiB控制分区＋Codec剩余分区仍在同一4 GiB内。实际接受2,038份2 MiB快照后，下一份在复制前拒绝；两项Codec完整性状态均false，内外完成标记均未产生，外层验证拒绝，故障摘要仍保存。原现场统计即使高估也低于4 GiB。
+
+汇总阶段发现**测试脚本的占用观察器**把`.index.pending`／`.index.jsonl`误当两个文件，Adapter／Reader自身预算核算未受影响。原报告保留，另有[inode去重统计更正](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v1/allocation_observation_correction.json)，并增加反例测试；没有重跑大规模事件。同一轮后续stat中，Hash／Full整树占用约15.72 MB／1.451 GB，预算失败树约4.285 GB。原现场与后来stat不是同一时刻，文件系统extent／预分配回收也可能改变st_blocks，因此不能把全部字节差都解释为重复计数；更正记录另列同一pass旧统计与inode去重结果。初次1000事件smoke的合成调度器还曾把快照位置排到qualification边界，导致少一份数组；其失败目录与[说明](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v1/smoke_generator_failure.json)也保留，修复只涉及合成guard ordinal排程，不涉及Adapter／Codec或任何真实来源。
+
+代码／运行时与旧文件未变哈希、只读AST结果、复核命令及原始压力摘要均已入库；大体积合成流／数组／receipt及失败目录保持私有。所有类型错配或无法完整封存都hold，不作事后tuple／路径／字段归一化；OS终止、进程级OOM和整套目录恶意重写不声称可完全隔离或防护。
+
+当前更新为：**独立Adapter实现完成，指定本地故障和合成非干扰场景通过；大规模比较时间门槛hold；待独立终审、新启动／执行身份及新授权。**尚未接入生产、未部署、未重跑S07，原授权不复用。17位源拓扑通过、含unknown上限19位、新增四目标批准0、30位目标、19%／32%预算及14%／27%硬下限均未改变，正式H&E、批量四目标和医生研究继续关闭。

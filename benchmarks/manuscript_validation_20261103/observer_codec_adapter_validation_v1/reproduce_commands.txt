@@ -1,0 +1,8 @@
+# New output directories only; synthetic data, never real-source/S07 calls.
+python -m pytest -q tests/test_observer_codec_adapter_v1.py tests/test_passive_topology_observer.py
+python scripts/stress_observer_adapter_v1.py --kind budget --output FRESH_ROOT/whole_tree_budget
+python scripts/stress_observer_adapter_v1.py --events 2100000 --arrays 683 --output FRESH_ROOT/pressure
+# Default30s validation/compare reference is never increased.
+# A stress command can finish while reporting comparison.status=timeout_hold;
+# process exit0 does NOT mean all diagnostic acceptance gates passed.
+# Codec56-test/2M/3M/5M evidence is reused from c2fd0741, not rerun here.

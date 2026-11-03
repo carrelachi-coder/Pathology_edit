@@ -1,0 +1,310 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-03T14:58:59.484022+08:00",
+  "status": "independent_adapter_implemented_local_tests_passed_large_comparison_timeout_hold",
+  "not_ready_for_live_execution": true,
+  "scope": "Independent core/sink, receipt and whole-tree control contract, external streaming validator; local synthetic tests only. No production Observer/controller integration, deployment or S07 replay.",
+  "implementation_contract": {
+    "path": "benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_contract_v1.json",
+    "sha256": "e3a31b3b95c8cea3cfe2da02101da2470ac0b9003addca3d95dfa8f75e107cc5"
+  },
+  "implementation": {
+    "new_files": {
+      "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+      "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+      "diagnostic_storage/observer_adapter_validation_v1.py": "1589bf264243f39d78fab202d2cb1e379a1f4d924980acb6c1e742ee22eabb5c",
+      "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+      "tests/test_observer_codec_adapter_v1.py": "0189c00b27eee5df598f1a015216a9b9b091c6dc4a7963781d6428c93dee76cd"
+    },
+    "Codec_unchanged_and_prior_56_test_pressure_evidence_reused": true,
+    "legacy_observer_2M_cap_unchanged": true,
+    "production_call_sites_added_or_changed": 0,
+    "existing_5_business_files_AST_unchanged": true,
+    "existing_observe_calls": 38,
+    "default_activation": "none; explicit sink/session only",
+    "copy_responsibility": "Public Codec.add_array only; new tests count exactly one detached copy per occurrence.",
+    "encoder_AST": "Matches legacy exactly except ndarray storage delegation; metadata charging and_rng match legacy AST.",
+    "failure_isolation": "Preinitialized Sink invalid latch first; record/quiesce AND invalidate double faults caught; business original exception/replan outcomes preserved in synthetic fixtures.",
+    "completion": "close only quiesces; explicit receipt-bound finish; independently exhausted Reader plus terminal payload/identity/mode/root checks before outer marker."
+  },
+  "test_results": {
+    "command": "python -m pytest -q tests/test_observer_codec_adapter_v1.py tests/test_passive_topology_observer.py",
+    "passed": 113,
+    "new_adapter_cases": 51,
+    "legacy_observer_regression_cases": 62,
+    "scope": "local specified suite, not whole-repo/Python CI or real execution acceptance",
+    "synthetic_business_exercises": "Existing64x64 executor and bounded planner/replan fixtures: compare off/hash/full/fault masks, ownership/guard/plan/RNG event bytes and original result/exception/anchor sequence. No BCSS/S07 source qualification invocation."
+  },
+  "pressure": {
+    "scope": "pure synthetic Adapter chain, not live Observer/S07",
+    "arms": [
+      {
+        "arm": "B",
+        "mode": "hash_only",
+        "events": 2100000,
+        "snapshots": 683,
+        "encode_seconds": 37.758187249768525,
+        "writer_process_peak_rss_bytes": 111640576,
+        "validator": {
+          "verdict": {
+            "candidate_validated": true,
+            "interpretation_permitted": true,
+            "qualification_updates_permitted": false,
+            "mode": "hash_only",
+            "stream": {
+              "block_integrity_complete": true,
+              "business_process_complete": true,
+              "logical_events": 2100000,
+              "physical_blocks": 54,
+              "array_occurrences": 685,
+              "stream_sha256": "738886704d3caf0d92ee18562f743e47e858de14c0c45d41c34a068731045c05"
+            },
+            "allocated_bytes_before_optional_outer_publication": 15712256,
+            "bindings": {
+              "manifest_sha256": "64ec8e34767b46558f0d9b03889dc0e871f68842cc340fa7c4d61ccd2fbfe123",
+              "status_sha256": "0639fe264cb2d95727975697a0bc4473e0710a1e098b80f859d414c3970294b4",
+              "codec_summary_sha256": "85c403cd85d5586a2823110398c511dcb2b8762c0b22168c40aba4443a8c450f",
+              "business_receipt": {
+                "sha256": "4cb1d6e4d3b8bd838717dd99c25301edb14956b983fb9d0f6bfdbe847e1b187b",
+                "bytes": 1072
+              }
+            }
+          },
+          "seconds": 7.989064667373896,
+          "peak_rss_bytes": 100646912
+        },
+        "storage": {
+          "unique_file_allocated_bytes": 16138240,
+          "unique_file_count": 65
+        }
+      },
+      {
+        "arm": "C",
+        "mode": "full_capture",
+        "events": 2100000,
+        "snapshots": 683,
+        "encode_seconds": 52.00810804171488,
+        "writer_process_peak_rss_bytes": 111640576,
+        "validator": {
+          "verdict": {
+            "candidate_validated": true,
+            "interpretation_permitted": true,
+            "qualification_updates_permitted": false,
+            "mode": "full_capture",
+            "stream": {
+              "block_integrity_complete": true,
+              "business_process_complete": true,
+              "logical_events": 2100000,
+              "physical_blocks": 54,
+              "array_occurrences": 685,
+              "stream_sha256": "738886704d3caf0d92ee18562f743e47e858de14c0c45d41c34a068731045c05"
+            },
+            "allocated_bytes_before_optional_outer_publication": 1450938368,
+            "bindings": {
+              "manifest_sha256": "0f03e14afa0f985fc8a4d8f682eb1585551c3f3ae049b0f015a77ddb33bffa8c",
+              "status_sha256": "0639fe264cb2d95727975697a0bc4473e0710a1e098b80f859d414c3970294b4",
+              "codec_summary_sha256": "bc7d3d66504652f9d3f354c3f1ae8d89898e4291374905c9c03674986f675a7c",
+              "business_receipt": {
+                "sha256": "4cb1d6e4d3b8bd838717dd99c25301edb14956b983fb9d0f6bfdbe847e1b187b",
+                "bytes": 1072
+              }
+            }
+          },
+          "seconds": 21.54274566611275,
+          "peak_rss_bytes": 82296832
+        },
+        "storage": {
+          "unique_file_allocated_bytes": 1451429888,
+          "unique_file_count": 750
+        }
+      }
+    ],
+    "independent_snapshots": {
+      "snapshots": 683,
+      "raw_payload_bytes": 1432354816,
+      "every_original_payload_byte_equal": true,
+      "ordered_reference_hash": "845e0f25c34a52f70e69326027529a50e5ca27910a7536b35b7fba58e7802b9f"
+    },
+    "global_python_numpy_rng_unchanged": true,
+    "comparison": {
+      "status": "timeout_hold",
+      "reason": "unchanged30s cooperative wrapper budget exceeded; not accepted, no retry or limit increase"
+    },
+    "comparison_seconds": 41.54906054213643,
+    "elapsed_seconds": 165.42384908394888,
+    "new_witness_calls": 0,
+    "production_integration": false,
+    "code_sha256": {
+      "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+      "observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+      "observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+      "observer_adapter_validation_v1.py": "1589bf264243f39d78fab202d2cb1e379a1f4d924980acb6c1e742ee22eabb5c"
+    }
+  },
+  "whole_tree_4GiB_boundary": {
+    "scope": "synthetic actual whole-tree4GiB boundary including outer controls",
+    "snapshots_accepted": 2038,
+    "failed_snapshot_rejected_before_copy": true,
+    "status": {
+      "format": "observer-codec-adapter-v1",
+      "phase": "INVALID",
+      "core_fault_free": false,
+      "sink_fault_free": false,
+      "sink_closed": true,
+      "events": 2039,
+      "faults": [
+        {
+          "stage": "record",
+          "type": "BudgetError",
+          "next_sequence": 2039
+        }
+      ],
+      "finalized": true,
+      "interpretation_permitted": false,
+      "qualification_updates_permitted": false
+    },
+    "storage": {
+      "unique_file_allocated_bytes": 4286656512,
+      "unique_file_count": 2047
+    },
+    "limit_bytes": 4294967296,
+    "strict_validator_rejected": true,
+    "outer_complete_marker": false,
+    "inner_complete_marker": false,
+    "elapsed_seconds": 7.543965291231871,
+    "peak_rss_bytes": 66732032,
+    "new_witness_calls": 0,
+    "codec_completion": {
+      "block_integrity_complete": false,
+      "business_process_complete": false
+    }
+  },
+  "comparison_budget_finding": {
+    "status": "timeout_hold_not_a_semantic_acceptance",
+    "events_each": 2100000,
+    "reference_seconds": 30,
+    "observed_cooperative_wrapper_seconds": 41.54906054213643,
+    "per_capture_validator_seconds": [
+      7.989064667373896,
+      21.54274566611275
+    ],
+    "explanation": "Each candidate capture independently passed and both logical byte SHA/counts match. The complete wrapper (both validations plus strict streaming comparison) exceeded the unchanged30s reference; the API emitted no semantic_match. Per-capture outer markers are completeness proofs, NOT a cross-arm/experiment acceptance.",
+    "limit_increased": false,
+    "automatic_retry": false,
+    "next_gate": "Independent resource/timing review and future hard-process helper gate/new execution manifest required before any live use. No optimization that drops checks or trusts a stale proof is used."
+  },
+  "failure_evidence": {
+    "initial_small_generator_failure": "observer_codec_adapter_validation_v1/smoke_generator_failure.json",
+    "all_private_attempts_preserved": true,
+    "source_or_topology_failure_inferred": false
+  },
+  "limits_and_boundaries": [
+    "Single-capture helpers were subprocess-bounded to30s; library deadline checks remain cooperative and do not replace a future hard controller process timeout. No new Controller has been supplied.",
+    "Measured writer/validator RSS is local empirical peak, not an OS memory hard limit. Writer B/C share one producer process; its reported peak is cumulative, not isolated per-mode allocation.",
+    "683 float64 snapshots are synthetic; actual685 array occurrences also include2 existing NumPy legacy RNG state snapshots. They are NOT original S07 Raster capacity evidence.",
+    "Receipt terminal binding deliberately accepts only exact legacy typed JSON list/dict/scalar counterparts. No post-hoc tuple/path/type normalization; incompatible telemetry yields hold.",
+    "OS kill, process-wide OOM and arbitrary replacement of the isolation boundary itself cannot be guaranteed survivable. Missing proof remains invalid.",
+    "Hashes and inode bindings detect corruption/incomplete publication, not a malicious rewrite of an entire self-consistent directory.",
+    "New Adapter code is not independently approved, installed or used by the production Observer. New startup/import identity and real noninterference remain unvalidated."
+  ],
+  "research_state": {
+    "S07_rerun": false,
+    "old_authorization_reused": false,
+    "real_source_logical_witness_calls": 0,
+    "topology_pass_patients": 17,
+    "upper_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "patient_target": 30,
+    "nominal_joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ],
+    "formal_HE": false,
+    "batch_four_target_compile": false,
+    "physician_study": false
+  },
+  "stage_status": {
+    "P0_adapter_interface": "recorded_for_independent_local_acceptance",
+    "P1_independent_implementation": "complete",
+    "P2_fault_injection": "local_targeted_pass",
+    "P3_synthetic_noninterference": "specified_fixtures_pass_large_comparison_time_gate_hold",
+    "P4_independent_final_review_and_new_execution_identity": "pending",
+    "P5_new_finite_S07_authorization": "not_obtained"
+  },
+  "independent_review_claimed": false,
+  "evidence_sha256": {
+    "observer_codec_adapter_validation_v1/allocation_observation_correction.json": "ac01aed00da86b21f4f8ea18f6da8a762178b55a136d94b4dbf781045d0752f1",
+    "observer_codec_adapter_validation_v1/business_static_audit.json": "04164c91b78a9e4b50a73a84a92088fe65dc8eebaff42882f758940e670a2b36",
+    "observer_codec_adapter_validation_v1/code_runtime_and_unchanged_files.json": "7f68cd9e5486db235a4d5ac2cc4fd1063c87369e393766c4aecc1040046515e3",
+    "observer_codec_adapter_validation_v1/pressure_2100000.json": "dc203cb83a2a294c16338bde51f1d13c329ed4e31e5f12f5be75cb7d82758b5d",
+    "observer_codec_adapter_validation_v1/pytest.txt": "ea81cae774051e0ece35507bc6fc6dc1404dbaecd795e2cecdfba3f85fdefa88",
+    "observer_codec_adapter_validation_v1/reproduce_commands.txt": "393c2ec232ee22b4172254f8aa69b19a2554927cd0274fb5fba45e46b294b2f9",
+    "observer_codec_adapter_validation_v1/smoke_generator_failure.json": "b6d4acf1d4c60c363245969d1ba3c27dcf5aa6b7d691daf63329e796a0d357a0",
+    "observer_codec_adapter_validation_v1/whole_tree_budget.json": "3a65da479b77918b4d0cc0cdb9659fed76a089541f76ad9c4c0164e59aa48db1"
+  },
+  "private_storage": "Synthetic streams/arrays/receipts/failure directories remain in .codex-artifacts, not Git. Original S07 evidence and approval files unchanged.",
+  "allocation_observation_correction": {
+    "scope": "benchmark report allocation observation only; Adapter/Codec/validator unchanged",
+    "reason": "Initial benchmark suffix-based alias check counted Codec.index.pending and.index.jsonl twice; both names point to the same inode. The production-independent validator already counted correct canonical representatives. Original reports are retained.",
+    "original_report_sha256": {
+      "pressure_2100000.json": "dc203cb83a2a294c16338bde51f1d13c329ed4e31e5f12f5be75cb7d82758b5d",
+      "whole_tree_budget.json": "3a65da479b77918b4d0cc0cdb9659fed76a089541f76ad9c4c0164e59aa48db1"
+    },
+    "reporter_source_sha256_before": "e53997f80bee53c0bd5adaebf05517b925e4bb125784b91c526b447f87c30ccf",
+    "reporter_source_sha256_after": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "method": "Re-stat existing closed synthetic trees, count(dev,ino) once; no event replay/regeneration or benchmark retry. Set is benchmark-only, not encoder/decoder state.",
+    "corrected": {
+      "B": {
+        "original": {
+          "unique_file_allocated_bytes": 16138240,
+          "unique_file_count": 65
+        },
+        "inode_deduplicated": {
+          "unique_file_allocated_bytes": 15720448,
+          "unique_file_count": 63
+        },
+        "suffix_based_same_pass": {
+          "allocated_bytes_with_duplicate_indices": 16138240,
+          "file_count": 65,
+          "duplicated_alias_bytes": 417792
+        }
+      },
+      "C": {
+        "original": {
+          "unique_file_allocated_bytes": 1451429888,
+          "unique_file_count": 750
+        },
+        "inode_deduplicated": {
+          "unique_file_allocated_bytes": 1450930176,
+          "unique_file_count": 748
+        },
+        "suffix_based_same_pass": {
+          "allocated_bytes_with_duplicate_indices": 1451397120,
+          "file_count": 750,
+          "duplicated_alias_bytes": 466944
+        }
+      },
+      "budget": {
+        "original": {
+          "unique_file_allocated_bytes": 4286656512,
+          "unique_file_count": 2047
+        },
+        "inode_deduplicated": {
+          "unique_file_allocated_bytes": 4284510208,
+          "unique_file_count": 2045
+        },
+        "suffix_based_same_pass": {
+          "allocated_bytes_with_duplicate_indices": 4286656512,
+          "file_count": 2047,
+          "duplicated_alias_bytes": 2146304
+        }
+      }
+    },
+    "restat_at": "2026-11-03T15:04:06.757069+08:00",
+    "observation_limit": "Original run allocation and later re-stat are different time observations. Filesystem extent/preallocation reclamation may change st_blocks; do not attribute their whole byte difference to duplicate counting. The same-pass comparison below isolates the suffix-reporter duplication."
+  }
+}

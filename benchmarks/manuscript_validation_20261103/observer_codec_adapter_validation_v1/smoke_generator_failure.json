@@ -1,0 +1,14 @@
+{
+  "status": "test_generator_smoke_failure_preserved_not_adapter_acceptance",
+  "events_requested": 1000,
+  "arrays_requested": 3,
+  "observed_snapshots_before_abort": 2,
+  "failure": "AssertionError: snapshot_count == args.arrays",
+  "cause": "Initial fixture selected snapshots by global event index; one scheduled index was a qualification boundary.",
+  "fix": "Use a fixed ordinal over guard events only, excluding the four qualification boundaries before generating results. No Codec or Adapter change for this fixture repair.",
+  "failed_source_hash": "not_saved; not reconstructed",
+  "failed_private_directory_retained": true,
+  "outer_complete_marker_exists": false,
+  "inner_complete_marker_exists": false,
+  "new_S07_or_source_calls": 0
+}

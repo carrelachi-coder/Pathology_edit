@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "status": "frozen_independent_adapter_interface_for_local_synthetic_review_not_live_approval",
+  "user_authorization_scope": "Latest user request: implement independent Adapter, fault injection and synthetic noninterference; do not connect production Observer or rerun S07.",
+  "prior_design": {
+    "path": "benchmarks/manuscript_validation_20261103/observer_codec_adapter_design_v1.json",
+    "sha256": "76c67f09c0b6fbcedc1b30123161c9f2f98385cdf42032d9dac9d2496a890dd8"
+  },
+  "production_integration": false,
+  "deployment_permitted": false,
+  "S07_execution_permitted": false,
+  "old_authorization_reuse_permitted": false,
+  "formal_HE_permitted": false,
+  "batch_four_target_permitted": false,
+  "physician_study_permitted": false,
+  "interfaces": {
+    "ObserverAdapter": "(directory,mode,identity,total_limit_bytes<=4GiB); creates isolated core and public sink, no automatic activation.",
+    "FailIsolatedSink": "Public record/invalidate/close with independently latched failures and separately guarded core notifications; ordinary backend double faults never enter business handlers.",
+    "close": "Quiesces only; no marker.",
+    "finalize": "After business returns, explicit normal_invocation_end and existing receipt path. Idempotent subsequent calls do not retry or rewrite.",
+    "external_validate": "Trusted identity/receipt/expected mode required; default read-only. Exhaust Codec Reader, cross-check event full case/primitive and failures/witness against the existing receipt, resource partition and all root bindings. Explicit publish=True belongs only to separate validator.",
+    "compare": "Require complete B hash_only,C full_capture and full original decoded receipt equality, plus strict streaming Codec comparison with no field exclusions. A/history remains a separate future controller gate."
+  },
+  "resource_policy": {
+    "total_bytes": 4294967296,
+    "outer_control_bytes": 262144,
+    "codec_bytes": 4294705152,
+    "max_root_control_document_bytes": 32768,
+    "compact_receipt_bytes": 8192,
+    "max_original_receipt_bytes": 8388608,
+    "max_event_metadata_charge_bytes": 8388608,
+    "target_block_bytes": 4194304,
+    "max_record_bytes": 8388608,
+    "max_array_bytes": 67108864,
+    "max_array_occurrences": 100000,
+    "queue_slots": 1,
+    "per_occurrence_copy": "Codec only, after its pre-copy checks; no adapter copy or dedup.",
+    "quota_limit": "Whole-tree conservative/accounted limits and actual allocated bytes, not exclusive disk quota or hard process RSS."
+  },
+  "completion": {
+    "inner": "Codec marker in codec/ is necessary but insufficient.",
+    "outer": "Only independent validator publishes adapter_complete.json after terminal Sink/core flags, identity/mode, receipt, both event pairs, terminal payload and exhausted streaming Reader all agree.",
+    "negative_outcome": "A fully recorded failed witness is complete evidence, not a qualified patient.",
+    "receipt_type_contract": "Terminal failures/witness must match the legacy typed JSON list/dict/scalar representation of the frozen JSON receipt. Unsupported or type-losing mismatches hold; no post-hoc type/path normalization."
+  },
+  "timing_policy": {
+    "per_capture_validation_reference_seconds": 30,
+    "pressure_validator_hard_subprocess_timeout_seconds": 30,
+    "compare_reference_seconds": 30,
+    "comparison_library": "Cooperative before/after deadline around public Codec.compare; not a hard OS process interrupt. Future external controller must provide hard process deadline.",
+    "large_pressure_comparison_status": "timeout_hold",
+    "no_automatic_limit_increase": true,
+    "source_pair_seconds_reference": 1200,
+    "future_witness_limit_reference": 6,
+    "automatic_retries": 0
+  },
+  "implementation_notes": [
+    "Three small standalone modules separate shared pure contracts, typed adapter/sink and external validator; old code unchanged.",
+    "Typed _encode matches legacy AST except ndarray delegation; _rng and metadata charging match legacy AST exactly.",
+    "No Controller/authorization/deployment implementation in this delivery; no live invocation entry point.",
+    "Defensive repeated finalize is idempotent and never a retry, an explicit lifecycle clarification of the design.",
+    "Benchmark-only allocated() reporter now de-duplicates index hardlinks by(dev,ino); raw observations retained with an additive correction, not a rerun."
+  ],
+  "source_sha256": {
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "1589bf264243f39d78fab202d2cb1e379a1f4d924980acb6c1e742ee22eabb5c",
+    "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "tests/test_observer_codec_adapter_v1.py": "0189c00b27eee5df598f1a015216a9b9b091c6dc4a7963781d6428c93dee76cd"
+  },
+  "independent_review_approved": false
+}

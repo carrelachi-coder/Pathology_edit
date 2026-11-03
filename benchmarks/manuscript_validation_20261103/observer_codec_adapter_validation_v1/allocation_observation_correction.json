@@ -1,0 +1,60 @@
+{
+  "scope": "benchmark report allocation observation only; Adapter/Codec/validator unchanged",
+  "reason": "Initial benchmark suffix-based alias check counted Codec.index.pending and.index.jsonl twice; both names point to the same inode. The production-independent validator already counted correct canonical representatives. Original reports are retained.",
+  "original_report_sha256": {
+    "pressure_2100000.json": "dc203cb83a2a294c16338bde51f1d13c329ed4e31e5f12f5be75cb7d82758b5d",
+    "whole_tree_budget.json": "3a65da479b77918b4d0cc0cdb9659fed76a089541f76ad9c4c0164e59aa48db1"
+  },
+  "reporter_source_sha256_before": "e53997f80bee53c0bd5adaebf05517b925e4bb125784b91c526b447f87c30ccf",
+  "reporter_source_sha256_after": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+  "method": "Re-stat existing closed synthetic trees, count(dev,ino) once; no event replay/regeneration or benchmark retry. Set is benchmark-only, not encoder/decoder state.",
+  "corrected": {
+    "B": {
+      "original": {
+        "unique_file_allocated_bytes": 16138240,
+        "unique_file_count": 65
+      },
+      "inode_deduplicated": {
+        "unique_file_allocated_bytes": 15720448,
+        "unique_file_count": 63
+      },
+      "suffix_based_same_pass": {
+        "allocated_bytes_with_duplicate_indices": 16138240,
+        "file_count": 65,
+        "duplicated_alias_bytes": 417792
+      }
+    },
+    "C": {
+      "original": {
+        "unique_file_allocated_bytes": 1451429888,
+        "unique_file_count": 750
+      },
+      "inode_deduplicated": {
+        "unique_file_allocated_bytes": 1450930176,
+        "unique_file_count": 748
+      },
+      "suffix_based_same_pass": {
+        "allocated_bytes_with_duplicate_indices": 1451397120,
+        "file_count": 750,
+        "duplicated_alias_bytes": 466944
+      }
+    },
+    "budget": {
+      "original": {
+        "unique_file_allocated_bytes": 4286656512,
+        "unique_file_count": 2047
+      },
+      "inode_deduplicated": {
+        "unique_file_allocated_bytes": 4284510208,
+        "unique_file_count": 2045
+      },
+      "suffix_based_same_pass": {
+        "allocated_bytes_with_duplicate_indices": 4286656512,
+        "file_count": 2047,
+        "duplicated_alias_bytes": 2146304
+      }
+    }
+  },
+  "restat_at": "2026-11-03T15:04:06.757069+08:00",
+  "observation_limit": "Original run allocation and later re-stat are different time observations. Filesystem extent/preallocation reclamation may change st_blocks; do not attribute their whole byte difference to duplicate counting. The same-pass comparison below isolates the suffix-reporter duplication."
+}

@@ -1,0 +1,38 @@
+{
+  "base_commit": "8def0e3537bb2232f23eb6c7c1f0753cdc2d241d",
+  "new_file_sha256": {
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "1589bf264243f39d78fab202d2cb1e379a1f4d924980acb6c1e742ee22eabb5c",
+    "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "tests/test_observer_codec_adapter_v1.py": "0189c00b27eee5df598f1a015216a9b9b091c6dc4a7963781d6428c93dee76cd"
+  },
+  "unchanged_protected_file_sha256": {
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "phase3_mask_edit_refine/passive_observer.py": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+    "phase3_mask_edit_refine/observer_comparison.py": "434fc10a8171a1fd17554ff0ba43a5bcd677f375ad4f021712ea8d1a26afc692",
+    "scripts/run_limited_topology_controller.py": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+    "scripts/limited_topology_startup.py": "468276457111d91d0192fca4afae9b348f174fe080289e804687b23efa4bafac",
+    "scripts/probe_manuscript_joint_capacity.py": "ef824365ce0b541be9ec4159798c7f1d33689fe3d8c5480e218a06ce3d5aebca",
+    "phase3_mask_edit_refine/execution.py": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e",
+    "phase3_mask_edit_refine/topology.py": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
+    "phase3_joint_edit_refine/candidate_feasibility.py": "4dbf11fa491c943c25e9139c4b26d24d577ffbc39d8cdf1e525fb6a197901993",
+    "phase3_joint_edit_refine/tissue_planner.py": "1f992413da188490e2a66f06a0bc3d661602b3eb736f0e48c0fdd01c10f5954a",
+    "phase3_joint_edit_refine/g2_execution_qualification.py": "f77ebc1958992ccd68887b918bc0f026cb496eea3b842de5dce34976de2552dc",
+    "benchmarks/manuscript_validation_20261103/guard_block_format_v2.json": "890175234376dc50b554223135cabe13b1f89deacafad5e42e6e2ab05e5f403e",
+    "benchmarks/manuscript_validation_20261103/observer_codec_adapter_design_v1.json": "76c67f09c0b6fbcedc1b30123161c9f2f98385cdf42032d9dac9d2496a890dd8",
+    "benchmarks/manuscript_validation_20261103/s07_authorization_closure_v1.json": "038626e15c7c079b8af2c685cab1b80d29319cffdcf92ad527fb3e37c5d05b61",
+    "benchmarks/manuscript_validation_20261103/limited_topology_launch_manifest_v3.json": "e41815ae705efe05b2075dffe7fd6599b6186782c2f606fb2398922a5ad32032"
+  },
+  "python": "3.11.4 (main, Jul  5 2023, 08:54:11) [Clang 14.0.6 ]",
+  "optimization_flag": 0,
+  "platform": "macOS-26.5.1-arm64-arm-64bit",
+  "numpy_version": "1.24.3",
+  "zlib_runtime": "1.2.13",
+  "scope": "local CPU synthetic acceptance; not a deployed/new S07 execution identity or hermetic environment",
+  "benchmark_reporter_only_change": {
+    "before_sha256": "e53997f80bee53c0bd5adaebf05517b925e4bb125784b91c526b447f87c30ccf",
+    "after_sha256": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "changed_function": "allocated() only; fixture, Adapter and validator behavior unchanged; existing raw reports retained, observation correction additive."
+  }
+}

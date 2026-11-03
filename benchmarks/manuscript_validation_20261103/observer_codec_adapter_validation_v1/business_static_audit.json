@@ -1,0 +1,201 @@
+{
+  "scope": "static review only; no qualification execution",
+  "base_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+  "files": [
+    {
+      "file": "phase3_mask_edit_refine/execution.py",
+      "base_sha256": "38ac0325960b13f0f9c3836356fadb3f6cdb73699d580cbde916ea4b41371b11",
+      "build_sha256": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e",
+      "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+      "passive_calls": [
+        {
+          "line": 166,
+          "event": "execution.begin"
+        },
+        {
+          "line": 194,
+          "event": "execution.works"
+        },
+        {
+          "line": 792,
+          "event": "envelopes.ready"
+        },
+        {
+          "line": 804,
+          "event": "ownership.ready"
+        },
+        {
+          "line": 827,
+          "event": "ownership.works"
+        },
+        {
+          "line": 1710,
+          "event": "probe.complete"
+        },
+        {
+          "line": 2154,
+          "event": "front.contribution"
+        }
+      ]
+    },
+    {
+      "file": "phase3_mask_edit_refine/topology.py",
+      "base_sha256": "e1ad7774c7be556d2d667deb4937a31c25b57971f384d92bcc9789b59870800f",
+      "build_sha256": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
+      "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+      "passive_calls": [
+        {
+          "line": 66,
+          "event": "grow.begin"
+        },
+        {
+          "line": 85,
+          "event": "grow.empty"
+        },
+        {
+          "line": 93,
+          "event": "grow.seeds"
+        },
+        {
+          "line": 95,
+          "event": "grow.empty"
+        },
+        {
+          "line": 128,
+          "event": "guard.reject"
+        },
+        {
+          "line": 132,
+          "event": "guard.reject"
+        },
+        {
+          "line": 136,
+          "event": "guard.reject"
+        },
+        {
+          "line": 151,
+          "event": "guard.local_result"
+        },
+        {
+          "line": 167,
+          "event": "guard.accept"
+        },
+        {
+          "line": 199,
+          "event": "grow.end"
+        },
+        {
+          "line": 283,
+          "event": "guard.stage"
+        },
+        {
+          "line": 296,
+          "event": "guard.stage"
+        },
+        {
+          "line": 316,
+          "event": "guard.stage"
+        },
+        {
+          "line": 328,
+          "event": "guard.stage"
+        },
+        {
+          "line": 350,
+          "event": "guard.stage"
+        }
+      ]
+    },
+    {
+      "file": "phase3_joint_edit_refine/candidate_feasibility.py",
+      "base_sha256": "e7692d633002aa58dd693302bfd040e1dcf714a59a8f35a8ed4f47684759c309",
+      "build_sha256": "4dbf11fa491c943c25e9139c4b26d24d577ffbc39d8cdf1e525fb6a197901993",
+      "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+      "passive_calls": [
+        {
+          "line": 866,
+          "event": "portfolio.preferences"
+        },
+        {
+          "line": 868,
+          "event": "portfolio.preference"
+        },
+        {
+          "line": 994,
+          "event": "compiler.attempt"
+        },
+        {
+          "line": 1007,
+          "event": "planner.ready"
+        },
+        {
+          "line": 1264,
+          "event": "compiler.exception"
+        },
+        {
+          "line": 1285,
+          "event": "compiler.exception"
+        }
+      ]
+    },
+    {
+      "file": "phase3_joint_edit_refine/tissue_planner.py",
+      "base_sha256": "99ce955958bf78d32abd4049b7381e08b5a2ef8297eec874e89204c79691bb61",
+      "build_sha256": "1f992413da188490e2a66f06a0bc3d661602b3eb736f0e48c0fdd01c10f5954a",
+      "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+      "passive_calls": [
+        {
+          "line": 978,
+          "event": "planner.label_filter"
+        },
+        {
+          "line": 982,
+          "event": "planner.preflight_filter"
+        },
+        {
+          "line": 1007,
+          "event": "planner.front_filter"
+        },
+        {
+          "line": 1221,
+          "event": "planner.ranking"
+        },
+        {
+          "line": 1245,
+          "event": "planner.selection"
+        },
+        {
+          "line": 1996,
+          "event": "planner.directional_limit_inputs"
+        }
+      ]
+    },
+    {
+      "file": "phase3_joint_edit_refine/g2_execution_qualification.py",
+      "base_sha256": "1be62b596e3abe339dad50d97ea061477b20acf39475eeac4c7952b65f3453b4",
+      "build_sha256": "f77ebc1958992ccd68887b918bc0f026cb496eea3b842de5dce34976de2552dc",
+      "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+      "passive_calls": [
+        {
+          "line": 342,
+          "event": "qualification.begin"
+        },
+        {
+          "line": 379,
+          "event": "qualification.preflight"
+        },
+        {
+          "line": 418,
+          "event": "qualification.exception"
+        },
+        {
+          "line": 425,
+          "event": "qualification.complete"
+        }
+      ]
+    }
+  ],
+  "passed": true,
+  "observer_sha256": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+  "limitation": "AST equivalence does not prove runtime noninterference; synthetic tests and separately approved real comparisons remain required."
+}
