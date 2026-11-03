@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "approved": true,
+  "recorded_at_utc": "2026-11-03T04:30:54.772448+00:00",
+  "manifest_sha256": "e41815ae705efe05b2075dffe7fd6599b6186782c2f606fb2398922a5ad32032",
+  "rng_decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "rng_approval_record_sha256": "9d72c4db6e4fd5177e1f55f1406ca319a9cdef06b783c776ce6f7faa6c6ac5d5",
+  "parent_manifest_v2_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+  "import_acceptance_sha256": "75a59da6bf70a31da318b337d575950626377dd5f609eeadb06b3fba291c3880",
+  "authorization_request_sha256": "11bae75828ecfe83a0734c4e93679b8f2d1c188f4c972684e0bd8f3826930f74",
+  "approval_source": {
+    "channel": "explicit user replies in current chat",
+    "question_batch": "call_87701ed2bd474fa7a7547c96d14ff5d6",
+    "RNG_question_index": 0,
+    "RNG_answer": "正式批准该 RNG 实验条件",
+    "execution_question_index": 1,
+    "execution_answer": "授权这一次有限 S07 诊断",
+    "not_a_cryptographic_signature": true
+  },
+  "scope": {
+    "source_reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "operations": [
+      "U1 Significant",
+      "U2 Significant"
+    ],
+    "arms": [
+      "A Legacy",
+      "B Hash-only",
+      "C Full Capture"
+    ],
+    "source_processes_max": 3,
+    "logical_witness_calls_max": 6,
+    "seconds_per_source_pair_max": 1200,
+    "automatic_retries": 0,
+    "hardware": "CPU only",
+    "stop": "Any historical/arm mismatch, timeout, signal/nonzero exit, invalid evidence or identity/storage drift stops later arms; no retries."
+  },
+  "not_included": [
+    "topology optimization",
+    "new source qualification credit",
+    "batch four-target compilation",
+    "formal30-patient cohort",
+    "H&E generation",
+    "physician study"
+  ],
+  "use_limit": "One finite A->B->C source diagnostic sequence only; no restart/retry after a hold; no alternate output-root run.",
+  "live_checks_required": true,
+  "qualification_updates_permitted": false,
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}

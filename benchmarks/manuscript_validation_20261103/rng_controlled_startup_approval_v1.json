@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "approved": true,
+  "recorded_at_utc": "2026-11-03T04:30:54.772448+00:00",
+  "decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "requested_record_sha256": "11bae75828ecfe83a0734c4e93679b8f2d1c188f4c972684e0bd8f3826930f74",
+  "approved_condition": "Single-native-thread CPU-only parent; frozen preload order; explicit restoration of common Python/NumPy legacy/Torch CPU defaults; inherited hash secret/fingerprint; local Generators unchanged. A is controlled legacy, not recovery of historical randomness. Strict A-history comparison retained.",
+  "approval_source": {
+    "channel": "explicit user replies in current chat",
+    "question_batch": "call_87701ed2bd474fa7a7547c96d14ff5d6",
+    "RNG_question_index": 0,
+    "RNG_answer": "正式批准该 RNG 实验条件",
+    "execution_question_index": 1,
+    "execution_answer": "授权这一次有限 S07 诊断",
+    "not_a_cryptographic_signature": true
+  },
+  "scope": "Formal acceptance of the disclosed controlled-startup experimental condition; execution separately authorized in s07_execution_authorization_v1.json. Not historical RNG recovery.",
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}
