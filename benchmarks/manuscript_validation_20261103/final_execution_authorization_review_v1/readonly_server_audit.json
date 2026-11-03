@@ -1,0 +1,52 @@
+{
+  "scope": "Final read-only identity/scope/authorization review; no imports of business modules, RNG restore, directory creation or witness execution. Frozen inputs read only to hash and reconstruct case mapping metadata.",
+  "utc": "2026-11-03T04:15:17.056359+00:00",
+  "manifest_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+  "controller_sha256": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+  "rng_decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "identity_scope_passed": true,
+  "snapshot_files_verified": 4066,
+  "runtime_distributions_verified": 220,
+  "case_mappings": [
+    {
+      "operation": "U1",
+      "sha256": "f148617ecba6a928cf94d3b70ab4f1699a35912749bb418577b011ef4ed9edc2",
+      "matched": true
+    },
+    {
+      "operation": "U2",
+      "sha256": "55df328b4a82b00308c69e61403a9e8fe81495708f2ed51642cdc0ae2b1256a7",
+      "matched": true
+    }
+  ],
+  "authorization": {
+    "approved": false,
+    "manifest_bound": true,
+    "rng_decision_bound": true,
+    "run_denied_before_side_effects": true,
+    "immutable_v2_denies_even_hypothetical_positive_record": true
+  },
+  "output": {
+    "root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/limited_topology_capture_v1_controlled_v2",
+    "exists": false,
+    "arm_path_exists": {
+      "A": false,
+      "B": false,
+      "C": false
+    },
+    "parent_device": 2080
+  },
+  "reservation": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/execution_preparation_v2/reservation_12gib.bin",
+    "inode": 185206993,
+    "device": 2080,
+    "size": 12884901888,
+    "allocated_bytes": 12884905984,
+    "requested_bytes": 12884901888,
+    "free_bytes": 16393605857280,
+    "is_quota": false
+  },
+  "business_modules_loaded": [],
+  "witness_calls": 0,
+  "execution_permitted": false
+}
