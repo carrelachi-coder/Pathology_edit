@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-11-03T04:00:12.257877+00:00",
+  "decision": "accept_known_disclosed_instrumentation_startup_difference",
+  "decision_scope": "Technical acceptance of these two earlier B/C source-module imports in the pinned diagnostic design only; no claim of identical A/B/C import order or zero effect.",
+  "known_import_difference_accepted": true,
+  "execution_permitted": false,
+  "S07_execution_authorized": false,
+  "rng_control_addendum_authorized": false,
+  "review_provenance": {
+    "user_review_basis": "Latest user-supplied independent review of 96d640a4: favors accepting and disclosing the two-module difference, explicitly withholds S07 execution authorization.",
+    "user_opinion_recorded_as": "supportive technical review; not recast as a signed final approval or execution grant",
+    "record_author": "Codex, the implementation assistant, recording the narrow technical disposition requested here after source/evidence cross-checks",
+    "new_external_independent_reviewer_commissioned": false,
+    "new_external_independent_signoff_claimed": false,
+    "authority_limit": "This records the technical choice, informed by the user-provided independent review. It does not impersonate another reviewer, manufacture a signature, or close broader startup/experiment authorization gates."
+  },
+  "pinned_scope": {
+    "A_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+    "B_C_commit": "c119c600e7479aef9046087745e7be34f57cbc29",
+    "controller_commit": "80fbbfc28a4d915680211e749f42cbea9e2a891a",
+    "execution_manifest_v2_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+    "source_reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "modules": [
+      {
+        "file": "phase3_mask_edit_refine/__init__.py",
+        "sha256": "10d9e47d15057b94f4d08e5fde01f7a5bb61eafe55e22263f4d003da731b12a5",
+        "identical_in_snapshots": {
+          "legacy": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+          "observer": "c119c600e7479aef9046087745e7be34f57cbc29",
+          "controller": "80fbbfc28a4d915680211e749f42cbea9e2a891a"
+        },
+        "import_position_one_based": {
+          "A": 21,
+          "B": 1,
+          "C": 1
+        },
+        "source_review": {
+          "top_level_statement_types": {
+            "Expr": 1,
+            "ImportFrom": 1,
+            "Assign": 1
+          },
+          "import_evaluated_calls": [],
+          "scope_note": "Reviews directly evaluated module/class bodies, decorators and function defaults, not method bodies. It is a source inspection, not a proof of arbitrary dependency/decorator side-effect absence.",
+          "conclusion": "Package exports data contracts; models defines exception/dataclass contracts and validation methods. Direct import-evaluated calls found only dataclass decorators and field metadata constructors; no direct planner, mask edit, RNG draw or topology execution call."
+        }
+      },
+      {
+        "file": "phase3_mask_edit_refine/models.py",
+        "sha256": "ab13e2515c881b10e2206ce2697ced70f1d514a29adc8ff040b9949beaa6cdc2",
+        "identical_in_snapshots": {
+          "legacy": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+          "observer": "c119c600e7479aef9046087745e7be34f57cbc29",
+          "controller": "80fbbfc28a4d915680211e749f42cbea9e2a891a"
+        },
+        "import_position_one_based": {
+          "A": 22,
+          "B": 2,
+          "C": 2
+        },
+        "source_review": {
+          "top_level_statement_types": {
+            "Expr": 1,
+            "ImportFrom": 5,
+            "Import": 1,
+            "ClassDef": 19,
+            "FunctionDef": 3
+          },
+          "import_evaluated_calls": [
+            {
+              "line": 17,
+              "callee": "dataclass"
+            },
+            {
+              "line": 113,
+              "callee": "dataclass"
+            },
+            {
+              "line": 173,
+              "callee": "dataclass"
+            },
+            {
+              "line": 276,
+              "callee": "dataclass"
+            },
+            {
+              "line": 286,
+              "callee": "dataclass"
+            },
+            {
+              "line": 298,
+              "callee": "dataclass"
+            },
+            {
+              "line": 310,
+              "callee": "dataclass"
+            },
+            {
+              "line": 325,
+              "callee": "dataclass"
+            },
+            {
+              "line": 375,
+              "callee": "dataclass"
+            },
+            {
+              "line": 429,
+              "callee": "dataclass"
+            },
+            {
+              "line": 443,
+              "callee": "dataclass"
+            },
+            {
+              "line": 450,
+              "callee": "dataclass"
+            },
+            {
+              "line": 552,
+              "callee": "dataclass"
+            },
+            {
+              "line": 577,
+              "callee": "field"
+            },
+            {
+              "line": 571,
+              "callee": "dataclass"
+            },
+            {
+              "line": 580,
+              "callee": "dataclass"
+            },
+            {
+              "line": 590,
+              "callee": "dataclass"
+            },
+            {
+              "line": 604,
+              "callee": "field"
+            },
+            {
+              "line": 599,
+              "callee": "dataclass"
+            },
+            {
+              "line": 619,
+              "callee": "field"
+            },
+            {
+              "line": 607,
+              "callee": "dataclass"
+            }
+          ],
+          "scope_note": "Reviews directly evaluated module/class bodies, decorators and function defaults, not method bodies. It is a source inspection, not a proof of arbitrary dependency/decorator side-effect absence.",
+          "conclusion": "Package exports data contracts; models defines exception/dataclass contracts and validation methods. Direct import-evaluated calls found only dataclass decorators and field metadata constructors; no direct planner, mask edit, RNG draw or topology execution call."
+        }
+      }
+    ]
+  },
+  "actual_import_order": {
+    "A": "Probe and joint dependency chain, then refine package initialization and models at source import positions21/22.",
+    "B_C": "Explicit Observer import first triggers refine package initialization and models at positions1/2, then probe and joint dependency chain.",
+    "B_C_order_identical": true,
+    "A_B_C_order_identical": false,
+    "inventory_comparison": "Same96 source files after omitting the Observer implementation for descriptive smoke comparison; only the two listed source modules move. This descriptive omission is not a production comparator exclusion."
+  },
+  "evidence": {
+    "import_smoke": {
+      "file": "controlled_startup_final_review_v1/import_smoke_report.json",
+      "sha256": "7d250f14f7b92029daa2c61c6e666f4df5f9b1102c38c61c45c53f6d1722ffd6"
+    },
+    "import_diff": {
+      "file": "controlled_startup_final_review_v1/A_vs_B_import_order.diff",
+      "sha256": "ad46cf85d23047e52fa54f5343bbb0f77a2e744ad2b965262a9417ddab0734db"
+    },
+    "prior_review": {
+      "file": "controlled_startup_final_review_report_v1.json",
+      "sha256": "ae487c63a2110f41a3d732bf4b2ea7f29bef6f1c210790f5fbc49bdeb694530a"
+    },
+    "controller_startup_decision": {
+      "file": "rng_initialization_decision_record_v1.json",
+      "sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174"
+    }
+  },
+  "observed_checks": {
+    "business_main_probe_witness_entries_triggered": 0,
+    "blocked_business_call_attempts": 0,
+    "default_rng_and_hash_equal_before_business": true,
+    "default_states_unchanged_after_import": true,
+    "all_recorded_source_entry_checkpoints_match_initial": [
+      true,
+      true,
+      true
+    ],
+    "native_threads_after_import": [
+      1,
+      1,
+      1
+    ],
+    "CUDA_initialized_after_import": [
+      false,
+      false,
+      false
+    ],
+    "source_reads_boundary": "Identity preparation hashes frozen input files and reads source manifests; no source-image/mask decoding, planning or witness execution occurred in this import-only test."
+  },
+  "scientific_rationale": [
+    "This comparison tests whether adding the recorder changes business results; exact equality of every import timestamp/order is not itself the endpoint.",
+    "The identified difference follows ordinary parent-package initialization when importing the Observer submodule; the two files contain the same pinned data-contract definitions in every snapshot.",
+    "Source inspection found no direct import-time planner/mask/RNG/topology call in the two files. Actual import smoke preserved the recorded defaults, hash, one native thread and uninitialized CUDA.",
+    "B and C have identical source import order, preserving the hash-only versus full-capture startup comparison.",
+    "A retains its unmodified legacy business import path. Forcing A to preload these modules would introduce another startup change and is not required for this narrow acceptance.",
+    "Retaining the known instrumentation startup difference avoids an unnecessary Observer import redesign while preserving exact business/semantic outcome checks."
+  ],
+  "limitations": [
+    "No observed default RNG/hash/thread/CUDA change is not proof that every import side effect is absent.",
+    "Module caching, class-definition timing, registry or conditional-import behavior and other unmeasured state may still differ; the source review and finite checkpoints do not exhaust them.",
+    "The smoke comparison concerns source-module entries in these snapshots, not all Python/extension-loader events or every future environment.",
+    "Real A/B/C execution and runtime noninterference have not been demonstrated; strict mismatch_hold remains authoritative.",
+    "This acceptance cannot be generalized to new module hashes, different snapshots, startup policies, package environments or added import-order differences without another review record."
+  ],
+  "unchanged_required_comparisons": {
+    "A_vs_history": "Exact full historical business receipt equality. Controlled-A does not recover the historical RNG trajectory; any observed business difference stops before B.",
+    "A_vs_B": "Exact full business receipt equality; no metric-only substitute or startup-difference waiver for output mismatches.",
+    "B_vs_C": "Complete strict semantic transcript and evidence-integrity comparison, including all available RNG digests, plan/anchor/interface order, allocations, masks, topology and exceptions.",
+    "excluded_semantic_fields": [],
+    "post_hoc_field_exclusions_allowed": false,
+    "path_normalization_added": false,
+    "stop_policy": "Any mismatch, timeout, invalid evidence, nonzero/signal termination or identity/resource drift stops subsequent arms without retries."
+  },
+  "record_lifecycle": {
+    "created_exclusively": true,
+    "append_only_policy": true,
+    "overwrite_allowed": false,
+    "amendments": "Create a new versioned decision file; preserve this record and cited evidence.",
+    "supersedes_only": "The pending technical import-order disposition in controlled_startup_final_review_report_v1.json; factual A/B/C order differences and all earlier evidence remain unchanged.",
+    "does_not_supersede": [
+      "original frozen capture protocol",
+      "execution manifest v1/v2",
+      "RNG controlled-startup approval gate",
+      "controller/final scientific approval",
+      "separate manifest-bound S07 execution authorization"
+    ],
+    "integrity_scope": "Versioned Git audit record with source/evidence hashes, not a digital signature or WORM storage guarantee."
+  },
+  "production_changes": {
+    "observer": false,
+    "controller": false,
+    "business_code": false,
+    "original_protocol": false,
+    "execution_manifest_v1_or_v2": false,
+    "comparison_rules": false,
+    "A_preload_changed": false
+  },
+  "qualification_unchanged": {
+    "source_topology_patients": 17,
+    "upper_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "formal_target": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "S07_witness_calls_performed_this_step": 0,
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false,
+  "next_authorization_boundary": "Accepting this disclosed difference does not authorize controlled startup on S07, three-arm execution, topology optimization, source requalification, H&E generation or physician study."
+}
