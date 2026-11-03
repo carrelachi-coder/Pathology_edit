@@ -135,7 +135,7 @@
     "estimand": "equal independent-unit mean; average sources within patient/WSI, then equal-weight units for effect, CI and test"
   },
   "blockers": [
-    "old three frozen pools have17 source-topology-pass patients, upper19 including unknowns; new native recovery adds216 cheap-only windows across67 patient groups, but capacity/topology/four-target/review remain unresolved; no formal30-patient source cohort is frozen",
+    "Old three frozen pools plus completed native512/stride256 recovery still provide17 source-topology-pass patient groups, upper19 including old unknowns; no complete30-patient four-target-reviewed cohort. No lowering thresholds or new batch compilation is authorized by this report.",
     "formal 30-patient source list, four approved joint targets per source and protected ROI hashes not frozen; initial inputs and expanded censuses are provisional, not qualified cohorts",
     "final-source mapping and training-manifest reference audits must accompany frozen assets; unresolved checkpoint patient lineage is disclosed and automatic readouts remain coupled computational evidence",
     "complete formal-asset preflight on the pinned accepted execution snapshot; revalidate affected technical behavior if the execution implementation changes"
@@ -335,6 +335,14 @@
       "new_cheap_sources": 216,
       "patient_groups": 67,
       "new_qualified_patients": 0
+    },
+    "native_crop_qualification": {
+      "report": "../manuscript_validation_20261103/native_source_qualification_report_v1.json",
+      "sha256": "59a4a0c9ac04f9f8730e8f6ca3edf76428e261202e531ac660256693081e6fc8",
+      "status": "complete:216 capacity checks,9 dual capacity passes,9 topology checks,0 topology passes",
+      "combined_source_topology_patients": 17,
+      "upper_including_old_unknowns": 19,
+      "new_fully_approved_patients": 0
     }
   }
 }

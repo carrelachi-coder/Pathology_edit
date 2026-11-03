@@ -598,5 +598,19 @@
     "expanded_optimistic_necessary_condition_upper_bound": 76,
     "new_qualified_patients": 0,
     "probnet_started": false
+  },
+  "native_source_qualification_20261103": {
+    "report": "../manuscript_validation_20261103/native_source_qualification_report_v1.json",
+    "report_sha256": "59a4a0c9ac04f9f8730e8f6ca3edf76428e261202e531ac660256693081e6fc8",
+    "capacity_completed": 216,
+    "capacity_passing_sources": 9,
+    "capacity_passing_patients": 5,
+    "topology_completed": 9,
+    "topology_passing_sources": 0,
+    "combined_confirmed_topology_patients": 17,
+    "combined_upper_including_unknown": 19,
+    "new_unknown_sources": 0,
+    "new_fully_approved_patients": 0,
+    "formal_launch_permitted": false
   }
 }

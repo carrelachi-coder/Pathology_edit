@@ -1,0 +1,554 @@
+{
+  "created_utc": "2026-11-03T00:20:40.369683+00:00",
+  "scope": "completed216-source native recovery qualification; source-only, no ProbNet population generation or H&E",
+  "protocol": "native_source_qualification_protocol_v1.json",
+  "protocol_sha256": "cb5145cb9c1b8307f342fbbd503d49849a58fe02d58a03e690d4187102eeda9a",
+  "execution_code_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+  "driver_source": "native_source_qualification_driver_v1.py",
+  "driver_sha256": "c498b3eea9ebb3992329a75ec2f57cb3fe9150e2415c5712188ff3276a903ca9",
+  "result": {
+    "scope": "source-only native recovery capacity/topology qualification; no four-target or clinical claim",
+    "status": "complete",
+    "requested_sources": 216,
+    "requested_patients": 67,
+    "verified_input_files": 648,
+    "capacity_status_counts": {
+      "failed_condition": 207,
+      "passed": 9
+    },
+    "topology_status_counts": {
+      "failed_condition": 9,
+      "not_run_capacity_not_passed": 207
+    },
+    "capacity_passing_sources": 9,
+    "topology_requested_sources": 9,
+    "topology_completed_sources": 9,
+    "new_topology_passing_sources": 0,
+    "new_topology_passing_patients": 0,
+    "new_topology_patients_outside_old17": 0,
+    "combined_confirmed_topology_patients": 17,
+    "combined_upper_including_unknown": 19,
+    "new_unknown_patient_groups": 0,
+    "old_confirmed_topology_patients": 17,
+    "old_upper_including_unknown": 19,
+    "new_fully_approved_four_target_patients": 0,
+    "formal_launch_permitted": false,
+    "batch_four_target_compilation_started": false,
+    "any_gpu_inference": false,
+    "protocol_sha256": "cb5145cb9c1b8307f342fbbd503d49849a58fe02d58a03e690d4187102eeda9a",
+    "source_status_ledger_sha256": "0d0267f12d6fc6a2d63caa682645b6bd382f26fe8b243d3ff0d47745a1bfe4c4",
+    "capacity_progress_sha256": "dfdad04a19fa3b3d85dd5e58cb00b333806e9bfaf125ee0d2293b202d23527ff",
+    "topology_progress_sha256": "36882d73db676860ddb1a54dc93f57b14334c5c668b5af05a5bcf8d898156e2a",
+    "private_first_topology_source_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "interpretation": "Passing topology is necessary only. First source per patient is provisional topology order, never final four-target approval. Unknowns stay unknown and failed conditions are not zero readouts."
+  },
+  "capacity_stage_patient_bound": {
+    "scope": "all capacity terminal; optimistic patient bound before topology completes",
+    "capacity_requested": 216,
+    "capacity_completed": 216,
+    "capacity_pass_sources": 9,
+    "capacity_pass_patient_groups": 5,
+    "known_capacity_fail_sources": 207,
+    "capacity_unknown_sources": 0,
+    "new_capacity_pass_groups_outside_old17": 4,
+    "old_patient_upper_including_unknown": 19,
+    "max_combined_patients_if_all_new_capacity_passes_and_old_unknown_qualify": 23,
+    "formal_launch_permitted": false,
+    "new_capacity_pass_sources_are_not_topology_or_target_approvals": true,
+    "capacity_progress_sha256": "dfdad04a19fa3b3d85dd5e58cb00b333806e9bfaf125ee0d2293b202d23527ff"
+  },
+  "per_operation_and_distribution": {
+    "descriptive_strata_only_no_filter_or_order_change": {
+      "low_editing_tissue_only": {
+        "sources": 122,
+        "capacity_pass_sources": 9,
+        "topology_pass_sources": 0,
+        "unresolved_sources": 0
+      },
+      "background_only": {
+        "sources": 79,
+        "capacity_pass_sources": 0,
+        "topology_pass_sources": 0,
+        "unresolved_sources": 0
+      },
+      "both": {
+        "sources": 15,
+        "capacity_pass_sources": 0,
+        "topology_pass_sources": 0,
+        "unresolved_sources": 0
+      }
+    },
+    "per_operation": {
+      "capacity": {
+        "cohesive-boundary-expansion-v1": {
+          "checks": 216,
+          "passed": 22,
+          "failed_condition": 194,
+          "execution_error": 0
+        },
+        "generic-immune-infiltrate-increase-v1": {
+          "checks": 216,
+          "passed": 50,
+          "failed_condition": 166,
+          "execution_error": 0
+        }
+      },
+      "topology": {
+        "cohesive-boundary-expansion-v1": {
+          "checks": 9,
+          "passed": 0,
+          "failed_condition": 9,
+          "execution_error": 0
+        },
+        "generic-immune-infiltrate-increase-v1": {
+          "checks": 9,
+          "passed": 0,
+          "failed_condition": 9,
+          "execution_error": 0
+        }
+      }
+    }
+  },
+  "topology_failure_diagnostics": {
+    "area_semantics": "trial tissue-edit pixels from source-only topology search, not final joint J",
+    "all_operations": 18,
+    "underfill_diagnostic_operations": 17,
+    "no_jointly_feasible_directed_interface_operations": 1,
+    "required_tissue_floor_pixels": 70779,
+    "cases": [
+      {
+        "index": 0,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              31754,
+              32036
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 117685
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              35817,
+              36120
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 95338
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              7677,
+              8154,
+              11857,
+              17005,
+              20011,
+              24682,
+              28862
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 77440
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              6744,
+              10860,
+              12993,
+              18245,
+              21957,
+              22800,
+              35793,
+              38809,
+              42386,
+              43369,
+              43378,
+              55617
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 132632
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              4883,
+              12604,
+              13237,
+              14223,
+              16486,
+              19106,
+              23515,
+              31710,
+              32452,
+              33438,
+              33441,
+              38327
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 112850
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              36188,
+              41436,
+              49208
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 116959
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              14947,
+              23222
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 85447
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              18620,
+              25263
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 92801
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              5704,
+              8931,
+              9868,
+              10018,
+              15702,
+              17228,
+              19886
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 122595
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              10109,
+              11323,
+              13315,
+              16847,
+              27911,
+              32165,
+              44758,
+              51848,
+              52439,
+              55886,
+              55890
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 128608
+          }
+        ]
+      },
+      {
+        "index": 5,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              21819,
+              29664
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 74683
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              1954,
+              21745,
+              29748,
+              33329,
+              35283,
+              55074
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 124668
+          }
+        ]
+      },
+      {
+        "index": 6,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              29906,
+              34296
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 72685
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              7846,
+              14590,
+              29601,
+              29820,
+              35102,
+              35590,
+              37287,
+              56690,
+              56691,
+              56694,
+              57966
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 118310
+          }
+        ]
+      },
+      {
+        "index": 7,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              3681,
+              10286,
+              15382,
+              16635,
+              22287,
+              39094,
+              59154,
+              64639,
+              70728,
+              70731,
+              70732
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 134891
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "RefineContractError"
+            ],
+            "observed_realized_safe_area_values": [],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 134891
+          }
+        ]
+      },
+      {
+        "index": 8,
+        "checks": [
+          {
+            "primitive": "cohesive-boundary-expansion-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              14067,
+              15167,
+              17724,
+              19855,
+              20883,
+              23897,
+              36050,
+              51120,
+              52908,
+              53665,
+              53670,
+              56679
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 134595
+          },
+          {
+            "primitive": "generic-immune-infiltrate-increase-v1",
+            "failed_reasons": [
+              "whole_mask_topology_witness_not_executable"
+            ],
+            "exception_class_names_in_diagnostics": [
+              "JointContractError",
+              "TopologySafeAreaUnderfillError"
+            ],
+            "observed_realized_safe_area_values": [
+              10959,
+              14775,
+              21633,
+              26082,
+              26825,
+              39652,
+              39656
+            ],
+            "meaningful_floor_pixels": 70779,
+            "aggregate_capacity_pixels": 96257
+          }
+        ]
+      }
+    ]
+  },
+  "artifact_sha256": {
+    "qualification_report.json": "7b4edc632e8b6750d808b4dd84e88fae57f92145ef82831c937413fc852b1031",
+    "capacity_final_progress.json": "dfdad04a19fa3b3d85dd5e58cb00b333806e9bfaf125ee0d2293b202d23527ff",
+    "topology_final_progress.json": "36882d73db676860ddb1a54dc93f57b14334c5c668b5af05a5bcf8d898156e2a",
+    "source_status_ledger.json": "0d0267f12d6fc6a2d63caa682645b6bd382f26fe8b243d3ff0d47745a1bfe4c4",
+    "data_integrity.json": "3312bf14fc48dc6a2ebe1e308ecb265552edeed71452df247a45b4357c1d8746",
+    "topology_failure_diagnostics_v1.json": "29480b9a1e0798d58876214d35467764a1fad17b8f5c1517c6d94084d27fb4df",
+    "distribution_and_per_operation_summary.json": "ffff7f2c6a6ae41af828639b5ede45c1e5b91540e9ded0d246310df10ef9862b"
+  },
+  "per_source_evidence_local": "/Users/wangqinxin/.codex/worktrees/manuscript-validation-20261102/Pathology_edit/.codex-artifacts/manuscript_validation_20261103/native_source_qualification_v1/source_status_ledger.json",
+  "no_threshold_or_order_change": true,
+  "no_automatic_retries": true,
+  "new_fully_approved_four_target_patients": 0,
+  "formal_launch_permitted": false,
+  "batch_four_target_compilation_started": false,
+  "physician_study_started": false,
+  "limits": [
+    "Necessary capacity is an aggregate preflight condition, not an executable whole-mask topology witness.",
+    "These are computational source-condition failures under the fixed mechanisms and bounded search, not evidence that the patients biologically lack these tissues or that every possible editing strategy is impossible.",
+    "All225 source controllers completed with exit0; topology contract-underfill rejections are recorded separately from unexpected execution errors and timeout.",
+    "The216 sources already differ from historical training-export quality filters; descriptive strata are retained without changing selection.",
+    "All9 dual-capacity passes belonged to the low-editing-tissue-only stratum. No source passed both topology witnesses.",
+    "The old unknown sources remain unresolved and retained; this batch introduced no new unknown.",
+    "17 is a source-topology patient count, not a four-target-approved or clinically validated cohort.",
+    "Historical nuclear pseudo-label checkpoint lineage and model training overlaps retain their prior limitations."
+  ]
+}
