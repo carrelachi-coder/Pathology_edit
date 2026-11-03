@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata as metadata
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -44,7 +45,7 @@ def bounded_fork(function, *, timeout):
         while True:
             done,status=os.waitpid(pid,os.WNOHANG)
             if done:
-                return {'exit_code':os.waitstatus_to_exitcode(status),'timed_out':False,
+                return {'pid':pid,'exit_code':os.waitstatus_to_exitcode(status),'timed_out':False,
                         'elapsed_seconds':time.monotonic()-started}
             if time.monotonic()-started>=timeout:
                 try:os.killpg(pid,signal.SIGKILL)
@@ -53,7 +54,7 @@ def bounded_fork(function, *, timeout):
                 try:os.kill(pid,signal.SIGKILL)
                 except ProcessLookupError:pass
                 os.waitpid(pid,0)
-                return {'exit_code':None,'timed_out':True,'elapsed_seconds':time.monotonic()-started}
+                return {'pid':pid,'exit_code':None,'timed_out':True,'elapsed_seconds':time.monotonic()-started}
             time.sleep(.01)
     except BaseException:
         try:os.killpg(pid,signal.SIGKILL)
@@ -73,6 +74,7 @@ def sequence(execute, assess, *, emit, timeout=1200):
         emit({'event':'launch_reserved','arm':arm,'reserved_witness_calls':calls})
         try:
             receipt=execute(arm,timeout)
+            emit({'event':'arm_process_receipt','arm':arm,'receipt':receipt})
             if receipt['timed_out'] or receipt['exit_code']!=0:
                 raise RuntimeError('arm timeout/nonzero exit')
             if assess(arm) is not True:
@@ -187,7 +189,11 @@ def run(plan, manifest_sha, approval):
     import numpy
     if plan['preload_torch_cpu']:
         import torch
-    from scripts.limited_topology_startup import capture,digest,parent_gate,restore_controlled
+    # Avoid caching a generic `scripts` package from the controller snapshot in
+    # the parent; business imports must resolve against each pinned arm snapshot.
+    spec=importlib.util.spec_from_file_location('_s07_startup_support',Path(__file__).with_name('limited_topology_startup.py'))
+    startup=importlib.util.module_from_spec(spec);spec.loader.exec_module(startup)
+    capture,digest,parent_gate,restore_controlled=startup.capture,startup.digest,startup.parent_gate,startup.restore_controlled
     parent_gate()
     common=capture();out=Path(plan['output_root']);out.mkdir(exist_ok=False)
     # Prove non-replacement hardlinks at the ACTUAL output location, before A.
@@ -213,6 +219,7 @@ def run(plan, manifest_sha, approval):
             spec=plan['arms'][arm]
             def child():
                 restore_controlled(common)
+                parent_gate()
                 directory=out/arm;directory.mkdir(exist_ok=False)
                 write_new(directory/'startup_identity.json',{'digest':digest(capture()),'hash_fingerprint':capture()['hash_fingerprint']})
                 # Route output before importing or running business modules.

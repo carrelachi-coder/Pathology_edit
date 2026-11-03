@@ -76,7 +76,7 @@
   },
   "controller_design": {
     "source": "scripts/run_limited_topology_controller.py",
-    "sha256": "79506d1bdddb9461185d2a23ba0992f948c473a26e4fca47a11f7fea2e4e8bd9",
+    "sha256": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
     "authorization_before_import_or_output": true,
     "finite_limits": {
       "source_processes": 3,
@@ -97,7 +97,9 @@
     ],
     "comparison_import_isolation": "Observer/comparator are imported only in arm/helper children; parent does not import them between B/C, preserving module availability/import-order control.",
     "additional_helper_budget": "At most two offline evidence-check children, each30s; zero witness calls. Three source processes / six logical witness reservations remain the business budget.",
-    "receipt_policy": "Exact complete business receipt equality; no post-hoc exclusions. Raw auxiliary/output path differences can still hold the run; no normalization is introduced."
+    "receipt_policy": "Exact complete business receipt equality; no post-hoc exclusions. Raw auxiliary/output path differences can still hold the run; no normalization is introduced.",
+    "parent_import_namespace": "Startup helper loaded under a unique private module name; no generic scripts package cached in production parent.",
+    "process_receipts": "PID/exit code/timeout/elapsed time appended to controller ledger for each completed process."
   },
   "local_validation": {
     "log": "controller_startup_validation_v1/pytest.txt",
@@ -107,7 +109,8 @@
     "subtests_passed": 85,
     "whole_repository_CI": false,
     "real_S07_tested": false,
-    "faults": "A/B/C-stage nonzero exits, SIGKILL, timeout, mismatches, invalid evidence and assessment exceptions; no later launch or retry; source-limit/args/mode mutations rejected; parent cancellation kills/reaps child."
+    "faults": "A/B/C-stage nonzero exits, SIGKILL, timeout, mismatches, invalid evidence and assessment exceptions; no later launch or retry; source-limit/args/mode mutations rejected; parent cancellation kills/reaps child.",
+    "final_controller_log": "controller_startup_validation_v1/controller_final_pytest.txt"
   },
   "preserved": {
     "observer_and_business_source_unchanged_from": "c119c600e7479aef9046087745e7be34f57cbc29",
