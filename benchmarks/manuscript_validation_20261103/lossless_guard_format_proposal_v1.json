@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "status": "draft_after_saved_prefix_capacity_analysis",
+  "production_implementation_approved": false,
+  "execution_permitted": false,
+  "S07_rerun_permitted": false,
+  "old_authorization_reuse_permitted": false,
+  "purpose": "Complete, byte-lossless, auditable capture of high-frequency guard events within bounded resources; no source algorithm or decision changes.",
+  "evidence_basis": {
+    "analysis_record": "saved_guard_capacity_analysis_report_v1.json",
+    "sha256": "66c61042c2bb1ec1765978b6c050d7c50d8baaf698f84887d4cfc26e06f14135",
+    "measured_prefix_events": 2000000,
+    "measured_prefix_complete_business_run": false
+  },
+  "nonnegotiable_semantics": [
+    "Every logical event survives with original order, sequence and every field/type/value. No sampling, filtering, aggregation into a statistic or event reordering.",
+    "Preserve original v1 canonical JSONL bytes initially, including explicit nonfinite encodings, field ordering and full available RNG data. Compression changes storage only.",
+    "No guard/planner re-evaluation, callback decision data, RNG draws/reseeding, live-array views, extra candidate sorting or business-object mutation.",
+    "No causal area-loss inference from record/event counts. Original prefix is incomplete and cannot be made valid by re-encoding."
+  ],
+  "format_candidate": {
+    "logical_layer": "Unchanged ordered v1 logical events. Sequence remains per logical event, never per block.",
+    "physical_layer": "Single-owner synchronous lossless compressed blocks, initially zlib level1 as a low-CPU candidate; level6 is an offline alternative only. No background compression threads in initial design.",
+    "target_decoded_block_bytes": 4194304,
+    "maximum_single_record_and_decoded_block_bytes": 8388608,
+    "record_boundaries": "Flush before next event would exceed target; a record larger than target but within8MiB occupies a dedicated block. No cut/truncation of an event. Larger event invalidates capture; no silent fallback/drop.",
+    "header_fields": [
+      "format_version",
+      "logical_schema_version",
+      "codec_and_version",
+      "block_index",
+      "first_logical_sequence",
+      "last_logical_sequence",
+      "logical_event_count",
+      "decoded_byte_count",
+      "encoded_byte_count",
+      "decoded_SHA256",
+      "encoded_SHA256",
+      "previous_block_commit_SHA256"
+    ],
+    "index": "Append-only block receipts; streaming chain/digest and O(1) retained index state rather than an unbounded in-memory event list.",
+    "publication": "Write block payload/header to unique pending files, check hashes/counts, flush/fsync/close; publish no-replace links and a block commit receipt last. A visible file alone is not a committed block. Partial pairs or receipts remain incomplete and invalidate whole-run acceptance.",
+    "logical_digest": "Maintain/reconstruct exact original semantic line-chain and decoded stream SHA. B/C compare decoded events, never assume equal compressed bytes across codec implementations.",
+    "unknown_events_or_fields": "Retain raw canonical event bytes. No fixed-enum assumption may discard a new key, arbitrary string or schema variant. A later typed/delta codec is out of initial scope until full inverse and preservation tests exist."
+  },
+  "resource_policy_proposal": {
+    "old_v1_policy_unchanged": "Current producer max_events=2000000 and all frozen limits remain unmodified. No live producer is replaced in this work.",
+    "proposed_new_policy_requires_approval": "Use a distinct versioned policy accounting actual written/temporary physical bytes and bounded inflight buffers plus the existing finite business wall-time limit, rather than simply raising the old logical-event quota.",
+    "not_relabeling": "Do not reinterpret max_events as block count or claim a2M logical-event ceiling was satisfied after packing. Logical event totals remain explicit and can exceed2M only under a separately approved new policy.",
+    "budget_target": "Evaluate within existing4GiB per-observer storage and original source-pair1200s budget first; no larger disk/time limit approved. Account payloads, headers, index, arrays and pending files; hardlink aliases do not duplicate physical allocation.",
+    "buffer_limits": "Reserve before allocation/copy. Keep existing64MiB detached-array and8MiB event-metadata ceilings; explicitly budget raw/compressed block buffers and encoder worst-case expansion. No full-file read_bytes, decompression bomb or full decoded event list.",
+    "decoder_guards": [
+      "Validate header lengths/version/chain before allocation",
+      "Bound decoded bytes and reject unused/trailing/oversized compressed streams",
+      "Require exact contiguous first/last/count and decoded/hash match",
+      "Stream validation/comparison without accumulating millions of event dictionaries"
+    ],
+    "fail_closed": "Any disk/queue/encode/copy/close/overflow fault sets capture invalid out of business exception handling, never replans business or samples data. Physical budget/time exhaustion still stops acceptance. OS process RSS/kill and concurrent writers remain limitations."
+  },
+  "full_capture_arrays": {
+    "status": "unmeasured_by_this_hash_only_prefix",
+    "required_semantics": "Each snapshot copied while emitted and retains logical occurrence ID, dtype/shape and content hash. Never defer hashing/compression of a live mutable view.",
+    "initial_proposal": "Retain unique array occurrence inventory; any lossless blob codec uses both decoded content hash and stored payload hash. Do not silently enable physical dedup under the old comparator.",
+    "unknown_budget": "B has hashes only; these data do not establish Full Capture array volume or compressibility. Include actual blob storage in the same finite budget, not just guard blocks."
+  },
+  "whole_run_completeness": {
+    "separate_from_block_integrity": true,
+    "requirements": [
+      "All committed blocks contiguous from sequence0; every logical event and array occurrence accounted",
+      "No faults, orphan/missing/duplicate blocks or unresolved pending records",
+      "Both frozen operation IDs have qualification.begin and qualification.complete; expected full business receipt contains exactly U1/U2",
+      "Producer normal end, final logical digest/counts and business receipt hash bound to final completion marker",
+      "Final marker published atomically without replacement only after all files/index/footer close successfully"
+    ],
+    "saved_prefix_expected_result": "Must remain incomplete:1 qualification begin,0 completes and1 open grow. Successful prefix decoding must never emit a production observer_complete marker or recover the missing tail."
+  },
+  "comparison_and_authority": {
+    "A_vs_history": "Unchanged exact full business receipt comparison.",
+    "A_vs_B": "Unchanged exact full business receipt comparison.",
+    "B_vs_C": "Strict full decoded logical event and array integrity comparison, no excluded semantic/RNG/path fields. Requires a separately pinned streaming reader; existing list-loading c119 comparator is not silently reused as if it supported this format.",
+    "authorization": "Draft only. Requires separate format/resource-policy review, implementation/static noninterference and fault tests, frozen code/runtime/manifest, and fresh explicit diagnostic authorization before live use. No S07 replay now."
+  },
+  "before_any_live_use": [
+    "Byte-exact all-prefix roundtrip and independent decoder verification",
+    "Synthetic logs larger than2M logical events to exercise accounting without any pathology execution; never claim this is full S07 acceptance",
+    "Mutated/missing/duplicate/reordered block/header/index/array and every partial-close boundary rejection",
+    "No normalization/field loss for Unicode, nonfinite tags, arbitrary metadata, exceptions, dtype/endian/shape and RNG state",
+    "Producer fault isolation and unchanged business AST/ordering/RNG under off/hash/full modes",
+    "Complete-run versus truncated-prefix distinction tested independently",
+    "Independent review of bounded memory/storage/time and new immutable execution identities"
+  ],
+  "full_run_event_volume_forecast": null,
+  "proposal_not_implemented": true,
+  "research_invariants": {
+    "source_topology_patients": 17,
+    "upper_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "formal_target": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}

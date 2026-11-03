@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "status": "offline_capacity_analysis_complete_saved_prefix_only",
+  "execution_permitted": false,
+  "S07_rerun": false,
+  "new_witness_calls": 0,
+  "source_authorization_closed": {
+    "record": "s07_authorization_closure_v1.json",
+    "sha256": "038626e15c7c079b8af2c685cab1b80d29319cffdcf92ad527fb3e37c5d05b61"
+  },
+  "input": {
+    "archive_sha256": "b5e4cbfe026622135368915175b41e27850c2e9e68aad0b3cbe2941434e80da4",
+    "trace_sha256": "facb943e06f2a1e142c0e8de444919f4d7b27952df53e5b3f776c71f3ce9c294",
+    "trace_bytes": 254793387,
+    "logical_events": 2000000,
+    "source_observer_valid": false,
+    "source_interpretation_permitted": false,
+    "source_completion_not_recovered": true,
+    "saved_chain_matches": true
+  },
+  "findings": {
+    "total_events": 2000000,
+    "trace_bytes": 254793387,
+    "guard_events": 1999837,
+    "guard_event_percent": 99.99185,
+    "guard_byte_percent": 99.58911767203755,
+    "guard_schema_variants": 5,
+    "largest_type": "guard.stage",
+    "guard_stage_events": 1424937,
+    "guard_stage_bytes": 188253069,
+    "guard_envelope_bytes": 135205946,
+    "guard_envelope_percent_of_input": 53.06493531560927,
+    "record_bytes": {
+      "min": 107,
+      "p50": 132,
+      "p95": 141,
+      "p99": 141,
+      "max": 112869,
+      "mean": 127.3966935
+    },
+    "source_limit_observation": "The run hit2M logical events with only254,793,387 trace bytes; this was the count quota, not exhaustion of the4GiB storage budget."
+  },
+  "offline_lossless_payload_experiments": {
+    "1": {
+      "codec": "zlib",
+      "level": 1,
+      "blocks": 61,
+      "block_target_bytes": 4194304,
+      "payload_bytes": 19227635,
+      "payload_percent_of_original": 7.54636343838861,
+      "all_events_roundtripped": 2000000,
+      "raw_byte_sha256_matches": true,
+      "fields_sampled_dropped_reordered": false,
+      "note": "Payload bytes only; not a measurement of the future full format including index/footer/blobs. Original B remains invalid."
+    },
+    "6": {
+      "codec": "zlib",
+      "level": 6,
+      "blocks": 61,
+      "block_target_bytes": 4194304,
+      "payload_bytes": 15228134,
+      "payload_percent_of_original": 5.976659825947523,
+      "all_events_roundtripped": 2000000,
+      "raw_byte_sha256_matches": true,
+      "fields_sampled_dropped_reordered": false,
+      "note": "Payload bytes only; not a measurement of the future full format including index/footer/blobs. Original B remains invalid."
+    }
+  },
+  "coverage_boundary": {
+    "grow_begins": 22,
+    "grow_ends": 21,
+    "open_grow_at_end": 21,
+    "qualification_begins": 1,
+    "qualification_completions": 0,
+    "unseen_tail_size": null,
+    "full_U1_U2_volume_estimate": null
+  },
+  "whole_run_total_volume_estimated": false,
+  "missing_tail_recovered": false,
+  "scientific_topology_root_cause_conclusion": null,
+  "reproducibility": {
+    "script": "scripts/analyze_saved_guard_trace_capacity.py",
+    "script_sha256": "c2d7ba62808cbf52ac85d32f3b7ee5583eec6a96bee36e627027967d3b128a8c",
+    "command": "python scripts/analyze_saved_guard_trace_capacity.py --archive PRIVATE_SAVED_RUN_ARCHIVE --output FRESH_PRIVATE_OUTPUT",
+    "python": "3.11.4 (main, Jul  5 2023, 08:54:11) [Clang 14.0.6 ]",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "zlib_build": "1.2.13",
+    "zlib_runtime": "1.2.13",
+    "timing_limit": "Local offline compression and parse timings are not live S07/observer overhead measurements or full-run forecasts.",
+    "raw_private_experiment_report_sha256": "c432db4dc43110f6886ffe3e7e720c554d93cd88984af500ff62342e3ecbd50b",
+    "all_saved_events_processed": true,
+    "sampling": false
+  },
+  "validation": {
+    "log": "guard_capacity_analysis_v1/pytest.txt",
+    "sha256": "a3743b2a379a4c611aab88f2dd4a717b1f18ae345d3b524353c6daddbbda95ef",
+    "tests_passed": 4,
+    "scope": "Tiny synthetic codec fixtures only: exact bytes including whitespace/Unicode/extra fields, multiblock ordering, invalid source count/chain/sequence, codec corruption, original invalidity retained. No real source execution or production acceptance."
+  },
+  "evidence": {
+    "capacity_report": {
+      "file": "guard_capacity_analysis_v1/capacity_report.json",
+      "sha256": "c432db4dc43110f6886ffe3e7e720c554d93cd88984af500ff62342e3ecbd50b"
+    },
+    "event_bytes": {
+      "file": "guard_capacity_analysis_v1/event_bytes.csv",
+      "sha256": "7bd36b421b605e2d44ddf689adc3504eb78063ed6bec7993e3d2113f2f493d9c"
+    }
+  },
+  "private_data_policy": "Raw JSONL, compressed payload blocks, business receipts and full RNG states remain under .codex-artifacts/server private evidence. Public artifacts contain counts, byte statistics and integrity hashes only.",
+  "production_source_and_limits_modified": false,
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}

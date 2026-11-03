@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "status": "closed_by_user_no_S07_rerun",
+  "recorded_at_utc": "2026-11-03T04:59:26.378250+00:00",
+  "basis": "Latest explicit user instruction: 本次授权正式结案，不重跑S07；只利用保存事件离线分析并设计新格式。",
+  "original_authorization_sha256": "42a46db33abc5c92dba8f909a8a7cf81f892c511d4262c71ef607920f6233dec",
+  "launch_manifest_sha256": "e41815ae705efe05b2075dffe7fd6599b6186782c2f606fb2398922a5ad32032",
+  "terminal_consumption_record_sha256": "aef61629160f9dd0063c87dcf317d93f256862b0415552a2b25ec7532a7f3457",
+  "prior_result_sha256": "b820338059cbc65ba634cd3a924f067f32ee6ddfbcc5b2108c5f2ba2a355053b",
+  "original_approved_record_preserved": true,
+  "single_sequence_launch_count": 1,
+  "launched_arms": [
+    "A",
+    "B"
+  ],
+  "C_started": false,
+  "completed_witness_calls": 4,
+  "remaining_C_budget_may_be_reused": false,
+  "resume_permitted": false,
+  "execution_permitted": false,
+  "scope_now": "Offline analysis of saved bytes and draft format design only; no live observer/controller changes or source execution.",
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}
