@@ -1,0 +1,15 @@
+{
+  "kind": "readonly-budget-v2-fixed-synthetic-trial",
+  "approved": true,
+  "manifest_sha256": "bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec",
+  "policy": {
+    "policy_id": "readonly-validation-budget-v2-30-60",
+    "policy_sha256": "3447b500c8f458db2735c32f2b720919645fb6333b5c2976401bc4cd51c57873"
+  },
+  "compatibility_profile": "producer-32dc6007-readonly-primitives-v1",
+  "compatibility_reviewed": true,
+  "authority": "explicit user reply in current Codex chat; recorded by assistant, not an external signature",
+  "user_answer": "接受提案并批准这一次合成试验",
+  "scope": "Only the frozen three fixed synthetic measurements, once each, zero retries. No S07, production integration, generation or acceptance publication.",
+  "authorization_consumption": "Consumed by first runner invocation including any setup HOLD. Existing output directory forbids rerun."
+}

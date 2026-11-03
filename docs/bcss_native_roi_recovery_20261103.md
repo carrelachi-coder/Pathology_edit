@@ -471,3 +471,15 @@ session退出只quiesce。显式`finalize(normal_invocation_end, business_receip
 [封存的固定输入试验manifest](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/fixed_synthetic_trial_manifest_v2.json) SHA256 为 `bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec`。拟复用已有目标目录中的完整合成B/C输入，不重新生成：每流210万事件、685个数组occurrence，809个canonical文件绑定私有完整清单SHA。预定顺序为B单流30秒一次、C单流30秒一次、B/C比较60秒一次；任一步HOLD停止，零自动重试。启动前仅一次完整输入／代码／环境核验，明确披露哈希扫描可能预热文件缓存；不追加择优测速或调整缓存的尝试。实际新输出目录重新做no-replace硬链接检查、空间及既有12 GiB物理预留检查，预留仍非quota。
 
 [审查报告](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/review_report_v2.json)将状态限定为“本地候选完成，目标试验未运行”。预算与精确兼容规则获审查接受、并取得与本次manifest SHA绑定的一次合成试验批准后，才允许部署隔离技术快照和运行这三项测量。**这不是新的S07申请，也不沿用旧S07授权。**生产接线、最终接受证明发布仍是后续独立工作。17／19患者记录、新增四目标批准0、30位目标、19%／32%名义预算和14%／27%组织硬下限保持原样，正式H&E、批量四目标和医生研究继续关闭。
+
+## 已批准的一次合成试验：setup超时HOLD，三个测量均未启动
+
+用户明确回复“接受提案并批准这一次合成试验”，已另存[授权记录](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/fixed_synthetic_trial_authorization_v2.json)，绑定原封存manifest SHA `bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec`、30／60秒政策及精确producer／consumer兼容规则。该记录是助手对本聊天用户明确决定的留痕，不伪装成外部审查签名；原提案、manifest和旧报告保持原始字节。
+
+[本次目标证据](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/target_trial_evidence_v2.json)显示：11个源码文件及manifest、approval、私有输入清单共14个文件部署到新的隔离只读快照，未修改生产路径。随后只启动了一次封存runner，授权已消费。**启动前核验触及预先冻结的60秒setup预算，runner捕获TimeoutError，约60.371秒总进程时间后以78正常退出并保存HOLD；B单流、C单流和B/C比较全部未运行。**185秒总看门狗未触发，没有自动重试。
+
+[结果报告](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/target_trial_report_v2.json)明确将三个测量的耗时与verdict记为null、状态为`not_run_setup_hold`。这次不是“双流60秒比较超时”，也没有得到semantic_match或不一致结论。runner只保存异常类型，没有保存setup内部阶段或逐文件进度，所以不能确定耗时集中在哪一项检查，也不能宣称完整运行环境或809个输入文件已核验通过。60.371秒是含启动／退出开销的总时间，不是精确setup内部耗时。
+
+只读归档核对确认11个部署源码哈希仍匹配，B/C原manifest哈希未变，两个输入根目录均无外层接受证明；实际新输出仅有`trial_result.json`，本次输出目录的hardlink探针尚未到达。既有内层封存不升级为新接受证明。后续读取只收集小型控制文件和源码哈希，没有再次调用验证器、没有全量重扫输入或择优测速。本次授权至此关闭，不能因三个测量尚未启动就复用；保留目录，不resume、不扩时限。下一步先离线审查setup身份核验工作量和阶段遥测缺口，再决定是否提出新的版本化方案。
+
+旧`aabe1577`仍是30秒政策下的完整比较HOLD。本次没有修改验证标准，也没有接入生产Controller、运行S07或生成H&E。患者17／19、新增四目标批准0、30位目标、19%／32%预算和14%／27%组织硬下限均保持不变。

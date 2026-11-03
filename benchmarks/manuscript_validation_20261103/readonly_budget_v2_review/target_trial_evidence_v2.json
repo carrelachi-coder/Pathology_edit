@@ -1,0 +1,77 @@
+{
+  "files": {
+    "staging_receipt.json": {
+      "status": "isolated_snapshot_staged",
+      "files_verified": 14,
+      "manifest_sha256": "bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec",
+      "output_absent": true,
+      "production_paths_modified": false,
+      "measurements_started": 0
+    },
+    "readonly_budget_v2_launch_receipt_v1.json": {
+      "status": "launch_started_authorization_consumed",
+      "manifest_sha256": "bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec",
+      "utc": "2026-11-03T14:12:35Z"
+    },
+    "readonly_budget_v2_launch_completion_v1.json": {
+      "status": "once_only_trial_process_returned",
+      "manifest_sha256": "bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec",
+      "exit_code": 78,
+      "elapsed_seconds": 60.3711864836514,
+      "stdout": "{\"status\": \"HOLD\", \"steps\": 0, \"real_source_calls\": 0}\n",
+      "stderr": "",
+      "automatic_retries": 0,
+      "real_source_calls": 0
+    },
+    "trial_result.json": {
+      "manifest_sha256": "bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec",
+      "status": "HOLD",
+      "steps": [],
+      "execution_permitted": false,
+      "real_source_calls": 0,
+      "capture_markers_published": false,
+      "failure_type": "TimeoutError"
+    },
+    "B_capture_receipt.json": null,
+    "C_capture_receipt.json": null,
+    "BC_compare_receipt.json": null
+  },
+  "code_match_after": {
+    "diagnostic_storage/__init__.py": true,
+    "diagnostic_storage/guard_blocks_v2.py": true,
+    "diagnostic_storage/observer_adapter_contract_v1.py": true,
+    "diagnostic_storage/observer_adapter_v1.py": true,
+    "diagnostic_storage/observer_adapter_validation_v1.py": true,
+    "diagnostic_storage/validator_process_gate_v1.py": true,
+    "diagnostic_storage/validation_budget_policy_v2.py": true,
+    "diagnostic_storage/observer_adapter_validation_v2.py": true,
+    "diagnostic_storage/validator_process_gate_v2.py": true,
+    "scripts/validator_readonly_worker_v2.py": true,
+    "scripts/run_readonly_budget_v2_trial.py": true
+  },
+  "input_control_state": {
+    "B": {
+      "root_files": [
+        "adapter_manifest.json",
+        "adapter_manifest.json.pending",
+        "adapter_status.json",
+        "adapter_status.json.pending"
+      ],
+      "manifest_sha256": "320db66c272f88785c2cfd03add1991434e4f6f895af5f54a2d0cd70fdb95168"
+    },
+    "C": {
+      "root_files": [
+        "adapter_manifest.json",
+        "adapter_manifest.json.pending",
+        "adapter_status.json",
+        "adapter_status.json.pending"
+      ],
+      "manifest_sha256": "f645f1adf7a50626bed12efc7f950acd8c6e26cee324fa3bb2b00d92249a532b"
+    }
+  },
+  "output_files": [
+    "trial_result.json"
+  ],
+  "source_manifest_sha256": "bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec",
+  "no_additional_validation_called": true
+}

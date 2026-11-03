@@ -1,0 +1,74 @@
+{
+  "status": "HOLD_setup_deadline_before_any_validation_measurement",
+  "manifest_sha256": "bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec",
+  "authorization_sha256": "cba1f434195d1a7edc7d1f8c5392793e56a3ef8ed851d80bc4d07ed5aa141153",
+  "target_evidence_sha256": "4d1fc7456cd108c38ad4a0a5aa2ead241f7f36367570a82484069e838c5e5de3",
+  "authorization_status": "consumed_and_closed; not reusable even though validation jobs did not start",
+  "user_accepted_policy": {
+    "policy_id": "readonly-validation-budget-v2-30-60",
+    "policy_sha256": "3447b500c8f458db2735c32f2b720919645fb6333b5c2976401bc4cd51c57873"
+  },
+  "compatibility_profile_accepted": "producer-32dc6007-readonly-primitives-v1",
+  "source_commit": "1c8ad6ff50e1c94719141e17b519ecf5eee93a2c",
+  "source_files_verified_at_staging": 11,
+  "staging_files_including_manifest_approval_private_inventory": 14,
+  "source_files_match_after": true,
+  "run_exit_code": 78,
+  "launch_total_wall_seconds": 60.3711864836514,
+  "frozen_setup_budget_seconds": 60,
+  "setup_status": "TimeoutError caught by runner, HOLD, normal nonzero exit; no retry",
+  "setup_elapsed_seconds": null,
+  "setup_last_completed_internal_stage": null,
+  "setup_telemetry_limitation": "Runner persisted exception type only. Total launch time includes startup/exit overhead; no exact per-stage timing or last inventory item is available. Do not claim full environment or 809-file validation completed.",
+  "measurements": [
+    {
+      "label": "B_capture",
+      "hard_seconds": 30,
+      "status": "not_run_setup_hold",
+      "elapsed_seconds": null,
+      "verdict": null
+    },
+    {
+      "label": "C_capture",
+      "hard_seconds": 30,
+      "status": "not_run_setup_hold",
+      "elapsed_seconds": null,
+      "verdict": null
+    },
+    {
+      "label": "BC_compare",
+      "hard_seconds": 60,
+      "status": "not_run_setup_hold",
+      "elapsed_seconds": null,
+      "verdict": null
+    }
+  ],
+  "validation_worker_calls": 0,
+  "automatic_retries": 0,
+  "source_regeneration_calls": 0,
+  "S07_calls": 0,
+  "acceptance_proofs_published": false,
+  "actual_new_output_hardlink_probe": "not reached; output contains only trial_result.json",
+  "production_integration": false,
+  "semantic_match": null,
+  "interpretation": "This run tests neither 60-second compare sufficiency nor B/C equality. It exhausted setup budget before measurements. Old aabe1577 30-second comparison HOLD remains unchanged.",
+  "full_capture_capacity_proven_for_real_S07": false,
+  "original_manifest_or_input_rewritten": false,
+  "approval_record_semantics": "Explicit current user approval recorded by assistant, not external reviewer signature. Original proposal/manifest/reports retained unchanged; acceptance and closure are separate append-only records.",
+  "next_action": "Preserve evidence and review setup identity-check workload and missing stage telemetry offline. Do not extend budgets, resume this output or rerun under this consumed authorization.",
+  "scientific_constraints_unchanged": {
+    "topology_pass_patients": 17,
+    "upper_bound_with_unknown": 19,
+    "new_four_target_approved": 0,
+    "target_patients": 30,
+    "nominal_joint": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floor": [
+      0.14,
+      0.27
+    ],
+    "formal_generation_open": false
+  }
+}
