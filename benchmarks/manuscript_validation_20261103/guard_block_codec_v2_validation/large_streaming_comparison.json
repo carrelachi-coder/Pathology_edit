@@ -1,0 +1,29 @@
+{
+  "scope": "synthetic streaming self-comparison of two independent Reader instances; not live B/C or Observer acceptance",
+  "logical_events": 5000000,
+  "result": {
+    "logical_events": 5000000,
+    "strict_match": true,
+    "excluded_fields": [],
+    "left": {
+      "block_integrity_complete": true,
+      "business_process_complete": true,
+      "logical_events": 5000000,
+      "physical_blocks": 154,
+      "array_occurrences": 0,
+      "stream_sha256": "8e8497c6e66fea3dd27045ca89e8df41a649db1105143df7d58ed37e3db5a57e"
+    },
+    "right": {
+      "block_integrity_complete": true,
+      "business_process_complete": true,
+      "logical_events": 5000000,
+      "physical_blocks": 154,
+      "array_occurrences": 0,
+      "stream_sha256": "8e8497c6e66fea3dd27045ca89e8df41a649db1105143df7d58ed37e3db5a57e"
+    }
+  },
+  "elapsed_seconds": 45.69464520784095,
+  "peak_rss_bytes": 102236160,
+  "implementation_sha256": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+  "production_calls": 0
+}

@@ -1,0 +1,180 @@
+{
+  "report_version": 1,
+  "recorded_at": "2026-11-03T13:42:41.773390+08:00",
+  "status": "standalone_codec_synthetic_validation_passed_not_production_accepted",
+  "scope": "Only standalone v2 byte-lossless codec, streaming decoder/comparison, synthetic arrays and failure tests. No old2M trace reanalysis, no Observer integration and no pathology source calls.",
+  "format_protocol": {
+    "path": "benchmarks/manuscript_validation_20261103/guard_block_format_v2.json",
+    "sha256": "890175234376dc50b554223135cabe13b1f89deacafad5e42e6e2ab05e5f403e"
+  },
+  "stages": {
+    "P0_format": "frozen_for_standalone_validation",
+    "P1_independent_codec_decoder": "implemented",
+    "P2_synthetic_pressure": "passed_2M_3M_5M_and_arrays",
+    "P3_failure_injection": "passed_local_targeted_tests",
+    "P4_observer_integration": "not_started_not_approved",
+    "P5_independent_acceptance_and_new_S07_authorization": "required_not_obtained"
+  },
+  "tests": {
+    "command": "python -m pytest -q tests/test_guard_blocks_v2.py tests/test_saved_guard_trace_capacity.py",
+    "passed": 56,
+    "codec_tests": 52,
+    "prior_offline_regression_tests": 4,
+    "scope": "local specified tests only; no whole-repo/CI/production claim"
+  },
+  "logical_event_pressure": [
+    {
+      "events": 2000000,
+      "blocks": 62,
+      "raw_bytes": 256008340,
+      "allocated_bytes": 14557184,
+      "source_sha256": "3b64346a71bebaa7d5b616a293f1b9707aa2daf21e4f5139c10ad2896e0b831b",
+      "encode_seconds_with_generation_reference_hash": 27.08572187507525,
+      "decode_seconds": 7.604578291065991,
+      "writer_peak_rss_bytes": 71598080,
+      "decoder_peak_rss_bytes": 87719936,
+      "exact_bytes_and_sequence_passed": true
+    },
+    {
+      "events": 3000000,
+      "blocks": 92,
+      "raw_bytes": 384568228,
+      "allocated_bytes": 21929984,
+      "source_sha256": "451937de2f5e798ec6d0dfc26ff77c0abbc38c773a824885abb407047a9457dd",
+      "encode_seconds_with_generation_reference_hash": 38.61727424990386,
+      "decode_seconds": 11.539423750247806,
+      "writer_peak_rss_bytes": 73138176,
+      "decoder_peak_rss_bytes": 90619904,
+      "exact_bytes_and_sequence_passed": true
+    },
+    {
+      "events": 5000000,
+      "blocks": 154,
+      "raw_bytes": 641719945,
+      "allocated_bytes": 36671488,
+      "source_sha256": "8e8497c6e66fea3dd27045ca89e8df41a649db1105143df7d58ed37e3db5a57e",
+      "encode_seconds_with_generation_reference_hash": 65.69008916709572,
+      "decode_seconds": 20.927055957727134,
+      "writer_peak_rss_bytes": 86704128,
+      "decoder_peak_rss_bytes": 90112000,
+      "exact_bytes_and_sequence_passed": true
+    }
+  ],
+  "streaming_comparison": {
+    "logical_events": 5000000,
+    "strict_match": true,
+    "excluded_fields": [],
+    "peak_rss_bytes": 102236160,
+    "limitation": "Two independent Readers of the SAME synthetic stream, not actual B/C. Separate unit fixture compares hash-only/full-capture tokens and array inventories."
+  },
+  "full_capture_synthetic": {
+    "events": 2000000,
+    "snapshots": 683,
+    "snapshot_bytes_each": 2097152,
+    "array_payload_bytes": 1432354816,
+    "allocated_bytes_including_all_files": 1450278912,
+    "independently_regenerated_payload_bytes_equal": true,
+    "array_storage": "raw lossless occurrence blobs, no dedup or array compression",
+    "limitation": "683 new synthetic float64 arrays, NOT original S07 arrays. Count equality alone does not imply matching shapes/dtypes/content or capacity for real Full Capture."
+  },
+  "actual_4GiB_boundary": {
+    "scope": "synthetic actual disk allocation stress, not source capacity",
+    "kind": "array_budget",
+    "accepted_snapshots": 2038,
+    "raw_array_payload_bytes": 4273995776,
+    "max_storage_bytes": 4294967296,
+    "storage": {
+      "directory_entries": 4084,
+      "unique_inodes": 2042,
+      "file_content_bytes_unique_inodes": 4276046918,
+      "allocated_bytes_unique_inodes": 4284506112
+    },
+    "budget_rejection": "combined storage reservation",
+    "failed_snapshot_rejected_before_copy": true,
+    "array_copy_calls": 2038,
+    "block_integrity_complete": false,
+    "business_process_complete": false,
+    "complete_marker_exists": false,
+    "strict_reader_rejected": true,
+    "elapsed_seconds": 6.798718374688178,
+    "peak_rss_bytes": 63995904,
+    "budget_total_conservative": 4293902336,
+    "new_witness_calls": 0,
+    "implementation_sha256": {
+      "scripts/stress_guard_blocks_v2.py": "b0b839e812172d02557170c6abeea6bc283aec619c2e7f6af0f9e8d8a978f49c",
+      "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4"
+    }
+  },
+  "initial_failure_and_fix": {
+    "record": "guard_block_codec_v2_validation/initial_budget_attempt_failure.json",
+    "failed_directory_preserved": true,
+    "fix": "Index preallocation headroom inside the same4GiB and retention of observed allocations; added regressions; all five pressure scenarios rerun with the exact final module hash.",
+    "final_boundary_summary_written": true
+  },
+  "failure_coverage": [
+    "write/ENOSPC",
+    "block/index/summary/completion close failure",
+    "partial compressed bytes and malformed header/index",
+    "missing/duplicate/orphan arrays and blocks",
+    "no-replace publication race including completion",
+    "process interruption",
+    "incomplete business tail despite complete physical blocks",
+    "pre-copy logical array and unified storage ceiling",
+    "index preallocation and invalid-summary headroom"
+  ],
+  "resource_limits": {
+    "max_storage_bytes": 4294967296,
+    "target_raw_block_bytes": 4194304,
+    "max_record_bytes": 8388608,
+    "max_array_bytes": 67108864,
+    "max_array_occurrences": 100000,
+    "no_event_count_quota": true,
+    "max_observed_codec_stress_rss_bytes": 104464384,
+    "interpretation": "Bounded block/record/current-array/index state, empirically measured on this host; not an OS hard RSS limit or exclusive disk quota. Hashlinked pending/final aliases count one physical inode. Filesystem metadata and unrelated writers are not isolated."
+  },
+  "limitations": [
+    "Local synthetic timings include generator/reference hashes and do not prove1200s live witness compliance or runtime non-interference.",
+    "Hashes/completion bindings detect inconsistency and partial writes, not adversarial rewriting of an entire self-consistent directory.",
+    "Standalone exceptions propagate to the caller; a production Observer fault-isolating adapter is deliberately not implemented.",
+    "Full validation requires exhausting the event iterator. An unfinished iterator has no valid final verdict.",
+    "Sequence-range indices exist; optimized random-range API is not implemented.",
+    "Original truncated S07 evidence remains invalid; no tail reconstructed and no diagnostic interpretation upgraded."
+  ],
+  "safety_and_research_state": {
+    "production_business_files_changed": [],
+    "observer_or_controller_changed": false,
+    "S07_rerun": false,
+    "new_witness_calls": 0,
+    "old_authorization_reused": false,
+    "formal_HE": false,
+    "batch_four_target_compile": false,
+    "physician_study": false,
+    "topology_patients": 17,
+    "upper_with_unknown": 19,
+    "new_four_target_approved": 0,
+    "patient_target": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "evidence_sha256": {
+    "guard_block_codec_v2_validation/array_budget.json": "831644ddf21b167a0f78279d56ce4fe0f59f814e45b98ee1e8a933b41ae312c6",
+    "guard_block_codec_v2_validation/events_2000000.json": "60d1e20aa0d0ae3c8a5f49fb414868554fd69fdc7e6879e619fca4dbd5ee701e",
+    "guard_block_codec_v2_validation/events_3000000.json": "4db05132073a16e46f106a8b5366f96c9c0b52fe35e81be4c7b90aa0534011c0",
+    "guard_block_codec_v2_validation/events_5000000.json": "d3f34edc92c561a8c6f670e0c250cb421cdbd74163d993465ed6b746839ee0bc",
+    "guard_block_codec_v2_validation/full_arrays_683.json": "d7cef4dc1cbf0ec229f43f91bc106693b690f5a1a291003c947f4f3a97413ece",
+    "guard_block_codec_v2_validation/independent_array_source_verification.json": "7b6abac9c2801a3e63ca43e14c39d960a3178c63f942f66e21d47ac783782d17",
+    "guard_block_codec_v2_validation/initial_budget_attempt_failure.json": "46cf1523a32c08ee3297378ce2b4a05cb2a95c5e02501117cedc2af3352834c1",
+    "guard_block_codec_v2_validation/large_streaming_comparison.json": "7b44ca20aa0b8642a669fccb1ece33dbd0bbd92e57acd61e4f319262d09d8f5b",
+    "guard_block_codec_v2_validation/pytest.txt": "7cd51ad5bdda3a2db7e3eb1e9625c85923a2d5940215ee85f746d95d829cae46",
+    "guard_block_codec_v2_validation/reproduce_commands.txt": "4ca3e94e5a671fce66a8a93dc63438cae8b46363f501bb28e26a8fc285819f59",
+    "guard_block_codec_v2_validation/runtime_and_code_identity.json": "8d833c901f431243698ff73fe7e88015a7b0473d931c6376e39e88bebc5a51e7",
+    "guard_block_codec_v2_validation/standalone_scope_audit.json": "52deb64f2945c40c8edb70cf5e20fe225a8ad2819c806137115cc6fc89002836"
+  },
+  "private_data": "All synthetic raw streams/blobs and initial failed attempts retained under .codex-artifacts and excluded from Git; original S07 private evidence unmodified."
+}

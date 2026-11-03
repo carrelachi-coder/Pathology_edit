@@ -1,0 +1,100 @@
+{
+  "format_version": 2,
+  "status": "frozen_for_standalone_implementation_and_synthetic_validation_only",
+  "production_integration_permitted": false,
+  "S07_execution_permitted": false,
+  "old_authorization_reuse_permitted": false,
+  "logical_layer": "Exact UTF-8 JSONL bytes; per-event sequence contiguous from0. All keys/values/order retained. Explicit nonfinite tags, no JSON NaN/Infinity or duplicate keys. No sampling, renumbering or statistics substitution.",
+  "physical_blocks": {
+    "magic_hex": "4754524143453200",
+    "header_length": "unsigned32 big endian, <=16KiB",
+    "header": "canonical ASCII JSON",
+    "payload": "zlib level1 only",
+    "target_decoded_bytes": 4194304,
+    "max_decoded_block_and_record_bytes": 8388608,
+    "event_boundary": "whole records only; oversized-within-limit record gets a dedicated block",
+    "header_fields": [
+      "format_version",
+      "kind",
+      "codec",
+      "level",
+      "index",
+      "first_sequence",
+      "last_sequence",
+      "logical_events",
+      "decoded_bytes",
+      "encoded_bytes",
+      "decoded_sha256",
+      "encoded_sha256",
+      "previous_header_sha256"
+    ]
+  },
+  "indices": {
+    "blocks": "blocks.index.jsonl; append-only committed per-block receipt, ordinal/header/file SHA and contiguous sequence range",
+    "arrays": "arrays.index.jsonl; append-only occurrence/event-sequence/ordinal/descriptor and previous-header chain",
+    "retained_state": "producer active budget slots and current event/operation state only; indices never kept as whole lists by producer/reader"
+  },
+  "array_snapshots": {
+    "token": "Original v1 {array:{dtype,shape,content_sha256}}; occurrence identity in sidecar, not inserted into logical payload",
+    "hash_only": "Detached copy hashed; inventory entry, no blob bytes",
+    "full_capture": "Same logical token; unique raw lossless blob per occurrence, no dedup, no pickle",
+    "max_detached_bytes": 67108864,
+    "max_occurrences": 100000,
+    "max_pending_occurrences_per_event": 4096,
+    "supported": "non-object, non-structured NumPy dtypes preserving dtype.str/endian/shape and C-order raw bits; unsupported types fail before copy, never coerce",
+    "blob_header": "version/kind/raw codec/occurrence/event_sequence/ordinal/descriptor/decoded_bytes/previous_header_sha256",
+    "shared_budget": true
+  },
+  "resource_policy": {
+    "max_storage_bytes": 4294967296,
+    "units": "Conservative 4KiB-rounded file allocations with one-page slack per file, checked against actual st_blocks. Includes payload/header/index/receipt/summary/marker/pending files; no-replace hardlink aliases count once. Not filesystem quota.",
+    "control_reserve_bytes": 65536,
+    "max_header_index_entry_bytes": 16384,
+    "max_record_bytes": 8388608,
+    "no_logical_event_count_quota": true,
+    "logical_count_not_block_count": true,
+    "sequence_overflow": "reject before unsigned64 wrap",
+    "memory": "bounded decoded/raw block buffers, current JSON record, <=64MiB detached array and <=4096 pending descriptors; no all-events list or all-index list. Python/NumPy allocator and caller memory are not a hard process RSS quota. Synthetic RSS is measured separately.",
+    "storage_failure": "invalid capture, no formal completion. Standalone module raises; future Observer adapter fault isolation is NOT implemented in this phase.",
+    "index_preallocation_reserve": "Before append: 2x logical index bytes plus64KiB, rounded plus page; never drop previously observed index allocation. This allowance remains inside4GiB, not extra space. Actual st_blocks is still checked; not a filesystem quota."
+  },
+  "publication": {
+    "pending_aliases_retained": true,
+    "method": "write unique .pending, flush/fsync/close, os.link to final (atomic EEXIST no replacement). No fallible cleanup after publish.",
+    "crash_policy": "unclosed indices, partial blocks/close, orphan/missing/duplicate/unrecognized artifacts or mismatched aliases reject full validation."
+  },
+  "completion": {
+    "block_integrity_complete": "all accepted physical data flushed/indexed, no faults/pending logical array token",
+    "business_process_complete": "both declared expected operations began/completed in order, normal end and bound receipt envelope agree",
+    "marker": "observer_complete.json binds SHA of closed summary only if BOTH states true",
+    "prefix": "complete blocks + missing business tail yield physical=true/business=false and no formal marker. Explicit prefix reader can inspect but cannot promote to complete.",
+    "receipt_envelope": "Standalone tests use {normal_end:true,operation_ids:[U1,U2],payload:...}; a real business receipt adapter is deferred to P4 review."
+  },
+  "reader": {
+    "streaming": true,
+    "block_decode": "header lengths/bounds before payload allocation; max-length zlib decode rejects surplus, trailing/unconsumed bytes and bad hashes",
+    "events": "iterate one record at a time; full validation requires exhausting iterator",
+    "arrays": "dtype/shape/count/occurrence/file/content hashes verified in chunks; no whole-array read needed",
+    "comparison": "strict decoded byte/event equality and full raster integrity; no field/RNG/path exclusions",
+    "range_access": "sequence ranges stored; optimized random-range API not implemented or claimed"
+  },
+  "P4_integration_status": "not_started_not_approved",
+  "P5_independent_acceptance_and_new_execution_authorization": "required_before_live_use",
+  "research_constraints_unchanged": {
+    "topology_patients": 17,
+    "upper": 19,
+    "new_four_target_approved": 0,
+    "patient_target": 30,
+    "nominal": [
+      0.19,
+      0.32
+    ],
+    "hard_floor": [
+      0.14,
+      0.27
+    ]
+  },
+  "formal_HE_permitted": false,
+  "batch_four_targets_permitted": false,
+  "physician_study_permitted": false
+}

@@ -1,0 +1,10 @@
+{
+  "fixture": "PCG64 seed20261103, 512x512 float64 per occurrence",
+  "arrays_regenerated": 683,
+  "raw_array_bytes_compared": 1432354816,
+  "every_original_payload_byte_equal": true,
+  "ordered_reference_sha256_chain": "845e0f25c34a52f70e69326027529a50e5ca27910a7536b35b7fba58e7802b9f",
+  "independent_of_codec_implementation": true,
+  "no_pathology_calls": true,
+  "numpy_version": "1.24.3"
+}

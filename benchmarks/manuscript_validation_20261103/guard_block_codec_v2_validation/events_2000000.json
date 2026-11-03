@@ -1,0 +1,49 @@
+{
+  "scope": "pure synthetic codec stress; no pathology planner/guard/witness invocation",
+  "kind": "events",
+  "logical_events": 2000000,
+  "physical_blocks": 62,
+  "array_occurrences": 0,
+  "mode": "hash_only",
+  "block_integrity_complete": true,
+  "business_process_complete": true,
+  "raw_event_bytes": 256008340,
+  "raw_array_payload_bytes": 0,
+  "encode_seconds_including_generation_and_reference_hash": 27.08572187507525,
+  "encode_logical_events_per_second": 73839.64175754291,
+  "writer_peak_rss_bytes": 71598080,
+  "writer_active_budget_entries_at_end": 0,
+  "decoder": {
+    "seconds": 7.604578291065991,
+    "peak_rss_bytes": 87719936,
+    "events": 2000000,
+    "independent_decoded_sha256": "3b64346a71bebaa7d5b616a293f1b9707aa2daf21e4f5139c10ad2896e0b831b",
+    "validation": {
+      "block_integrity_complete": true,
+      "business_process_complete": true,
+      "logical_events": 2000000,
+      "physical_blocks": 62,
+      "array_occurrences": 0,
+      "stream_sha256": "3b64346a71bebaa7d5b616a293f1b9707aa2daf21e4f5139c10ad2896e0b831b"
+    }
+  },
+  "storage": {
+    "directory_entries": 134,
+    "unique_inodes": 67,
+    "file_content_bytes_unique_inodes": 14422380,
+    "allocated_bytes_unique_inodes": 14557184
+  },
+  "all_events_and_bytes_verified": true,
+  "source_hash": "3b64346a71bebaa7d5b616a293f1b9707aa2daf21e4f5139c10ad2896e0b831b",
+  "new_witness_calls": 0,
+  "production_acceptance": false,
+  "host": {
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "python": "3.11.4 (main, Jul  5 2023, 08:54:11) [Clang 14.0.6 ]",
+    "zlib_runtime": "1.2.13"
+  },
+  "implementation_sha256": {
+    "scripts/stress_guard_blocks_v2.py": "b0b839e812172d02557170c6abeea6bc283aec619c2e7f6af0f9e8d8a978f49c",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4"
+  }
+}

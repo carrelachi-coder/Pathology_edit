@@ -1,0 +1,16 @@
+# All runs are local synthetic validation, never S07/pathology execution.
+# Use NEW output directories; Writer rejects any existing output directory.
+python -m pytest -q tests/test_guard_blocks_v2.py tests/test_saved_guard_trace_capacity.py
+python scripts/stress_guard_blocks_v2.py --events 2000000 --output FRESH_ROOT/events_2000000
+python scripts/stress_guard_blocks_v2.py --events 3000000 --output FRESH_ROOT/events_3000000
+python scripts/stress_guard_blocks_v2.py --events 5000000 --output FRESH_ROOT/events_5000000
+python scripts/stress_guard_blocks_v2.py --kind full_arrays --events 2000000 --arrays 683 --output FRESH_ROOT/full_arrays_683
+python scripts/stress_guard_blocks_v2.py --kind array_budget --output FRESH_ROOT/array_budget
+python scripts/verify_synthetic_guard_arrays_v2.py FRESH_ROOT/full_arrays_683/stream --count 683
+# large_streaming_comparison.json: in a fresh interpreter, call
+# diagnostic_storage.guard_blocks_v2.compare(events_5000000/stream, events_5000000/stream)
+# with two independent Reader instances, recording perf_counter and ru_maxrss.
+# It tests streaming comparison memory/bytes, NOT real B/C non-interference.
+# Benchmark directories and all intermediate failed attempts remain private.
+# Array fixture: numpy.default_rng(20261103), float64 512x512 per snapshot.
+# Assertions enabled (Python optimize=0); no pathology planner/guard/witness imported.

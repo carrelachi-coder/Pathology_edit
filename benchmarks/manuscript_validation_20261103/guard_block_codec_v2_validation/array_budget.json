@@ -1,0 +1,28 @@
+{
+  "scope": "synthetic actual disk allocation stress, not source capacity",
+  "kind": "array_budget",
+  "accepted_snapshots": 2038,
+  "raw_array_payload_bytes": 4273995776,
+  "max_storage_bytes": 4294967296,
+  "storage": {
+    "directory_entries": 4084,
+    "unique_inodes": 2042,
+    "file_content_bytes_unique_inodes": 4276046918,
+    "allocated_bytes_unique_inodes": 4284506112
+  },
+  "budget_rejection": "combined storage reservation",
+  "failed_snapshot_rejected_before_copy": true,
+  "array_copy_calls": 2038,
+  "block_integrity_complete": false,
+  "business_process_complete": false,
+  "complete_marker_exists": false,
+  "strict_reader_rejected": true,
+  "elapsed_seconds": 6.798718374688178,
+  "peak_rss_bytes": 63995904,
+  "budget_total_conservative": 4293902336,
+  "new_witness_calls": 0,
+  "implementation_sha256": {
+    "scripts/stress_guard_blocks_v2.py": "b0b839e812172d02557170c6abeea6bc283aec619c2e7f6af0f9e8d8a978f49c",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4"
+  }
+}

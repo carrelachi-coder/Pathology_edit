@@ -1,0 +1,48 @@
+{
+  "imports": {
+    "diagnostic_storage/__init__.py": [],
+    "diagnostic_storage/guard_blocks_v2.py": [
+      "__future__",
+      "hashlib",
+      "io",
+      "json",
+      "math",
+      "numpy",
+      "os",
+      "pathlib",
+      "re",
+      "struct",
+      "zlib"
+    ],
+    "scripts/stress_guard_blocks_v2.py": [
+      "__future__",
+      "argparse",
+      "diagnostic_storage.guard_blocks_v2",
+      "hashlib",
+      "json",
+      "numpy",
+      "os",
+      "pathlib",
+      "platform",
+      "resource",
+      "subprocess",
+      "sys",
+      "time",
+      "zlib"
+    ],
+    "scripts/verify_synthetic_guard_arrays_v2.py": [
+      "argparse",
+      "hashlib",
+      "json",
+      "numpy",
+      "pathlib",
+      "struct"
+    ]
+  },
+  "pathology_or_torch_imports": false,
+  "production_business_files_changed": [],
+  "production_observer_integration": false,
+  "new_witness_calls": 0,
+  "old_authorization_reused": false,
+  "method": "AST imports of the four new executable/module files plus git changed-path review; production files unchanged."
+}

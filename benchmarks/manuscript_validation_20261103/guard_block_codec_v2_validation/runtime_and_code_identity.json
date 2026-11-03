@@ -1,0 +1,19 @@
+{
+  "python": "3.11.4 (main, Jul  5 2023, 08:54:11) [Clang 14.0.6 ]",
+  "executable_sha256": "5661cb729cb227db03f1298106fa27715233d624d0e11fe8f31cb03264531c4f",
+  "optimization_flag": 0,
+  "platform": "macOS-26.5.1-arm64-arm-64bit",
+  "numpy_version": "1.24.3",
+  "zlib_compiled": "1.2.13",
+  "zlib_runtime": "1.2.13",
+  "identity_scope": "Local synthetic validation runtime; not a hermetic OS/dependency closure and not the GPU execution environment.",
+  "code_base": "083b7b1bc9b460b914becb4aa6b0e61a290b8a67",
+  "file_sha256": {
+    "diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "scripts/stress_guard_blocks_v2.py": "b0b839e812172d02557170c6abeea6bc283aec619c2e7f6af0f9e8d8a978f49c",
+    "scripts/verify_synthetic_guard_arrays_v2.py": "6987536ccb90e79993b710cbb87b7351a9e94072ee7bec939bbc7e9cb646b626",
+    "tests/test_guard_blocks_v2.py": "6dde383418a1cac7daa163652280d6aa7222393c75a55ad0d508638c50d16817",
+    "benchmarks/manuscript_validation_20261103/guard_block_format_v2.json": "890175234376dc50b554223135cabe13b1f89deacafad5e42e6e2ab05e5f403e"
+  }
+}

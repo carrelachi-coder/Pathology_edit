@@ -1,0 +1,23 @@
+{
+  "scope": "standalone synthetic capacity test only",
+  "status": "failed_attempt_preserved_before_index_preallocation_fix",
+  "command": "python scripts/stress_guard_blocks_v2.py --kind array_budget --output PRIVATE_FRESH_DIRECTORY",
+  "implementation_sha256": {
+    "scripts/stress_guard_blocks_v2.py": "b0b839e812172d02557170c6abeea6bc283aec619c2e7f6af0f9e8d8a978f49c",
+    "diagnostic_storage/guard_blocks_v2.py": "9cb6a03f39f8e91bc12a5391239f8bb5739ad5ca95fcc91c58203d1d737049ca"
+  },
+  "failure": "BudgetError: unified storage budget while finish() tried to publish business_receipt.json; no summary or formal completion published",
+  "initial_rejection_reason": "not separately persisted before finish failure; not inferred",
+  "array_blob_files_present": 2039,
+  "storage_file_content_bytes_unique_inodes": 4278143806,
+  "storage_allocated_bytes_unique_inodes": 4286566400,
+  "max_storage_bytes": 4294967296,
+  "actual_allocation_below_limit": true,
+  "complete_marker_exists": false,
+  "summary_exists": false,
+  "cause": "Growing append-only index allocation could exceed logical rounded reservation; subsequent claims discarded prior observed preallocation. Conservative accounting could therefore exhaust control headroom.",
+  "fix": "Reserve2x logical index size plus64KiB inside unified4GiB; retain previous observed index allocation. Dedicated regression and new clean-directory stress runs required.",
+  "evidence_retention": "Original private failed directory preserved; never promoted to complete capture.",
+  "production_calls": 0,
+  "old_S07_unchanged": true
+}
