@@ -190,3 +190,17 @@ Hash-only与full-capture使用完全相同的语义序列；完整模式额外�
 [静态审查](../benchmarks/manuscript_validation_20261103/passive_observer_resource_validation_v1/static_review.json) 仍为5个业务文件、38处观测调用；本轮没有修改这些业务文件。上述结果是本地静态／合成及指定回归集合，不是全仓CI，也不是Vercel部署状态的替代解释。未运行真实S07、未验证真实B/C一致性或OS级终止／严重压力。
 
 当前实现待独立代码终审。P3前还须另存并冻结实际observer完整commit、源输入和case mapping／合同、Python与依赖、资源限额及存储身份，并取得单独执行授权；本轮未将这些执行准备描述为已经完成。S07 A/B/C仍未授权、未执行；17／19资格记录、30位患者目标、19%／32%名义预算、14%／27%组织硬下限及正式实验关闭状态均不变。
+
+## 原子发布收尾与S07执行身份准备：仍未授权
+
+[原子发布修复](../benchmarks/manuscript_validation_20261103/passive_observer_atomic_report_v1.json) 使用`os.link(pending, final)`替代exists检查加rename：目标若已存在，由单次系统调用返回EEXIST，绝不覆盖；pending保留为同inode的不可变证据，不在发布成功后增加可能失败的清理步骤。新增故障测试在link前制造竞争目标，确认原字节不变、诊断无效；正常发布也验证同inode及第二次发布拒绝。指定本地集合为 **139项通过，另85项subtest通过**，观测器测试62项。5个业务文件及38处观测点未改；这不是全仓CI或真实S07验收。
+
+[独立execution manifest](../benchmarks/manuscript_validation_20261103/limited_topology_execution_manifest_v1.json) 绑定observer完整commit `c119c600e7479aef9046087745e7be34f57cbc29`，A仍为原始`20ace976`。代码修复先提交，身份manifest后提交，因此不会将自身文档commit误称为运行代码commit。服务器只读核对确认：原始快照tracked clean、S07三路文件SHA和两项规范化case mapping SHA与冻结协议一致；521个resource／skill文件与observer构建内容一致。[环境快照](../benchmarks/manuscript_validation_20261103/limited_topology_execution_environment_v1.json) 保存Python二进制SHA、版本／平台、220项distribution版本和RECORD摘要以及相关环境；[合同清单](../benchmarks/manuscript_validation_20261103/limited_topology_execution_contracts_v1.json) 单列全部资源摘要。它们不是旧运行完整环境恢复或全部二进制依赖的密封证明。
+
+本轮在同一存储设备另建小型preflight目录，确认支持hardlink，已存在目标拒绝且内容保留；未创建A/B/C输出目录。约15 TiB可用空间只是审计时快照，不等于物理预留。manifest固定每臂1200秒、最多3进程／6次witness、CPU单并发／零重试、记录器限额及12 GiB整体存储预算；实际有限配额／预留和启动前身份重验仍须落实。observer服务器快照尚未安装。未来B/C显式wrapper源码和SHA写入manifest，当前没有执行。
+
+**身份准备发现RNG前置条件尚未解决。**两个独立CPU启动探针仅导入Python random／NumPy并读取状态，未调用业务模块或任何witness；它们的默认全局RNG状态摘要不同。案例seed=42不等于这些全局状态天然一致，而冻结协议和比较器要求B/C比较全部可用RNG摘要。因此manifest为`identity_manifest_frozen_execution_on_hold`、`ready_for_execution=false`：需要在授权前明确并审查与原合同兼容的初始状态控制规则，不能擅自重置／恢复状态、事后排除RNG字段或声称恢复了旧状态。本轮未实施任何此类改变。
+
+比较字段已事先列明：A对照旧保存的业务结果／错误列表SHA和既有trial状态，不比较从未保存的旧内部计划；A/B比较业务终态和确定性指标；B/C完整语义序列比较，不排除任何语义字段。输出／控制器时间等账务字段只按各臂身份另核验。任一差异、身份漂移、超时或证据不全进入`mismatch_hold`，不启动下一臂。raw路径若造成未解释差异，同样暂停，不在观察后增加排除。
+
+以上是执行身份与启动规格的冻结，不是执行准备全部完成：RNG规则、observer不可变快照安装核验、资源预留／live preflight及单独执行授权仍为显式门槛。S07 A/B/C未授权、未执行；17／19患者资格、新增四目标批准0、30位目标及预算／硬下限均不变，批量四目标、H&E和医生研究继续关闭。

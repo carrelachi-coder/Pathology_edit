@@ -651,5 +651,15 @@
     "execution_permitted": false,
     "formal_launch_permitted": false,
     "S07_replayed": false
+  },
+  "limited_topology_execution_preparation_20261103": {
+    "manifest": "../manuscript_validation_20261103/limited_topology_execution_manifest_v1.json",
+    "sha256": "61b4bc3b1530648e530f990f393b07e6d0855485cf1da23247d43a14794d0173",
+    "status": "identity_manifest_frozen_execution_on_hold",
+    "observer_commit": "c119c600e7479aef9046087745e7be34f57cbc29",
+    "execution_permitted": false,
+    "ready_for_execution": false,
+    "open_rng_initialization_gate": true,
+    "S07_replayed": false
   }
 }
