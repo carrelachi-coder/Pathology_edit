@@ -1,0 +1,6 @@
+{
+  "approved": false,
+  "manifest_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+  "rng_decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "scope": "Explicit denial artifact for gate verification; no S07 authorization granted."
+}

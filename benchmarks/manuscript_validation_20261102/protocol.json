@@ -404,5 +404,16 @@
     "execution_permitted": false,
     "rng_control_addendum_approved": false,
     "S07_witness_calls": 0
+  },
+  "controlled_startup_final_review_20261103": {
+    "report": "../manuscript_validation_20261103/controlled_startup_final_review_report_v1.json",
+    "sha256": "ae487c63a2110f41a3d732bf4b2ea7f29bef6f1c210790f5fbc49bdeb694530a",
+    "status": "hold_for_explicit_import_order_acceptance_decision",
+    "startup_rng_smoke_passed": true,
+    "strict_three_arm_import_order_passed": false,
+    "exact_location_storage_passed": true,
+    "manifest_v2_unchanged": true,
+    "execution_permitted": false,
+    "S07_witness_calls": 0
   }
 }

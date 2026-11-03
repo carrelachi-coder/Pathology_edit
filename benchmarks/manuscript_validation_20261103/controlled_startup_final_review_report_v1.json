@@ -1,0 +1,137 @@
+{
+  "status": "hold_for_explicit_import_order_acceptance_decision",
+  "scope": "Final preparation evidence review, not independent scientific approval or S07 execution.",
+  "execution_permitted": false,
+  "rng_control_addendum_approved": false,
+  "independent_final_approval_record_present": false,
+  "S07_witness_calls": 0,
+  "code_identity": {
+    "controller_commit": "80fbbfc28a4d915680211e749f42cbea9e2a891a",
+    "controller_sha256": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+    "observer_commit": "c119c600e7479aef9046087745e7be34f57cbc29",
+    "production_source_modified": false,
+    "manifest_v2_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+    "manifest_v2_modified": false,
+    "original_protocol_modified": false
+  },
+  "import_smoke": {
+    "case_argv": "Exact frozen probe argv supplied in each child; runpy run_name is import-only, so __main__ guard is false. No parser/main/probe call.",
+    "common_parent_clean": true,
+    "parent_native_threads": 1,
+    "initial_rng_and_hash_equal": true,
+    "post_import_default_states_unchanged": true,
+    "all_source_module_entry_checkpoints_match_initial": [
+      true,
+      true,
+      true
+    ],
+    "child_native_threads_after_import": [
+      1,
+      1,
+      1
+    ],
+    "child_cuda_initialized": [
+      false,
+      false,
+      false
+    ],
+    "guarded_calls": "Profile rejects calls to main/probe or known qualification/witness/compiler entrypoints before body execution; zero blocked attempts and zero witness calls.",
+    "B_C_order_identical": true,
+    "A_vs_B_C_order_identical": false,
+    "relative_source_inventory_equal": true,
+    "source_module_count_after_observer_only_omission": 96,
+    "observed_moved_modules": [
+      {
+        "file": "phase3_mask_edit_refine/__init__.py",
+        "A_zero_based_index": 20,
+        "B_C_zero_based_index": 0
+      },
+      {
+        "file": "phase3_mask_edit_refine/models.py",
+        "A_zero_based_index": 21,
+        "B_C_zero_based_index": 1
+      }
+    ],
+    "reason": "B/C import PassiveObserver before the probe. Python first initializes phase3_mask_edit_refine/__init__.py, which imports .models; these two modules therefore precede the probe. A reaches them later via normal legacy imports.",
+    "finding_boundary": "No default RNG/hash change or thread/CUDA issue was observed at the recorded import checkpoints. This does not prove arbitrary import side effects or runtime noninterference are absent. Literal three-arm business import-order equality is not met.",
+    "production_comparison_unchanged": "Relative paths/observer omission are descriptive smoke comparisons only. Production receipt/transcript comparison retains all fields and RNG digests; no path normalization or exclusions added."
+  },
+  "storage_review": {
+    "exact_output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/limited_topology_capture_v1_controlled_v2",
+    "at_actual_location": true,
+    "hardlink_no_replace": true,
+    "arm_directories_isolated": true,
+    "same_device_as_reservation": true,
+    "reservation_preserved": true,
+    "reserved_bytes": 12884901888,
+    "allocated_bytes": 12884905984,
+    "is_exclusive_quota": false,
+    "output_root_restored_absent": true,
+    "cleanup": "Only test-owned unchanged files and empty directories removed; no recursion or foreign-file deletion. No business output or startup snapshot created.",
+    "pre_and_post_identity_scope_checks_passed": true,
+    "authorization_still_denied": true,
+    "repeat_requirement": "Repeat all live location/reservation/free-space checks at any future approved launch; this is not indefinite storage assurance."
+  },
+  "authorization_review": {
+    "only_record": "approved=false negative record",
+    "manifest_bound": true,
+    "manifest_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+    "RNG_decision_bound": true,
+    "no_execution_authorization_inferred": true
+  },
+  "review_disposition": {
+    "storage_and_import_compatibility": "Targeted evidence collected; storage checks passed and imports completed without witness or observed RNG/thread/CUDA changes.",
+    "strict_three_arm_import_order": "not_passed",
+    "required_independent_decision": "Explicitly determine whether the documented two-module early import is permissible as a disclosed instrumentation/startup difference. If strict identical order is required, a separately reviewed startup change and new smoke evidence are needed. Neither acceptance nor a new preload policy was applied here.",
+    "A_historical_standard": "Full strict business receipt equality unchanged; any controlled-A versus historical difference still stops before B.",
+    "no_further_engineering_implemented": true
+  },
+  "attempt_accounting": {
+    "final_exact_argv_import_children": 3,
+    "preliminary_import_children": 3,
+    "preliminary_note": "Initial development smoke retained harness argv; final acceptance smoke repeated with exact frozen business argv. Both were import-only; neither executed main/probe/witness.",
+    "preliminary_summary_sha256": "81d97573b1a3077526e8125b06f879528fdbc7a7d2de23cae3fff3a177d1b89d",
+    "storage_only_preflight_runs": 1,
+    "real_business_witness_calls": 0
+  },
+  "evidence": {
+    "import_smoke_report.json": {
+      "path": "controlled_startup_final_review_v1/import_smoke_report.json",
+      "sha256": "7d250f14f7b92029daa2c61c6e666f4df5f9b1102c38c61c45c53f6d1722ffd6"
+    },
+    "exact_output_storage_report.json": {
+      "path": "controlled_startup_final_review_v1/exact_output_storage_report.json",
+      "sha256": "f472757c4375bff0555e7fa4f76d7615a47b2b44cc6cd59fdecfee7a426f84f9"
+    },
+    "authorization_denied_bound_to_v2.json": {
+      "path": "controlled_startup_final_review_v1/authorization_denied_bound_to_v2.json",
+      "sha256": "17cd4cbbd6e520cc2b44895a92cec40b9fff42f3369e7fa69af75bdbcefcea11"
+    },
+    "A_vs_B_import_order.diff": {
+      "path": "controlled_startup_final_review_v1/A_vs_B_import_order.diff",
+      "sha256": "ad46cf85d23047e52fa54f5343bbb0f77a2e744ad2b965262a9417ddab0734db"
+    }
+  },
+  "helpers": {
+    "smoke_controlled_topology_imports.py": "477a1b22edcdaf99d7c7650a5baacc6cb93aa72a4ff06532105f5c994df88e1a",
+    "check_topology_storage_review.py": "a7ed51e5d7dd21ca619df156aafdb2e39f260edbf366423f4e06000ae80fd543"
+  },
+  "qualification_unchanged": {
+    "source_topology_patients": 17,
+    "upper_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "formal_target": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}

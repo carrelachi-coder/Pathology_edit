@@ -1,0 +1,52 @@
+{
+  "scope": "exact output-location storage review only; not A/B/C",
+  "manifest_sha256": "e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c",
+  "helper_sha256": "a7ed51e5d7dd21ca619df156aafdb2e39f260edbf366423f4e06000ae80fd543",
+  "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/limited_topology_capture_v1_controlled_v2",
+  "checks": {
+    "hardlink_no_replace": true,
+    "arms_distinct": true,
+    "same_device_as_reservation": true,
+    "live_free_bytes": 16469299503104,
+    "reservation_unchanged": true
+  },
+  "arm_directory_checks": [
+    {
+      "arm": "A",
+      "resolved_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/limited_topology_capture_v1_controlled_v2/A",
+      "device": 2080,
+      "inode": 185207127,
+      "marker_inode": 185207128
+    },
+    {
+      "arm": "B",
+      "resolved_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/limited_topology_capture_v1_controlled_v2/B",
+      "device": 2080,
+      "inode": 185207129,
+      "marker_inode": 185207130
+    },
+    {
+      "arm": "C",
+      "resolved_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/limited_topology_capture_v1_controlled_v2/C",
+      "device": 2080,
+      "inode": 185207131,
+      "marker_inode": 185207132
+    }
+  ],
+  "reservation": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/execution_preparation_v2/reservation_12gib.bin",
+    "bytes": 12884901888,
+    "allocated_bytes": 12884905984,
+    "device": 2080,
+    "inode_before": 185206993,
+    "inode_after": 185206993,
+    "is_quota": false
+  },
+  "cleanup": "owned files and empty directories only; fresh root restored",
+  "output_root_exists_after": false,
+  "identity_scope_recheck_passed": true,
+  "authorization_denied_before_launch": true,
+  "business_modules_loaded": [],
+  "execution_permitted": false,
+  "witness_calls": 0
+}

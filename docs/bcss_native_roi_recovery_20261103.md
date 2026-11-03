@@ -234,3 +234,29 @@ A的`20ace976`快照、B/C的`c119c600`快照以及controller的`80fbbfc2`快照
 S07实际输出根目录仍未创建。真实部署的controller以关闭授权记录核验，确实在输出创建及业务导入前拒绝执行；直接只读preflight不调用任何来源witness。实际输出位置的hardlink不覆盖测试会在获准后、A启动前再次进行，不能以准备目录的结果替代。v2的`preflight_complete=true`仅表示本轮准备核验完成，`ready_for_execution=false`和另外两个授权门槛仍关闭；后续必须另存获批版本，不能修改已冻结的v1或本次review候选来伪装授权历史。
 
 当前仍为17位源拓扑通过、含unknown上限19位、新增四目标批准0位。30位患者目标、19%／32%名义预算及14%／27%组织硬下限不变；S07 A/B/C未获授权、未执行，批量四目标、正式H&E和医生研究继续关闭。
+
+## 最后两项准备验收：RNG／存储通过，三臂导入顺序仍需明确判断
+
+[本轮审查报告](../benchmarks/manuscript_validation_20261103/controlled_startup_final_review_report_v1.json) 仅补充用户要求的import-only烟雾测试和实际输出位置存储检查。Observer、controller `80fbbfc2`、原冻结协议及execution manifest v1／v2均未改；本轮没有增加生产功能或执行S07 witness。这里提供的是审查证据，不冒充已经取得独立科学批准。
+
+### 业务导入烟雾测试
+
+[完整导入证据](../benchmarks/manuscript_validation_20261103/controlled_startup_final_review_v1/import_smoke_report.json) 使用冻结环境、三个实际快照和准确的probe argv，`runpy`采用非`__main__`名称，仅加载定义；profile守卫阻止main／probe／资格和witness入口被调用。父进程始终无业务模块、1个native线程。三个子进程恢复后的Python random、NumPy legacy、Torch CPU及hash摘要一致；导入结束后仍一致，所有已记录source-module入口的摘要也均等于初始值。三个子进程导入后均为1个native线程，CUDA均未初始化，未触发任何受阻业务调用。
+
+这里的“无来源处理”不等于完全不读取文件：父进程的只读身份检查仍会对冻结输入计算哈希并读取subset metadata；没有解码来源图像／mask，也没有进入source probe、规划或witness。初步开发烟雾测试曾保留helper argv，最终验收另用准确的业务argv完成三次子进程导入，两次记录均保留，真实witness调用始终为0。
+
+**不能把三臂业务导入顺序记为全部通过。**B/C顺序一致，但A与B/C不同，即使在描述性比较中单独去掉Observer文件本身，差异仍存在。三者加载相同的96个source文件，只有两个文件提前：`phase3_mask_edit_refine/__init__.py`和`phase3_mask_edit_refine/models.py`。原因是B/C在probe前导入Observer，Python会先执行包初始化及其中的models导入；A在legacy正常依赖链中较晚加载它们。[逐项顺序差异](../benchmarks/manuscript_validation_20261103/controlled_startup_final_review_v1/A_vs_B_import_order.diff) 已保存。
+
+该差异未伴随已观测默认RNG、hash、线程或CUDA状态变化，但这不能证明任意导入副作用都不存在，更不能把“顺序相同”改写为真。生产比较器没有排除这两个模块、没有放宽A历史比较，也没有增加路径归一化。导入记录使用相对source路径只是说明此次顺序差异，不是修改生产业务／语义比较。
+
+### 实际启动位置的存储与授权检查
+
+[存储证据](../benchmarks/manuscript_validation_20261103/controlled_startup_final_review_v1/exact_output_storage_report.json) 确实在manifest v2指定的最终输出根目录临时执行：hardlink发布成功，第二次发布得到EEXIST并保留原字节；A/B/C三个空目录及各自测试marker的path／inode均独立，且和原预留文件同设备。只移除本轮独占创建、inode和内容未变的测试文件，以及仍为空的目录，不递归清理、不删除外来内容。完成后实际输出根目录恢复为不存在，满足后续fresh-output门槛，没有生成任何业务结果。
+
+原12 GiB预留文件inode、size及实际allocated blocks核验保持有效，没有释放或改写预留文件。检查前后均重新通过完整快照／输入／runtime／scope身份核验；再次调用关闭的run门槛，在输出创建和业务导入前拒绝。远端[负授权记录](../benchmarks/manuscript_validation_20261103/controlled_startup_final_review_v1/authorization_denied_bound_to_v2.json) 仍为`approved=false`，准确绑定v2 SHA `e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c`及RNG决策SHA。不存在正授权记录；物理预留仍不是独占quota，未来获准启动前还需再次执行live检查。
+
+### 终审结论边界
+
+RNG恢复和导入兼容性、CPU单线程／无CUDA以及实际位置存储检查获得正面证据；**严格的A/B/C导入顺序一致性未满足**。当前状态为`hold_for_explicit_import_order_acceptance_decision`：需要独立明确是否接受这两个文件提前导入，作为披露过的instrumentation／startup差异；若要求顺序完全一致，则须另行审查初始化安排，不能擅自预加载A来让测试通过。本轮没有选择或实施任何新的初始化修正，也没有给出S07执行批准。
+
+A与历史完整业务receipt的严格比较不变，任何不一致仍在B前停止。当前17位源拓扑通过、含unknown上限19位、新增四目标批准0位及30位目标均不变；19%／32%预算和14%／27%硬下限不变。S07诊断、批量四目标、正式H&E及医生研究继续关闭。
