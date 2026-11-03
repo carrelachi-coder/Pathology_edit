@@ -104,7 +104,7 @@
     },
     "event_bytes": {
       "file": "guard_capacity_analysis_v1/event_bytes.csv",
-      "sha256": "7bd36b421b605e2d44ddf689adc3504eb78063ed6bec7993e3d2113f2f493d9c"
+      "sha256": "31424906d43f88df6d5372584c664018d428fab6baf5e468fd9127abb8e418bd"
     }
   },
   "private_data_policy": "Raw JSONL, compressed payload blocks, business receipts and full RNG states remain under .codex-artifacts/server private evidence. Public artifacts contain counts, byte statistics and integrity hashes only.",

@@ -8,7 +8,7 @@
   "purpose": "Complete, byte-lossless, auditable capture of high-frequency guard events within bounded resources; no source algorithm or decision changes.",
   "evidence_basis": {
     "analysis_record": "saved_guard_capacity_analysis_report_v1.json",
-    "sha256": "66c61042c2bb1ec1765978b6c050d7c50d8baaf698f84887d4cfc26e06f14135",
+    "sha256": "b15e6e0ae60e6daa837364d80c4ae6ec51ffb5cb4d32444b3cc18c9a9b4b5a4a",
     "measured_prefix_events": 2000000,
     "measured_prefix_complete_business_run": false
   },
