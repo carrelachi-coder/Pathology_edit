@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "status": "frozen_protocol_execution_not_authorized",
+  "purpose": "Acquire missing process evidence; no algorithm development or source qualification in this protocol.",
+  "execution_permitted": false,
+  "instrumentation_status": "not_implemented_or_accepted",
+  "batch_compile_permitted": false,
+  "formal_launch_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false,
+  "historical_record_policy": "Preserve original draft, qualification reports, errors and counts; append new evidence in separate directories.",
+  "frozen_invariants": {
+    "nominal_joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ],
+    "topology_and_joint_contracts": "unchanged",
+    "source_topology_pass_patients": 17,
+    "patient_upper_bound_including_old_unknown": 19,
+    "fully_four_target_approved_patients_added": 0
+  },
+  "selected_source": {
+    "alias": "S07",
+    "scope": "read-only identity binding, no qualification replay",
+    "source_reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "source_index_in_native216": 149,
+    "source_index_in_topology_subset9": 7,
+    "source_inputs": {
+      "reference_image": {
+        "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/local_evidence_v1/native_roi_scan_v1/new_sources/images/BCSS_native_recovery_205cb2398525fe94.png",
+        "sha256": "c64dcc8dd0ecb73e1d823bc4d699033d52ba362bfb60f3d58685866aaac876a8"
+      },
+      "reference_tissue_mask": {
+        "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/local_evidence_v1/native_roi_scan_v1/new_sources/tissue_masks/BCSS_native_recovery_205cb2398525fe94.png",
+        "sha256": "4465140a7f1c00581dc596782df91018c6f4715381fb96a5e346f20528b010b8"
+      },
+      "reference_nuclei_mask": {
+        "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/local_evidence_v1/native_roi_scan_v1/new_sources/nuclei_masks/BCSS_native_recovery_205cb2398525fe94.png",
+        "sha256": "9080a157d64fa476a27ff4708821ae0939426690bc463b1901eb68ab667aebb0"
+      }
+    },
+    "source_census_sha256": "13c5b8a0e3b9da34e4b6aecff037d76bb4eb35e59b40719caadf1242cabbe623",
+    "template_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+    "saved_topology_sha256": "36882d73db676860ddb1a54dc93f57b14334c5c668b5af05a5bcf8d898156e2a",
+    "saved_controller": {
+      "controller_exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 112.15778202749789
+    },
+    "operation_input_mappings": [
+      {
+        "operation": "U1",
+        "template_index": 1,
+        "case_id": "BCSS_native_recovery_205cb2398525fe94__cohesive-boundary-expansion-v1__capacity",
+        "reconstructed_input_mapping_sha256": "f148617ecba6a928cf94d3b70ab4f1699a35912749bb418577b011ef4ed9edc2",
+        "case_mapping_scope": "exact mapping construction in retained probe script before validation/materialized auxiliaries; not an original saved plan hash"
+      },
+      {
+        "operation": "U2",
+        "template_index": 3,
+        "case_id": "BCSS_native_recovery_205cb2398525fe94__generic-immune-infiltrate-increase-v1__capacity",
+        "reconstructed_input_mapping_sha256": "55df328b4a82b00308c69e61403a9e8fe81495708f2ed51642cdc0ae2b1256a7",
+        "case_mapping_scope": "exact mapping construction in retained probe script before validation/materialized auxiliaries; not an original saved plan hash"
+      }
+    ]
+  },
+  "original_execution": {
+    "commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+    "source_subset": "native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "source_subset_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates": "technical_joint_cases_v5.json",
+    "qualification_protocol_sha256": "cb5145cb9c1b8307f342fbbd503d49849a58fe02d58a03e690d4187102eeda9a",
+    "probe": "scripts/probe_manuscript_joint_capacity.py",
+    "selection": {
+      "start_index": 7,
+      "limit": 1,
+      "topology_witness": true
+    },
+    "selection_rule": "Use original nine-source subset and original paths; do not reindex a singleton or modify the case mapping.",
+    "seed": 42,
+    "significant_target_fraction": 0.32,
+    "min_fraction": 0.27,
+    "max_fraction": 0.37,
+    "tissue_min_fraction": 0.27,
+    "relative_tolerance": 0.02,
+    "fallback": "max_feasible_below_target",
+    "capacity_floor_policy": "strict",
+    "minimum_effective_fraction": 0,
+    "expected_saved_results": {
+      "U1": {
+        "qualified": false,
+        "error_type": "TopologySafeAreaUnderfillError",
+        "raw_error_sha256": "db3d23c386f319b3b1763d88b4ce78433a5171485ea6e62760e65671f4aad64a",
+        "invalid_trial_area": 70732,
+        "invalid_trial_topology_passed": false,
+        "invalid_source_holes": [
+          13,
+          10
+        ],
+        "max_saved_topology_passing_floor_trial": 22287
+      },
+      "U2": {
+        "qualified": false,
+        "error_type": "RefineContractError",
+        "raw_error_sha256": "990ac4e2a258ea9d2c40f88e6c9313a9d1979a9847ad8e3679868cab3aaa13b2",
+        "trial_area": null
+      }
+    },
+    "unavailable_original_evidence": [
+      "ordered plan hashes",
+      "failed target masks",
+      "full RNG state snapshots",
+      "complete per-process environment attestation"
+    ],
+    "mapping_digest_scope": "Reconstructed canonical pre-validation mappings, not original saved plans. JSON sort_keys=true, separators comma/colon, allow_nan=false."
+  },
+  "future_execution_gates": [
+    "Separate explicit approval of this finite replay is required; protocol freeze alone is not approval.",
+    "Freeze instrumented commit, patch SHA, unchanged business-code identities, dependency/environment manifest and all input/contract hashes before any replay.",
+    "Review observer-only diff and pass deterministic synthetic noninterference fixtures with observer off/hash_only/full_capture; include recorder failures and unchanged RNG, plans, results and exceptions.",
+    "Freeze exact comparison fields and any path/timestamp metadata exclusions before execution; no post-hoc normalization of input, contract, plan, mask or result differences.",
+    "Verify fresh output locations, finite storage reservation and evidence completeness limits before starting; never resume old qualification outputs."
+  ],
+  "finite_comparison_design": {
+    "arms_in_order": [
+      {
+        "arm": "A_legacy",
+        "code": "original clean 20ace976 snapshot",
+        "observer": "none",
+        "comparison": "Compare both business results and retained diagnostic states/errors against original receipts. Original internal plans remain unavailable."
+      },
+      {
+        "arm": "B_hash_only",
+        "code": "frozen observer-only build",
+        "observer": "semantic transcript and hashes",
+        "comparison": "Exact business outputs and exception identity/text match A; collect ordered plans, allocations, masks and existing RNG-state digests."
+      },
+      {
+        "arm": "C_full_capture",
+        "code": "same observer-only build as B",
+        "observer": "same transcript plus detached raster/event capture",
+        "comparison": "Exact semantic transcript and business result match B, including ordered plans, allocations, mask and RNG digests."
+      }
+    ],
+    "source_process_invocations_max": 3,
+    "operations_per_process": [
+      "U1 Significant",
+      "U2 Significant"
+    ],
+    "logical_witness_calls_max": 6,
+    "concurrency": 1,
+    "seconds_per_source_pair_max": 1200,
+    "total_process_wall_budget_seconds_max": 3600,
+    "automatic_retries": 0,
+    "hardware": "CPU only; no model generation calls",
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": "",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    },
+    "runtime_identity": "Capture Python, packages, platform, threads and all relevant inherited environment. Do not silently introduce a new PYTHONHASHSEED or reseed existing execution.",
+    "timing_limit": "Passive capture may change elapsed time. Observer-induced timeout or resource exhaustion invalidates diagnosis; never classify it as biological failure or increase budget after observing results.",
+    "stop_rule": "On any discrepancy, incomplete observer evidence, fault or timeout, stop subsequent arms and write mismatch_hold. Explain differences before interpreting a new result. No seed/anchor/parameter tuning or automatic retry.",
+    "historical_equivalence_limit": "A can compare only evidence actually retained in the old run. B versus C supplies new plan-level noninterference evidence; it cannot retrospectively establish original plan identity."
+  },
+  "observer_noninterference_contract": [
+    "Observer data and return values never enter candidate selection, sorting, allocations, anchor/interface preference, RNG or any pass/fail decision.",
+    "Observe already-computed values only. Never call planner, executor or guards a second time to obtain telemetry; mark unavailable and not_evaluated distinctly.",
+    "Copy arrays into detached storage before capture; never pass writable views or mutate live array flags, input dictionaries, cases, provenance, plans, results or exception payload/text.",
+    "Preserve original iteration order and lazy evaluation. Transcript event numbering uses a separate deterministic counter without random draws, UUIDs, reseeding or creation of random generators.",
+    "Read existing Python/NumPy/Torch/local-generator state without draws where present; do not initialize CUDA or import new execution backends solely for logging. Inventory inaccessible generators as unavailable, not matching.",
+    "Recorder faults, disk limits or queue failures must be caught outside business exception handling and cannot trigger replanning. Mark diagnosis invalid out of band; preserve original business behavior and do not silently drop evidence.",
+    "Diagnostic outputs never participate in business file discovery, resume, caches or qualification ledgers. No observer metadata is added to business objects.",
+    "Static review and equivalence evidence are required; absence of an observed mismatch alone is not proof of universal noninterference."
+  ],
+  "capture_requirements": [
+    "Input file/content hashes, original reconstructed case mappings, contracts, code/diff/runtime identity and output inventory.",
+    "Every already-computed attempt in order: interface/anchor identities, preferences, allocations, replans and canonical ordered-plan digests.",
+    "Source/protected masks, legal envelopes, their unions, ownership masks/unions and existing reachability results; preserve dtype, shape, coordinate system and label semantics.",
+    "Desired/floor probes: requested and selected masks, failed target masks, before/after states, existing topology audits and per-interface realized contributions/deletion budgets.",
+    "Existing guard events with evaluated/not_evaluated status, event counts and unique rejected pixel sets where available; preserve intersections and repeated visits separately.",
+    "Structured exception feedback before the outer error-string collapse, without changing the exception.",
+    "Ordered semantic JSONL transcript plus lossless arrays and file/content SHA256 manifest. Nonfinite values receive explicit typed encodings; missing values remain null with reason, never zero.",
+    "Record unavailable telemetry explicitly. If planned evidence cannot be passively captured, report the gap and hold interpretation rather than adding counterfactual execution."
+  ],
+  "interpretation_rules": [
+    "70732 is topology-invalid, not safe area or a near-pass. 22287 is only the largest topology-passing floor trial retained for S07/U1, not a global optimum.",
+    "Do not attribute all failures to holes, raw-source fragmentation, anchor continuity or ownership without corresponding process evidence.",
+    "Aggregate preflight capacity minus trial area is not stagewise causal loss; repeated rejection events and overlapping masks cannot be summed into unique lost area.",
+    "An ownership partition can preserve union area while changing reachability; report these separately.",
+    "No disabling guards, changing mechanisms, exploring new anchors, changing budgets or tuning timeouts under this protocol.",
+    "Unexpected successful replay remains a diagnostic observation and does not amend old failures, add qualified patients or approve four targets.",
+    "Any later method research requires a separate frozen development/independent-validation patient split and cohort-exclusion audit."
+  ],
+  "outputs": {
+    "root_relative_to_asset_run": "native_crop_recovery_20261103_v1/limited_topology_capture_v1",
+    "directories": [
+      "A_legacy",
+      "B_hash_only",
+      "C_full_capture",
+      "comparison"
+    ],
+    "collision_policy": "Refuse pre-existing run directories; no overwrite or resume.",
+    "public_private_policy": "Keep raw RGB, tissue/nuclei arrays and patient mappings private. Public summary contains hashed source references, code/input hashes, comparisons, limitations and approval status.",
+    "deliverables": [
+      "execution identity manifest",
+      "static noninterference review and synthetic-fixture results",
+      "per-arm receipts/transcripts and private raster manifest",
+      "cross-arm comparison with mismatches or unavailable fields",
+      "diagnostic report without qualification-ledger changes"
+    ]
+  }
+}

@@ -620,5 +620,17 @@
     "erratum": "70732 trial topology failed; not a safe-area near-pass",
     "qualification_counts_changed": false,
     "replay_executed": false
+  },
+  "limited_topology_capture_20261103": {
+    "protocol": "../manuscript_validation_20261103/limited_topology_capture_protocol_v1.json",
+    "protocol_sha256": "9f8c962ba2f70e588fe527c2b0a8b6a3478d21fee87c4c181335c5920b12da7c",
+    "status": "frozen_protocol_execution_not_authorized",
+    "execution_permitted": false,
+    "instrumentation_status": "not_implemented_or_accepted",
+    "qualification_counts_unchanged": {
+      "source_topology_pass_patients": 17,
+      "upper_including_old_unknown": 19
+    },
+    "formal_launch_permitted": false
   }
 }
