@@ -1,0 +1,33 @@
+{
+  "status": "proposed_pending_independent_review",
+  "id": "producer-32dc6007-readonly-primitives-v1",
+  "producer_commit": "32dc6007b30c2f4de37df5a50c00a1c29c0901be",
+  "producer_components": {
+    "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf"
+  },
+  "consumer_commit": "1c8ad6ff50e1c94719141e17b519ecf5eee93a2c",
+  "consumer_components": {
+    "validation_budget_policy_v2.py": "dd14628a81f1c40fedf36212e42564668553c2b5e8ba5b77f6f63c06776de7c1",
+    "observer_adapter_validation_v2.py": "3cd51eb3f4495eacdcb62f8f27a37a6e9242abb23c67e5b207fb67664c16b2f8",
+    "validator_process_gate_v2.py": "1ef4e2b587caae0c5fecd21ee7fdfece84a31de32dc6bb93fa5105aca2e2b613",
+    "validator_readonly_worker_v2.py": "e43a42c5e1bee14b45c62a4ee51844c0ff0aa3beaaed5ba5c100b43d8e6bd69e"
+  },
+  "method": "New read-only orchestration calls exact hash-pinned legacy _prepare/_checked_events/_finish with publish=False and task deadline callback. Legacy source is not patched. Consumer and producer identities are reported separately.",
+  "producer_manifest_rewrite": false,
+  "producer_identity_override": false,
+  "old_validator_code_modified": false,
+  "old_gate_modified": false,
+  "semantic_fields_excluded": [],
+  "receipt_normalization": false,
+  "reader_passes_per_stream": 1,
+  "array_integrity_and_control_rebind_checks": "unchanged pinned v1 functions, each stream fully exhausted",
+  "limitations": [
+    "Uses private v1 primitives only under exact component hashes; not general forward compatibility.",
+    "Different consumer is a disclosed new validation experiment, not a producer identity change.",
+    "Local tests do not prove target 60-second feasibility or real S07 non-interference."
+  ],
+  "publication": false
+}

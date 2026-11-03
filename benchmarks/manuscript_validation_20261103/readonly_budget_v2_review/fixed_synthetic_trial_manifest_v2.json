@@ -1,0 +1,220 @@
+{
+  "kind": "readonly-budget-v2-fixed-synthetic-trial",
+  "status": "sealed_candidate_pending_review_and_trial_approval",
+  "execution_permitted": false,
+  "permissions": {
+    "production": false,
+    "S07": false,
+    "generation": false,
+    "publication": false
+  },
+  "policy": {
+    "policy_id": "readonly-validation-budget-v2-30-60",
+    "policy_sha256": "3447b500c8f458db2735c32f2b720919645fb6333b5c2976401bc4cd51c57873"
+  },
+  "policy_document_sha256": "dd316eaa4e07a3e9e3fa1302f80d8e87361c39f4115a01ec8b0cbeaae19b2824",
+  "compatibility_profile": "producer-32dc6007-readonly-primitives-v1",
+  "compatibility_document_sha256": "244fdbb1e8d48f62e806645b4b6d67a21c2e9e35f2612e0956679e685ba96f8c",
+  "source_commit": "1c8ad6ff50e1c94719141e17b519ecf5eee93a2c",
+  "source_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff",
+  "source_snapshot_staged": false,
+  "source_files": {
+    "diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "diagnostic_storage/validator_process_gate_v1.py": "8f45bd61cb4f5fc1a0b221d3997fe8f92a5dfc64ccf3ca53d1b574dd67601f53",
+    "diagnostic_storage/validation_budget_policy_v2.py": "dd14628a81f1c40fedf36212e42564668553c2b5e8ba5b77f6f63c06776de7c1",
+    "diagnostic_storage/observer_adapter_validation_v2.py": "3cd51eb3f4495eacdcb62f8f27a37a6e9242abb23c67e5b207fb67664c16b2f8",
+    "diagnostic_storage/validator_process_gate_v2.py": "1ef4e2b587caae0c5fecd21ee7fdfece84a31de32dc6bb93fa5105aca2e2b613",
+    "scripts/validator_readonly_worker_v2.py": "e43a42c5e1bee14b45c62a4ee51844c0ff0aa3beaaed5ba5c100b43d8e6bd69e",
+    "scripts/run_readonly_budget_v2_trial.py": "b2055235a960dd2329a8f84e40e6da24a09ff9dc061413df5a2c76947e420f43"
+  },
+  "runtime_code_files": {
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/validator_process_gate_v1.py": "8f45bd61cb4f5fc1a0b221d3997fe8f92a5dfc64ccf3ca53d1b574dd67601f53",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/validation_budget_policy_v2.py": "dd14628a81f1c40fedf36212e42564668553c2b5e8ba5b77f6f63c06776de7c1",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/observer_adapter_validation_v2.py": "3cd51eb3f4495eacdcb62f8f27a37a6e9242abb23c67e5b207fb67664c16b2f8",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/diagnostic_storage/validator_process_gate_v2.py": "1ef4e2b587caae0c5fecd21ee7fdfece84a31de32dc6bb93fa5105aca2e2b613",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/scripts/validator_readonly_worker_v2.py": "e43a42c5e1bee14b45c62a4ee51844c0ff0aa3beaaed5ba5c100b43d8e6bd69e",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/scripts/run_readonly_budget_v2_trial.py": "b2055235a960dd2329a8f84e40e6da24a09ff9dc061413df5a2c76947e420f43"
+  },
+  "runtime": {
+    "executable": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "executable_sha256": "cad15d1b37740e48e83644b2a6148fc40c84727aabb703bf9ed4218afb0a6a52",
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": "",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "PYTHONHASHSEED": null,
+      "PYTHONPATH": null,
+      "PYTHONHOME": null,
+      "LD_LIBRARY_PATH": null,
+      "CONDA_PREFIX": null,
+      "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+      "LANG": "en_US.UTF-8",
+      "LC_ALL": "C.UTF-8"
+    },
+    "packages_sha256": "eb035eb36713cdbed603927640e0ed2bb807e4486c16cbfd58f9448cbf88f6dc",
+    "package_count": 220,
+    "native_files_sha256": {
+      "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/site-packages/numpy/core/_multiarray_umath.cpython-311-x86_64-linux-gnu.so": "a735e4e8355b75c800112af8a5b1731b891b2016ed57067352eea6cab0aa00bc",
+      "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/lib-dynload/zlib.cpython-311-x86_64-linux-gnu.so": "e17f644fc0b41a84646fb07313035f40efda5045a9b0298e54d21d5cfdc59629",
+      "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/libz.so.1.3.2": "22f1601237b86f0f48ed5b83071d1505167ae2e16365b33b4eed6e96dbf71ab0"
+    },
+    "identity_scope": "frozen Python/distributions/native references, not hermetic OS closure"
+  },
+  "input_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1",
+  "input_inventory": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_budget_v2_1c8ad6ff/closed_synthetic_projection_manifest_v1.json",
+    "sha256": "6bbcf7750ced2f6814f081dc1ccda4ad7778659a957ff0e19cad32fc0f48125c",
+    "file_count": 809,
+    "disclosure": "private inventory staged byte-identically only after approval; no events/arrays/RNG in Git"
+  },
+  "input_identity": {
+    "archive_sha256": "e963740dcfa1f8063047712a9d9cf3ca077225fec6f7a9f01970b117d6a1579c",
+    "archive_bytes": 1465128960,
+    "stream_sha256": "8cfe9c6fcf2665e0f7a00f654eab6cb7f1e70c984e47f6ea353d7ec615684f43",
+    "events_each": 2100000,
+    "array_occurrences_each": 685,
+    "new_float64_snapshots_each": 683,
+    "source_capture_producer_identity_unchanged": true,
+    "input_generation_permitted": false
+  },
+  "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_budget_v2_fixed_trial_v1",
+  "minimum_free_output_bytes": 67108864,
+  "existing_reservation": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/execution_preparation_v2/reservation_12gib.bin",
+    "bytes": 12884901888,
+    "exclusive_quota": false
+  },
+  "setup_watchdog_seconds": 60,
+  "setup_policy": "Once: complete inventory/code/runtime check and no-replace hardlink probe at actual new output. Input hashing may warm filesystem cache; declared before measurements. No additional warmups or selective cache reset.",
+  "jobs": [
+    {
+      "label": "B_capture",
+      "request": {
+        "kind": "capture",
+        "identity": {
+          "reference_id": "synthetic-source",
+          "patient_id": "synthetic-patient",
+          "operations": [
+            {
+              "case_id": "synthetic-U1",
+              "primitive_id": "synthetic-primitive1"
+            },
+            {
+              "case_id": "synthetic-U2",
+              "primitive_id": "synthetic-primitive2"
+            }
+          ],
+          "run_manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "input_identity_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "case_mapping_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "contract_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "startup_identity_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "capture": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1/B",
+        "receipt": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1/B_receipt.json",
+        "mode": "hash_only"
+      },
+      "request_sha256": "70277925c637a8759bd9ca2607ccc39a63b1216bee82954ba4c835f0436c65fd",
+      "hard_seconds": 30,
+      "measurements": 1
+    },
+    {
+      "label": "C_capture",
+      "request": {
+        "kind": "capture",
+        "identity": {
+          "reference_id": "synthetic-source",
+          "patient_id": "synthetic-patient",
+          "operations": [
+            {
+              "case_id": "synthetic-U1",
+              "primitive_id": "synthetic-primitive1"
+            },
+            {
+              "case_id": "synthetic-U2",
+              "primitive_id": "synthetic-primitive2"
+            }
+          ],
+          "run_manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "input_identity_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "case_mapping_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "contract_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "startup_identity_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "capture": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1/C",
+        "receipt": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1/C_receipt.json",
+        "mode": "full_capture"
+      },
+      "request_sha256": "7e03cb36e826d97aef53d9a501fcc24234bef3e0ac1849acdfe6eebe31a87a9f",
+      "hard_seconds": 30,
+      "measurements": 1
+    },
+    {
+      "label": "BC_compare",
+      "request": {
+        "kind": "compare",
+        "identity": {
+          "reference_id": "synthetic-source",
+          "patient_id": "synthetic-patient",
+          "operations": [
+            {
+              "case_id": "synthetic-U1",
+              "primitive_id": "synthetic-primitive1"
+            },
+            {
+              "case_id": "synthetic-U2",
+              "primitive_id": "synthetic-primitive2"
+            }
+          ],
+          "run_manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "input_identity_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "case_mapping_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "contract_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "startup_identity_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "left": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1/B",
+        "right": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1/C",
+        "left_receipt": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1/B_receipt.json",
+        "right_receipt": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1/C_receipt.json"
+      },
+      "request_sha256": "06820e394bfe6fd0b8e37df6422b7add04eef81b45b231c94818e68efda34339",
+      "hard_seconds": 60,
+      "measurements": 1
+    }
+  ],
+  "automatic_retries": 0,
+  "order": "B capture then C capture then complete BC; any HOLD stops subsequent steps",
+  "approval_required": "Separate explicit acceptance of policy and exact compatibility profile plus this manifest SHA. Original S07/RNG approvals do not authorize this trial.",
+  "overall_launch_watchdog": {
+    "seconds": 185,
+    "implementation": "GNU timeout --signal=KILL 185s in new isolated technical snapshot; missing final receipt means HOLD, no retry. Individual gate budgets remain 30/30/60.",
+    "phase": "setup60 + helpers120 + cleanup5; no extra helper time"
+  },
+  "measurement_reporting": "Report each helper wall time, deadline, exit status, reaping, policy/consumer/producer identities, full verdict or unknown. No source SHA shortcut.",
+  "scientific_constraints": {
+    "topology_pass_patients": 17,
+    "upper_bound_with_unknown": 19,
+    "new_four_target_approved": 0,
+    "target_patients": 30,
+    "nominal_joint": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floor": [
+      0.14,
+      0.27
+    ],
+    "formal_generation_open": false
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "status": "local_candidate_ready_for_review_target_trial_not_run",
+  "code_commit": "1c8ad6ff50e1c94719141e17b519ecf5eee93a2c",
+  "test_command": "python -m pytest -q tests/test_validation_budget_policy_v2.py tests/test_validator_process_gate_v1.py",
+  "tests_passed": 49,
+  "new_budget_tests": 23,
+  "existing_gate_regressions": 26,
+  "target_60_second_measurements": 0,
+  "server_deployment_this_round": false,
+  "trial_manifest_sha256": "bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec",
+  "policy": {
+    "policy_id": "readonly-validation-budget-v2-30-60",
+    "policy_sha256": "3447b500c8f458db2735c32f2b720919645fb6333b5c2976401bc4cd51c57873"
+  },
+  "unchanged_pins_verified": {
+    "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf"
+  },
+  "comparison_semantics": "strict full receipts/raw event bytes, single pass per stream, all v1 array/status/completion checks; no exclusions or normalization",
+  "authorization_status": "pending policy/compatibility and one manifest-bound synthetic trial approval",
+  "production_controller_modified": false,
+  "S07_calls": 0,
+  "acceptance_proofs_published": false,
+  "historical_HOLD_preserved": true
+}

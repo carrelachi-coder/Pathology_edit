@@ -1,0 +1,19 @@
+{
+  "status": "proposed_pending_review",
+  "identity": {
+    "policy_id": "readonly-validation-budget-v2-30-60",
+    "policy_sha256": "3447b500c8f458db2735c32f2b720919645fb6333b5c2976401bc4cd51c57873"
+  },
+  "hard_seconds_by_task": {
+    "capture": 30,
+    "compare": 60
+  },
+  "selection": "trusted code only; no request/capture timeout field",
+  "clock": "parent before spawn through timely exit and parsing; independent library deadline explicitly passed by worker",
+  "automatic_retries": 0,
+  "failure": "HOLD, terminate process group, reap; no next step; no acceptance proof",
+  "production_integration": false,
+  "historical_30_second_HOLD": "aabe1577 unchanged; no retrospective upgrade",
+  "business_execution_or_recording_budget_changed": false,
+  "qualification_updates_permitted": false
+}

@@ -457,3 +457,17 @@ session退出只quiesce。显式`finalize(normal_invocation_end, business_receip
 [执行关闭的准备manifest](../benchmarks/manuscript_validation_20261103/adapter_pre_execution_preparation_manifest_v1.json)另存，固定源码、实际运行环境、文件系统／预留、旧RNG／导入披露／授权结案记录及所有证据SHA；`execution_permitted=false`、`ready_for_execution=false`、`preflight_complete=false`、生产接入false、无新授权。它不是可启动的launch manifest。未来须先独立审查目标时限／资源条件与生产接线，再另冻最终launch manifest并绑定新授权，旧授权和剩余调用槽不能复用。
 
 本轮已明确回答最关键的执行问题：**这一次目标服务器完整比较未能在冻结30秒内结束，因此不能放行。**没有优化或削减检查来隐藏这个负面结果。17位源拓扑通过、含unknown上限19位、新增四目标批准0、30位患者目标、19%／32%名义预算及14%／27%组织硬下限不变；正式H&E、批量四目标和医生研究继续关闭。
+
+## 只读验证预算 v2：候选实现与试验封存，等待审查
+
+依据对 `aabe1577` 的审查，本轮把工程时限与研究资格门槛分开处理：[候选预算](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/validation_budget_policy_v2.json)保持单流30秒，为双流完整比较提出60秒硬上限。旧30秒HOLD永久保留，不改写为通过。**60秒尚未获批或在目标环境验证**，本轮未连接服务器、未部署新快照、未启动任何目标测量。
+
+实现提交为 `1c8ad6ff50e1c94719141e17b519ecf5eee93a2c`。新增独立v2门禁、worker及只读验证封装；可信任务映射选择时限，worker显式传入库内部，父进程继续独立硬超时。capture输入不能自行设置时间，父进程还核对worker及库返回的政策、时限和消费端代码身份。不改旧门禁、旧Validator、Codec、Adapter或生产Controller，不增加发布接受证明的入口。
+
+[producer／consumer兼容提案](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/producer_consumer_compatibility_v2.json)仅接受精确哈希固定的旧组件：新封装复用旧 `_prepare`、`_checked_events`、`_finish`，每条流只扫描一次，完整检查数组、索引、终态、receipt及控制文件绑定。producer与consumer身份分别记录；旧manifest代码哈希不改，不做字段排除或receipt归一化。此兼容提案仍待独立审查，不是通用跨版本兼容声明。
+
+[本地测试](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/pytest.txt)49项通过，包括23项新预算／身份／门禁测试和26项旧门禁回归。真实微型worker测试贯通30／60秒配置，模拟时钟验证新库可越过旧30秒界限，错误政策／身份、输入覆盖时限和进程超时均拒绝。这里没有重跑117项Adapter、56项Codec或真实210万事件压力，也不把本地微型结果当成目标服务器验收。
+
+[封存的固定输入试验manifest](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/fixed_synthetic_trial_manifest_v2.json) SHA256 为 `bf47f607b2dab75aad7053256c617d227ee45723f410e5126b5e02f4a440c7ec`。拟复用已有目标目录中的完整合成B/C输入，不重新生成：每流210万事件、685个数组occurrence，809个canonical文件绑定私有完整清单SHA。预定顺序为B单流30秒一次、C单流30秒一次、B/C比较60秒一次；任一步HOLD停止，零自动重试。启动前仅一次完整输入／代码／环境核验，明确披露哈希扫描可能预热文件缓存；不追加择优测速或调整缓存的尝试。实际新输出目录重新做no-replace硬链接检查、空间及既有12 GiB物理预留检查，预留仍非quota。
+
+[审查报告](../benchmarks/manuscript_validation_20261103/readonly_budget_v2_review/review_report_v2.json)将状态限定为“本地候选完成，目标试验未运行”。预算与精确兼容规则获审查接受、并取得与本次manifest SHA绑定的一次合成试验批准后，才允许部署隔离技术快照和运行这三项测量。**这不是新的S07申请，也不沿用旧S07授权。**生产接线、最终接受证明发布仍是后续独立工作。17／19患者记录、新增四目标批准0、30位目标、19%／32%名义预算和14%／27%组织硬下限保持原样，正式H&E、批量四目标和医生研究继续关闭。
