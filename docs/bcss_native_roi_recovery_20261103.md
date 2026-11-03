@@ -411,3 +411,18 @@ session退出只quiesce。显式`finalize(normal_invocation_end, business_receip
 代码／运行时与旧文件未变哈希、只读AST结果、复核命令及原始压力摘要均已入库；大体积合成流／数组／receipt及失败目录保持私有。所有类型错配或无法完整封存都hold，不作事后tuple／路径／字段归一化；OS终止、进程级OOM和整套目录恶意重写不声称可完全隔离或防护。
 
 当前更新为：**独立Adapter实现完成，指定本地故障和合成非干扰场景通过；大规模比较时间门槛hold；待独立终审、新启动／执行身份及新授权。**尚未接入生产、未部署、未重跑S07，原授权不复用。17位源拓扑通过、含unknown上限19位、新增四目标批准0、30位目标、19%／32%预算及14%／27%硬下限均未改变，正式H&E、批量四目标和医生研究继续关闭。
+
+
+## 单遍双流比较：保留全部校验，本机合成通过，仍待独立终审
+
+初版实现及41.55秒hold已提交为`44eea864`，旧报告／合同／目录不覆盖。代码检查确认初版先分别完整验证两流，再由Codec.compare完整重读；本轮只改[外层验证器](../diagnostic_storage/observer_adapter_validation_v1.py)，将元数据准备、checked-events和finish检查共用，让两个**公开Codec.Reader迭代器各遍历一次**，在同一遍完成全部字节比较、数组／索引／哈希／sequence、终态与receipt、外层proof和整树预算核验。没有相信旧marker跳过校验，也没有改Codec、core／Sink、编码／RNG、业务文件或30秒限额；另在流耗尽后重读有界控制文件和receipt绑定，拒绝校验期间被修改的文件。
+
+[117项定向测试](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v2/pytest.txt)通过：55项Adapter、62项旧Observer回归。新增检查证明每流仅一次Reader遍历、已有接受marker也不能掩盖数组损坏、流中receipt变更会拒绝、未知字段不被排除、deadline在途中仍生效。既有原始异常、ownership／guard／计划顺序、重规划和RNG合成对照全部保留。
+
+按新的准确代码身份，在**新目录**重新运行210万事件×两个模式、683份2 MiB新快照（另有2份RNG数组）的Adapter压力，未修改旧目录或用新代码冒充旧manifest身份。[最新完整结果](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_report_v2.json)／[v2接口合同](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_contract_v2.json)显示：单流验证约8.95／15.18秒，完整单遍双流比较 **27.569秒**，返回`semantic_match`，全部2,100,000事件连续、字节SHA相同、数组与receipt完整，排除字段为空。683份合成快照约1.43 GB再次独立重新生成、逐字节一致；进程前后Python／NumPy全局状态不变。v1／v2各自自然启动的全局RNG初态可能不同，本轮不重置它们，也不声称恢复了历史随机轨迹。
+
+另外只运行一次[新进程只读比较](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v2/fresh_process_comparison.json)，不生成事件、数组或witness：比较函数29.808秒，整个子进程 **29.982秒**，在父进程硬30秒限制内正常完成，峰值 **102 MiB**。这是非常小的本机余量，不能推断目标服务器或更长的真实S07轨迹一定满足同一限制；未为获得更快样本而重试。源码消除了重复遍历，但两次本机时间并不是受控性能研究，不将全部耗时差归因于这一个因素。
+
+新代码的[整树4 GiB边界](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v2/whole_tree_budget.json)也重新核验：2,038份快照后下一份复制前拒绝，实际inode去重分配4,284,502,016字节，低于4,294,967,296上限；Codec两项完整性状态false，内外marker不存在，外层拒绝。最新测试脚本已正确按inode计数，之前的统计和更正仍作为独立历史证据保留。
+
+因此，最新状态是**独立Adapter及指定本地合成／故障／压力验收通过，待独立终审、目标运行环境与硬超时／导入身份核验、新manifest及新S07授权**。本轮没有提供或部署新Controller，更没有启动真实诊断。真实完整trace的数量／时长仍未知，本机27.57／29.98秒不构成正式执行放行。生产Observer、旧2M限制及旧授权不变；17／19患者资格、四目标批准0位、30位目标、19%／32%预算和14%／27%组织硬下限不变，正式H&E、批量四目标和医生研究继续关闭。

@@ -1,0 +1,38 @@
+{
+  "scope": "synthetic actual whole-tree4GiB boundary including outer controls",
+  "snapshots_accepted": 2038,
+  "failed_snapshot_rejected_before_copy": true,
+  "status": {
+    "format": "observer-codec-adapter-v1",
+    "phase": "INVALID",
+    "core_fault_free": false,
+    "sink_fault_free": false,
+    "sink_closed": true,
+    "events": 2039,
+    "faults": [
+      {
+        "stage": "record",
+        "type": "BudgetError",
+        "next_sequence": 2039
+      }
+    ],
+    "finalized": true,
+    "interpretation_permitted": false,
+    "qualification_updates_permitted": false
+  },
+  "storage": {
+    "unique_file_allocated_bytes": 4284502016,
+    "unique_file_count": 2045
+  },
+  "limit_bytes": 4294967296,
+  "strict_validator_rejected": true,
+  "outer_complete_marker": false,
+  "inner_complete_marker": false,
+  "elapsed_seconds": 11.977902125101537,
+  "peak_rss_bytes": 60653568,
+  "new_witness_calls": 0,
+  "codec_completion": {
+    "block_integrity_complete": false,
+    "business_process_complete": false
+  }
+}

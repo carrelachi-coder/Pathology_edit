@@ -1,0 +1,112 @@
+{
+  "scope": "pure synthetic Adapter chain, not live Observer/S07",
+  "arms": [
+    {
+      "arm": "B",
+      "mode": "hash_only",
+      "events": 2100000,
+      "snapshots": 683,
+      "encode_seconds": 44.255626750178635,
+      "writer_process_peak_rss_bytes": 104759296,
+      "validator": {
+        "verdict": {
+          "candidate_validated": true,
+          "interpretation_permitted": true,
+          "qualification_updates_permitted": false,
+          "mode": "hash_only",
+          "stream": {
+            "block_integrity_complete": true,
+            "business_process_complete": true,
+            "logical_events": 2100000,
+            "physical_blocks": 54,
+            "array_occurrences": 685,
+            "stream_sha256": "8cfe9c6fcf2665e0f7a00f654eab6cb7f1e70c984e47f6ea353d7ec615684f43"
+          },
+          "allocated_bytes_before_optional_outer_publication": 15712256,
+          "bindings": {
+            "manifest_sha256": "320db66c272f88785c2cfd03add1991434e4f6f895af5f54a2d0cd70fdb95168",
+            "status_sha256": "0639fe264cb2d95727975697a0bc4473e0710a1e098b80f859d414c3970294b4",
+            "codec_summary_sha256": "c1d9f303ab47020de35f3bf4371019e7e7ad35b7bec0ea26e6ed64e7ecfb69c4",
+            "business_receipt": {
+              "sha256": "4cb1d6e4d3b8bd838717dd99c25301edb14956b983fb9d0f6bfdbe847e1b187b",
+              "bytes": 1072
+            }
+          }
+        },
+        "seconds": 8.947575625032187,
+        "peak_rss_bytes": 100515840
+      },
+      "storage": {
+        "unique_file_allocated_bytes": 15720448,
+        "unique_file_count": 63
+      }
+    },
+    {
+      "arm": "C",
+      "mode": "full_capture",
+      "events": 2100000,
+      "snapshots": 683,
+      "encode_seconds": 51.74729579221457,
+      "writer_process_peak_rss_bytes": 104759296,
+      "validator": {
+        "verdict": {
+          "candidate_validated": true,
+          "interpretation_permitted": true,
+          "qualification_updates_permitted": false,
+          "mode": "full_capture",
+          "stream": {
+            "block_integrity_complete": true,
+            "business_process_complete": true,
+            "logical_events": 2100000,
+            "physical_blocks": 54,
+            "array_occurrences": 685,
+            "stream_sha256": "8cfe9c6fcf2665e0f7a00f654eab6cb7f1e70c984e47f6ea353d7ec615684f43"
+          },
+          "allocated_bytes_before_optional_outer_publication": 1450938368,
+          "bindings": {
+            "manifest_sha256": "f645f1adf7a50626bed12efc7f950acd8c6e26cee324fa3bb2b00d92249a532b",
+            "status_sha256": "0639fe264cb2d95727975697a0bc4473e0710a1e098b80f859d414c3970294b4",
+            "codec_summary_sha256": "9ffbf2d8875918a8b0fd12282a0cf5a6cf2d15c88dddd98558499a479d139916",
+            "business_receipt": {
+              "sha256": "4cb1d6e4d3b8bd838717dd99c25301edb14956b983fb9d0f6bfdbe847e1b187b",
+              "bytes": 1072
+            }
+          }
+        },
+        "seconds": 15.181317249778658,
+        "peak_rss_bytes": 95797248
+      },
+      "storage": {
+        "unique_file_allocated_bytes": 1450946560,
+        "unique_file_count": 748
+      }
+    }
+  ],
+  "independent_snapshots": {
+    "snapshots": 683,
+    "raw_payload_bytes": 1432354816,
+    "every_original_payload_byte_equal": true,
+    "ordered_reference_hash": "845e0f25c34a52f70e69326027529a50e5ca27910a7536b35b7fba58e7802b9f"
+  },
+  "global_python_numpy_rng_unchanged": true,
+  "comparison": {
+    "status": "semantic_match",
+    "result": {
+      "status": "semantic_match",
+      "events": 2100000,
+      "excluded_semantic_fields": [],
+      "qualification_updates_permitted": false,
+      "scope": "synthetic/offline B/C capture only; A/history requires separate full receipt gate"
+    }
+  },
+  "comparison_seconds": 27.569161457940936,
+  "elapsed_seconds": 150.24830054212362,
+  "new_witness_calls": 0,
+  "production_integration": false,
+  "code_sha256": {
+    "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf"
+  }
+}

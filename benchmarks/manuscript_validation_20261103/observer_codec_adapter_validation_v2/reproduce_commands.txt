@@ -1,0 +1,12 @@
+# Fresh output paths only. No real-source/S07 or production controller.
+python -m pytest -q tests/test_observer_codec_adapter_v1.py tests/test_passive_topology_observer.py
+python scripts/stress_observer_adapter_v1.py --events 2100000 --arrays 683 --output FRESH_ROOT/onepass_pressure
+python scripts/stress_observer_adapter_v1.py --kind budget --output FRESH_ROOT/onepass_budget
+# Explicitly inspect comparison.status; process exit alone is not acceptance.
+# Per-capture helpers remain hard-bounded30s in the synthetic driver.
+# Library compares cooperatively; future live controller hard deadline still required.
+# One additional read-only fresh comparator process measured resource.ru_maxrss
+# on the existing new B/C streams. Parent subprocess.run(...,timeout=30), no retry.
+# It calls compare_captures with identity() from the synthetic stress driver,
+# the existing B_receipt.json/C_receipt.json paths, and default30s deadline.
+# No new events, arrays, source invocations or acceptance publication in this probe.

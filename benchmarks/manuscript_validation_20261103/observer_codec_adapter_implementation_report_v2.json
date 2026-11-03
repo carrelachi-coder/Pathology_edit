@@ -1,0 +1,274 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-11-03T15:16:39.813153+08:00",
+  "status": "independent_adapter_local_acceptance_passed_pending_independent_review_no_live_authorization",
+  "not_ready_for_live_execution": true,
+  "prior_report": {
+    "path": "benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_report_v1.json",
+    "sha256": "11dab8179274f1fcd94be51a88857950952e2c1e0190afcd85015bc60943567f",
+    "status": "two_pass_41.55s_timeout_hold_retained_unchanged",
+    "code_commit": "44eea864217b651dc6a6d71421402cb719b2d8cd"
+  },
+  "current_contract": {
+    "path": "benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_contract_v2.json",
+    "sha256": "782e45d1754e3c0922c491a5d19591f66ec07fe17b121538cafd95501c3c574c"
+  },
+  "scope": "Only independent Adapter/validator code and new synthetic runs. No accepted Codec rework, production integration, Controller deployment, original trace reanalysis or S07 retry.",
+  "test_results": {
+    "passed": 117,
+    "new_adapter_cases": 55,
+    "legacy_observer_regression_cases": 62,
+    "command": "python -m pytest -q tests/test_observer_codec_adapter_v1.py tests/test_passive_topology_observer.py",
+    "new_four_cases": "Exactly one Reader pass each, raster corruption despite prior acceptance, changed receipt during scan, strict unknown-field mismatch and midstream deadline.",
+    "scope": "Local specified synthetic suite, not whole repo CI or real noninterference."
+  },
+  "comparison_change": {
+    "from_seconds": 41.54906054213643,
+    "to_seconds": 27.569161457940936,
+    "limit_seconds_unchanged": 30,
+    "status": "semantic_match",
+    "event_count_each": 2100000,
+    "field_exclusions": [],
+    "sampling": false,
+    "logical_events_merged_or_removed": false,
+    "event_passes_per_capture": 1,
+    "method": "Shared checked-event pipeline, two public Reader iterators. Every event/array/check still verified; no cached-proof trust or new private Codec API.",
+    "causal_limit": "One new local measurement, not a controlled performance study or target-host guarantee. Duplicate scan removed in code; do not attribute the entire observed timing difference solely to that change.",
+    "global_rng_scope": "Within each new synthetic producer process, B/C bytes agree and Python/NumPy global states are unchanged. Natural initial states may differ between v1/v2 processes; no historical RNG trajectory restored.",
+    "deadline_margin_note": "Fresh-process hard-bound observation elapsed29.982s, close to30s. This is a local pass with very small margin, not target-host clearance or a guarantee for a longer real S07 trace. No repeat to select a faster measurement."
+  },
+  "pressure": {
+    "scope": "pure synthetic Adapter chain, not live Observer/S07",
+    "arms": [
+      {
+        "arm": "B",
+        "mode": "hash_only",
+        "events": 2100000,
+        "snapshots": 683,
+        "encode_seconds": 44.255626750178635,
+        "writer_process_peak_rss_bytes": 104759296,
+        "validator": {
+          "verdict": {
+            "candidate_validated": true,
+            "interpretation_permitted": true,
+            "qualification_updates_permitted": false,
+            "mode": "hash_only",
+            "stream": {
+              "block_integrity_complete": true,
+              "business_process_complete": true,
+              "logical_events": 2100000,
+              "physical_blocks": 54,
+              "array_occurrences": 685,
+              "stream_sha256": "8cfe9c6fcf2665e0f7a00f654eab6cb7f1e70c984e47f6ea353d7ec615684f43"
+            },
+            "allocated_bytes_before_optional_outer_publication": 15712256,
+            "bindings": {
+              "manifest_sha256": "320db66c272f88785c2cfd03add1991434e4f6f895af5f54a2d0cd70fdb95168",
+              "status_sha256": "0639fe264cb2d95727975697a0bc4473e0710a1e098b80f859d414c3970294b4",
+              "codec_summary_sha256": "c1d9f303ab47020de35f3bf4371019e7e7ad35b7bec0ea26e6ed64e7ecfb69c4",
+              "business_receipt": {
+                "sha256": "4cb1d6e4d3b8bd838717dd99c25301edb14956b983fb9d0f6bfdbe847e1b187b",
+                "bytes": 1072
+              }
+            }
+          },
+          "seconds": 8.947575625032187,
+          "peak_rss_bytes": 100515840
+        },
+        "storage": {
+          "unique_file_allocated_bytes": 15720448,
+          "unique_file_count": 63
+        }
+      },
+      {
+        "arm": "C",
+        "mode": "full_capture",
+        "events": 2100000,
+        "snapshots": 683,
+        "encode_seconds": 51.74729579221457,
+        "writer_process_peak_rss_bytes": 104759296,
+        "validator": {
+          "verdict": {
+            "candidate_validated": true,
+            "interpretation_permitted": true,
+            "qualification_updates_permitted": false,
+            "mode": "full_capture",
+            "stream": {
+              "block_integrity_complete": true,
+              "business_process_complete": true,
+              "logical_events": 2100000,
+              "physical_blocks": 54,
+              "array_occurrences": 685,
+              "stream_sha256": "8cfe9c6fcf2665e0f7a00f654eab6cb7f1e70c984e47f6ea353d7ec615684f43"
+            },
+            "allocated_bytes_before_optional_outer_publication": 1450938368,
+            "bindings": {
+              "manifest_sha256": "f645f1adf7a50626bed12efc7f950acd8c6e26cee324fa3bb2b00d92249a532b",
+              "status_sha256": "0639fe264cb2d95727975697a0bc4473e0710a1e098b80f859d414c3970294b4",
+              "codec_summary_sha256": "9ffbf2d8875918a8b0fd12282a0cf5a6cf2d15c88dddd98558499a479d139916",
+              "business_receipt": {
+                "sha256": "4cb1d6e4d3b8bd838717dd99c25301edb14956b983fb9d0f6bfdbe847e1b187b",
+                "bytes": 1072
+              }
+            }
+          },
+          "seconds": 15.181317249778658,
+          "peak_rss_bytes": 95797248
+        },
+        "storage": {
+          "unique_file_allocated_bytes": 1450946560,
+          "unique_file_count": 748
+        }
+      }
+    ],
+    "independent_snapshots": {
+      "snapshots": 683,
+      "raw_payload_bytes": 1432354816,
+      "every_original_payload_byte_equal": true,
+      "ordered_reference_hash": "845e0f25c34a52f70e69326027529a50e5ca27910a7536b35b7fba58e7802b9f"
+    },
+    "global_python_numpy_rng_unchanged": true,
+    "comparison": {
+      "status": "semantic_match",
+      "result": {
+        "status": "semantic_match",
+        "events": 2100000,
+        "excluded_semantic_fields": [],
+        "qualification_updates_permitted": false,
+        "scope": "synthetic/offline B/C capture only; A/history requires separate full receipt gate"
+      }
+    },
+    "comparison_seconds": 27.569161457940936,
+    "elapsed_seconds": 150.24830054212362,
+    "new_witness_calls": 0,
+    "production_integration": false,
+    "code_sha256": {
+      "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+      "observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+      "observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+      "observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf"
+    }
+  },
+  "whole_tree_4GiB_boundary": {
+    "scope": "synthetic actual whole-tree4GiB boundary including outer controls",
+    "snapshots_accepted": 2038,
+    "failed_snapshot_rejected_before_copy": true,
+    "status": {
+      "format": "observer-codec-adapter-v1",
+      "phase": "INVALID",
+      "core_fault_free": false,
+      "sink_fault_free": false,
+      "sink_closed": true,
+      "events": 2039,
+      "faults": [
+        {
+          "stage": "record",
+          "type": "BudgetError",
+          "next_sequence": 2039
+        }
+      ],
+      "finalized": true,
+      "interpretation_permitted": false,
+      "qualification_updates_permitted": false
+    },
+    "storage": {
+      "unique_file_allocated_bytes": 4284502016,
+      "unique_file_count": 2045
+    },
+    "limit_bytes": 4294967296,
+    "strict_validator_rejected": true,
+    "outer_complete_marker": false,
+    "inner_complete_marker": false,
+    "elapsed_seconds": 11.977902125101537,
+    "peak_rss_bytes": 60653568,
+    "new_witness_calls": 0,
+    "codec_completion": {
+      "block_integrity_complete": false,
+      "business_process_complete": false
+    }
+  },
+  "limits": {
+    "total_bytes": 4294967296,
+    "outer_bytes": 262144,
+    "codec_bytes": 4294705152,
+    "new_snapshot_count": 683,
+    "actual_array_occurrences_per_capture": 685,
+    "extra_occurrences": "2 existing NumPy legacy RNG state snapshots",
+    "memory": "Measured local peaks only. B/C producer uses one process, peak cumulative. No OS hard RSS/quota claim.",
+    "deadline": "Individual validation subprocesses hard-bounded30s in synthetic driver; library comparison per-event deadline cooperative. A new reviewed live controller/process timeout is still required."
+  },
+  "unchanged_components": {
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "phase3_mask_edit_refine/passive_observer.py": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+    "phase3_mask_edit_refine/observer_comparison.py": "434fc10a8171a1fd17554ff0ba43a5bcd677f375ad4f021712ea8d1a26afc692",
+    "scripts/run_limited_topology_controller.py": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+    "scripts/limited_topology_startup.py": "468276457111d91d0192fca4afae9b348f174fe080289e804687b23efa4bafac",
+    "phase3_mask_edit_refine/execution.py": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e",
+    "phase3_mask_edit_refine/topology.py": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
+    "phase3_joint_edit_refine/candidate_feasibility.py": "4dbf11fa491c943c25e9139c4b26d24d577ffbc39d8cdf1e525fb6a197901993",
+    "phase3_joint_edit_refine/tissue_planner.py": "1f992413da188490e2a66f06a0bc3d661602b3eb736f0e48c0fdd01c10f5954a",
+    "phase3_joint_edit_refine/g2_execution_qualification.py": "f77ebc1958992ccd68887b918bc0f026cb496eea3b842de5dce34976de2552dc"
+  },
+  "limitations": [
+    "Only synthetic masks/events/arrays and local fixtures; no real S07 runtime noninterference or original Raster capacity acceptance.",
+    "The27.57s local comparison does not guarantee30s on the target runtime or on longer future traces. Freeze/review new runtime/import/storage/timeout identity before requesting live authorization.",
+    "Tuple/type-losing differences against the JSON receipt remain hold; no post-hoc field/path/type normalization.",
+    "OS process termination/OOM and malicious self-consistent directory rewrite are not fully protected by ordinary exception guards/hashes.",
+    "Single-capture accepted markers mean completeness only, not overall A/history/B/C acceptance, topology qualification, four targets or H&E authorization."
+  ],
+  "stage_status": {
+    "P0_interface": "recorded",
+    "P1_independent_adapter": "implemented",
+    "P2_fault_tests": "local_pass",
+    "P3_synthetic_noninterference_and_pressure": "specified_local_cases_pass",
+    "P4_independent_review_and_new_execution_identity": "pending",
+    "P5_new_S07_authorization": "not_obtained"
+  },
+  "research_state": {
+    "S07_rerun": false,
+    "old_authorization_reused": false,
+    "real_source_logical_witness_calls": 0,
+    "topology_pass_patients": 17,
+    "upper_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "patient_target": 30,
+    "nominal_joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ],
+    "formal_HE": false,
+    "batch_four_target_compile": false,
+    "physician_study": false
+  },
+  "independent_review_claimed": false,
+  "evidence_sha256": {
+    "observer_codec_adapter_validation_v2/code_identity.json": "51981cd3713f91f4a6b547a158faeae6f93e32fb6710d6ba8f68aeb53e2eaf15",
+    "observer_codec_adapter_validation_v2/fresh_process_comparison.json": "6de7c9c016205035dccfaf8fd7daf66906fa616e75d4408dd818abcbfec5a323",
+    "observer_codec_adapter_validation_v2/pressure_2100000.json": "6ad84610e95c438e47449a92d6230993339ee3f217cdeaef80d0b335ff0c0940",
+    "observer_codec_adapter_validation_v2/pytest.txt": "f345a2677012b0ec52eb9d61b6e09f57bf35ede1d77fc16694ed2edc1bfd8752",
+    "observer_codec_adapter_validation_v2/reproduce_commands.txt": "de2e5f4af39e9c06e550c6b242ec8b2e9960d92f2cec5493ad218caaa3fee228",
+    "observer_codec_adapter_validation_v2/whole_tree_budget.json": "b0afa18c48d1278e180f2c116ba7cde69b5a884770c0bc873f3eb019b6ca1092"
+  },
+  "private_data": "New complete synthetic captures/budget cases and every old attempt retained separately under.codex-artifacts; no original S07 asset/authorization modified.",
+  "fresh_process_readonly_comparison": {
+    "status": "semantic_match",
+    "events": 2100000,
+    "comparison_seconds": 29.8079372914508,
+    "fresh_process_peak_rss_bytes": 106954752,
+    "validator_sha256": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "excluded_fields": [],
+    "scope": "one fresh read-only comparator process for empirical RSS and hard30s check; no new events/arrays/witness calls",
+    "subprocess_elapsed_seconds": 29.982041500043124,
+    "hard_subprocess_timeout_seconds": 30,
+    "attempts": 1,
+    "automatic_retries": 0,
+    "new_witness_calls": 0
+  }
+}

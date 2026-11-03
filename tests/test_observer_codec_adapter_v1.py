@@ -757,3 +757,98 @@ def test_pressure_report_counts_index_hardlinks_once(tmp_path):
     assert (core.root / "codec/arrays.index.pending").stat().st_ino == (
         core.root / "codec/arrays.index.jsonl"
     ).stat().st_ino
+
+
+def test_comparison_uses_one_reader_pass_per_capture_and_never_cached_proofs(
+    tmp_path, monkeypatch
+):
+    b, br = complete(tmp_path, "B")
+    c, cr = complete(tmp_path, "C", "full_capture")
+    calls = []
+    original = codec.Reader.iter_events
+
+    def counted(reader, *args, **kwargs):
+        calls.append(str(reader.root))
+        yield from original(reader, *args, **kwargs)
+
+    monkeypatch.setattr(codec.Reader, "iter_events", counted)
+    monkeypatch.setattr(
+        codec,
+        "compare",
+        mock.Mock(side_effect=AssertionError("must not re-read streams")),
+    )
+    result = validator.compare_captures(
+        b.root, c.root, identity=identity(), left_receipt=br, right_receipt=cr
+    )
+    assert (
+        result["status"] == "semantic_match"
+        and len(calls) == 2
+        and len(set(calls)) == 2
+    )
+
+
+def test_onepass_comparison_rechecks_arrays_even_after_prior_acceptance(tmp_path):
+    b, br = complete(tmp_path, "B")
+    c, cr = complete(tmp_path, "C", "full_capture")
+    validator.validate_capture(
+        c.root,
+        identity=identity(),
+        business_receipt_path=cr,
+        expected_mode="full_capture",
+        publish=True,
+    )
+    path = next((c.root / "codec").glob("array_*.bin"))
+    with path.open("r+b") as stream:
+        stream.seek(-1, 2)
+        stream.write(b"X")
+    with pytest.raises(ValueError):
+        validator.compare_captures(
+            b.root, c.root, identity=identity(), left_receipt=br, right_receipt=cr
+        )
+
+
+def test_receipt_change_during_stream_cannot_pass_final_binding(tmp_path, monkeypatch):
+    core, rp = complete(tmp_path)
+    original = codec.Reader.iter_events
+
+    def mutate(reader, *args, **kwargs):
+        for i, line in enumerate(original(reader, *args, **kwargs)):
+            if i == 1:
+                rp.write_text(rp.read_text() + " ")
+            yield line
+
+    monkeypatch.setattr(codec.Reader, "iter_events", mutate)
+    with pytest.raises(
+        contract.AdapterError, match="receipt changed during validation"
+    ):
+        validator.validate_capture(
+            core.root,
+            identity=identity(),
+            business_receipt_path=rp,
+            expected_mode="hash_only",
+            publish=True,
+        )
+    assert not (core.root / "adapter_complete.json").exists()
+
+
+def test_onepass_comparison_preserves_unknown_fields_and_midstream_deadline(
+    tmp_path, monkeypatch
+):
+    b, br = complete(tmp_path, "B", values={"extra": "left"})
+    c, cr = complete(tmp_path, "C", "full_capture", values={"extra": "right"})
+    with pytest.raises(contract.AdapterError, match="logical event differs"):
+        validator.compare_captures(
+            b.root, c.root, identity=identity(), left_receipt=br, right_receipt=cr
+        )
+    calls = 0
+
+    def clock():
+        nonlocal calls
+        calls += 1
+        return 1000 if calls > 6 else 0
+
+    monkeypatch.setattr(validator.time, "monotonic", clock)
+    with pytest.raises(TimeoutError):
+        validator.compare_captures(
+            b.root, c.root, identity=identity(), left_receipt=br, right_receipt=cr
+        )

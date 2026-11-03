@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "status": "independent_adapter_onepass_comparison_contract_for_review_not_live_approval",
+  "predecessor": {
+    "commit": "44eea864217b651dc6a6d71421402cb719b2d8cd",
+    "path": "benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_contract_v1.json",
+    "sha256": "e3a31b3b95c8cea3cfe2da02101da2470ac0b9003addca3d95dfa8f75e107cc5"
+  },
+  "unchanged": "Core/Sink, typed encoding/checkpoints, receipt format and bound fields,4GiB partition, publication, default-off and old Observer/Codec/business code. All prior failure/closure policies remain.",
+  "change": "External validation factored into prepare, checked-events and finish. Single capture and pair comparison use the SAME checked-events/finish functions. Pair comparison advances two public Codec.Reader iterators exactly once each and compares every raw event byte; no initial full validate followed by a second full compare.",
+  "checks_retained": [
+    "manifest/code/input/case/mode/resource identities",
+    "Sink/core terminal fault flags",
+    "original full receipt values and file binding",
+    "all block/index/sequence/hash/array inventories and occurrences through exhausted public Reader",
+    "both operation identities/primitive IDs and terminal failures/witness agreement",
+    "whole-tree allocation and existing acceptance bindings",
+    "all fields, raw bytes and order without exclusions",
+    "deadline checks every pair/event and before publication"
+  ],
+  "checks_added": [
+    "Re-read bounded controls and original receipt binding after stream exhaustion to reject changes during validation."
+  ],
+  "no_cache_trust": "Existing outer marker does not skip array/content/receipt verification.",
+  "publication": "Pair comparison publishes nothing; per-capture publication remains the separately invoked external validator after full checks.",
+  "deadline_seconds": 30,
+  "deadline_kind": "cooperative per event; no OS hard-process guarantee from library",
+  "production_integration": false,
+  "deployment_permitted": false,
+  "S07_execution_permitted": false,
+  "old_authorization_reuse_permitted": false,
+  "formal_HE_permitted": false,
+  "batch_four_target_permitted": false,
+  "physician_study_permitted": false,
+  "code_sha256": {
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "tests/test_observer_codec_adapter_v1.py": "bf69f146c74e4654a653457b57dcb17f9fca40b9bf475ba1b679d1d4dfe49fe2"
+  },
+  "independent_review_approved": false
+}

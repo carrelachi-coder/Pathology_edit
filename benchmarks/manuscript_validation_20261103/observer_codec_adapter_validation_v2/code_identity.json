@@ -1,0 +1,29 @@
+{
+  "checkpoint_commit": "44eea864217b651dc6a6d71421402cb719b2d8cd",
+  "file_sha256": {
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "tests/test_observer_codec_adapter_v1.py": "bf69f146c74e4654a653457b57dcb17f9fca40b9bf475ba1b679d1d4dfe49fe2"
+  },
+  "unchanged_since_checkpoint": {
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "phase3_mask_edit_refine/passive_observer.py": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+    "phase3_mask_edit_refine/observer_comparison.py": "434fc10a8171a1fd17554ff0ba43a5bcd677f375ad4f021712ea8d1a26afc692",
+    "scripts/run_limited_topology_controller.py": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+    "scripts/limited_topology_startup.py": "468276457111d91d0192fca4afae9b348f174fe080289e804687b23efa4bafac",
+    "phase3_mask_edit_refine/execution.py": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e",
+    "phase3_mask_edit_refine/topology.py": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
+    "phase3_joint_edit_refine/candidate_feasibility.py": "4dbf11fa491c943c25e9139c4b26d24d577ffbc39d8cdf1e525fb6a197901993",
+    "phase3_joint_edit_refine/tissue_planner.py": "1f992413da188490e2a66f06a0bc3d661602b3eb736f0e48c0fdd01c10f5954a",
+    "phase3_joint_edit_refine/g2_execution_qualification.py": "f77ebc1958992ccd68887b918bc0f026cb496eea3b842de5dce34976de2552dc"
+  },
+  "python": "3.11.4 (main, Jul  5 2023, 08:54:11) [Clang 14.0.6 ]",
+  "platform": "macOS-26.5.1-arm64-arm-64bit",
+  "scope": "new local synthetic runs only; no new deployed/live execution identity"
+}

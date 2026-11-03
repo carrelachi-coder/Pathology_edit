@@ -65,22 +65,7 @@ def _json_token(value):
     return value
 
 
-def validate_capture(
-    directory,
-    *,
-    identity,
-    business_receipt_path,
-    expected_mode,
-    publish=False,
-    deadline_seconds=30,
-):
-    """Exceptions mean hold. Default read-only, candidate validity != acceptance.
-
-    Deadline checks are cooperative, not an OS process timeout. A future external
-    controller must still enforce a hard helper-process deadline.
-    """
-    check = _deadline(deadline_seconds)
-    check()
+def _prepare(directory, identity, business_receipt_path, expected_mode, publish):
     expected = identity_copy(identity)
     if expected_mode not in ("hash_only", "full_capture"):
         raise AdapterError("explicit expected mode required")
@@ -140,6 +125,26 @@ def validate_capture(
         "payload": {"receipt": receipt_binding, "identity_sha256": identity_sha},
     }:
         raise AdapterError("Codec business envelope mismatch")
+    return dict(
+        root=root,
+        expected=expected,
+        expected_mode=expected_mode,
+        accepted=accepted,
+        total=total,
+        status=status,
+        identity_sha=identity_sha,
+        receipt_row=receipt_row,
+        receipt_binding=receipt_binding,
+        receipt_path=business_receipt_path,
+        manifest_raw=manifest_raw,
+        status_raw=status_raw,
+        summary_raw=summary_raw,
+    )
+
+
+def _checked_events(context, check):
+    root, expected = context["root"], context["expected"]
+    receipt_row = context["receipt_row"]
     reader = codec.Reader(root / "codec")
     completed = 0
     for raw in reader.iter_events():
@@ -168,7 +173,34 @@ def validate_capture(
                 }:
                     raise AdapterError("terminal event/receipt payload mismatch")
                 completed += 1
-    verdict = reader.last_validation
+        yield raw
+    context["completed"] = completed
+    context["verdict"] = reader.last_validation
+
+
+def _finish(context, check, publish):
+    root, expected_mode = context["root"], context["expected_mode"]
+    completed, status = context["completed"], context["status"]
+    total, accepted = context["total"], context["accepted"]
+    identity_sha, receipt_binding = context["identity_sha"], context["receipt_binding"]
+    manifest_raw, status_raw, summary_raw = (
+        context["manifest_raw"],
+        context["status_raw"],
+        context["summary_raw"],
+    )
+    # No cached acceptance: rebind closed controls/receipt after stream exhaustion.
+    for name, expected_raw in [
+        ("adapter_manifest.json", manifest_raw),
+        ("adapter_status.json", status_raw),
+        ("codec/summary.json", summary_raw),
+    ]:
+        _, actual_raw = read_json(root / name)
+        if actual_raw != expected_raw:
+            raise AdapterError("control changed during validation")
+    _, current_binding = business_receipt(context["receipt_path"], context["expected"])
+    if current_binding != receipt_binding:
+        raise AdapterError("receipt changed during validation")
+    verdict = context["verdict"]
     if (
         completed != 2
         or status.get("events") != verdict["logical_events"]
@@ -230,41 +262,63 @@ def validate_capture(
     return result
 
 
+def validate_capture(
+    directory,
+    *,
+    identity,
+    business_receipt_path,
+    expected_mode,
+    publish=False,
+    deadline_seconds=30,
+):
+    """Complete one streaming validation; explicit external publication only.
+
+    Cooperative checks do not replace a future hard helper process timeout.
+    """
+    check = _deadline(deadline_seconds)
+    check()
+    context = _prepare(
+        directory, identity, business_receipt_path, expected_mode, publish
+    )
+    for _ in _checked_events(context, check):
+        pass
+    return _finish(context, check, publish)
+
+
 def compare_captures(
     left, right, *, identity, left_receipt, right_receipt, deadline_seconds=30
 ):
-    """Strict complete B/C capture comparison, no acceptance publication.
+    """One pass per stream: all evidence/terminal/receipt checks AND byte match.
 
-    Cooperative pre/post checks around public Codec.compare do not replace a
-    separate process timeout. Exceeding the reference budget never becomes match.
+    Uses only public Codec.Reader; no repeated full validation or cached proof
+    trust. Every array/hash/boundary is rechecked; no exclusions or normalization.
+    Cooperative per-event checks still require an external hard process deadline.
     """
     check = _deadline(deadline_seconds)
-    a = validate_capture(
-        left,
-        identity=identity,
-        business_receipt_path=left_receipt,
-        expected_mode="hash_only",
-        deadline_seconds=deadline_seconds,
-    )
     check()
-    b = validate_capture(
-        right,
-        identity=identity,
-        business_receipt_path=right_receipt,
-        expected_mode="full_capture",
-        deadline_seconds=deadline_seconds,
-    )
-    check()
-    expected = identity_copy(identity)
-    ar, _ = business_receipt(left_receipt, expected)
-    br, _ = business_receipt(right_receipt, expected)
-    if ar != br:
+    a = _prepare(left, identity, left_receipt, "hash_only", False)
+    b = _prepare(right, identity, right_receipt, "full_capture", False)
+    if a["receipt_row"] != b["receipt_row"]:
         raise AdapterError("full business receipt mismatch")
-    compared = codec.compare(Path(left) / "codec", Path(right) / "codec")
+    ia, ib = iter(_checked_events(a, check)), iter(_checked_events(b, check))
+    sentinel = object()
+    count = 0
+    while True:
+        check()
+        x, y = next(ia, sentinel), next(ib, sentinel)
+        if x is sentinel or y is sentinel:
+            if x is not y:
+                raise AdapterError("logical event count mismatch")
+            break
+        if x != y:
+            raise AdapterError("logical event differs at " + str(count))
+        count += 1
+    _finish(a, check, False)
+    _finish(b, check, False)
     check()
     return {
         "status": "semantic_match",
-        "events": compared["logical_events"],
+        "events": count,
         "excluded_semantic_fields": [],
         "qualification_updates_permitted": False,
         "scope": "synthetic/offline B/C capture only; A/history requires separate full receipt gate",

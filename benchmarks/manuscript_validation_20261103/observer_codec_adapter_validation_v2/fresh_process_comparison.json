@@ -1,0 +1,14 @@
+{
+  "status": "semantic_match",
+  "events": 2100000,
+  "comparison_seconds": 29.8079372914508,
+  "fresh_process_peak_rss_bytes": 106954752,
+  "validator_sha256": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+  "excluded_fields": [],
+  "scope": "one fresh read-only comparator process for empirical RSS and hard30s check; no new events/arrays/witness calls",
+  "subprocess_elapsed_seconds": 29.982041500043124,
+  "hard_subprocess_timeout_seconds": 30,
+  "attempts": 1,
+  "automatic_retries": 0,
+  "new_witness_calls": 0
+}
