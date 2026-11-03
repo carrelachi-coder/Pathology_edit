@@ -612,5 +612,13 @@
     "new_unknown_sources": 0,
     "new_fully_approved_patients": 0,
     "formal_launch_permitted": false
+  },
+  "topology_bottleneck_diagnosis_20261103": {
+    "report": "../manuscript_validation_20261103/topology_bottleneck_diagnosis_v1.json",
+    "sha256": "6b43015fe07d454e0746e984bd5366222ac4223a2a36f98412afbb84ad327abf",
+    "status": "read-only diagnosis complete; exact stagewise attribution limited by missing failed rasters",
+    "erratum": "70732 trial topology failed; not a safe-area near-pass",
+    "qualification_counts_changed": false,
+    "replay_executed": false
   }
 }

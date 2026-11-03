@@ -1,0 +1,57 @@
+{
+  "status": "draft_not_frozen_not_authorized_for_execution",
+  "scope": "reviewable next-step evidence plan only; no replay launched",
+  "purpose": "resolve missing step telemetry before considering any generalized search or mechanism change",
+  "frozen_invariants": [
+    "512/256 crop census unchanged",
+    "19%/32% nominal budgets",
+    "14%/27% hard tissue floors",
+    "no per-case47-pixel waiver",
+    "all existing topology/nucleus/identity gates remain authoritative",
+    "no H&E or physician study"
+  ],
+  "predeclared_examples_if_later_authorized": [
+    {
+      "source_alias": "S07",
+      "operation": "U1",
+      "reason": "invalid70732 state versus valid22287 state; distinguish hole change from area deficit"
+    },
+    {
+      "source_alias": "S07",
+      "operation": "U2",
+      "reason": "joint-interface refine rejection; no trial area saved"
+    }
+  ],
+  "mandatory_telemetry": [
+    "input,code,contract and ordered plan hashes",
+    "ordered interface/anchor IDs and requested allocations on each attempt",
+    "protected-source masks and per-interface legal-envelope masks",
+    "disjoint ownership masks, union counts and front reachability",
+    "requested,selected,source and target masks at desired and floor probes",
+    "per-interface realized contributions and source deletion budgets",
+    "rejection events and counters by guard plus unique stage masks",
+    "all topology audits and structured exception feedback, including failed attempts"
+  ],
+  "interpretation_rules": [
+    "Rejection counters can revisit pixels; never sum them as unique lost area.",
+    "Ownership partition can preserve union area while reducing reachability; distinguish both.",
+    "Do not infer a new small residual fragment solely from size; compare the baseline mask.",
+    "Do not interpret best logged trial as a global optimum."
+  ],
+  "generalized_algorithm_research_candidate": "Joint-front scheduling or alternative ownership/reachability within the same sealed legal envelopes and unchanged gates. Hypothesis only; no implementation or legal survivor demonstrated.",
+  "design_changes_requiring_new_mechanism_review": [
+    "allow target-component merging or hole changes",
+    "allow donor-component resolution or splitting",
+    "allow remote de-novo immune support",
+    "replace primitive semantics or tissue budget basis"
+  ],
+  "generalization_requirements": [
+    "predeclare development and independent technical-validation patients before any method tuning",
+    "audit whether development patients need additional formal-cohort exclusion",
+    "use both previously positive and negative source conditions, fixed order and universal resource limits",
+    "retain all failures and independently review mask conditions before any formal launch"
+  ],
+  "execution_permitted": false,
+  "batch_compile_permitted": false,
+  "formal_launch_permitted": false
+}

@@ -1,0 +1,2334 @@
+{
+  "created_utc": "2026-11-03T00:41:05.105198+00:00",
+  "scope": "read-only saved18-witness topology bottleneck diagnosis",
+  "status": "complete_with_explicit_telemetry_limits",
+  "analysis_inputs": {
+    "sources_sha256": "7fa546eaac90615b05025d7d4fa4f4f84846fbba3172fe995a0c2e81aad63495",
+    "saved_topology_sha256": "36882d73db676860ddb1a54dc93f57b14334c5c668b5af05a5bcf8d898156e2a",
+    "analysis_script_sha256": "155f7c874d27bcc3d94196d93525cfa0fb5008e3ac3d95d222b32c50fa19b3f8"
+  },
+  "executed_source_code_review": [
+    {
+      "path": "phase3_joint_edit_refine/g2_execution_qualification.py",
+      "sha256": "1be62b596e3abe339dad50d97ea061477b20acf39475eeac4c7952b65f3453b4",
+      "source_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def"
+    },
+    {
+      "path": "phase3_joint_edit_refine/candidate_feasibility.py",
+      "sha256": "e7692d633002aa58dd693302bfd040e1dcf714a59a8f35a8ed4f47684759c309",
+      "source_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def"
+    },
+    {
+      "path": "phase3_joint_edit_refine/tissue_planner.py",
+      "sha256": "99ce955958bf78d32abd4049b7381e08b5a2ef8297eec874e89204c79691bb61",
+      "source_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def"
+    },
+    {
+      "path": "phase3_mask_edit_refine/execution.py",
+      "sha256": "38ac0325960b13f0f9c3836356fadb3f6cdb73699d580cbde916ea4b41371b11",
+      "source_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def"
+    },
+    {
+      "path": "phase3_mask_edit_refine/topology.py",
+      "sha256": "e1ad7774c7be556d2d667deb4937a31c25b57971f384d92bcc9789b59870800f",
+      "source_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def"
+    },
+    {
+      "path": "phase3_joint_edit_refine/resources/breast_bcss_capability_matrix_v1.json",
+      "sha256": "301148c1a733c82de23dffa9bd7fc448a62e9c0291f2f58965884f2de6e459db",
+      "source_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def"
+    }
+  ],
+  "source_count": 9,
+  "operation_count": 18,
+  "qualification_counts_changed": false,
+  "confirmed_topology_patients": 17,
+  "upper_including_existing_unknowns": 19,
+  "rerun_qualification": false,
+  "new_candidate_scan": false,
+  "four_target_compile": false,
+  "he_generation": false,
+  "budget_or_threshold_change": false,
+  "erratum_70732": {
+    "source_alias": "S07",
+    "operation": "U1",
+    "logged_raw_realized_pixels": 70732,
+    "topology_passed": false,
+    "source_holes_before": 13,
+    "source_holes_after": 10,
+    "baseline_stroma_component_sizes": [
+      245257,
+      2
+    ],
+    "two_pixel_component_preexists": true,
+    "two_pixel_component_also_present_in_valid_trial": true,
+    "best_logged_topology_passing_floor_trial_pixels": 22287,
+    "deficit_to_hard_floor_of_best_valid_logged_trial": 48492,
+    "invalid_trial_state": {
+      "passed": false,
+      "source_components_before": 2,
+      "source_components_after": 2,
+      "selected_source_components_after": 2,
+      "target_components_before": 8,
+      "target_components_after": 8,
+      "source_holes_before": 13,
+      "source_holes_after": 10,
+      "target_holes_before": 0,
+      "target_holes_after": 0,
+      "fragmentation_residual_target_holes_after": 0,
+      "selected_target_component_ids": [
+        "cmp:tumor:p01:0005",
+        "cmp:tumor:p01:0006",
+        "cmp:tumor:p01:0008"
+      ],
+      "target_merge": false,
+      "source_hole_change_allowed_by_selected_target_merge": false,
+      "allow_source_component_resolution": false,
+      "allow_target_hole_resolution": false,
+      "allow_source_component_split": false,
+      "minimum_residual_components": 1,
+      "maximum_residual_components": 1,
+      "minimum_residual_component_area_px": 64,
+      "minimum_residual_spacing_px": 0,
+      "observed_minimum_residual_spacing_px": 3.1622776601683795,
+      "residual_component_sizes_px": [
+        2,
+        174525
+      ],
+      "residual_area_fraction": 0.7116028361854203,
+      "residual_area_floor_fraction": 0.0,
+      "maximum_residual_area_fraction": 1.0,
+      "residual_component_fractions": [
+        1.1459544941470375e-05,
+        0.9999885404550586
+      ],
+      "minimum_observed_residual_component_fraction": 1.1459544941470375e-05,
+      "minimum_required_residual_component_fraction": 0.0,
+      "dominant_residual_component_fraction": 0.9999885404550586,
+      "maximum_dominant_residual_component_fraction": 1.0,
+      "whole_mask_topology_passed": false,
+      "changed_component_area_passed": true,
+      "changed_component_sizes_px": [
+        12953,
+        15305,
+        15572,
+        24305,
+        1616,
+        981
+      ],
+      "minimum_changed_component_area_px": 16
+    },
+    "interpretation": "70732 is not topology-safe area and is not a near-pass based only on47 missing pixels. Earlier observed_realized_safe_area_values lists included invalid trials; filter by topology.passed before using safe terminology. Original controller and qualification results are preserved."
+  },
+  "source_geometry_findings": {
+    "stroma_component_count_range": [
+      1,
+      2
+    ],
+    "minimum_largest_stroma_component_fraction": 0.9983341324080319,
+    "stroma_pixels_range": [
+      233833,
+      248784
+    ],
+    "all_largest_stroma_components_exceed_tissue_floor": true,
+    "interpretation": "Raw donor Stroma is large and overwhelmingly connected. This does not establish connectivity of each anchor-constrained legal execution envelope."
+  },
+  "observed_terminal_evidence": {
+    "underfill_leaf_operations": 17,
+    "joint_interface_refine_leaf_operations": 1,
+    "operations_with_logged_invalid_source_hole_changes": {
+      "source_hole_count_changed_without_recorded_allowance": 4
+    },
+    "best_logged_topology_passing_floor_trial_across_U1": 38327,
+    "best_logged_topology_passing_floor_trial_across_U2": 57966,
+    "best_valid_logged_values_are_not_global_maxima": true,
+    "feasible_anchor_preflight_coverage_minimum": 0.7526881720430108,
+    "anchor_continuity_at_terminal_failed_raster": "not observable: failed rasters and selected-anchor masks were not retained"
+  },
+  "existing_path_review": {
+    "already_in_executed_code": [
+      "global preference plus each feasible interface/anchor preference for these BCSS primitives",
+      "up to3 bounded replans per preference",
+      "underfill feedback can add remaining feasible fronts and expand permitted anchor sectors",
+      "topology-safe execution redistributes deficits over remaining selected fronts"
+    ],
+    "not_justified_as_new_evidence": "Blindly selecting another anchor, adding timeout or repeating the same frozen call does not establish an untried legal path.",
+    "not_exhaustively_searched": "All combinations, ordering and joint reachability assignments are not proven exhausted. No legal alternative is demonstrated by this diagnosis.",
+    "unique_ownership_note": "argmin finite-owner partition retains the union of legal envelopes by construction; it can affect per-front reachability but must not be described as losing union area without evidence.",
+    "retired_alias": "tumor-burden-increase-v1 is retired for Breast as a duplicate binding, not an independent escape mechanism",
+    "clinical_rationale_of_new_mechanisms": "not evaluated or approved in this read-only audit"
+  },
+  "evidence_gap": {
+    "failed_target_masks_persisted": false,
+    "per_step_masks_and_unique_area_differences": null,
+    "per_selected_interface_contributions": null,
+    "per_guard_rejection_counts": null,
+    "why_unavailable": "Qualification wrapper reduces the final exception to strings; structured underfill feedback and failed candidate rasters are not serialized.",
+    "gap_interpretation": "Aggregate preflight capacity minus a logged valid trial is a scope comparison, not a causal step-by-step area-loss waterfall.",
+    "no_reconstruction_claim": "No failed target mask was recreated or retrospectively guessed."
+  },
+  "patient_feasibility": {
+    "existing_confirmed_source_topology": 17,
+    "existing_upper_with_unknowns": 19,
+    "if_only_these9_sources_all_repaired_upper": 23,
+    "retained_historical_capacity_universe": {
+      "scope": "retained necessary-capacity-positive source universe only; not topology or four-target qualification",
+      "subsets": [
+        {
+          "file": "capacity_qualified_subset.json",
+          "count": 74,
+          "sha256": "7bc6d10ea1c9ccf6570ea21a4dda5dc2c612ac23ddb57451c372207369e0bfc9"
+        },
+        {
+          "file": "supplemental_capacity_qualified_subset_v1.json",
+          "count": 145,
+          "sha256": "7429fed6f03e80c9fbae7c5f0cb363e3c913a6627d2062b27729b3685577727b"
+        },
+        {
+          "file": "supplemental_capacity_v2_wave00_subset.json",
+          "count": 51,
+          "sha256": "3cc20c33d22420a8fa502f3d863b280ef93d2dd567d4fe562ad4b4526ef57867"
+        },
+        {
+          "file": "supplemental_capacity_v2_wave01_subset.json",
+          "count": 89,
+          "sha256": "2a9135f23823b40cffbf2f217ee632f3f590b00f531de094cf04221973f63595"
+        },
+        {
+          "file": "supplemental_capacity_v2_wave02_subset.json",
+          "count": 170,
+          "sha256": "4b4acdc2ecd9252ad96378e638643368ed97874627dad65a4dd52ebcd0ae7305"
+        },
+        {
+          "file": "native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+          "count": 9,
+          "sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1"
+        }
+      ],
+      "all_capacity_sources_including_technical": 538,
+      "nontechnical_source_refs": 527,
+      "nontechnical_patient_groups": 84,
+      "formal_launch_permitted": false
+    },
+    "interpretation": "Even repairing all9 cannot reach30. Historical capacity-positive lists cover84 nontechnical patient groups, but these are not fresh topology or four-target approvals and do not guarantee feasibility. A generalized improvement would require new frozen evidence and patient-separated evaluation."
+  },
+  "source_geometry": [
+    {
+      "source_alias": "S00",
+      "reference_id": "BCSS_native_recovery_d851f9cad5c6eb00",
+      "input_sha256": {
+        "reference_image": "138b4b9b3462ece8883ee0674e23869362504468154123ba40336ebd653f3e4d",
+        "reference_tissue_mask": "ca5b46fed0edef42728ba78b63a2fa3bfe1753a61a9f13e4a82433182f5e47e1",
+        "reference_nuclei_mask": "408001e53eaf69bb0793f859417c93334804b8bb2e2cb096d2c17645f9fef7fa"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 0,
+          "components_8connected": 0,
+          "largest_component_pixels": 0,
+          "largest_component_fraction": 0.0,
+          "component_sizes_pixels": []
+        },
+        "1": {
+          "pixels": 7382,
+          "components_8connected": 3,
+          "largest_component_pixels": 6073,
+          "largest_component_fraction": 0.8226767813600651,
+          "component_sizes_pixels": [
+            6073,
+            1097,
+            212
+          ]
+        },
+        "2": {
+          "pixels": 248369,
+          "components_8connected": 1,
+          "largest_component_pixels": 248369,
+          "largest_component_fraction": 1.0,
+          "component_sizes_pixels": [
+            248369
+          ]
+        },
+        "4": {
+          "pixels": 6393,
+          "components_8connected": 1,
+          "largest_component_pixels": 6393,
+          "largest_component_fraction": 1.0,
+          "component_sizes_pixels": [
+            6393
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 608,
+        "4": 432
+      },
+      "nucleus_foreground_pixels": 47985
+    },
+    {
+      "source_alias": "S01",
+      "reference_id": "BCSS_native_recovery_25b374fc20554b7e",
+      "input_sha256": {
+        "reference_image": "7c5a8e94fd518fde4a4609e05124b8b9a34ed587378512129763d7dba05ddb5e",
+        "reference_tissue_mask": "38a3f12d9fa07aedde91dbc9eceeedd802787889690f2cb9e8f5e19840ab2f5f",
+        "reference_nuclei_mask": "d023a6be9dfd2162488961fea4f9b14bb6664c87e1cd31889d1f7cb312ff91b4"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 0,
+          "components_8connected": 0,
+          "largest_component_pixels": 0,
+          "largest_component_fraction": 0.0,
+          "component_sizes_pixels": []
+        },
+        "1": {
+          "pixels": 10198,
+          "components_8connected": 2,
+          "largest_component_pixels": 7770,
+          "largest_component_fraction": 0.7619141008040793,
+          "component_sizes_pixels": [
+            7770,
+            2428
+          ]
+        },
+        "2": {
+          "pixels": 245868,
+          "components_8connected": 1,
+          "largest_component_pixels": 245868,
+          "largest_component_fraction": 1.0,
+          "component_sizes_pixels": [
+            245868
+          ]
+        },
+        "4": {
+          "pixels": 6078,
+          "components_8connected": 3,
+          "largest_component_pixels": 2625,
+          "largest_component_fraction": 0.4318854886475814,
+          "component_sizes_pixels": [
+            2625,
+            2137,
+            1316
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 413,
+        "4": 660
+      },
+      "nucleus_foreground_pixels": 36250
+    },
+    {
+      "source_alias": "S02",
+      "reference_id": "BCSS_native_recovery_77a8f0e398a3b1bb",
+      "input_sha256": {
+        "reference_image": "194077f10ff3a23c8995f13a5237183d82c90eee3e428d8ff55939310ae23704",
+        "reference_tissue_mask": "3f69344b4c2c46f08dd273cd155126bf7c701641b610cab5f91a6606f595d7b7",
+        "reference_nuclei_mask": "09d0db2a1214ccc8ba825756d60879084da13d248145c956b8e2bf102b8aea79"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 0,
+          "components_8connected": 0,
+          "largest_component_pixels": 0,
+          "largest_component_fraction": 0.0,
+          "component_sizes_pixels": []
+        },
+        "1": {
+          "pixels": 9463,
+          "components_8connected": 4,
+          "largest_component_pixels": 4000,
+          "largest_component_fraction": 0.422698932685195,
+          "component_sizes_pixels": [
+            4000,
+            2750,
+            2609,
+            104
+          ]
+        },
+        "2": {
+          "pixels": 240315,
+          "components_8connected": 1,
+          "largest_component_pixels": 240315,
+          "largest_component_fraction": 1.0,
+          "component_sizes_pixels": [
+            240315
+          ]
+        },
+        "4": {
+          "pixels": 12366,
+          "components_8connected": 2,
+          "largest_component_pixels": 12107,
+          "largest_component_fraction": 0.9790554746886625,
+          "component_sizes_pixels": [
+            12107,
+            259
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 833,
+        "4": 704
+      },
+      "nucleus_foreground_pixels": 35871
+    },
+    {
+      "source_alias": "S03",
+      "reference_id": "BCSS_native_recovery_13ad5b3230762c0b",
+      "input_sha256": {
+        "reference_image": "572e776ffb6599102e39e4c6378e99bc5c2dcdfc17ac688e6f2162ae5ea37f7f",
+        "reference_tissue_mask": "39b9291bb1b620733ee3699ff93ab2d31c8e921f3a177c5c6a1ff56b8e57fe8d",
+        "reference_nuclei_mask": "d27ced9ad6185eaefed1bdcf99112d918c0616b7f75d7a8151a0a17ee59c7a70"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 34,
+          "components_8connected": 1,
+          "largest_component_pixels": 34,
+          "largest_component_fraction": 1.0,
+          "component_sizes_pixels": [
+            34
+          ]
+        },
+        "1": {
+          "pixels": 3833,
+          "components_8connected": 9,
+          "largest_component_pixels": 2046,
+          "largest_component_fraction": 0.5337855465692669,
+          "component_sizes_pixels": [
+            2046,
+            480,
+            476,
+            392,
+            199,
+            197,
+            32,
+            10,
+            1
+          ]
+        },
+        "2": {
+          "pixels": 248784,
+          "components_8connected": 1,
+          "largest_component_pixels": 248784,
+          "largest_component_fraction": 1.0,
+          "component_sizes_pixels": [
+            248784
+          ]
+        },
+        "4": {
+          "pixels": 3199,
+          "components_8connected": 2,
+          "largest_component_pixels": 2663,
+          "largest_component_fraction": 0.8324476398874648,
+          "component_sizes_pixels": [
+            2663,
+            536
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 725,
+        "4": 364
+      },
+      "nucleus_foreground_pixels": 21219
+    },
+    {
+      "source_alias": "S04",
+      "reference_id": "BCSS_native_recovery_2a3daa574ea10608",
+      "input_sha256": {
+        "reference_image": "33f6cd3a66e26e97a46be362bb8abc2ea56acb3db511b53581afaffbdebdf29e",
+        "reference_tissue_mask": "be59f6dbe9acaf6627edef52b608df023165926729b012ce85a9c51038a30fdb",
+        "reference_nuclei_mask": "2a36d0d0f8bda496bc2849c8770d4e2f78bce5bd133afd368b099e33def3c04b"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 0,
+          "components_8connected": 0,
+          "largest_component_pixels": 0,
+          "largest_component_fraction": 0.0,
+          "component_sizes_pixels": []
+        },
+        "1": {
+          "pixels": 6255,
+          "components_8connected": 7,
+          "largest_component_pixels": 2301,
+          "largest_component_fraction": 0.3678657074340528,
+          "component_sizes_pixels": [
+            2301,
+            2211,
+            683,
+            404,
+            257,
+            254,
+            145
+          ]
+        },
+        "2": {
+          "pixels": 233833,
+          "components_8connected": 1,
+          "largest_component_pixels": 233833,
+          "largest_component_fraction": 1.0,
+          "component_sizes_pixels": [
+            233833
+          ]
+        },
+        "4": {
+          "pixels": 6114,
+          "components_8connected": 3,
+          "largest_component_pixels": 3436,
+          "largest_component_fraction": 0.5619888779849526,
+          "component_sizes_pixels": [
+            3436,
+            1515,
+            1163
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 727,
+        "4": 923
+      },
+      "nucleus_foreground_pixels": 21109
+    },
+    {
+      "source_alias": "S05",
+      "reference_id": "BCSS_native_recovery_1173893053a11bf7",
+      "input_sha256": {
+        "reference_image": "a66a8ecde28ad27c705fe3bce4e2f69f977af53e469d4b2cdc79b1529c66a08f",
+        "reference_tissue_mask": "ec73375010e098e803ee6b90e5e02f8c45cce31e4973ea2848348220c6dd4bd1",
+        "reference_nuclei_mask": "3cacbe10c79c0edb4158c2837ac11f769be2cf6d4a622fef498e8dc8805cc41a"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 0,
+          "components_8connected": 0,
+          "largest_component_pixels": 0,
+          "largest_component_fraction": 0.0,
+          "component_sizes_pixels": []
+        },
+        "1": {
+          "pixels": 8150,
+          "components_8connected": 2,
+          "largest_component_pixels": 7678,
+          "largest_component_fraction": 0.9420858895705522,
+          "component_sizes_pixels": [
+            7678,
+            472
+          ]
+        },
+        "2": {
+          "pixels": 248032,
+          "components_8connected": 2,
+          "largest_component_pixels": 247906,
+          "largest_component_fraction": 0.9994920010321249,
+          "component_sizes_pixels": [
+            247906,
+            126
+          ]
+        },
+        "4": {
+          "pixels": 5962,
+          "components_8connected": 2,
+          "largest_component_pixels": 3347,
+          "largest_component_fraction": 0.5613887957061389,
+          "component_sizes_pixels": [
+            3347,
+            2615
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 507,
+        "4": 649
+      },
+      "nucleus_foreground_pixels": 15515
+    },
+    {
+      "source_alias": "S06",
+      "reference_id": "BCSS_native_recovery_5b3012b577047932",
+      "input_sha256": {
+        "reference_image": "c1f11fbc551abc8b857287903dccc462315d688d84254a52e6a8d21fe704b41c",
+        "reference_tissue_mask": "f1925e6c2d612888dc6e0e723175c56f003843acf992bf9dc1994a3cbdd47c30",
+        "reference_nuclei_mask": "c8d27bc03f8f4a4c5286ca92ccca06ebfc1e8fede302f5d3a3ccc3596762360a"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 0,
+          "components_8connected": 0,
+          "largest_component_pixels": 0,
+          "largest_component_fraction": 0.0,
+          "component_sizes_pixels": []
+        },
+        "1": {
+          "pixels": 5510,
+          "components_8connected": 3,
+          "largest_component_pixels": 4678,
+          "largest_component_fraction": 0.8490018148820326,
+          "component_sizes_pixels": [
+            4678,
+            657,
+            175
+          ]
+        },
+        "2": {
+          "pixels": 246118,
+          "components_8connected": 2,
+          "largest_component_pixels": 245708,
+          "largest_component_fraction": 0.9983341324080319,
+          "component_sizes_pixels": [
+            245708,
+            410
+          ]
+        },
+        "4": {
+          "pixels": 10516,
+          "components_8connected": 4,
+          "largest_component_pixels": 4408,
+          "largest_component_fraction": 0.41917078737162417,
+          "component_sizes_pixels": [
+            4408,
+            4027,
+            2053,
+            28
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 607,
+        "4": 1627
+      },
+      "nucleus_foreground_pixels": 20843
+    },
+    {
+      "source_alias": "S07",
+      "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+      "input_sha256": {
+        "reference_image": "c64dcc8dd0ecb73e1d823bc4d699033d52ba362bfb60f3d58685866aaac876a8",
+        "reference_tissue_mask": "4465140a7f1c00581dc596782df91018c6f4715381fb96a5e346f20528b010b8",
+        "reference_nuclei_mask": "9080a157d64fa476a27ff4708821ae0939426690bc463b1901eb68ab667aebb0"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 0,
+          "components_8connected": 0,
+          "largest_component_pixels": 0,
+          "largest_component_fraction": 0.0,
+          "component_sizes_pixels": []
+        },
+        "1": {
+          "pixels": 10932,
+          "components_8connected": 8,
+          "largest_component_pixels": 3704,
+          "largest_component_fraction": 0.33882180753750457,
+          "component_sizes_pixels": [
+            3704,
+            1964,
+            1738,
+            1629,
+            1122,
+            368,
+            241,
+            166
+          ]
+        },
+        "2": {
+          "pixels": 245259,
+          "components_8connected": 2,
+          "largest_component_pixels": 245257,
+          "largest_component_fraction": 0.9999918453553183,
+          "component_sizes_pixels": [
+            245257,
+            2
+          ]
+        },
+        "4": {
+          "pixels": 5953,
+          "components_8connected": 14,
+          "largest_component_pixels": 1106,
+          "largest_component_fraction": 0.18578867797749035,
+          "component_sizes_pixels": [
+            1106,
+            687,
+            623,
+            520,
+            469,
+            464,
+            459,
+            458,
+            359,
+            313,
+            307,
+            96,
+            87,
+            5
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 1273,
+        "4": 1238
+      },
+      "nucleus_foreground_pixels": 38267
+    },
+    {
+      "source_alias": "S08",
+      "reference_id": "BCSS_native_recovery_116ccb3244a7be34",
+      "input_sha256": {
+        "reference_image": "96882b5494d3be406e92eb7350dfa856df6b5b1feb28ef475a3c8deece9a94d4",
+        "reference_tissue_mask": "bea5c85273369a15cf7ef3135fabb3754a02de10e556954868f11eed20c4d7a9",
+        "reference_nuclei_mask": "dc5407fc60925a498543e0e8f5ef324ae82ee5943917386c276db2392774c5c6"
+      },
+      "mask_geometry": {
+        "0": {
+          "pixels": 0,
+          "components_8connected": 0,
+          "largest_component_pixels": 0,
+          "largest_component_fraction": 0.0,
+          "component_sizes_pixels": []
+        },
+        "1": {
+          "pixels": 10009,
+          "components_8connected": 6,
+          "largest_component_pixels": 4092,
+          "largest_component_fraction": 0.40883205115396143,
+          "component_sizes_pixels": [
+            4092,
+            2811,
+            1818,
+            878,
+            360,
+            50
+          ]
+        },
+        "2": {
+          "pixels": 244719,
+          "components_8connected": 1,
+          "largest_component_pixels": 244719,
+          "largest_component_fraction": 1.0,
+          "component_sizes_pixels": [
+            244719
+          ]
+        },
+        "4": {
+          "pixels": 6806,
+          "components_8connected": 3,
+          "largest_component_pixels": 3214,
+          "largest_component_fraction": 0.47223038495445196,
+          "component_sizes_pixels": [
+            3214,
+            2963,
+            629
+          ]
+        }
+      },
+      "stroma_side_8neighbor_contact_pixels": {
+        "1": 961,
+        "4": 701
+      },
+      "nucleus_foreground_pixels": 29313
+    }
+  ],
+  "per_witness_diagnoses": [
+    {
+      "source_alias": "S00",
+      "reference_id": "BCSS_native_recovery_d851f9cad5c6eb00",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 117685,
+      "best_logged_topology_passing_floor_trial_pixels": 32036,
+      "deficit_to_floor_pixels": 38743,
+      "preflight_vs_logged_trial_gap_pixels": 85649,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 3,
+      "all_preflight_interfaces": 3,
+      "preflight_cell_feasible_anchor_count": 5,
+      "anchor_preflight_report_count": 5,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 2,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 3,
+        "target_components_after": 3,
+        "source_holes_before": 2,
+        "source_holes_after": 2,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0003"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          216333
+        ],
+        "residual_area_fraction": 0.8710144985887933,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          32036
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 248369,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 248369,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 7382,
+      "target_seed_components_8connected": 3,
+      "target_seed_largest_component_pixels": 6073,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "2e866e37d5fdd37e820a8f8a77a9a13094daa42752ee4fd211bb2ce13d9f9baf",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S00",
+      "reference_id": "BCSS_native_recovery_d851f9cad5c6eb00",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 95338,
+      "best_logged_topology_passing_floor_trial_pixels": 36120,
+      "deficit_to_floor_pixels": 34659,
+      "preflight_vs_logged_trial_gap_pixels": 59218,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 1,
+      "all_preflight_interfaces": 1,
+      "preflight_cell_feasible_anchor_count": 3,
+      "anchor_preflight_report_count": 3,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 2,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 1,
+        "target_components_after": 1,
+        "source_holes_before": 2,
+        "source_holes_after": 2,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:immune_infiltrate:0001"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          212249
+        ],
+        "residual_area_fraction": 0.8545712226566118,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          36120
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 248369,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 248369,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 6393,
+      "target_seed_components_8connected": 1,
+      "target_seed_largest_component_pixels": 6393,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "05c7a3fdda2eeb526d41cae0c65aa22311e8255b4883a18328449572da84788f",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S01",
+      "reference_id": "BCSS_native_recovery_25b374fc20554b7e",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 77440,
+      "best_logged_topology_passing_floor_trial_pixels": 28862,
+      "deficit_to_floor_pixels": 41917,
+      "preflight_vs_logged_trial_gap_pixels": 48578,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 2,
+      "all_preflight_interfaces": 2,
+      "preflight_cell_feasible_anchor_count": 4,
+      "anchor_preflight_report_count": 4,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 7,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 2,
+        "target_components_after": 2,
+        "source_holes_before": 3,
+        "source_holes_after": 3,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0001",
+          "cmp:tumor:p01:0002"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          217006
+        ],
+        "residual_area_fraction": 0.8826118079619959,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          11857,
+          17005
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 245868,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 245868,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 10198,
+      "target_seed_components_8connected": 2,
+      "target_seed_largest_component_pixels": 7770,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "8746b9afad4d34bb468afd811826300d9ea4727d0fafe0713f4b46ebcbc6cd37",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S01",
+      "reference_id": "BCSS_native_recovery_25b374fc20554b7e",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 132632,
+      "best_logged_topology_passing_floor_trial_pixels": 55617,
+      "deficit_to_floor_pixels": 15162,
+      "preflight_vs_logged_trial_gap_pixels": 77015,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 3,
+      "all_preflight_interfaces": 3,
+      "preflight_cell_feasible_anchor_count": 6,
+      "anchor_preflight_report_count": 6,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 12,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 3,
+        "target_components_after": 3,
+        "source_holes_before": 3,
+        "source_holes_after": 3,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:immune_infiltrate:0001",
+          "cmp:immune_infiltrate:0002",
+          "cmp:immune_infiltrate:0003"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          190251
+        ],
+        "residual_area_fraction": 0.7737932549172727,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          22800,
+          21957,
+          10860
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 245868,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 245868,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 6078,
+      "target_seed_components_8connected": 3,
+      "target_seed_largest_component_pixels": 2625,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "77cdcca8e213d8ae76f4a211ca598aa8d7a2589e2ab990f148e66b30ea303235",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S02",
+      "reference_id": "BCSS_native_recovery_77a8f0e398a3b1bb",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 112850,
+      "best_logged_topology_passing_floor_trial_pixels": 38327,
+      "deficit_to_floor_pixels": 32452,
+      "preflight_vs_logged_trial_gap_pixels": 74523,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 4,
+      "all_preflight_interfaces": 4,
+      "preflight_cell_feasible_anchor_count": 7,
+      "anchor_preflight_report_count": 7,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 12,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 4,
+        "target_components_after": 4,
+        "source_holes_before": 2,
+        "source_holes_after": 2,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0001",
+          "cmp:tumor:p01:0002",
+          "cmp:tumor:p01:0003"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          201988
+        ],
+        "residual_area_fraction": 0.8405134927074881,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          3530,
+          20574,
+          14223
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 240315,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 240315,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 9463,
+      "target_seed_components_8connected": 4,
+      "target_seed_largest_component_pixels": 4000,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "eca8b523ba57907f18ac0388c6f08a9b5e619a8a66a31ac2da1eb0a8c72ceaf4",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S02",
+      "reference_id": "BCSS_native_recovery_77a8f0e398a3b1bb",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 116959,
+      "best_logged_topology_passing_floor_trial_pixels": 49208,
+      "deficit_to_floor_pixels": 21571,
+      "preflight_vs_logged_trial_gap_pixels": 67751,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 2,
+      "all_preflight_interfaces": 2,
+      "preflight_cell_feasible_anchor_count": 6,
+      "anchor_preflight_report_count": 6,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 3,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 2,
+        "target_components_after": 2,
+        "source_holes_before": 2,
+        "source_holes_after": 2,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:immune_infiltrate:0002"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          191107
+        ],
+        "residual_area_fraction": 0.7952354201776834,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          11580,
+          37277,
+          351
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 240315,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 240315,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 12366,
+      "target_seed_components_8connected": 2,
+      "target_seed_largest_component_pixels": 12107,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "ce775969c63d2e57864116968176bc02b6f24db9f6b5d3f0c2d6c4a8db5ca0ff",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S03",
+      "reference_id": "BCSS_native_recovery_13ad5b3230762c0b",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 85447,
+      "best_logged_topology_passing_floor_trial_pixels": 23222,
+      "deficit_to_floor_pixels": 47557,
+      "preflight_vs_logged_trial_gap_pixels": 62225,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 7,
+      "all_preflight_interfaces": 9,
+      "preflight_cell_feasible_anchor_count": 9,
+      "anchor_preflight_report_count": 9,
+      "anchor_coverage_range_for_feasible_reports": [
+        0.7526881720430108,
+        1.0
+      ],
+      "unique_logged_floor_states": 2,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 9,
+        "target_components_after": 9,
+        "source_holes_before": 1,
+        "source_holes_after": 1,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0001"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          225562
+        ],
+        "residual_area_fraction": 0.9066579844362982,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          23183,
+          39
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 248784,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 248784,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 3833,
+      "target_seed_components_8connected": 9,
+      "target_seed_largest_component_pixels": 2046,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "fd2456ab1d7ac7ee208ca4d91ec195bf080f93acc4a51329a5061fe0a0261f4d",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S03",
+      "reference_id": "BCSS_native_recovery_13ad5b3230762c0b",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 92801,
+      "best_logged_topology_passing_floor_trial_pixels": 25263,
+      "deficit_to_floor_pixels": 45516,
+      "preflight_vs_logged_trial_gap_pixels": 67538,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 2,
+      "all_preflight_interfaces": 2,
+      "preflight_cell_feasible_anchor_count": 3,
+      "anchor_preflight_report_count": 3,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 2,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 2,
+        "target_components_after": 2,
+        "source_holes_before": 1,
+        "source_holes_after": 1,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:immune_infiltrate:0002"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          223521
+        ],
+        "residual_area_fraction": 0.8984540806482731,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          25263
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 248784,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 248784,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 3199,
+      "target_seed_components_8connected": 2,
+      "target_seed_largest_component_pixels": 2663,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "6e72451519c683b52b8b495b2077a067f6b47cbf62a7b54accac24a7e0d48a7d",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S04",
+      "reference_id": "BCSS_native_recovery_2a3daa574ea10608",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 122595,
+      "best_logged_topology_passing_floor_trial_pixels": 19886,
+      "deficit_to_floor_pixels": 50893,
+      "preflight_vs_logged_trial_gap_pixels": 102709,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 7,
+      "all_preflight_interfaces": 7,
+      "preflight_cell_feasible_anchor_count": 9,
+      "anchor_preflight_report_count": 9,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 7,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 7,
+        "target_components_after": 7,
+        "source_holes_before": 5,
+        "source_holes_after": 5,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0004",
+          "cmp:tumor:p01:0005"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          213947
+        ],
+        "residual_area_fraction": 0.9149564005080549,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          9738,
+          130,
+          10018
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 233833,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 233833,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 6255,
+      "target_seed_components_8connected": 7,
+      "target_seed_largest_component_pixels": 2301,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "ee00ff908b5b33c50158437dfca660145190b1f3ee6c6b4f2adf77363d201de0",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S04",
+      "reference_id": "BCSS_native_recovery_2a3daa574ea10608",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 128608,
+      "best_logged_topology_passing_floor_trial_pixels": 16847,
+      "deficit_to_floor_pixels": 53932,
+      "preflight_vs_logged_trial_gap_pixels": 111761,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 3,
+      "all_preflight_interfaces": 3,
+      "preflight_cell_feasible_anchor_count": 8,
+      "anchor_preflight_report_count": 8,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 11,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 3,
+        "target_components_after": 3,
+        "source_holes_before": 5,
+        "source_holes_after": 5,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:immune_infiltrate:0002"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          216986
+        ],
+        "residual_area_fraction": 0.9279528552428442,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          16847
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 233833,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 233833,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 6114,
+      "target_seed_components_8connected": 3,
+      "target_seed_largest_component_pixels": 3436,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "2db3d9f596343b496a7542032b331700c320543a32f8b3283630b18e32ff0d45",
+      "observed_invalid_topology_patterns": [
+        "source_hole_count_changed_without_recorded_allowance"
+      ]
+    },
+    {
+      "source_alias": "S05",
+      "reference_id": "BCSS_native_recovery_1173893053a11bf7",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 74683,
+      "best_logged_topology_passing_floor_trial_pixels": 29664,
+      "deficit_to_floor_pixels": 41115,
+      "preflight_vs_logged_trial_gap_pixels": 45019,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 2,
+      "all_preflight_interfaces": 3,
+      "preflight_cell_feasible_anchor_count": 4,
+      "anchor_preflight_report_count": 4,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 2,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 2,
+        "target_components_after": 2,
+        "source_holes_before": 1,
+        "source_holes_after": 1,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0001"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 25.238858928247925,
+        "residual_component_sizes_px": [
+          126,
+          218242
+        ],
+        "residual_area_fraction": 0.8804025287059735,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          0.0005770076201641266,
+          0.9994229923798359
+        ],
+        "minimum_observed_residual_component_fraction": 0.0005770076201641266,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9994229923798359,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          21244,
+          8420
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 248032,
+      "source_stroma_components_8connected": 2,
+      "source_largest_stroma_component_pixels": 247906,
+      "source_largest_stroma_component_fraction": 0.9994920010321249,
+      "target_seed_pixels": 8150,
+      "target_seed_components_8connected": 2,
+      "target_seed_largest_component_pixels": 7678,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "c0088102cdc04edb87d388621d12db9b4c1402093fb7cdc8e2316efc010b1ea1",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S05",
+      "reference_id": "BCSS_native_recovery_1173893053a11bf7",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 124668,
+      "best_logged_topology_passing_floor_trial_pixels": 55074,
+      "deficit_to_floor_pixels": 15705,
+      "preflight_vs_logged_trial_gap_pixels": 69594,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 2,
+      "all_preflight_interfaces": 2,
+      "preflight_cell_feasible_anchor_count": 5,
+      "anchor_preflight_report_count": 5,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 6,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 2,
+        "target_components_after": 2,
+        "source_holes_before": 1,
+        "source_holes_after": 1,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:immune_infiltrate:0001",
+          "cmp:immune_infiltrate:0002"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 25.238858928247925,
+        "residual_component_sizes_px": [
+          126,
+          192832
+        ],
+        "residual_area_fraction": 0.7779560701844923,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          0.0006529918427844401,
+          0.9993470081572156
+        ],
+        "minimum_observed_residual_component_fraction": 0.0006529918427844401,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9993470081572156,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          33329,
+          21745
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 248032,
+      "source_stroma_components_8connected": 2,
+      "source_largest_stroma_component_pixels": 247906,
+      "source_largest_stroma_component_fraction": 0.9994920010321249,
+      "target_seed_pixels": 5962,
+      "target_seed_components_8connected": 2,
+      "target_seed_largest_component_pixels": 3347,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "c78bd3e89e0a23f9d08095736bc063bc7a8c75bb0a6409b86990f59e4eb9c968",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S06",
+      "reference_id": "BCSS_native_recovery_5b3012b577047932",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 72685,
+      "best_logged_topology_passing_floor_trial_pixels": 34296,
+      "deficit_to_floor_pixels": 36483,
+      "preflight_vs_logged_trial_gap_pixels": 38389,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 3,
+      "all_preflight_interfaces": 3,
+      "preflight_cell_feasible_anchor_count": 5,
+      "anchor_preflight_report_count": 5,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 2,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 3,
+        "target_components_after": 3,
+        "source_holes_before": 3,
+        "source_holes_after": 3,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0001"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 10.770329614269007,
+        "residual_component_sizes_px": [
+          410,
+          211412
+        ],
+        "residual_area_fraction": 0.860652207477714,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          0.0019355874271794243,
+          0.9980644125728205
+        ],
+        "minimum_observed_residual_component_fraction": 0.0019355874271794243,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9980644125728205,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          34296
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 246118,
+      "source_stroma_components_8connected": 2,
+      "source_largest_stroma_component_pixels": 245708,
+      "source_largest_stroma_component_fraction": 0.9983341324080319,
+      "target_seed_pixels": 5510,
+      "target_seed_components_8connected": 3,
+      "target_seed_largest_component_pixels": 4678,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "ec9c903b71bbd555f1a98459b14d258d14d3a14b5504e636b2521b38c7c57b9e",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S06",
+      "reference_id": "BCSS_native_recovery_5b3012b577047932",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 118310,
+      "best_logged_topology_passing_floor_trial_pixels": 57966,
+      "deficit_to_floor_pixels": 12813,
+      "preflight_vs_logged_trial_gap_pixels": 60344,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 3,
+      "all_preflight_interfaces": 5,
+      "preflight_cell_feasible_anchor_count": 11,
+      "anchor_preflight_report_count": 11,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 11,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 4,
+        "target_components_after": 4,
+        "source_holes_before": 3,
+        "source_holes_after": 3,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:immune_infiltrate:0002",
+          "cmp:immune_infiltrate:0003",
+          "cmp:immune_infiltrate:0004"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 11.40175425099138,
+        "residual_component_sizes_px": [
+          410,
+          187742
+        ],
+        "residual_area_fraction": 0.7644788272292152,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          0.0021790892469917937,
+          0.9978209107530082
+        ],
+        "minimum_observed_residual_component_fraction": 0.0021790892469917937,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9978209107530082,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          13486,
+          27261,
+          190,
+          9943,
+          7086
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 246118,
+      "source_stroma_components_8connected": 2,
+      "source_largest_stroma_component_pixels": 245708,
+      "source_largest_stroma_component_fraction": 0.9983341324080319,
+      "target_seed_pixels": 10516,
+      "target_seed_components_8connected": 4,
+      "target_seed_largest_component_pixels": 4408,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "dfa2de9763e4f8f0cd778a12e587917f59f33d7b55a0dbf3e52f7f3268e52e52",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S07",
+      "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 134891,
+      "best_logged_topology_passing_floor_trial_pixels": 22287,
+      "deficit_to_floor_pixels": 48492,
+      "preflight_vs_logged_trial_gap_pixels": 112604,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 8,
+      "all_preflight_interfaces": 10,
+      "preflight_cell_feasible_anchor_count": 12,
+      "anchor_preflight_report_count": 12,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 11,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 13,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0006"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          222970
+        ],
+        "residual_area_fraction": 0.909128716988979,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          8.969736110363633e-06,
+          0.9999910302638897
+        ],
+        "minimum_observed_residual_component_fraction": 8.969736110363633e-06,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999910302638897,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          14577,
+          5285,
+          1589,
+          836
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 245259,
+      "source_stroma_components_8connected": 2,
+      "source_largest_stroma_component_pixels": 245257,
+      "source_largest_stroma_component_fraction": 0.9999918453553183,
+      "target_seed_pixels": 10932,
+      "target_seed_components_8connected": 8,
+      "target_seed_largest_component_pixels": 3704,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "db3d23c386f319b3b1763d88b4ce78433a5171485ea6e62760e65671f4aad64a",
+      "observed_invalid_topology_patterns": [
+        "source_hole_count_changed_without_recorded_allowance"
+      ]
+    },
+    {
+      "source_alias": "S07",
+      "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "no_jointly_feasible_directed_interface",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 134891,
+      "best_logged_topology_passing_floor_trial_pixels": null,
+      "deficit_to_floor_pixels": null,
+      "preflight_vs_logged_trial_gap_pixels": null,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 12,
+      "all_preflight_interfaces": 16,
+      "preflight_cell_feasible_anchor_count": 12,
+      "anchor_preflight_report_count": 12,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 0,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": null,
+      "source_stroma_pixels": 245259,
+      "source_stroma_components_8connected": 2,
+      "source_largest_stroma_component_pixels": 245257,
+      "source_largest_stroma_component_fraction": 0.9999918453553183,
+      "target_seed_pixels": 5953,
+      "target_seed_components_8connected": 14,
+      "target_seed_largest_component_pixels": 1106,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "990ac4e2a258ea9d2c40f88e6c9313a9d1979a9847ad8e3679868cab3aaa13b2",
+      "observed_invalid_topology_patterns": []
+    },
+    {
+      "source_alias": "S08",
+      "reference_id": "BCSS_native_recovery_116ccb3244a7be34",
+      "operation": "U1",
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 134595,
+      "best_logged_topology_passing_floor_trial_pixels": 23897,
+      "deficit_to_floor_pixels": 46882,
+      "preflight_vs_logged_trial_gap_pixels": 110698,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 4,
+      "all_preflight_interfaces": 6,
+      "preflight_cell_feasible_anchor_count": 7,
+      "anchor_preflight_report_count": 7,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 12,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 6,
+        "target_components_after": 6,
+        "source_holes_before": 5,
+        "source_holes_after": 5,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0004"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          220822
+        ],
+        "residual_area_fraction": 0.9023492250295236,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          23897
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 244719,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 244719,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 10009,
+      "target_seed_components_8connected": 6,
+      "target_seed_largest_component_pixels": 4092,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "a088352d359e9dd99f0a778ce4d4826a404efbc89c48dc2a3087da128e10713a",
+      "observed_invalid_topology_patterns": [
+        "source_hole_count_changed_without_recorded_allowance"
+      ]
+    },
+    {
+      "source_alias": "S08",
+      "reference_id": "BCSS_native_recovery_116ccb3244a7be34",
+      "operation": "U2",
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "terminal_failure": "topology_safe_area_underfill",
+      "hard_tissue_floor_pixels": 70779,
+      "aggregate_preflight_capacity_pixels": 96257,
+      "best_logged_topology_passing_floor_trial_pixels": 14775,
+      "deficit_to_floor_pixels": 56004,
+      "preflight_vs_logged_trial_gap_pixels": 81482,
+      "gap_is_not_a_stepwise_loss_decomposition": true,
+      "feasible_interfaces": 3,
+      "all_preflight_interfaces": 3,
+      "preflight_cell_feasible_anchor_count": 6,
+      "anchor_preflight_report_count": 6,
+      "anchor_coverage_range_for_feasible_reports": [
+        1.0,
+        1.0
+      ],
+      "unique_logged_floor_states": 7,
+      "logged_trial_count_is_not_execution_count": true,
+      "parse_errors": [],
+      "best_logged_topology_state": {
+        "passed": true,
+        "source_components_before": 1,
+        "source_components_after": 1,
+        "selected_source_components_after": 1,
+        "target_components_before": 3,
+        "target_components_after": 3,
+        "source_holes_before": 5,
+        "source_holes_after": 5,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:immune_infiltrate:0001"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": null,
+        "residual_component_sizes_px": [
+          229944
+        ],
+        "residual_area_fraction": 0.9396246306988832,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.0
+        ],
+        "minimum_observed_residual_component_fraction": 1.0,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 1.0,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": true,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          14775
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "source_stroma_pixels": 244719,
+      "source_stroma_components_8connected": 1,
+      "source_largest_stroma_component_pixels": 244719,
+      "source_largest_stroma_component_fraction": 1.0,
+      "target_seed_pixels": 6806,
+      "target_seed_components_8connected": 3,
+      "target_seed_largest_component_pixels": 3214,
+      "source_mask_only_not_failed_target": true,
+      "evidence_gaps": {
+        "failed_target_or_change_mask": "not_persisted",
+        "selected_anchor_masks_per_attempt": "not_persisted",
+        "per_attempt_selected_interface_plan": "not_persisted",
+        "per_interface_actual_contribution": "structured_exception_feedback_not_retained_by_qualification_wrapper",
+        "legal_envelope_and_unique_ownership_counts": "not_persisted",
+        "per_guard_rejected_pixel_counters": "not_persisted",
+        "exact_stepwise_area_loss_pixels": null
+      },
+      "raw_error_sha256": "1227e3b6a475e9358842454bef31b9bb1f1d16158cfd8e081e5ca58ff5ba1b27",
+      "observed_invalid_topology_patterns": [
+        "source_hole_count_changed_without_recorded_allowance"
+      ]
+    }
+  ],
+  "artifact_sha256": {
+    "full_private_analysis": "f3aa702aba555fe9a0b81a3b5e7a1d4c82b90a9f08a27843e9c8c5030cf875d3",
+    "diagnosis_matrix": "6ae7492b6de6b1dc6a018ba1f6c4e870a2474ebd71bc29b88b0455b0202b02b8",
+    "source_condition_figure": "b0018e76e7c13a55ab797e497597654cf1a6448d41bd9fa6ce88e7191b038d1b",
+    "preflight_comparison_figure": "3774d0497c6738d40997f80d8a8f0802a13dd2a449faf8d257576cd742ca1335",
+    "plot_script": "c0679e8d21809fccb4387fef506ba59b28b6b40e6ce99f4aadc61dc5da031b90"
+  },
+  "formal_launch_permitted": false,
+  "analysis_runtime": {
+    "python": "3.11.6 (main, Nov  2 2023, 04:39:43) [Clang 14.0.3 (clang-1403.0.22.14.1)]",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pillow": "13.0.0"
+  }
+}
