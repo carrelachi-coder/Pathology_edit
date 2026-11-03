@@ -415,5 +415,25 @@
     "manifest_v2_unchanged": true,
     "execution_permitted": false,
     "S07_witness_calls": 0
+  },
+  "authorized_S07_diagnostic_20261103": {
+    "report": "../manuscript_validation_20261103/s07_authorized_diagnostic_report_v1.json",
+    "sha256": "b820338059cbc65ba634cd3a924f067f32ee6ddfbcc5b2108c5f2ba2a355053b",
+    "status": "mismatch_hold_B_observer_event_cap",
+    "RNG_condition_formally_approved": true,
+    "bounded_execution_authorized": true,
+    "authorization_consumed": true,
+    "launched_arms": [
+      "A",
+      "B"
+    ],
+    "C_started": false,
+    "completed_logical_witness_calls": 4,
+    "A_history_receipt_match": true,
+    "B_business_receipt_match_offline": true,
+    "B_observation_valid": false,
+    "new_qualified_patients": 0,
+    "further_execution_permitted": false,
+    "formal_launch_permitted": false
   }
 }

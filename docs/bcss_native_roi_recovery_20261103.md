@@ -272,3 +272,27 @@ Controller技术复核在既有正常流程及已覆盖故障范围内未发现�
 **授权绑定有一个必须保持清楚的操作条件。**已冻结v2的SHA为`e8f05fe392079e329fb1deea4b8c14fc6a84606c71bd9b2322a69dfac66f720c`，其两个执行／RNG批准布尔值均为false。只在内存中做的gate-only检查确认：即使假设存在匹配v2 SHA的正记录，v2也仍会拒绝；本轮没有创建正授权文件。因此未来若正式批准，应保留v2，另存引用v2、RNG决策和导入差异接受SHA的新版本launch manifest，再把授权绑定到新文件的准确SHA。不能修改v2后继续使用旧SHA，也不能将此审查写成已颁发执行许可。本轮没有生成launch-enabled manifest。
 
 当前技术资料可供最终批准审查，但整体RNG新实验条件尚未正式批准，S07执行授权也未签发，独立签署不由实现者自造。仍为17位源拓扑通过、含unknown上限19位、新增四目标批准0位；30位目标、19%／32%预算和14%／27%硬下限不变。诊断成功≠拓扑资格，拓扑资格≠四目标批准，有限S07许可也≠正式H&E许可；正式实验及医生研究继续关闭。
+
+## 已获批的S07有限诊断：A通过历史比较，B触及事件上限后停止
+
+用户通过两个独立回复正式批准了RNG实验条件和这一次S07有限诊断。[RNG批准记录](../benchmarks/manuscript_validation_20261103/rng_controlled_startup_approval_v1.json)、[独立执行授权](../benchmarks/manuscript_validation_20261103/s07_execution_authorization_v1.json)及[启动manifest v3](../benchmarks/manuscript_validation_20261103/limited_topology_launch_manifest_v3.json)均另存，不覆盖v2。v3准确SHA为`e41815ae705efe05b2075dffe7fd6599b6186782c2f606fb2398922a5ad32032`，与用户批准的候选字节一致；现场重验代码、输入、环境、scope和授权后，仅启动一次controller。
+
+[本次结果](../benchmarks/manuscript_validation_20261103/s07_authorized_diagnostic_report_v1.json) 为 **`mismatch_hold_B_observer_event_cap`**，不是完整过程采集验收通过：
+
+| 臂 | 运行结果 | 后续判定 |
+| --- | --- | --- |
+| A Controlled Legacy | 约113.29秒，退出0，完整业务receipt严格等于历史 | Controller接受，开放B |
+| B Hash-only | 约152.62秒，退出78，未超时；Observer达到冻结的2,000,000事件上限 | 记录无效，停止后续臂 |
+| C Full Capture | 未启动 | 无Full Capture或B/C一致性结果 |
+
+完成4次逻辑witness调用／4次预算预留，未使用C的2次余量，无自动重试或新启动目录。Controller日志的直接hold理由是B非零退出；事后核对明确为Observer事件限额触发，不是1200秒超时、4 GiB磁盘限额或新增生物学失败。B记录器故障后按既有隔离政策让业务调用完成，再拒绝接受诊断证据。
+
+离线对照确认B完整业务receipt也与A、历史结果相同，两个已运行子进程的初始状态摘要与共同父进程一致，hash fingerprint一致；U1/U2仍保留原来的witness失败及相同错误列表SHA。**这些只支持本例已保存业务终态一致，不使B重新获得controller接受，也不证明完整非干扰性。**B证据`valid=false`、`interpretation_permitted=false`、无完成标记；C未执行。
+
+保存的约243 MiB trace包含序号0至1,999,999的完整连续前缀，链哈希匹配状态文件，因此不是传输损坏。但它只有1个qualification开始记录，不能覆盖完整U1/U2过程；本轮没有利用这个无效前缀作合法域面积损失分解或拓扑统一根因推断，也没有声称找到新的合法路径。
+
+原始启动RNG状态、含患者映射的业务receipt及全部trace保持私有；完整归档约15.3 MB，16个文件均对照私有清单核验。Git只保存经检查的结果／状态、启动摘要、错误和文件哈希及审计元数据。既有12 GiB预留保持未释放，未自动删除任何证据。
+
+[授权使用终态记录](../benchmarks/manuscript_validation_20261103/s07_execution_authorization_consumption_v1.json) 明确本次一次性序列已使用并以hold结束。不得将剩余2次余量改作重跑，不提高事件上限、不采样丢弃记录、不修改算法或复用新目录；若研究新的采集策略或资源配置，应另行审查和授权。本轮到此结束，不启动额外实验。
+
+本次没有获得合格的完整过程证据，也没有改变科学资格：仍为17位源拓扑通过、含unknown上限19位、新增四目标批准0位，正式30位队列未成立。19%／32%名义预算、14%／27%组织硬下限均未改变；正式H&E、批量四目标及医生研究继续关闭。

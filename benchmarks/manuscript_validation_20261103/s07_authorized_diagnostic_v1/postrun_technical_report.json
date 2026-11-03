@@ -1,0 +1,174 @@
+{
+  "scope": "Post-run technical integrity and descriptive receipt comparison only; invalid partial B observation is not accepted process/scientific evidence.",
+  "utc": "2026-11-03T04:40:46.643944+00:00",
+  "manifest_sha256": "e41815ae705efe05b2075dffe7fd6599b6186782c2f606fb2398922a5ad32032",
+  "execution_authorization_sha256": "42a46db33abc5c92dba8f909a8a7cf81f892c511d4262c71ef607920f6233dec",
+  "rng_approval_sha256": "9d72c4db6e4fd5177e1f55f1406ca319a9cdef06b783c776ce6f7faa6c6ac5d5",
+  "controller_result": {
+    "launched": [
+      "A",
+      "B"
+    ],
+    "reserved_witness_calls": 4,
+    "status": "mismatch_hold"
+  },
+  "process_receipts": [
+    {
+      "arm": "A",
+      "elapsed_seconds": 113.2897156253457,
+      "exit_code": 0,
+      "pid": 346289,
+      "timed_out": false
+    },
+    {
+      "arm": "B",
+      "elapsed_seconds": 152.62180701456964,
+      "exit_code": 78,
+      "pid": 354702,
+      "timed_out": false
+    }
+  ],
+  "controller_accepted_A": true,
+  "controller_accepted_B": false,
+  "offline_receipt_comparison": {
+    "A_equals_historical": true,
+    "B_equals_A": true,
+    "B_equals_historical": true,
+    "scope": "Descriptive offline business equality only, not promotion of invalid B evidence or a controller acceptance."
+  },
+  "completed_logical_witness_calls": 4,
+  "reserved_logical_witness_calls": 4,
+  "C_started": false,
+  "automatic_retries": 0,
+  "launch_count": 1,
+  "startup_identity": {
+    "A_equals_parent": true,
+    "B_equals_parent": true,
+    "A_B_hash_fingerprint_equal": true,
+    "historical_rng_recovered": false
+  },
+  "B_observer": {
+    "status": {
+      "schema_version": 2,
+      "valid": false,
+      "interpretation_permitted": false,
+      "mode": "hash_only",
+      "events": 2000000,
+      "semantic_chain_sha256": "908b6596cb631b787b786f0b386267adbdcaa0e3f0ec39b71b21430a6f1c9621",
+      "faults": [
+        {
+          "stage": "record",
+          "type": "RuntimeError"
+        }
+      ],
+      "closed": true,
+      "bytes_written": 254793387,
+      "arrays": 683,
+      "resource_limits": {
+        "max_array_bytes": 67108864,
+        "max_artifacts": 100000,
+        "max_event_metadata_bytes": 8388608,
+        "hash_chunk_bytes": 1048576
+      },
+      "qualification_updates_permitted": false
+    },
+    "completion_marker_exists": false,
+    "frozen_max_events": 2000000,
+    "frozen_max_bytes": 4294967296,
+    "trace_file_bytes": 254793387,
+    "trace_file_sha256": "facb943e06f2a1e142c0e8de444919f4d7b27952df53e5b3f776c71f3ce9c294",
+    "parseable_records": 2000000,
+    "sequence_contiguous": true,
+    "chain_matches_status": true,
+    "last_record": {
+      "sequence": 1999999,
+      "event": "guard.stage"
+    },
+    "event_name_counts": {
+      "qualification.begin": 1,
+      "qualification.preflight": 1,
+      "portfolio.preferences": 1,
+      "portfolio.preference": 1,
+      "compiler.attempt": 3,
+      "planner.label_filter": 3,
+      "planner.preflight_filter": 3,
+      "planner.directional_limit_inputs": 31,
+      "planner.front_filter": 3,
+      "planner.ranking": 3,
+      "planner.selection": 3,
+      "planner.ready": 3,
+      "execution.begin": 3,
+      "envelopes.ready": 3,
+      "ownership.ready": 3,
+      "ownership.works": 3,
+      "execution.works": 3,
+      "grow.begin": 22,
+      "grow.seeds": 22,
+      "guard.stage": 1424937,
+      "guard.local_result": 292147,
+      "guard.accept": 281060,
+      "guard.reject": 1693,
+      "grow.end": 21,
+      "front.contribution": 21,
+      "probe.complete": 4,
+      "compiler.exception": 2
+    },
+    "interpretation": "The saved2M-event prefix is internally contiguous, but full execution capture is incomplete and formally invalid. No B/C comparison or causal topology-loss analysis is claimed.",
+    "raw_fault_message_saved": false,
+    "attribution": "Event cap reached: frozen max_events equals committed event count; record fault is RuntimeError and current recorder checks that limit. No threshold or capacity waiver."
+  },
+  "operation_receipt_status": [
+    {
+      "arm": "A",
+      "operation": "U1",
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "error_list_sha256": "db3d23c386f319b3b1763d88b4ce78433a5171485ea6e62760e65671f4aad64a"
+    },
+    {
+      "arm": "A",
+      "operation": "U2",
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "error_list_sha256": "990ac4e2a258ea9d2c40f88e6c9313a9d1979a9847ad8e3679868cab3aaa13b2"
+    },
+    {
+      "arm": "B",
+      "operation": "U1",
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "error_list_sha256": "db3d23c386f319b3b1763d88b4ce78433a5171485ea6e62760e65671f4aad64a"
+    },
+    {
+      "arm": "B",
+      "operation": "U2",
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "error_list_sha256": "990ac4e2a258ea9d2c40f88e6c9313a9d1979a9847ad8e3679868cab3aaa13b2"
+    }
+  ],
+  "private_evidence": {
+    "run_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/limited_topology_capture_v1_controlled_v2",
+    "inventory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/execution_preparation_v2/approved_launch_v3/postrun_v1/private_run_inventory.json",
+    "inventory_sha256": "11d77c36682d088aa750b749df243d2413776dab5d07c504329ee2b63498d4e8",
+    "files": 16,
+    "bytes": 257032182,
+    "raw_startup_state_receipts_trace_private": true
+  },
+  "core_artifact_sha256": {
+    "controller_result.json": "611a6450e8f6060a59891cd66ecc830f84959c7dfe9ad82b6238f2cbea5a2971",
+    "controller_events.jsonl": "c093129629a914584d2a25f8bb51ec993d06fa607f8b135758f386b6e26ee5e7",
+    "startup_identity.json": "6f3aa8a3998221b206a9faa791511e781394b4f8ee50ad724744599a294272dc",
+    "A/startup_identity.json": "4da3866308f8f6c527622501843ecfd2796c2b3928596a781747b56bae31fe54",
+    "B/startup_identity.json": "4da3866308f8f6c527622501843ecfd2796c2b3928596a781747b56bae31fe54",
+    "B/observer/observer_status.json": "eb5812ff9bc6d407f0040ea76c2ea57501c26f2d4e0be2a0ed3008bd4c3d52d4"
+  },
+  "sequence_terminal": true,
+  "unused_C_budget_not_reallocated": true,
+  "authorization_use": "Single finite sequence consumed; no restart/resume/new output root under this authorization.",
+  "qualification_updates_permitted": false,
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}

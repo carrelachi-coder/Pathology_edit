@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "status": "mismatch_hold_B_observer_event_cap",
+  "scope": "One explicitly authorized finite source-mask diagnostic sequence; no H&E or formal cohort. Sequence is terminal; not an accepted complete process-capture run.",
+  "authorization": {
+    "RNG_experimental_condition_approved": true,
+    "limited_S07_execution_approved": true,
+    "approval_source": "Two explicit user answers to batch call_87701ed2bd474fa7a7547c96d14ff5d6; independently recorded.",
+    "launch_manifest": "limited_topology_launch_manifest_v3.json",
+    "launch_manifest_sha256": "e41815ae705efe05b2075dffe7fd6599b6186782c2f606fb2398922a5ad32032",
+    "RNG_approval_record": "rng_controlled_startup_approval_v1.json",
+    "RNG_approval_sha256": "9d72c4db6e4fd5177e1f55f1406ca319a9cdef06b783c776ce6f7faa6c6ac5d5",
+    "execution_authorization_record": "s07_execution_authorization_v1.json",
+    "execution_authorization_sha256": "42a46db33abc5c92dba8f909a8a7cf81f892c511d4262c71ef607920f6233dec",
+    "consumption_record": "s07_execution_authorization_consumption_v1.json",
+    "consumption_record_sha256": "aef61629160f9dd0063c87dcf317d93f256862b0415552a2b25ec7532a7f3457"
+  },
+  "run_summary": {
+    "source_reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "launch_count": 1,
+    "launched": [
+      "A",
+      "B"
+    ],
+    "not_run": [
+      "C"
+    ],
+    "completed_logical_witness_calls": 4,
+    "reserved_witness_calls": 4,
+    "authorized_max": 6,
+    "source_pair_timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "C_budget_unused_and_not_reallocated": true,
+    "process_receipts": [
+      {
+        "arm": "A",
+        "elapsed_seconds": 113.2897156253457,
+        "exit_code": 0,
+        "pid": 346289,
+        "timed_out": false
+      },
+      {
+        "arm": "B",
+        "elapsed_seconds": 152.62180701456964,
+        "exit_code": 78,
+        "pid": 354702,
+        "timed_out": false
+      }
+    ]
+  },
+  "A": {
+    "controller_accepted": true,
+    "business_receipt_equals_historical": true,
+    "startup_matches_common_parent": true,
+    "meaning": "Controlled legacy reproduces the complete retained historical business result in this run; this is not recovery/proof of the old internal RNG/plan trajectory."
+  },
+  "B": {
+    "controller_accepted": false,
+    "exit_code": 78,
+    "timed_out": false,
+    "business_receipt_equals_A_offline": true,
+    "business_receipt_equals_historical_offline": true,
+    "startup_matches_common_parent": true,
+    "observer_evidence_valid": false,
+    "interpretation_permitted": false,
+    "completion_marker_exists": false,
+    "failure": "Frozen max_events=2000000 reached. Recorder recorded a RuntimeError at record stage, invalidated evidence, and allowed business logic to finish unchanged; child returned78 after the business invocation.",
+    "attribution_evidence": {
+      "max_events": 2000000,
+      "events_committed": 2000000,
+      "last_sequence": 1999999,
+      "faults": [
+        {
+          "stage": "record",
+          "type": "RuntimeError"
+        }
+      ],
+      "trace_bytes": 254793387,
+      "trace_sequence_and_chain_checked": true
+    },
+    "capacity_or_topology_failure_interpretation": "This technical capture failure is not a new source biological/capacity failure and is not a reason to change editing thresholds. Original U1/U2 witness rejections remained unchanged.",
+    "end_state_comparison_limit": "Offline business equality is descriptive evidence only. It does not override invalid B observation, constitute controller acceptance, or establish complete noninterference."
+  },
+  "C": {
+    "started": false,
+    "reason": "B nonzero/invalid observation; outer controller stopped. No Full Capture artifacts or B/C equivalence result exist."
+  },
+  "captured_prefix_coverage": {
+    "parseable_events": 2000000,
+    "qualification_begin_events": 1,
+    "probe_complete_events": 4,
+    "last_event": {
+      "sequence": 1999999,
+      "event": "guard.stage"
+    },
+    "scope": "Partial hash-only technical prefix, not complete coverage of both U1/U2; no causal stage-loss analysis or topology-root-cause conclusion made."
+  },
+  "operation_results": [
+    {
+      "arm": "A",
+      "operation": "U1",
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "error_list_sha256": "db3d23c386f319b3b1763d88b4ce78433a5171485ea6e62760e65671f4aad64a"
+    },
+    {
+      "arm": "A",
+      "operation": "U2",
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "error_list_sha256": "990ac4e2a258ea9d2c40f88e6c9313a9d1979a9847ad8e3679868cab3aaa13b2"
+    },
+    {
+      "arm": "B",
+      "operation": "U1",
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "error_list_sha256": "db3d23c386f319b3b1763d88b4ce78433a5171485ea6e62760e65671f4aad64a"
+    },
+    {
+      "arm": "B",
+      "operation": "U2",
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "error_list_sha256": "990ac4e2a258ea9d2c40f88e6c9313a9d1979a9847ad8e3679868cab3aaa13b2"
+    }
+  ],
+  "scientific_disposition": {
+    "complete_telemetry_acceptance_passed": false,
+    "B_C_noninterference_acceptance_passed": false,
+    "new_legal_execution_path_demonstrated": false,
+    "causal_topology_bottleneck_diagnosed": false,
+    "topology_or_four_target_credit_added": false
+  },
+  "evidence": {
+    "A_startup_identity.json": {
+      "file": "s07_authorized_diagnostic_v1/A_startup_identity.json",
+      "sha256": "4da3866308f8f6c527622501843ecfd2796c2b3928596a781747b56bae31fe54"
+    },
+    "B_observer_status.json": {
+      "file": "s07_authorized_diagnostic_v1/B_observer_status.json",
+      "sha256": "eb5812ff9bc6d407f0040ea76c2ea57501c26f2d4e0be2a0ed3008bd4c3d52d4"
+    },
+    "B_startup_identity.json": {
+      "file": "s07_authorized_diagnostic_v1/B_startup_identity.json",
+      "sha256": "4da3866308f8f6c527622501843ecfd2796c2b3928596a781747b56bae31fe54"
+    },
+    "controller_events.jsonl": {
+      "file": "s07_authorized_diagnostic_v1/controller_events.jsonl",
+      "sha256": "c093129629a914584d2a25f8bb51ec993d06fa607f8b135758f386b6e26ee5e7"
+    },
+    "controller_process.json": {
+      "file": "s07_authorized_diagnostic_v1/controller_process.json",
+      "sha256": "4dace906b2d7abba89ac0bd4dbc00fdebb0f057a01da82088a92dcf62551b52a"
+    },
+    "controller_result.json": {
+      "file": "s07_authorized_diagnostic_v1/controller_result.json",
+      "sha256": "611a6450e8f6060a59891cd66ecc830f84959c7dfe9ad82b6238f2cbea5a2971"
+    },
+    "live_preflight_before_launch.json": {
+      "file": "s07_authorized_diagnostic_v1/live_preflight_before_launch.json",
+      "sha256": "2c9264ddd23347f0830a17628418d5a794ea56a4d3f2d8c83fdcb0b9ca281a2e"
+    },
+    "parent_startup_identity.json": {
+      "file": "s07_authorized_diagnostic_v1/parent_startup_identity.json",
+      "sha256": "6f3aa8a3998221b206a9faa791511e781394b4f8ee50ad724744599a294272dc"
+    },
+    "postrun_technical_report.json": {
+      "file": "s07_authorized_diagnostic_v1/postrun_technical_report.json",
+      "sha256": "cef700b69685407763aad1b103d2ed861cc3afaa839362478a4fdd7146fcf5e8"
+    }
+  },
+  "private_archive": {
+    "server_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/execution_preparation_v2/approved_launch_v3/postrun_v1/private_complete_run.tar.gz",
+    "sha256": "b5e4cbfe026622135368915175b41e27850c2e9e68aad0b3cbe2941434e80da4",
+    "bytes": 15327732,
+    "files_verified_against_private_inventory": 16,
+    "inventory_sha256": "11d77c36682d088aa750b749df243d2413776dab5d07c504329ee2b63498d4e8",
+    "private_raw_content": [
+      "patient-bearing business receipts",
+      "full parent RNG state",
+      "complete saved2M-event prefix"
+    ],
+    "publicly_published_raw_content": false
+  },
+  "reservation_lifecycle": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/execution_preparation_v2/reservation_12gib.bin",
+    "bytes": 12884901888,
+    "released": false,
+    "note": "Existing finite reservation retained; no automatic deletion of raw evidence or reservation. It is headroom, not exclusive quota."
+  },
+  "production_and_protocol_changes": false,
+  "observer_limits_changed": false,
+  "original_reports_overwritten": false,
+  "next_action_boundary": "Do not increase caps, sample/drop records, modify algorithms or rerun under this consumed authorization. Any new diagnostic design/resource policy and launch identity must be separately reviewed/authorized. No further action taken here.",
+  "qualification_unchanged": {
+    "source_topology_patients": 17,
+    "upper_including_old_unknown": 19,
+    "new_four_target_approved": 0,
+    "formal_patient_target": 30,
+    "nominal_joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ]
+  },
+  "further_execution_permitted_under_this_authorization": false,
+  "formal_launch_permitted": false,
+  "batch_compile_permitted": false,
+  "he_generation_permitted": false,
+  "physician_study_permitted": false
+}

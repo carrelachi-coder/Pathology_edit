@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-11-03T04:45:41.515423+00:00",
+  "status": "single_authorized_sequence_consumed_terminal_hold",
+  "manifest_sha256": "e41815ae705efe05b2075dffe7fd6599b6186782c2f606fb2398922a5ad32032",
+  "authorization_sha256": "42a46db33abc5c92dba8f909a8a7cf81f892c511d4262c71ef607920f6233dec",
+  "rng_approval_sha256": "9d72c4db6e4fd5177e1f55f1406ca319a9cdef06b783c776ce6f7faa6c6ac5d5",
+  "launch_count": 1,
+  "launched_arms": [
+    "A",
+    "B"
+  ],
+  "completed_logical_witness_calls": 4,
+  "reserved_logical_witness_calls": 4,
+  "authorized_max_witness_calls": 6,
+  "C_started": false,
+  "automatic_retries": 0,
+  "resume_permitted": false,
+  "unused_C_budget_reallocated": false,
+  "new_execution_authorization_required_for_any_relaunch": true,
+  "original_authorization_preserved": true,
+  "qualification_updates_permitted": false,
+  "formal_launch_permitted": false,
+  "he_generation_permitted": false
+}
