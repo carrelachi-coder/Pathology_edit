@@ -1,0 +1,38 @@
+{
+  "status": "HOLD_incomplete_synthetic_construction_not_a_completed_validator_comparison",
+  "command_receipt": {
+    "remote_exit_code": 255,
+    "elapsed_seconds": 600.8938426668756,
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/target_synthetic_profile_v1",
+    "synthetic_builder_watchdog_seconds": 600,
+    "validator_hard_timeout_seconds": 30,
+    "automatic_retries": 0,
+    "real_source_calls": 0
+  },
+  "observed_artifacts": {
+    "full_profile_report_exists": false,
+    "state": {
+      "B": {
+        "adapter_status_exists": true,
+        "inner_completion_exists": true,
+        "outer_completion_exists": false,
+        "events": 2100000
+      },
+      "C": {
+        "adapter_status_exists": false,
+        "inner_completion_exists": false,
+        "outer_completion_exists": false,
+        "events": null
+      }
+    },
+    "B_validation_elapsed_seconds": null,
+    "reason_for_missing_B_timing": "first builder kept that receipt in memory; no final profile report after nonzero600s watchdog episode; not reconstructed",
+    "C_validation_elapsed_seconds": null,
+    "BC_comparison_elapsed_seconds": null
+  },
+  "exact_remote_termination_signal": "unavailable; SSH returned255 after approximately600s under declared600s builder watchdog",
+  "interpretation": "No complete target profile report. Do not interpret builder wall time as Validator time or fill missing measurements with zero.",
+  "retry_or_resume": false,
+  "partial_directories_preserved": true,
+  "source_qualification_failure": false
+}

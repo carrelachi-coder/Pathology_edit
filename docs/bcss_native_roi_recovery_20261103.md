@@ -426,3 +426,34 @@ session退出只quiesce。显式`finalize(normal_invocation_end, business_receip
 新代码的[整树4 GiB边界](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_validation_v2/whole_tree_budget.json)也重新核验：2,038份快照后下一份复制前拒绝，实际inode去重分配4,284,502,016字节，低于4,294,967,296上限；Codec两项完整性状态false，内外marker不存在，外层拒绝。最新测试脚本已正确按inode计数，之前的统计和更正仍作为独立历史证据保留。
 
 因此，最新状态是**独立Adapter及指定本地合成／故障／压力验收通过，待独立终审、目标运行环境与硬超时／导入身份核验、新manifest及新S07授权**。本轮没有提供或部署新Controller，更没有启动真实诊断。真实完整trace的数量／时长仍未知，本机27.57／29.98秒不构成正式执行放行。生产Observer、旧2M限制及旧授权不变；17／19患者资格、四目标批准0位、30位目标、19%／32%预算和14%／27%组织硬下限不变，正式H&E、批量四目标和医生研究继续关闭。
+
+
+## 目标服务器技术准备：硬超时门禁有效，完整比较维持 HOLD
+
+用户对`32dc6007`的独立审查通过后，本轮只做生产接入前准备，不修改已验收Codec／Adapter／Validator，也不接入生产或重跑S07。新增[只读进程门禁](../diagnostic_storage/validator_process_gate_v1.py)与[固定worker](../scripts/validator_readonly_worker_v1.py)，代码封存于`dfeee1c2`；旧Observer／Controller／startup文件以及既有2M默认限制均未改动。[本轮总报告](../benchmarks/manuscript_validation_20261103/adapter_target_preflight_report_v1.json)结论为 **`HOLD_target_full_pair_validation_exceeded_frozen30s`**。
+
+门禁父进程仅用标准库，把固定的只读验证worker放入独立进程组。30秒从创建进程前开始，包含输入传递、执行、输出和退出等待；接收JSON后再次核对时间，晚到exit0也hold。超时／非零／信号／响应错绑／输出超限／可捕获取消触发终止与回收，不重试；worker没有publish开关，单流调用固定`publish=False`，父门禁也不发布接受证明。外层生产Controller的实际接线与最终父进程发布路径尚未实现或批准，不能把这个准备组件当成已完成生产接入。不可捕获的父进程SIGKILL／内核故障仍不能保证全部清理；只读worker即便残留也没有发布权限。
+
+[64项本地定向测试](../benchmarks/manuscript_validation_20261103/adapter_target_preflight_v1/local_gate_pytest.txt)通过：26项新门禁、38项既有Controller回归。覆盖进程组超时与后代清理、晚到有效响应、原始信号／非零、stdout／stderr上限、外部取消回收、请求SHA／模式绑定，以及在原Controller.sequence的合成assess中超时后不启动C。这里的execute是合成占位，不是真实来源调用；已接受的117项Adapter和56项Codec证据复用，未再跑一遍。
+
+[目标环境审计](../benchmarks/manuscript_validation_20261103/adapter_target_preflight_v1/server_environment_audit.json)确认Python3.11.15、NumPy1.26.4、zlib1.3.2，解释器SHA和220项distribution记录与此前服务器冻结身份一致；新记录还固定了NumPy本地扩展、zlib扩展及实际加载libz的文件SHA。它是运行身份，不是完整hermetic OS闭包。原A／B快照的10项业务文件哈希／去观测调用AST核对通过，7项真实源输入／模板／旧Controller／RNG决策文件哈希通过，旧Observer／Comparator／startup另行复核未变。所有检查均只读，不重建case，不调用planner或来源资格入口。
+
+实际候选输出父目录位于ext4，隔离技术目录的no-replace硬链接和同inode验证通过，与候选输出父目录同设备；未来S07候选目录尚未创建。已有12 GiB物理预留仅检查、未修改，仍非排他quota。代码只复制到新的只读技术快照目录，9个文件前后哈希一致，没有安装到现有生产快照或服务路径。既有受控RNG条件与两个提前导入模块的接受记录保持原SHA；本轮只读worker未加载business模块或Torch，不冒充新的完整业务启动／导入非干扰性验收。
+
+**保留一次未完成的构建尝试。**初次目标服务器合成生成在预先设置的600秒构建看门狗下约600.89秒后SSH返回255，B已封存、C未封存，无最终profile报告。确切终止信号未留存，不把它伪装成一个完整Validator超时测量；B精确验证耗时等未持久化数据保留null，不补零、不从代码分支反推数值。[原尝试记录](../benchmarks/manuscript_validation_20261103/adapter_target_preflight_v1/first_builder_attempt_hold.json)和全部部分目录保留，没有恢复或重跑该生成任务。
+
+为了把生成成本与验证时限分开，下一项是事先定义的**验证-only实验**：[固定闭合合成输入投影](../benchmarks/manuscript_validation_20261103/adapter_target_preflight_v1/closed_fixture_projection_protocol.json)。复用`32dc6007`已接受的2,100,000事件／685数组（683个新快照＋2个RNG快照）完整B/C数据，809个canonical文件逐字节SHA核对后复制到新目录，再重建同inode pending别名。仅不携带旧外层接受／validation控制文件，要求新验证器完整重验；逻辑事件、数组、索引、receipt、manifest/status及内层封存文件均未改写，原数据和旧证明未删除。这个物理投影不是排除语义字段，也不是恢复截断的旧S07 B。原始全清单、RNG数据、约1.465 GB归档和新拷贝均私有保存，不入Git。
+
+[目标服务器只读结果](../benchmarks/manuscript_validation_20261103/adapter_target_preflight_v1/target_readonly_result.json)每一步立即保存receipt，结果如下：
+
+| 步骤 | OS进程总耗时 | 状态 |
+| --- | ---: | --- |
+| B单流 | 19.373秒 | validated_readonly |
+| C单流 | 23.703秒 | validated_readonly |
+| 完整B/C比较 | 30.004秒（含终止／回收） | **HOLD：timeout，SIGKILL退出-9，已回收** |
+
+所有步骤仍用硬30秒，未改60秒，未自动重试超时比较。完整比较没有返回worker receipt或semantic_match，不得根据源SHA相同推断已完成，也不得把缺失结果填零。B/C外层接受标记均不存在；输入数据的既有内层物理封存不因此升级为观察接受。独立目标安全fixture也验证了强制超时阻止下一验证步骤、晚到写入未发生、进程已回收。这些是验证门禁与合成数据证据，不是S07预先验收，也不能证明真实Full Capture必然适合4 GiB。
+
+[执行关闭的准备manifest](../benchmarks/manuscript_validation_20261103/adapter_pre_execution_preparation_manifest_v1.json)另存，固定源码、实际运行环境、文件系统／预留、旧RNG／导入披露／授权结案记录及所有证据SHA；`execution_permitted=false`、`ready_for_execution=false`、`preflight_complete=false`、生产接入false、无新授权。它不是可启动的launch manifest。未来须先独立审查目标时限／资源条件与生产接线，再另冻最终launch manifest并绑定新授权，旧授权和剩余调用槽不能复用。
+
+本轮已明确回答最关键的执行问题：**这一次目标服务器完整比较未能在冻结30秒内结束，因此不能放行。**没有优化或削减检查来隐藏这个负面结果。17位源拓扑通过、含unknown上限19位、新增四目标批准0、30位患者目标、19%／32%名义预算及14%／27%组织硬下限不变；正式H&E、批量四目标和医生研究继续关闭。

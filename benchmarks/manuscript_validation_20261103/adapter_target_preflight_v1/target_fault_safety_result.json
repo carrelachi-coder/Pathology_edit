@@ -1,0 +1,49 @@
+{
+  "forced_validation_timeout": {
+    "status": "HOLD",
+    "steps": [
+      {
+        "step": "B",
+        "result": {
+          "status": "HOLD",
+          "validation_ok": false,
+          "reason": "timeout",
+          "transport": {
+            "transport_ok": false,
+            "reason": "timeout",
+            "exit_code": -9,
+            "timed_out": true,
+            "child_reaped": true,
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderr_bytes": 0,
+            "elapsed_seconds": 0.002333015203475952,
+            "hard_timeout_seconds": 0.001
+          },
+          "worker_receipt": null,
+          "interpretation_permitted": false,
+          "capture_marker_published": false,
+          "execution_permitted": false,
+          "qualification_updates_permitted": false,
+          "attempts": 1,
+          "automatic_retries": 0
+        }
+      }
+    ],
+    "remaining_steps_started": false,
+    "execution_permitted": false
+  },
+  "late_exit_probe": {
+    "transport_ok": false,
+    "reason": "timeout",
+    "exit_code": -9,
+    "timed_out": true,
+    "child_reaped": true,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr_bytes": 0,
+    "elapsed_seconds": 0.05186120234429836,
+    "hard_timeout_seconds": 0.05
+  },
+  "capture_marker_exists": false,
+  "late_marker_exists": false,
+  "real_witness_calls": 0
+}

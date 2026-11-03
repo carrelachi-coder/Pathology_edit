@@ -1,0 +1,19 @@
+{
+  "snapshot_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_dfeee1c2",
+  "source_commit": "dfeee1c29f81786b61657a3d6497a0cb366b38e5",
+  "accepted_component_commit": "32dc6007b30c2f4de37df5a50c00a1c29c0901be",
+  "files_sha256": {
+    "diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "diagnostic_storage/validator_process_gate_v1.py": "8f45bd61cb4f5fc1a0b221d3997fe8f92a5dfc64ccf3ca53d1b574dd67601f53",
+    "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+    "scripts/validator_readonly_worker_v1.py": "e1bada77a82086163c2c1b0ee290d3e5f394729da5043ccb3666df1c9d65e8a3",
+    "scripts/probe_target_validator_preflight_v1.py": "3cf0e88888d55b43397a4880b4b562c40991299fbb123096e156d595fe39c53e"
+  },
+  "isolated_technical_stage_only": true,
+  "production_paths_modified": false,
+  "execution_permitted": false
+}

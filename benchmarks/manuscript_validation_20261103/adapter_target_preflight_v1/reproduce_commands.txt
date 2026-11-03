@@ -1,0 +1,9 @@
+# Local new gate + existing Controller regression, no real source invocation.
+python -m pytest -q tests/test_validator_process_gate_v1.py tests/test_limited_topology_controller.py
+# Target: use only the frozen environment/code snapshot and fixed closed synthetic fixture.
+# Build bounded request bytes with kind=capture or compare and trusted identity/receipt paths.
+# diagnostic_storage.validator_process_gate_v1.run_validation(request_bytes)
+# Each helper has OS30s hard limit including spawn/input/wait; no publish option.
+# Record each step immediately; HOLD stops all following steps; no retries or timeout extension.
+# First600s synthetic builder attempt remains incomplete and is not retried/resumed.
+# Source fixture projection manifest records exact archive/inventory SHA and reconstruction recipe.

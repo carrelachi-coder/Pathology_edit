@@ -1,0 +1,42 @@
+{
+  "scope": "read-only file hashes, no case reconstruction or source qualification",
+  "files": {
+    "reference_image": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/local_evidence_v1/native_roi_scan_v1/new_sources/images/BCSS_native_recovery_205cb2398525fe94.png",
+      "sha256": "c64dcc8dd0ecb73e1d823bc4d699033d52ba362bfb60f3d58685866aaac876a8",
+      "expected_match": true
+    },
+    "reference_tissue_mask": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/local_evidence_v1/native_roi_scan_v1/new_sources/tissue_masks/BCSS_native_recovery_205cb2398525fe94.png",
+      "sha256": "4465140a7f1c00581dc596782df91018c6f4715381fb96a5e346f20528b010b8",
+      "expected_match": true
+    },
+    "reference_nuclei_mask": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/local_evidence_v1/native_roi_scan_v1/new_sources/nuclei_masks/BCSS_native_recovery_205cb2398525fe94.png",
+      "sha256": "9080a157d64fa476a27ff4708821ae0939426690bc463b1901eb68ab667aebb0",
+      "expected_match": true
+    },
+    "source_subset": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+      "sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+      "expected_match": true
+    },
+    "case_templates": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+      "sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+      "expected_match": true
+    },
+    "rng_decision": {
+      "path": "/home/lyw/wqx-DL/flow-edit/manuscript-controller-80fbbfc2/benchmarks/manuscript_validation_20261103/rng_initialization_decision_record_v1.json",
+      "sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+      "expected_match": true
+    },
+    "controller": {
+      "path": "/home/lyw/wqx-DL/flow-edit/manuscript-controller-80fbbfc2/scripts/run_limited_topology_controller.py",
+      "sha256": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+      "expected_match": true
+    }
+  },
+  "all_match": true,
+  "real_source_calls": 0
+}

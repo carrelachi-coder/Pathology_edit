@@ -1,0 +1,11 @@
+{
+  "source_commit": "dfeee1c29f81786b61657a3d6497a0cb366b38e5",
+  "accepted_component_commit": "32dc6007b30c2f4de37df5a50c00a1c29c0901be",
+  "new_file_sha256": {
+    "diagnostic_storage/validator_process_gate_v1.py": "8f45bd61cb4f5fc1a0b221d3997fe8f92a5dfc64ccf3ca53d1b574dd67601f53",
+    "scripts/validator_readonly_worker_v1.py": "e1bada77a82086163c2c1b0ee290d3e5f394729da5043ccb3666df1c9d65e8a3",
+    "scripts/probe_target_validator_preflight_v1.py": "3cf0e88888d55b43397a4880b4b562c40991299fbb123096e156d595fe39c53e",
+    "tests/test_validator_process_gate_v1.py": "4538bbc498c948cfdb449c07b5eab12dda1bf8c3dcd3d4b77d4583e2e4f27b25"
+  },
+  "scope": "Isolated technical staging only; production paths and accepted Codec/Adapter/Validator unchanged."
+}

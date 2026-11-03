@@ -1,0 +1,24 @@
+{
+  "snapshot_files_match": {
+    "diagnostic_storage/__init__.py": true,
+    "diagnostic_storage/guard_blocks_v2.py": true,
+    "diagnostic_storage/observer_adapter_v1.py": true,
+    "diagnostic_storage/observer_adapter_contract_v1.py": true,
+    "diagnostic_storage/observer_adapter_validation_v1.py": true,
+    "diagnostic_storage/validator_process_gate_v1.py": true,
+    "scripts/stress_observer_adapter_v1.py": true,
+    "scripts/validator_readonly_worker_v1.py": true,
+    "scripts/probe_target_validator_preflight_v1.py": true
+  },
+  "python_executable_sha256": "cad15d1b37740e48e83644b2a6148fc40c84727aabb703bf9ed4218afb0a6a52",
+  "numpy_native_extension_sha256": "a735e4e8355b75c800112af8a5b1731b891b2016ed57067352eea6cab0aa00bc",
+  "numpy_native_extension_path": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/site-packages/numpy/core/_multiarray_umath.cpython-311-x86_64-linux-gnu.so",
+  "zlib_extension_sha256": "e17f644fc0b41a84646fb07313035f40efda5045a9b0298e54d21d5cfdc59629",
+  "zlib_extension_path": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/lib-dynload/zlib.cpython-311-x86_64-linux-gnu.so",
+  "loaded_libz_sha256": {
+    "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/libz.so.1.3.2": "22f1601237b86f0f48ed5b83071d1505167ae2e16365b33b4eed6e96dbf71ab0"
+  },
+  "candidate_output_absent": true,
+  "existing_reservation_size": 12884901888,
+  "existing_reservation_allocated": 12884905984
+}

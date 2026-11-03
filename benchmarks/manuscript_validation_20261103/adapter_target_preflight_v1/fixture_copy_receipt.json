@@ -1,0 +1,9 @@
+{
+  "source_archive_sha256": "e963740dcfa1f8063047712a9d9cf3ca077225fec6f7a9f01970b117d6a1579c",
+  "canonical_file_hashes_verified": 809,
+  "logical_event_bytes_changed": false,
+  "cached_outer_proofs_copied": false,
+  "source_records_overwritten": false,
+  "input_projection_only": true,
+  "same_device_as_candidate_output": true
+}

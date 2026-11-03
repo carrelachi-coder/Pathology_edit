@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "kind": "closed_pre_execution_preparation_record_not_a_launch_manifest",
+  "recorded_at": "2026-11-03T17:06:25.717848+08:00",
+  "accepted_component_commit": "32dc6007b30c2f4de37df5a50c00a1c29c0901be",
+  "gate_source_commit": "dfeee1c29f81786b61657a3d6497a0cb366b38e5",
+  "execution_permitted": false,
+  "ready_for_execution": false,
+  "preflight_complete": false,
+  "production_integration_permitted": false,
+  "production_controller_entrypoint": null,
+  "production_parent_publication_wiring": "not_implemented_not_authorized; this gate is read-only and cannot publish capture acceptance",
+  "new_execution_authorization": null,
+  "old_authorization_reuse_permitted": false,
+  "future_authorization_binding": "A separately reviewed final launch manifest must bind exact new source/input/runtime/storage hashes; this preparation record cannot launch S07 even if separately reviewed. Never reuse old authorization or its residual call slots.",
+  "target_timing_clearance": "HOLD_complete_pair_did_not_finish_under30s",
+  "code_snapshot": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/code_snapshot_dfeee1c2",
+    "files_sha256": {
+      "diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+      "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+      "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+      "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+      "diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+      "diagnostic_storage/validator_process_gate_v1.py": "8f45bd61cb4f5fc1a0b221d3997fe8f92a5dfc64ccf3ca53d1b574dd67601f53",
+      "scripts/stress_observer_adapter_v1.py": "66b88a6f65c1671f13e1fa7554cc951ac24e597c2b1577c17a8f5a4c3f7a4599",
+      "scripts/validator_readonly_worker_v1.py": "e1bada77a82086163c2c1b0ee290d3e5f394729da5043ccb3666df1c9d65e8a3",
+      "scripts/probe_target_validator_preflight_v1.py": "3cf0e88888d55b43397a4880b4b562c40991299fbb123096e156d595fe39c53e"
+    },
+    "isolated_technical_stage_only": true
+  },
+  "runtime_audit": {
+    "path": "benchmarks/manuscript_validation_20261103/adapter_target_preflight_v1/server_environment_audit.json",
+    "sha256": "51f2dcffc02f44e550285a3765c2b65e941916f74e9946a3fe88d261442eb315"
+  },
+  "runtime_native_binaries": {
+    "snapshot_files_match": {
+      "diagnostic_storage/__init__.py": true,
+      "diagnostic_storage/guard_blocks_v2.py": true,
+      "diagnostic_storage/observer_adapter_v1.py": true,
+      "diagnostic_storage/observer_adapter_contract_v1.py": true,
+      "diagnostic_storage/observer_adapter_validation_v1.py": true,
+      "diagnostic_storage/validator_process_gate_v1.py": true,
+      "scripts/stress_observer_adapter_v1.py": true,
+      "scripts/validator_readonly_worker_v1.py": true,
+      "scripts/probe_target_validator_preflight_v1.py": true
+    },
+    "python_executable_sha256": "cad15d1b37740e48e83644b2a6148fc40c84727aabb703bf9ed4218afb0a6a52",
+    "numpy_native_extension_sha256": "a735e4e8355b75c800112af8a5b1731b891b2016ed57067352eea6cab0aa00bc",
+    "numpy_native_extension_path": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/site-packages/numpy/core/_multiarray_umath.cpython-311-x86_64-linux-gnu.so",
+    "zlib_extension_sha256": "e17f644fc0b41a84646fb07313035f40efda5045a9b0298e54d21d5cfdc59629",
+    "zlib_extension_path": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/lib-dynload/zlib.cpython-311-x86_64-linux-gnu.so",
+    "loaded_libz_sha256": {
+      "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/libz.so.1.3.2": "22f1601237b86f0f48ed5b83071d1505167ae2e16365b33b4eed6e96dbf71ab0"
+    },
+    "candidate_output_absent": true,
+    "existing_reservation_size": 12884901888,
+    "existing_reservation_allocated": 12884905984
+  },
+  "output": {
+    "candidate_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/limited_topology_capture_adapter_v2_candidate",
+    "candidate_root_exists": false,
+    "actual_probe_same_filesystem": true,
+    "filesystem_type": "ext4",
+    "hardlink_no_replace": true,
+    "existing_reservation": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/execution_preparation_v2/reservation_12gib.bin",
+      "size_bytes": 12884901888,
+      "allocated_bytes": 12884905984,
+      "inode": 185206993,
+      "same_device": true,
+      "is_quota": false,
+      "modified": false
+    },
+    "reservation_is_exclusive_quota": false
+  },
+  "validator_process_policy": {
+    "hard_timeout_seconds": 30,
+    "automatic_retries": 0,
+    "stdout_cap_bytes": 32768,
+    "stderr_cap_bytes": 8192,
+    "request_cap_bytes": 32768,
+    "deadline_starts": "before process creation; includes request transfer, execution, output and exit wait; parent checks again after JSON parse",
+    "failure": "timeout/nonzero/signal/invalid receipt/binding/output excess/cancellation => HOLD; kill process group and reap where possible; no later steps",
+    "publication": "Worker hardcodes publish=False; gate never publishes, even after timely success. Final production parent commit needs separate reviewed wiring and authorization.",
+    "signal_scope": "Tested worker timeout/group termination and parent KeyboardInterrupt. Uncatchable parent SIGKILL/kernel failure cannot be guaranteed cleaned up; read-only worker still has no publication authority.",
+    "stderr_digest_scope": "Digest of captured bounded stderr. On HOLD this may be only a prefix; absence of captured stderr is not proof of no error."
+  },
+  "observer_policy": {
+    "total_bytes_per_capture": 4294967296,
+    "outer_control_bytes": 262144,
+    "codec_bytes": 4294705152,
+    "no_field_exclusions": true,
+    "posthoc_normalization": false,
+    "legacy_2M_limit_changed": false,
+    "actual_S07_full_capture_capacity": "unknown; budget rejection remains mandatory"
+  },
+  "future_finite_scope_reference": {
+    "source_alias": "S07",
+    "operations": [
+      "U1",
+      "U2"
+    ],
+    "arms": [
+      "A",
+      "B",
+      "C"
+    ],
+    "max_witness_calls": 6,
+    "seconds_per_source_pair": 1200,
+    "automatic_retries": 0,
+    "scope_is_not_authorization": true
+  },
+  "reference_records": {
+    "benchmarks/manuscript_validation_20261103/rng_initialization_decision_record_v1.json": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+    "benchmarks/manuscript_validation_20261103/rng_controlled_startup_approval_v1.json": "9d72c4db6e4fd5177e1f55f1406ca319a9cdef06b783c776ce6f7faa6c6ac5d5",
+    "benchmarks/manuscript_validation_20261103/import_order_acceptance_decision_v1.json": "75a59da6bf70a31da318b337d575950626377dd5f609eeadb06b3fba291c3880",
+    "benchmarks/manuscript_validation_20261103/s07_authorization_closure_v1.json": "038626e15c7c079b8af2c685cab1b80d29319cffdcf92ad527fb3e37c5d05b61",
+    "benchmarks/manuscript_validation_20261103/observer_codec_adapter_implementation_contract_v2.json": "782e45d1754e3c0922c491a5d19591f66ec07fe17b121538cafd95501c3c574c",
+    "benchmarks/manuscript_validation_20261103/limited_topology_capture_protocol_v1.json": "9f8c962ba2f70e588fe527c2b0a8b6a3478d21fee87c4c181335c5920b12da7c"
+  },
+  "approved_rng_condition": "Existing common-parent/postfork Python/NumPy legacy/Torch CPU default restore and inherited hash secret remains the reference. It is not historical trajectory recovery. Not re-requested or changed here.",
+  "import_difference_scope": "Preserve accepted legacy two-module early-import disclosure. It is not blanket approval of an unimplemented production harness. Target read-only workers loaded neither business modules nor Torch; actual new business startup/import integration remains unverified.",
+  "source_binding": {
+    "frozen_source_reference": "BCSS_native_recovery_205cb2398525fe94",
+    "frozen_case_mapping": [
+      {
+        "operation": "U1",
+        "template_index": 1,
+        "case_id": "BCSS_native_recovery_205cb2398525fe94__cohesive-boundary-expansion-v1__capacity",
+        "reconstructed_input_mapping_sha256": "f148617ecba6a928cf94d3b70ab4f1699a35912749bb418577b011ef4ed9edc2",
+        "case_mapping_scope": "exact mapping construction in retained probe script before validation/materialized auxiliaries; not an original saved plan hash"
+      },
+      {
+        "operation": "U2",
+        "template_index": 3,
+        "case_id": "BCSS_native_recovery_205cb2398525fe94__generic-immune-infiltrate-increase-v1__capacity",
+        "reconstructed_input_mapping_sha256": "55df328b4a82b00308c69e61403a9e8fe81495708f2ed51642cdc0ae2b1256a7",
+        "case_mapping_scope": "exact mapping construction in retained probe script before validation/materialized auxiliaries; not an original saved plan hash"
+      }
+    ],
+    "live_reference_files_checked": true,
+    "source_case_reconstruction_or_execution": false
+  },
+  "research_state": {
+    "topology_pass_patients": 17,
+    "upper_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "patient_target": 30,
+    "nominal_joint_budgets": [
+      0.19,
+      0.32
+    ],
+    "hard_tissue_floors": [
+      0.14,
+      0.27
+    ],
+    "formal_HE": false,
+    "batch_four_target_compile": false,
+    "physician_study": false
+  },
+  "independent_new_gate_review_approved": false,
+  "evidence_sha256": {
+    "adapter_target_preflight_v1/closed_fixture_projection_protocol.json": "12f2435c212070175dac4b3512e7b6b8dcccb212f72a220b6a940b72c694aed4",
+    "adapter_target_preflight_v1/first_builder_attempt_hold.json": "e4cb35560413607b346d4ab6220acf6f42316cc3ea0ed5eeaf13981cc7d50691",
+    "adapter_target_preflight_v1/fixture_copy_receipt.json": "ec70c498aafb6c24e5a4224c2a5a092d09c43438511fef401d7c8b1f1e053b84",
+    "adapter_target_preflight_v1/gate_code_identity.json": "218d024e26222ab7a4a7356c52cd4fc5d3885a4956a8c06449aca8c06cfe934b",
+    "adapter_target_preflight_v1/isolated_source_snapshot.json": "14fa993143d9a0a871667c76f1587b97f8389423d9e810b4e599086c90829d33",
+    "adapter_target_preflight_v1/legacy_observer_startup_hash_check.json": "eaaf7431b08ead3c59a20c10ecfae8f33eeac7b7689cb59216049b3d1924911c",
+    "adapter_target_preflight_v1/local_gate_pytest.txt": "62697fea1a63cc3e24566384417c920857c3885630adc56ba89963ebd2b753da",
+    "adapter_target_preflight_v1/post_source_binary_check.json": "cd81c98ae2936568bcd80841bfa67e4f48e1ee8a00f746f5a308c7e66edbdfdf",
+    "adapter_target_preflight_v1/reproduce_commands.txt": "d54048498662d456ea9a761c9a91f4ae1d62c091c029a46c627c4a29858454c1",
+    "adapter_target_preflight_v1/server_environment_audit.json": "51f2dcffc02f44e550285a3765c2b65e941916f74e9946a3fe88d261442eb315",
+    "adapter_target_preflight_v1/source_reference_hash_check.json": "fa8f220c5377d6bb1c2d7f00d17fab96b7b9949713cbced095e964bb785e975c",
+    "adapter_target_preflight_v1/target_fault_safety_result.json": "c6584d9cc1b59e92227732eab80ffb7f18c717d4549cd9a56941dcae3e346c5a",
+    "adapter_target_preflight_v1/target_readonly_result.json": "1b5bb5b9ff513b30054b68b905e01aec155095b1903acb5a89130304ef16f897"
+  }
+}

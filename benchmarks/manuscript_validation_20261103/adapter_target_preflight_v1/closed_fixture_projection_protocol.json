@@ -1,0 +1,22 @@
+{
+  "kind": "fixed_closed_synthetic_fixture_projection",
+  "source_acceptance_commit": "32dc6007b30c2f4de37df5a50c00a1c29c0901be",
+  "events_each": 2100000,
+  "new_float64_snapshots": 683,
+  "actual_array_occurrences_each": 685,
+  "source_stream_sha256": "8cfe9c6fcf2665e0f7a00f654eab6cb7f1e70c984e47f6ea353d7ec615684f43",
+  "recipe": "Copy all canonical Codec files and both adapter manifest/status files byte-for-byte; reconstruct same-inode pending aliases, including index names. Exclude only prior external acceptance/validation controls so a new read-only validator must recompute all checks. No source record deleted/rewritten, no logical field excluded or normalized, no new events.",
+  "not_a_retry_of_failed_validator": "Previous target attempt stopped in synthetic data construction; this is a separate validation-only fixture experiment, not generator resume or an increased deadline.",
+  "validator_deadline_seconds": 30,
+  "automatic_retries": 0,
+  "real_source_calls": 0,
+  "archive_bytes": 1465128960,
+  "archive_sha256": "e963740dcfa1f8063047712a9d9cf3ca077225fec6f7a9f01970b117d6a1579c",
+  "full_private_inventory_sha256": "6bbcf7750ced2f6814f081dc1ccda4ad7778659a957ff0e19cad32fc0f48125c",
+  "canonical_files": 809,
+  "full_inventory_storage": "private .codex-artifacts only",
+  "field_exclusions": [],
+  "control_projection_clarification": "Only previous external acceptance/validation controls omitted from the derived view. All logical records, array blobs, indices, receipts, manifest/status and inner completion files retain exact source bytes. Original captures and old proofs unchanged.",
+  "input_transfer_and_archive_storage": "Technical input/staging assets outside the Observer capture trees; all Codec blobs are regular in-tree files, not external references. Per-capture whole-tree4GiB remains enforced.",
+  "purpose": "Separate target validation-only experiment, no regeneration or retry of a timed-out validation on the same fixture."
+}
