@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "status": "frozen",
+  "frozen_utc": "2026-11-03T00:11:34.584228+00:00",
+  "scope": "216 native recovery source windows: CPU necessary-capacity followed by CPU source-topology witnesses only",
+  "source_count": 216,
+  "patient_count": 67,
+  "source_census_sha256": "13c5b8a0e3b9da34e4b6aecff037d76bb4eb35e59b40719caadf1242cabbe623",
+  "source_order": "preserve frozen candidate census exactly: patient ID, native ROI ID, y, x; ordered queue, all capacity receipts before topology subset",
+  "implementation_change": "none; existing clean source-qualification entry points reused",
+  "execution_code_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+  "driver_sha256": "c498b3eea9ebb3992329a75ec2f57cb3fe9150e2415c5712188ff3276a903ca9",
+  "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+  "technical_exclusion_sha256": "e99577970b5e4c0a09fce4768b2c6e1368b2d0454cc29fa90662848e87f30126",
+  "significant_joint_budget": {
+    "target_fraction": 0.32,
+    "min_fraction": 0.27,
+    "max_fraction": 0.37,
+    "tissue_min_fraction": 0.27,
+    "basis": "whole_patch",
+    "relative_tolerance": 0.02,
+    "fallback_policy": "max_feasible_below_target",
+    "capacity_floor_policy": "strict",
+    "minimum_effective_fraction": 0.0
+  },
+  "nominal_two_strength_budgets": [
+    0.19,
+    0.32
+  ],
+  "unchanged_hard_tissue_floors": [
+    0.14,
+    0.27
+  ],
+  "workers": 8,
+  "seconds_per_source": {
+    "capacity": 300,
+    "topology": 1200
+  },
+  "timeout_scope": "combined U1+U2 per source; timeout retained as unknown, not a biological failure",
+  "environment": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1"
+  },
+  "integrity_preflight": "revalidate all648 input SHA, decoded content SHA, dimensions, labels, required tissue classes and27% Stroma before any capacity calls",
+  "stage_transition": "all216 capacity controls reach terminal status; only sources with two valid positive capacity checks enter topology in unchanged source order",
+  "classification": [
+    "passed",
+    "failed_condition",
+    "timeout",
+    "execution_error",
+    "capacity_recheck_mismatch",
+    "not_run"
+  ],
+  "exception_policy": "producer exception even inside exit0 is execution_error, never failed_condition or zero measurement",
+  "automatic_retry": false,
+  "first_source_policy": "first topology-pass source per patient is only a provisional source record; final qualification still requires all four targets and independent review",
+  "patient_union": "set union of old17 topology-pass groups, old unknowns, new topology-pass groups and unresolved new groups; never add source counts as patient counts",
+  "frozen_crop_protocol_sha256": "d8078da7b874957eae960a9421cc35bfd9cd89a51a38b05f0ab5582d0ee86c70",
+  "training_reference_audit_sha256": "80bde4eb8e8b69743bec0692bd36d74050f5b9f2a7f4adebfdc3b708ebf52f02",
+  "source_distribution_note": "all216 failed at least one historical training-export quality filter; retained as predeclared source candidates, not accepted cohort members",
+  "run_probnet_population_regeneration": false,
+  "batch_four_target_compilation_permitted": false,
+  "formal_launch_permitted": false,
+  "physician_study_started": false
+}
