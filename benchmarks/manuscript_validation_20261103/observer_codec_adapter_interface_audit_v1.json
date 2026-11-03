@@ -1,0 +1,714 @@
+{
+  "schema_version": 1,
+  "status": "read_only_interface_audit_for_design_not_adapter_implementation_acceptance",
+  "recorded_at": "2026-11-03T14:22:11.369128+08:00",
+  "code_commit": "c2fd074122e35934a81af4bdd21691e19da189f6",
+  "file_sha256": {
+    "phase3_mask_edit_refine/passive_observer.py": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+    "phase3_mask_edit_refine/observer_comparison.py": "434fc10a8171a1fd17554ff0ba43a5bcd677f375ad4f021712ea8d1a26afc692",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "scripts/run_limited_topology_controller.py": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+    "scripts/probe_manuscript_joint_capacity.py": "ef824365ce0b541be9ec4159798c7f1d33689fe3d8c5480e218a06ce3d5aebca",
+    "phase3_joint_edit_refine/g2_execution_qualification.py": "f77ebc1958992ccd68887b918bc0f026cb496eea3b842de5dce34976de2552dc",
+    "benchmarks/manuscript_validation_20261103/guard_block_format_v2.json": "890175234376dc50b554223135cabe13b1f89deacafad5e42e6e2ab05e5f403e",
+    "benchmarks/manuscript_validation_20261103/guard_block_codec_v2_validation_report.json": "bbe2897a62d7521fe857e32e456bc13ebd65304d29acd8be0786ae4856a9ddb9"
+  },
+  "api_definitions": {
+    "phase3_mask_edit_refine/passive_observer.py": [
+      {
+        "name": "_json",
+        "line": 28,
+        "source_sha256": "74164314e321ce2bd56d24da84d3feb7f86b54826a94437ecf1f3e411e89f301"
+      },
+      {
+        "name": "file_sha256",
+        "line": 35,
+        "source_sha256": "98f06687e0f117dd8a5cf02d51379bd14692290e93ebdb2be528ff670011d4fe"
+      },
+      {
+        "name": "array_sha256",
+        "line": 43,
+        "source_sha256": "b625eba6cffdd1d7a3389f5bf6d3b171d94e45a30ee86386c581e390b2fcdfb5"
+      },
+      {
+        "name": "_digest",
+        "line": 53,
+        "source_sha256": "f0ce92aae2cc81f9652a5ef74a1b5401abf3de7899e85e70e622a73851acff45"
+      },
+      {
+        "name": "PassiveObserver.__init__",
+        "line": 63,
+        "source_sha256": "d2e4e354da46a8c1d909cd84e79fed2c55c0720d3a8e47aa8641bd3ca76c8390"
+      },
+      {
+        "name": "PassiveObserver.invalidate",
+        "line": 92,
+        "source_sha256": "bf661e0615cf4eec643b0ecf5948f48b8f3e5c87da2616231c81cf1f4488bce7"
+      },
+      {
+        "name": "PassiveObserver._copy_array",
+        "line": 98,
+        "source_sha256": "362c0f0a99fba7eb1b9459bb358e58fcac8ad93ef984c86b8d2c4cf075dca154"
+      },
+      {
+        "name": "PassiveObserver._write_raster",
+        "line": 103,
+        "source_sha256": "15d44a9193b778f3dd120a93846ab5e6a0f477369bc4227c8728f10b39d781d3"
+      },
+      {
+        "name": "PassiveObserver._reserve_metadata",
+        "line": 112,
+        "source_sha256": "5b3171dc6faedb1d2795beaeffd03d62a5e830607ccc099144c9dd9cbdcd4a32"
+      },
+      {
+        "name": "PassiveObserver._encode",
+        "line": 123,
+        "source_sha256": "42f99a95381cb39119c9a8c1a3d4bd785dbc34f4c276214c1ebd1e2757cb24e1"
+      },
+      {
+        "name": "PassiveObserver._rng",
+        "line": 168,
+        "source_sha256": "715f8984a207d20c48e5022ba8855135b3ff98662bd5bb7d6d34992b5bf95dd7"
+      },
+      {
+        "name": "PassiveObserver.record",
+        "line": 182,
+        "source_sha256": "0af0623b4c399894cfe66f09d7a35600604d55017016476ded2446ebdf5fd78d"
+      },
+      {
+        "name": "PassiveObserver._write_line",
+        "line": 203,
+        "source_sha256": "41072e1aa7e65ec47438603527bc354502c907b8366843ff0b63c98f47e8c432"
+      },
+      {
+        "name": "PassiveObserver.status",
+        "line": 206,
+        "source_sha256": "e12a2966957d00b011e93f5973630b60ab4f19bd144b55b36cc799d1bffdaa46"
+      },
+      {
+        "name": "PassiveObserver.close",
+        "line": 217,
+        "source_sha256": "d108babb1174dbb7a3d586720c25fa4a12f68674db9dbe907a7bce715b6e6ff1"
+      },
+      {
+        "name": "PassiveObserver._publish_completion",
+        "line": 239,
+        "source_sha256": "de60a1619859a2f4ce592b0750e05f0fbc63e4ee7ec9a913f6d4fce9903a40b4"
+      },
+      {
+        "name": "observe",
+        "line": 254,
+        "source_sha256": "6647ddbd648ebf608ee559b4494e6c7bc44bbfb9627d5f3185515b1ec6ad0b3d"
+      },
+      {
+        "name": "observation_session",
+        "line": 266,
+        "source_sha256": "730e3bfb070c0752b9e7d51247cd5c9c54d9d170fae789dfdd50acdb53447067"
+      }
+    ],
+    "phase3_mask_edit_refine/observer_comparison.py": [
+      {
+        "name": "_load",
+        "line": 11,
+        "source_sha256": "d008b6ba9c4e1010f260ee20296ea1c82ae6c6c990e482e118bd98ffec1fa6fe"
+      },
+      {
+        "name": "compare_observer_runs",
+        "line": 70,
+        "source_sha256": "a7e8954c98755bb9249739744e3b1e52be07bbb89771b631dbd5b5b70c4bbb0d"
+      },
+      {
+        "name": "rejection_pixel_sets",
+        "line": 89,
+        "source_sha256": "316a502048ed6fdb092831288205eb6949fee20bc7dbf2242e698f4f7f651123"
+      }
+    ],
+    "diagnostic_storage/guard_blocks_v2.py": [
+      {
+        "name": "dump",
+        "line": 37,
+        "source_sha256": "fe928627f1cc2c63512d1b3b6ae7c6178ccc86fefa8b655513cd77248d75bb09"
+      },
+      {
+        "name": "digest",
+        "line": 43,
+        "source_sha256": "2f497b34d330643ac92b8de26e3c05570face662859e17f417174f9b64c6046c"
+      },
+      {
+        "name": "file_hash",
+        "line": 47,
+        "source_sha256": "77fdf212ffc32ace510f009e0abe80410c976cf995793c836255cdcb92e6fa1d"
+      },
+      {
+        "name": "unique_pairs",
+        "line": 55,
+        "source_sha256": "e3b56fe7de7e0ed7c7c9c601b0a99d80e704d5ac9b674b6d8571355e009bee36"
+      },
+      {
+        "name": "parse",
+        "line": 64,
+        "source_sha256": "dec1cdb4f0467063fae19c1f679ba79c7ee93bfe9820f83a79bbd1d242b2836c"
+      },
+      {
+        "name": "integer",
+        "line": 73,
+        "source_sha256": "566cd423600fd88a8d9f0d886b6727834d12c5e07594d8aec5806a4cb8983c88"
+      },
+      {
+        "name": "refs",
+        "line": 77,
+        "source_sha256": "b2446880b4e3959e87624f7b24c8bee63038d61d0fe1731f9f7715b717f7ca71"
+      },
+      {
+        "name": "Operations.__init__",
+        "line": 97,
+        "source_sha256": "6a0f4abf2dd637a8ec3096ef60374f2a5439c1cb0b5e2587805e525d0233cc02"
+      },
+      {
+        "name": "Operations.event",
+        "line": 110,
+        "source_sha256": "8b3436b4b2ef074ba59a9a1ba5efb51ff3cb7f2fa579cf9a7311fe0b65c0bf57"
+      },
+      {
+        "name": "Operations.complete",
+        "line": 134,
+        "source_sha256": "6a7bf6c5ae99d9e950467e6a9417a98853f56dbb7432f3597e68836997158d4c"
+      },
+      {
+        "name": "Budget.__init__",
+        "line": 146,
+        "source_sha256": "8aa11716f57d01a17bc11aa580f9aeb0743bb8dff7d2aaeea5ea52fa1d03318a"
+      },
+      {
+        "name": "Budget.reservation",
+        "line": 152,
+        "source_sha256": "1f53c2e2fe9de93fa1ee93dfcdeb4e5c20618f806d6acb53b9d28e4c4b99e8b4"
+      },
+      {
+        "name": "Budget.check",
+        "line": 163,
+        "source_sha256": "3df1da798a41ad86f8cc6da7e8479e5f5413af6f21711921c7154290e13c6a2b"
+      },
+      {
+        "name": "Budget.claim",
+        "line": 169,
+        "source_sha256": "c9a8ab812ccf5d7b27d6a2da87494810f43a47031bf6ed7f15affbd0ea5cd041"
+      },
+      {
+        "name": "Budget.actual",
+        "line": 177,
+        "source_sha256": "aeda30e82bc4456d56261e68f0734881f4d70f0224cde64546928fa21477217c"
+      },
+      {
+        "name": "Budget.seal",
+        "line": 186,
+        "source_sha256": "76ddca4b2b7437b3d527f321285393813dc132a57f9d5dcb543de9d94edfad13"
+      },
+      {
+        "name": "Budget.claim_many",
+        "line": 191,
+        "source_sha256": "8209106eba4149a2ac805ff64d22a8597548f3c5fc289d66f8d72aef25acd63c"
+      },
+      {
+        "name": "Writer.__init__",
+        "line": 202,
+        "source_sha256": "d2cf3ae2c396ce7f4dce2b74de37bc5b2be7f7cdd9cfe5ef1d2a779093f941b5"
+      },
+      {
+        "name": "Writer._fault",
+        "line": 260,
+        "source_sha256": "409adba2be9e8ddedab1088cebc582bfe167fc6f7646bcb9bd1c2ce11f297a93"
+      },
+      {
+        "name": "Writer._guard",
+        "line": 264,
+        "source_sha256": "02c8dc2949d8c108055fc93e33d056d25130425b1c9c7a18eb3d494d4bec5add"
+      },
+      {
+        "name": "Writer._append",
+        "line": 268,
+        "source_sha256": "508088c8a89b1773e9bd9bfd48f9bef94fe3ba54fbd5334d90de5d7a118212ca"
+      },
+      {
+        "name": "Writer._publish",
+        "line": 277,
+        "source_sha256": "7f797df2465574b4435fb6b254ac07d2e47fccac9b76bd0ed211a7c059e5c4d9"
+      },
+      {
+        "name": "Writer._flush",
+        "line": 301,
+        "source_sha256": "02d6cb4b0d5ba6c4613fc9753775388b6836fe90721e354a16bdf451636e61c5"
+      },
+      {
+        "name": "Writer._copy_array",
+        "line": 337,
+        "source_sha256": "d3a046b5384480ce06d9e1cdf71fd0f2b76b5aad553cc83166c99ddf34720b5d"
+      },
+      {
+        "name": "Writer.add_array",
+        "line": 342,
+        "source_sha256": "982e0f6a3367bd12bc1f4d9465091fedb75bc5f244ad3bed1c48c1f0ac81e7e8"
+      },
+      {
+        "name": "Writer.write_event",
+        "line": 396,
+        "source_sha256": "91ea3808aab68e7eb1626a03803db95619ba623b7497b94642e3626b72edc073"
+      },
+      {
+        "name": "Writer._control",
+        "line": 440,
+        "source_sha256": "4d785b34b3424abea2549c5a430864e401033ffca824b460e773516b6b539d04"
+      },
+      {
+        "name": "Writer.finish",
+        "line": 453,
+        "source_sha256": "1145f7063b17ada8f29720bf8f71bc52bc360ac8c77deb7f13c3f2d4ad2a3b04"
+      },
+      {
+        "name": "_read_small",
+        "line": 522,
+        "source_sha256": "1de8f3363d557e0823678433273b65cddbeea1df7972ed58f41248291cbedc1a"
+      },
+      {
+        "name": "_alias",
+        "line": 532,
+        "source_sha256": "a003fd862aa39b3d0e6ac43e5a625152ddddb9b2fe7717438c9e1b56ae7f81cf"
+      },
+      {
+        "name": "_entries",
+        "line": 545,
+        "source_sha256": "3a6c689637569f9e11bd33138578ee9e2d6ff498b4eaf17490806ddf7e136c3f"
+      },
+      {
+        "name": "_file_header",
+        "line": 557,
+        "source_sha256": "3cadef5493ba25a9e178eaf52d87e8641a99ed4d4bce5cd809e9fbb4c6220379"
+      },
+      {
+        "name": "Reader.__init__",
+        "line": 581,
+        "source_sha256": "aacae7bb684947da8212539d28d158f7ae0fb7b669d1689e8b08ff6252e910bb"
+      },
+      {
+        "name": "Reader._summary",
+        "line": 585,
+        "source_sha256": "bad45bfdbebb6873d6b8d9e3b4a9310e77c90fe873c14c21bfd991736ed4df78"
+      },
+      {
+        "name": "Reader._inventory",
+        "line": 631,
+        "source_sha256": "ac52cbf5dba3858e76da8d11ba9d29c01bf949682c9783ffef4ec80e8eb5507b"
+      },
+      {
+        "name": "Reader._array",
+        "line": 678,
+        "source_sha256": "8c22a8e9e9b7f899c182162ae7d60613363af90464ed8dae4f90759eb92c2f2f"
+      },
+      {
+        "name": "Reader.iter_events",
+        "line": 735,
+        "source_sha256": "accd895f29728d65a583411d0b0c7de00887f23eac4c3eba0940c3d957b81a8e"
+      },
+      {
+        "name": "Reader.validate",
+        "line": 882,
+        "source_sha256": "e19d07c4cc7198923e4fc3a67027a366ba77c4a927e083ec7fba83f4b8c8507f"
+      },
+      {
+        "name": "compare",
+        "line": 888,
+        "source_sha256": "c6ea5a59f7bc90b245a15323d85b84d7fb8d043c740465ee03098538c0ff426b"
+      }
+    ],
+    "scripts/run_limited_topology_controller.py": [
+      {
+        "name": "sha",
+        "line": 21,
+        "source_sha256": "181db0bc4184313d22f322da6c79317627cc74b8505bb794bca2b67797b58a18"
+      },
+      {
+        "name": "write_new",
+        "line": 28,
+        "source_sha256": "dfca9968eef5354308e9b4f309bcc8d0419b8ef80170f19698e8f0d653b83c36"
+      },
+      {
+        "name": "bounded_fork",
+        "line": 34,
+        "source_sha256": "a4b9ae761abd120e48c9669ef89da71f1c6ea981941973e3ef561431eb02d6bc"
+      },
+      {
+        "name": "sequence",
+        "line": 68,
+        "source_sha256": "091c6b58209d33b5a95fe45e5b7e6b141c757b18ad88fa55a675f3734ed4a5ea"
+      },
+      {
+        "name": "approval_gate",
+        "line": 90,
+        "source_sha256": "a561ea2b294b346998e85869f6c58795528dfa1ffee86af7645a6d63aa61cfd2"
+      },
+      {
+        "name": "scope_gate",
+        "line": 105,
+        "source_sha256": "fc9b51bae86ced4611920fb98e91aebe9e49c5ea5621509cf02d3118cdbb2d23"
+      },
+      {
+        "name": "distributions",
+        "line": 119,
+        "source_sha256": "d98b51925dc6fc1b6c210d1dfb43ea20e674245b03a71d417dcf783a37929817"
+      },
+      {
+        "name": "identity_gate",
+        "line": 128,
+        "source_sha256": "35cef111995b9eca93e1886ea4e0e4945fdcdb63badebef078e73dd1c2611488"
+      },
+      {
+        "name": "business_receipt",
+        "line": 153,
+        "source_sha256": "4430b6cbd73ae35a1fa167d40a8fc25e66ba209b0fb5d8f11f1482231bcb7ec8"
+      },
+      {
+        "name": "assess_real",
+        "line": 160,
+        "source_sha256": "53d8f29c73d7683ee7a34527573d10e6ff57968e1c904eb3067cb7c3f1916095"
+      },
+      {
+        "name": "run",
+        "line": 184,
+        "source_sha256": "a71f76d5a6e82ad3905c25e42b863ed7fb9650eff236dd7b37cb64f790f7ca14"
+      },
+      {
+        "name": "main",
+        "line": 247,
+        "source_sha256": "350030628e4c4c19f66034947c924a8bd2ced152cca143b39a5a9f785c79d16b"
+      }
+    ],
+    "scripts/probe_manuscript_joint_capacity.py": [
+      {
+        "name": "verify_source_inputs",
+        "line": 19,
+        "source_sha256": "dd77a719e0b327dc3e2b69c871896038f80812371cd73ce8ad94e82dfa6b1237"
+      },
+      {
+        "name": "probe",
+        "line": 27,
+        "source_sha256": "ed90af237d201a0b0a0588239a75dc7f3a2172e6a5020f595bb61e31b0fdb8db"
+      },
+      {
+        "name": "main",
+        "line": 47,
+        "source_sha256": "0e9b5bdaa383ee7b66568d3a2e91637e69a9d37d810d011fe7ca91a9aaaaac85"
+      }
+    ],
+    "phase3_joint_edit_refine/g2_execution_qualification.py": [
+      {
+        "name": "qualify_g2_v2_execution",
+        "line": 61,
+        "source_sha256": "19ff68daa0c13453ab821cea19a82ccc2b5fed19a63e56a383cd4c0e01995234"
+      },
+      {
+        "name": "_initialize_worker",
+        "line": 147,
+        "source_sha256": "87a0c47112e800a38e1f1514ce468ed6a57eec6d3a4ab76513c5cfde847d00b9"
+      },
+      {
+        "name": "_qualify_case_worker",
+        "line": 167,
+        "source_sha256": "77fde8bbed53ef112315c0a29cbdfacaa51dcd98d5235101acd19bce122d41a5"
+      },
+      {
+        "name": "_qualify_case",
+        "line": 189,
+        "source_sha256": "86589639d84ce9419f4afdaaa9b7ed72a62688ad3df36c9c16d96875f2502018"
+      },
+      {
+        "name": "_qualify_tissue_case",
+        "line": 332,
+        "source_sha256": "5a955b99273d30bf34e5de636e6624312210f1549adc01c28c502c68810d3088"
+      },
+      {
+        "name": "_qualify_cell_only_case",
+        "line": 449,
+        "source_sha256": "122001d914eeb564b62aeb6a14c4f80ca9e632a426a258c2bb79039055dd335a"
+      },
+      {
+        "name": "_certified_center_span",
+        "line": 495,
+        "source_sha256": "a41d0859e97ad3002a5a45cfc17d89dce704b7b1c9aaf229cdbea29cc5df1ba4"
+      },
+      {
+        "name": "_with_scene_calibrated_cell_budget",
+        "line": 507,
+        "source_sha256": "8cb907b8cb6e97f853e2e120dbe748f5f9291e47dac54fdb3054b6e5eb70a88b"
+      },
+      {
+        "name": "_all_joint_checker_ids",
+        "line": 584,
+        "source_sha256": "fb2b543ed6bd90f25842ba979127f6b18f2fda2e77a21ea29546d7dd518265cf"
+      },
+      {
+        "name": "_sha256",
+        "line": 590,
+        "source_sha256": "56063f6875e5ef0d7c74e3929d9dc6bc638f9390a55143dcacceca83b2732615"
+      }
+    ]
+  },
+  "legacy_rng_checkpoint_events": [
+    "compiler.attempt",
+    "compiler.exception",
+    "execution.begin",
+    "grow.begin",
+    "grow.end",
+    "planner.ready",
+    "probe.complete",
+    "qualification.begin",
+    "qualification.exception"
+  ],
+  "business_static_review": {
+    "scope": "static review only; no qualification execution",
+    "base_commit": "20ace976e92b7d3e3de091590e4e2d12653f5def",
+    "files": [
+      {
+        "file": "phase3_mask_edit_refine/execution.py",
+        "base_sha256": "38ac0325960b13f0f9c3836356fadb3f6cdb73699d580cbde916ea4b41371b11",
+        "build_sha256": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e",
+        "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+        "passive_calls": [
+          {
+            "line": 166,
+            "event": "execution.begin"
+          },
+          {
+            "line": 194,
+            "event": "execution.works"
+          },
+          {
+            "line": 792,
+            "event": "envelopes.ready"
+          },
+          {
+            "line": 804,
+            "event": "ownership.ready"
+          },
+          {
+            "line": 827,
+            "event": "ownership.works"
+          },
+          {
+            "line": 1710,
+            "event": "probe.complete"
+          },
+          {
+            "line": 2154,
+            "event": "front.contribution"
+          }
+        ]
+      },
+      {
+        "file": "phase3_mask_edit_refine/topology.py",
+        "base_sha256": "e1ad7774c7be556d2d667deb4937a31c25b57971f384d92bcc9789b59870800f",
+        "build_sha256": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
+        "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+        "passive_calls": [
+          {
+            "line": 66,
+            "event": "grow.begin"
+          },
+          {
+            "line": 85,
+            "event": "grow.empty"
+          },
+          {
+            "line": 93,
+            "event": "grow.seeds"
+          },
+          {
+            "line": 95,
+            "event": "grow.empty"
+          },
+          {
+            "line": 128,
+            "event": "guard.reject"
+          },
+          {
+            "line": 132,
+            "event": "guard.reject"
+          },
+          {
+            "line": 136,
+            "event": "guard.reject"
+          },
+          {
+            "line": 151,
+            "event": "guard.local_result"
+          },
+          {
+            "line": 167,
+            "event": "guard.accept"
+          },
+          {
+            "line": 199,
+            "event": "grow.end"
+          },
+          {
+            "line": 283,
+            "event": "guard.stage"
+          },
+          {
+            "line": 296,
+            "event": "guard.stage"
+          },
+          {
+            "line": 316,
+            "event": "guard.stage"
+          },
+          {
+            "line": 328,
+            "event": "guard.stage"
+          },
+          {
+            "line": 350,
+            "event": "guard.stage"
+          }
+        ]
+      },
+      {
+        "file": "phase3_joint_edit_refine/candidate_feasibility.py",
+        "base_sha256": "e7692d633002aa58dd693302bfd040e1dcf714a59a8f35a8ed4f47684759c309",
+        "build_sha256": "4dbf11fa491c943c25e9139c4b26d24d577ffbc39d8cdf1e525fb6a197901993",
+        "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+        "passive_calls": [
+          {
+            "line": 866,
+            "event": "portfolio.preferences"
+          },
+          {
+            "line": 868,
+            "event": "portfolio.preference"
+          },
+          {
+            "line": 994,
+            "event": "compiler.attempt"
+          },
+          {
+            "line": 1007,
+            "event": "planner.ready"
+          },
+          {
+            "line": 1264,
+            "event": "compiler.exception"
+          },
+          {
+            "line": 1285,
+            "event": "compiler.exception"
+          }
+        ]
+      },
+      {
+        "file": "phase3_joint_edit_refine/tissue_planner.py",
+        "base_sha256": "99ce955958bf78d32abd4049b7381e08b5a2ef8297eec874e89204c79691bb61",
+        "build_sha256": "1f992413da188490e2a66f06a0bc3d661602b3eb736f0e48c0fdd01c10f5954a",
+        "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+        "passive_calls": [
+          {
+            "line": 978,
+            "event": "planner.label_filter"
+          },
+          {
+            "line": 982,
+            "event": "planner.preflight_filter"
+          },
+          {
+            "line": 1007,
+            "event": "planner.front_filter"
+          },
+          {
+            "line": 1221,
+            "event": "planner.ranking"
+          },
+          {
+            "line": 1245,
+            "event": "planner.selection"
+          },
+          {
+            "line": 1996,
+            "event": "planner.directional_limit_inputs"
+          }
+        ]
+      },
+      {
+        "file": "phase3_joint_edit_refine/g2_execution_qualification.py",
+        "base_sha256": "1be62b596e3abe339dad50d97ea061477b20acf39475eeac4c7952b65f3453b4",
+        "build_sha256": "f77ebc1958992ccd68887b918bc0f026cb496eea3b842de5dce34976de2552dc",
+        "business_ast_unchanged_after_removing_observer_import_and_calls": true,
+        "passive_calls": [
+          {
+            "line": 342,
+            "event": "qualification.begin"
+          },
+          {
+            "line": 379,
+            "event": "qualification.preflight"
+          },
+          {
+            "line": 418,
+            "event": "qualification.exception"
+          },
+          {
+            "line": 425,
+            "event": "qualification.complete"
+          }
+        ]
+      }
+    ],
+    "passed": true,
+    "observer_sha256": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+    "limitation": "AST equivalence does not prove runtime noninterference; synthetic tests and separately approved real comparisons remain required."
+  },
+  "observations": [
+    {
+      "id": "I01",
+      "fact": "observe() dispatches through one ContextVar, wraps record() in except Exception, then calls invalidate(); session finally calls close().",
+      "implication": "Independent adapter may use duck typing through unchanged public session, but record/invalidate/close must isolate their own ordinary faults; existing close timing is not sufficient to assert business completion."
+    },
+    {
+      "id": "I02",
+      "fact": "Legacy serialization uses insertion order and ensure_ascii=True,allow_nan=False,separators comma/colon. Codec dump() sorts keys.",
+      "implication": "Do not use codec.dump() for logical event JSON; preserve legacy serializer layout and byte encoding."
+    },
+    {
+      "id": "I03",
+      "fact": "Legacy ndarray encoder already copies; Codec.add_array() also detaches.",
+      "implication": "Delegate the raw array directly to public add_array(); do not copy twice or use private codec methods."
+    },
+    {
+      "id": "I04",
+      "fact": "qualification.begin encodes case.case_id; qualification.complete has failures/witness but no operation_id. Codec supports this legacy shape via active operation.",
+      "implication": "expected_operations must be the two complete frozen case IDs in order, not literal U1/U2; never add operation_id to logical events."
+    },
+    {
+      "id": "I05",
+      "fact": "Legacy comparator _load() builds full events/array lists and expects semantic.jsonl/npy.",
+      "implication": "It cannot validate v2 directories; a separate bounded-memory envelope/mode validator and codec streaming compare are required."
+    },
+    {
+      "id": "I06",
+      "fact": "Existing controller assessment helper timeout is30s; retained local5M two-Reader comparison took45.69464520784095s.",
+      "implication": "Do not assume old helper timing is adequate or silently increase it. Future validation-budget decision must be frozen before live authorization; a timeout remains hold."
+    },
+    {
+      "id": "I07",
+      "fact": "Probe can return0 and persist a negative/partial check after catching a business exception; normal process exit alone does not guarantee both qualification event pairs exist.",
+      "implication": "Require event boundaries, receipt structure/identity and fault-free finalization together; a valid negative witness remains a complete business outcome without becoming qualified."
+    },
+    {
+      "id": "I08",
+      "fact": "Codec raises exceptions and emits its own completion marker inside its output directory.",
+      "implication": "Adapter must isolate errors and use a separate final acceptance envelope; inner marker alone cannot establish Observer acceptance."
+    }
+  ],
+  "witness_calls": 0,
+  "business_modules_imported_or_executed": false,
+  "codec_tests_or_pressure_repeated": false,
+  "production_code_modified": false,
+  "independent_reviewer_signature": null
+}

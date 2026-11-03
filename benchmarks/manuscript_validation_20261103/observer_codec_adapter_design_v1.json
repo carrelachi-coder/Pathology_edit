@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "design_id": "observer-codec-adapter-v1",
+  "status": "design_proposal_for_review_implementation_not_started",
+  "scope": "Independent Observer Adapter DESIGN ONLY. No adapter code, production integration, deployment, trace replay or new experiment in this change.",
+  "permissions": {
+    "adapter_implementation_by_this_document": false,
+    "production_integration": false,
+    "deployment": false,
+    "S07_execution": false,
+    "old_authorization_reuse": false,
+    "formal_HE": false,
+    "batch_four_target_compile": false,
+    "physician_study": false
+  },
+  "baseline": {
+    "codec_commit": "c2fd074122e35934a81af4bdd21691e19da189f6",
+    "codec_sha256": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "codec_format_sha256": "890175234376dc50b554223135cabe13b1f89deacafad5e42e6e2ab05e5f403e",
+    "legacy_observer_sha256": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+    "legacy_comparator_sha256": "434fc10a8171a1fd17554ff0ba43a5bcd677f375ad4f021712ea8d1a26afc692",
+    "legacy_controller_sha256": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+    "interface_audit": {
+      "path": "benchmarks/manuscript_validation_20261103/observer_codec_adapter_interface_audit_v1.json",
+      "sha256": "14a936a87d0cef0660eeb8c83856f2ec3dc165150fe23cf8ba9b629960f01a32"
+    },
+    "codec_change_planned": false,
+    "existing_2M_observer_cap_changed": false,
+    "existing_protocols_manifests_approvals_changed": false
+  },
+  "architecture": {
+    "proposed_new_module": "diagnostic_storage/observer_adapter_v1.py (not created)",
+    "activation": "Explicit construction of adapter core plus FailIsolatedSink in a future separately versioned diagnostic harness after startup gates; observation_session(sink) dispatches the existing38 observe calls through the unchanged ContextVar. No environment autoactivation or monkey patch.",
+    "isolation": "No subclass of PassiveObserver, no invocation of its record/close/storage, no mutation of its globals or defaults. No production call-site changes. Serializer compatibility is pinned separately.",
+    "synchronous_only": "Retain bounded one-slot nowait event queue from legacy ordering; no worker, background compression, retry loop or asynchronous reference to live masks.",
+    "flow": [
+      "already-computed observe values",
+      "FailIsolatedSink -> adapter core legacy-compatible typed encoder",
+      "Codec.add_array(raw ndarray) once per occurrence",
+      "bounded one-slot queue and exact legacy JSONL serialization",
+      "Codec.write_event(exact UTF-8 bytes)",
+      "session close only quiesces record intake",
+      "harness binds existing business receipt and calls guarded finalization",
+      "separate streaming validator publishes adapter acceptance proof",
+      "outer controller applies strict A/history,A/B,B/C stop gates"
+    ],
+    "old_controller_compatibility": "NOT a drop-in class replacement. Existing controller assumes close already completed evidence and uses the v1 list-building comparator. A future controller/harness version must be separately implemented/reviewed; existing files remain unchanged now.",
+    "isolation_shell": "A small FailIsolatedSink is the ONLY object passed to unchanged observation_session; it delegates to the independent adapter core. record/invalidate/close each have their own Exception boundary and preinitialized sticky-failure slots. Core exceptions, including a second exception from core.invalidate(), must not escape into the legacy observe/session wrapper."
+  },
+  "proposed_api": {
+    "construct": "Adapter(directory, mode, expected_case_ids, frozen_identity, resource_policy): catch ordinary initialization faults and return an invalid diagnostic object; future harness checks it before invoking business.",
+    "record": "Sink.record(event, values)->None: bounded encoder/queue/write via core under Exception guard; core failure first latches sink invalid, then attempts core.invalidate under a SECOND guard. It never invokes planner/retry or propagates an ordinary backend fault.",
+    "invalidate": "Sink.invalidate(stage, exception)->None: preinitialized sticky flag first, optional first-fault stage/type/sequence best effort; separately guard core.invalidate. No exception str/repr/args callback, I/O or replanning. A failed core invalidation cannot leak from the legacy observe except branch.",
+    "close": "Sink.close()->None: legacy session finally delegates to core.quiesce under its OWN Exception guard; error latches sink invalid even if core invalidation also fails. Quiesce only, no completion or inferred business normal end; bounded Codec streams/buffer remain until explicit finalization.",
+    "finalize": "Guarded adapter.finalize(normal_invocation_end, validated_receipt_binding, sink_terminal_state)->bounded result: once, outside all business retry handlers. Effective normal_end requires BOTH sink/core fault-free, receipt/boundary checks and no session abort. All Codec.finish/control faults return diagnostic invalid, not a business exception.",
+    "status": "status()->bounded in-memory diagnostic snapshot, no disk read or arbitrary callback. interpretation_permitted remains false on the adapter object; only the external validated acceptance envelope can authorize interpretation. Existing controller status gate therefore cannot accidentally accept the new object.",
+    "private_codec_access": "Forbidden. Only public Writer constructor/add_array/write_event/finish and Reader/compare interfaces; no _copy_array/_flush/_fault/Budget mutation from adapter.",
+    "session_sink": "FailIsolatedSink(core): expose record/invalidate/close to the legacy session. It returns None, owns no business data, and independently latches failure before attempting any fallible core notification. Its status is not an acceptance verdict."
+  },
+  "lifecycle": {
+    "state_flow": [
+      "NEW",
+      "PREPARED",
+      "ACTIVE",
+      "QUIESCED",
+      "SEALED_PENDING_VALIDATION",
+      "EXTERNALLY_VALIDATED"
+    ],
+    "fault_flag": "Sink and core each retain a preinitialized sticky invalid bit; either bit invalidates the whole capture. No re-arm/reset/resume/fallback. Finalization/envelope/controller must check BOTH; a failed attempt to notify the core cannot clear the sink bit.",
+    "normal_close": "Return from probe and session close only establish quiescence, not successful capture. Receipt inspection and finalization occur afterward.",
+    "business_abort": "Preserve the original exception object/traceback/control signal via unchanged session bare raise; close/finalize ordinary diagnostic faults must not mask it. No complete marker at adapter root.",
+    "capture_fault_while_business_runs": "Stop further capture explicitly as an invalid/missing tail, let the existing business invocation reach its own result; do not inject failure into a planner catch/replan branch. Outer harness reports hold immediately after invocation, blocks later arms.",
+    "fatal_resource_boundary": "MemoryError is an ordinary caught recorder fault where bookkeeping can run. OS kill, process-wide OOM and asynchronous control signals are not guaranteed isolatable; missing acceptance proof means invalid capture, no automatic retry.",
+    "early_preflight_failure": "Before any business invocation, an invalid/uninitialized adapter blocks launch with zero witness calls; this is distinct from an in-flight recorder fault.",
+    "fault_of_fault_handler": "Fault injection must include core.record AND core.invalidate raising together, and quiesce AND invalidate raising together. Sink stores invalid before invoking notification, suppresses ordinary notification faults, and never depends on persisted fault details for safety. Catastrophic process failure or arbitrary replacement of the isolation boundary itself is not promised survivable."
+  },
+  "logical_compatibility": {
+    "encoder_source": "Port only the pinned legacy typed encoding and metadata charge rules with an explicit ndarray delegation seam; differential review required. Do not call legacy storage methods or create a legacy observer alongside the adapter.",
+    "logical_json": "ensure_ascii=True,allow_nan=False,separators comma/colon, insertion order; keys sequence,event,values and optional rng in the existing order, trailing newline then UTF-8. Do NOT use Codec.dump(), which sorts keys.",
+    "preserve": [
+      "dict key types and insertion order as mapping pairs",
+      "list/tuple/set/frozenset sequence_type and traversal order",
+      "dataclass class name/field order",
+      "exception type/args/attributes through the existing typed encoder",
+      "NumPy scalar and explicit nonfinite tags",
+      "all already-passed paths, plans, masks, timestamps and RNG values without exclusion or normalization"
+    ],
+    "sequence": "Start0, use accepted logical event count only; Codec sequence must equal adapter sequence. No added begin/end/adapter events, no renumbering, batching of semantic events or guard sampling.",
+    "checkpoints": "Exactly the pinned legacy _CHECKPOINTS membership from interface audit; do not add qualification.complete RNG reads or any new checkpoint.",
+    "rng": "Read existing Python, NumPy legacy and accessible Torch CPU default state at existing checkpoints; passed local Generator state only. Do not import Torch for logging, initialize CUDA, draw/reseed/restore RNG, discover generators or sort business sets.",
+    "unsupported": "Unsupported custom values or structured/object/subdtype arrays invalidate diagnosis, never coerce, stringify, drop fields, return zeros or invoke arbitrary repr/to_metadata/iterable callbacks. Codec supports a narrower explicit dtype set than legacy; do not claim universal old-type compatibility.",
+    "differential_reference": "Use new synthetic legacy-serializer fixtures only. Do not reprocess the original2M S07 prefix or treat it as a complete golden run."
+  },
+  "arrays": {
+    "copy_owner": "Public Codec.add_array receives the live already-computed ndarray synchronously and owns the one detached C-order copy after pre-copy budget checks. The adapter must NOT call legacy _copy_array first.",
+    "one_occurrence_each": "Traverse values then checkpoint RNG in exact legacy order; call add_array for every occurrence, including repeated aliases. Return its unchanged token and retain no additional artifact list.",
+    "immutability": "No edits to source flags/views/dicts/generator/exception objects. No asynchronous access, dtype conversion, dedup, clipping or resampling.",
+    "partial_event_failure": "Any failure after some array registrations but before accepted JSONL poisons the entire adapter capture; no rollback, reuse, or write of a reduced event. Finalize with normal_end=false and retain incomplete artifacts.",
+    "limits": "64MiB per detached array,100000 occurrences,4096 pending occurrence tokens per event; both hash-only and full-capture use identical token/ordering rules."
+  },
+  "business_completion_binding": {
+    "expected_operations": "Configure Codec.expected_operations with the FULL two frozen case.case_id strings from future verified mapping, ordered U1 then U2. Literal U1/U2 defaults are synthetic only. Existing qualification.begin embeds case_id in typed values; complete closes the active operation without inserting an operation_id field.",
+    "receipt_validation": [
+      "normal invoke return including only permitted SystemExit(None/0) handling",
+      "exactly one existing source receipt and the original two primitive checks in fixed order",
+      "source identity/case mapping/input/contract identity agree with frozen manifest",
+      "both qualification begin/complete event pairs exist in order and no missing tail",
+      "no adapter or Codec faults and no session abort"
+    ],
+    "negative_witness": "passed_topology_witness=false and its original errors can be a fully captured negative outcome. Business completion is NOT qualification, successful generation or target approval.",
+    "process_exit_limit": "Process exit0 alone is insufficient; probe can catch business exceptions and still write partial/negative checks. Never manufacture terminal events or successful flags from exit code.",
+    "codec_receipt_envelope": "normal_end,operation_ids(full case IDs),payload with exact existing receipt file SHA/byte count, mapping/input/contract/manifest SHA and frozen validation rule identity. Keep compact <=8KiB; do not substitute a fabricated clinical result.",
+    "original_receipt": "Preserve the business-written file unchanged in its original output directory; bound read/validation policy proposed8MiB and fail diagnosis if exceeded. Do not duplicate raw patient receipt into public JSON.",
+    "cross_arm_business_comparison": "Preserve existing full decoded JSON-value equality A/history and A/B with no field removals, path normalization or seed changes. Per-arm file SHA binds evidence but does NOT require cross-arm textual whitespace equality absent from the original rule."
+  },
+  "envelope_and_publication": {
+    "output_layout": {
+      "codec/": "New Codec-owned stream, indices, arrays, receipt, summary and inner observer_complete.json",
+      "adapter_manifest.json": "Compact pinned identity hashes/mode/resources; not a copied full dependency manifest",
+      "adapter_status.json": "Terminal fault/capture phase/receipt binding, not interpretation permission",
+      "adapter_validation.json": "External full-stream, mode, identity, receipt, fault and resource checks; computed dual completeness states",
+      "adapter_complete.json": "Only final Observer acceptance marker, binding validation/status/manifest/Codec summary and existing business receipt SHA"
+    },
+    "two_completion_levels": "Codec inner marker is necessary but insufficient for Observer acceptance. Do not expose it at root, scan recursively for any marker, or pass v2 output to legacy _load(). Inner candidate evidence stays immutable if adapter envelope fails.",
+    "acceptance": "Require block_integrity_complete AND business_process_complete from exhausted Reader, terminal sink/core both fault-free, correct receipt/identity/mode and valid outer bindings. Only then may external validator publish adapter_complete.",
+    "publication": "Each control file is bounded, uniquely created pending, fsync/close then same-filesystem hardlink no-replace; retain pending alias. Any collision/close/write/helper failure prevents acceptance, no cleanup after final publication.",
+    "fault_after_inner_marker": "Leave inner evidence unmodified, publish no outer acceptance, report hold via external controller. An inner marker never overrides adapter faults or missing root proof.",
+    "prefix": "Optional inspection of complete blocks remains noninterpretive when business tail/receipt is absent. No upgrade of old B, no reconstructed S07 tail."
+  },
+  "resources": {
+    "total_observer_limit_bytes": 4294967296,
+    "proposed_outer_control_reserve_bytes": 262144,
+    "proposed_codec_storage_limit_bytes": 4294705152,
+    "partition": "Both partitions are INSIDE the same4GiB. Codec retains its own64KiB terminal-control reserve and index-preallocation policy within its partition. Adapter uses bounded <=32KiB root control documents and accounts their actual allocation/pending hardlink aliases; no full artifact list or duplicate JSONL outside Codec.",
+    "unchanged_codec_limits": {
+      "target_block_bytes": 4194304,
+      "max_record_bytes": 8388608,
+      "max_array_bytes": 67108864,
+      "max_array_occurrences": 100000
+    },
+    "adapter_limits": {
+      "legacy_metadata_charge_bytes": 8388608,
+      "queue_slots": 1,
+      "max_root_control_document_bytes": 32768,
+      "compact_codec_receipt_bytes": 8192
+    },
+    "separate_logical_count": "No2M quota for the proposed adapter; physical budget/buffers/logical uint64 overflow remain explicit. Legacy PassiveObserver default2M is never edited or silently reinterpreted.",
+    "external_business_and_identity_files": "Original business outputs/full run identity remain in existing per-arm/run directories and must be accounted under the future total run/reservation policy. Their hashes are referenced, not hidden duplicate observer storage.",
+    "rss_and_quota": "Bounded adapter buffers/current serialization/one detached snapshot, not an OS hard RSS ceiling or exclusive quota. New adapter synthetic pressure must measure memory/time and whole-tree allocation including outer files before approval."
+  },
+  "streaming_validation_and_controller": {
+    "reader": "Use public Codec Reader, exhaust it. Separate wrapper validates full envelope and requires B mode=hash_only,C mode=full_capture, correct case/identity mappings and root bindings; generic Codec.compare alone does not enforce arm modes.",
+    "comparator": "Public Codec.compare for strict raw-event bytes, sequence and occurrence integrity. Do not call legacy _load/compare_observer_runs or materialize lists. No field exclusions, float tolerance, path normalization or RNG exclusions.",
+    "gate_order": "A/history full receipt -> B/A full receipt plus complete validated B -> C/B full receipt plus complete validated C and strict streaming B/C. Any mismatch/timeout/fault stops later arms; zero retries/resume.",
+    "no_production_control_dependency": "Diagnostic verdict consumed by outer controller after invoke only, never planner/guard/ownership/candidate/anchor allocation logic.",
+    "validation_timeout": {
+      "existing_helper_seconds": 30,
+      "reference_local_5M_self_compare_seconds": 45.69464520784095,
+      "status": "explicit_unresolved_prelaunch_resource_decision",
+      "policy": "Keep existing controller unchanged. Do not assume30s adequate and do not auto-increase. Before any new launch, measure synthetic adapter validation on target runtime, freeze any proposed helper budget and total wall accounting, obtain required resource review; absent resolution or timeout means hold. Source-pair1200s/6 witness/0 retry scope is not increased by this design."
+    }
+  },
+  "startup_and_authorization": {
+    "default": "Inactive unless explicit future harness chooses adapter; no production registration/env flags.",
+    "startup": "B/C import adapter/Codec only after existing controlled child restoration, in identical frozen order; no adapter/business import in common parent. Audit imported modules, hash fingerprint, Python/NumPy/Torch CPU state, threads and CUDA before business.",
+    "prior_rng_approval": "Existing controlled-startup approval remains reference for unchanged initialization policy; do not request it again merely because this document exists. New startup/import compatibility must be reviewed. A changed initialization policy requires its own decision.",
+    "new_manifest": "Future exact Adapter/Codec/harness/comparator commits, source hashes, inputs/case mapping/contracts, environment/import identity, partitioned budgets, validation timing and stop rules must be newly bound. Not prepared or approved here.",
+    "S07": "Old authorization consumed/closed, no remaining-call reuse. Any new S07 diagnostic requires a new explicit manifest-bound authorization. No topology optimization or qualification update is included."
+  },
+  "future_acceptance_matrix": [
+    {
+      "id": "A1",
+      "task": "Legacy-compatible synthetic encoder differential fixtures",
+      "required": "Exact logical bytes/checkpoints/token order for mappings, ordered dataclasses, exceptions, finite/nonfinite scalars, local generator states, strided/endian/empty arrays; unsupported types invalidate evidence without business mutation."
+    },
+    {
+      "id": "A2",
+      "task": "Session/finalize and fault isolation",
+      "required": "Inject constructor/copy/encode/RNG-read/queue/array-write/block/index/control close/finalize/core invalidate/outer-validator faults, including record+invalidate and quiesce+invalidate double faults. Preserve business return or original exception identity/text/feedback, plan/anchor/order/replan counts and all accessible RNG states. Sink isolation prevents ordinary faults leaking through legacy session finally."
+    },
+    {
+      "id": "A3",
+      "task": "Completion and receipt adversarial fixtures",
+      "required": "Exit0 with missing terminal events, wrong/missing operation/case, stale receipt, qualified=false normal outcome, orphan arrays and failure after inner marker. Only a complete fault-free envelope may gain outer acceptance."
+    },
+    {
+      "id": "A4",
+      "task": "Adapter-level synthetic pressure, not another Codec reimplementation",
+      "required": "Exercise actual new serializer/queue/adapter/outer envelope beyond2M events with new arrays and measured whole-tree4GiB boundary. Reuse accepted Codec evidence; do not reanalyze saved S07 or claim new Raster representativeness."
+    },
+    {
+      "id": "A5",
+      "task": "Default-off and business noninterference static/synthetic review",
+      "required": "Existing5 business files and38 calls unchanged, no new planner/guard calls or eager argument evaluation, no worker/RNG import/reset. Independently compare off/hash/full/fault synthetic outcomes and states; not live S07."
+    },
+    {
+      "id": "A6",
+      "task": "Streaming wrapper/mode/binding and no-replace review",
+      "required": "Reject swapped/wrong modes, mixed runs/identities, incomplete iteration, tampered/missing outer proof, close/publication races and validation timeout. No stale summary or inner marker can mask faults."
+    },
+    {
+      "id": "A7",
+      "task": "Prelaunch identity and authorization gates",
+      "required": "After adapter implementation and independent acceptance only: freeze new deployment/environment/storage/startup/timing identity; then obtain a new finite S07 authorization. No deployment or live execution now."
+    }
+  ],
+  "independent_review_questions": [
+    "Is the quiesce-then-finalize API and inner-vs-outer completion distinction acceptable?",
+    "Does single-copy add_array delegation preserve every legacy-supported logical value, with unsupported dtypes explicitly invalidated?",
+    "Is the proposed256KiB outer control partition within4GiB adequate under whole-tree tests?",
+    "What predeclared validation helper/total time accounting can meet the unchanged finite experiment scope?"
+  ],
+  "research_state_unchanged": {
+    "topology_pass_patients": 17,
+    "upper_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "patient_target": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floors": [
+      0.14,
+      0.27
+    ],
+    "topology_root_cause": "unresolved",
+    "S07_old_B_evidence": "invalid",
+    "S07_old_C": "not_executed"
+  },
+  "this_change_validation": {
+    "read_only_interface_and_AST_audit": true,
+    "adapter_implemented": false,
+    "business_or_adapter_runtime_executed": false,
+    "old_Codec_tests_or_pressure_repeated": false,
+    "new_witness_calls": 0,
+    "independent_approval_claimed": false
+  }
+}

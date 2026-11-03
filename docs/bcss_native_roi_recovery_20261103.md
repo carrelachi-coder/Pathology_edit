@@ -351,3 +351,31 @@ Guard类占事件 **99.99185%**、字节 **99.5891%**。仅重复的sequence／e
 [复核命令](../benchmarks/manuscript_validation_20261103/guard_block_codec_v2_validation/reproduce_commands.txt)、代码／运行时身份和各场景报告均入库；大体积合成流、数组及失败目录留在私有`.codex-artifacts`，不进入Git。本轮是本地指定测试，不声称全仓CI或1200秒真实业务验收通过。
 
 P0–P3的独立实现与合成验证已完成；P4生产Observer接入尚未开始、尚未批准，独立模块的异常仍传给调用者，未来故障隔离adapter须单独审查。P5仍需要新代码／运行manifest／资源政策的独立验收和新授权。原S07截断证据仍无效，不重跑、不解释缺失尾部。17位拓扑通过、含unknown上限19位、新增四目标批准0位、正式30位目标、19%／32%预算及14%／27%组织硬下限均保持不变；正式H&E、批量四目标和医生研究继续关闭。
+
+
+## Observer Adapter：独立设计提交审查，尚未实现或接入
+
+用户对`c2fd0741`的后续审查认可独立Codec和合成证据，并要求下一步先设计安全Adapter。本轮只形成[设计方案](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_design_v1.json)和[只读接口核对](../benchmarks/manuscript_validation_20261103/observer_codec_adapter_interface_audit_v1.json)，没有创建Adapter实现、修改Codec／旧Observer／Controller、部署或重跑S07。独立Codec的56项测试和压力结果直接引用，未重复运行；本次只读AST核对仍为5个业务文件、38个既有observe调用。
+
+方案以独立Adapter core处理编码和存储，再由一个小型`FailIsolatedSink`接入**原有**`observation_session`／ContextVar。Sink的`record`、`invalidate`、`close`分别隔离普通异常，先写入预初始化的sticky invalid位，再尝试可失败的core通知。验收必须注入“record与invalidate同时失败”“quiesce与invalidate同时失败”，避免故障处理自身抛错进入业务重规划分支。OS级终止、无法继续记账的进程级OOM和外部控制信号不声称可被完全隔离；缺完整证明即诊断无效。
+
+接口核对识别出以下设计边界，不能直接替换旧类就开始运行：
+
+| 接口 | 设计决定 |
+| --- | --- |
+| 逻辑事件编码 | 保留旧typed encoder、字段／遍历顺序和JSONL格式；Codec的`dump()`会排序key，不能用于事件编码。生命周期信息放在外部，不添加新逻辑事件或RNG检查点。 |
+| 数组交接 | 直接把已计算ndarray交给公开`Writer.add_array()`，只由Codec在预算检查后复制一次；不先调用旧Observer复制，不去重或转换dtype。 |
+| session退出 | 旧session会在finally调用close，因此Sink.close只停止事件接收；业务receipt核验和显式finalize在业务调用结束后完成，不能把close当作完整诊断。 |
+| 操作身份 | Codec的expected_operations绑定冻结的两个完整case_id，而不是合成默认值U1／U2；complete事件没有operation_id，沿用当前active operation，不改原事件。 |
+| 完成证明 | Codec子目录的内层marker仅证明候选流；独立验证器还须核对Sink/core无fault、receipt、身份、模式和完整流，才可发布根目录`adapter_complete.json`。内层marker不能掩盖外层失败。 |
+| 比较入口 | 旧`_load()`读取全部事件且要求JSONL／npy，不能用于v2。新外层校验必须核对B=hash-only、C=full-capture，再调用Codec流式严格比较。 |
+
+正常结束的负面witness仍可构成完整业务记录，不会变成拓扑通过；进程退出0则不够，因为原probe可捕获异常后继续写部分checks。最终必须同时核对两项qualification开始／结束、原始source／primitive／case映射、已有receipt及两项完整性状态。A对历史和A/B仍沿用完整decoded JSON receipt相等，不删除字段、不归一化路径；各臂文件SHA用于绑定，不擅自将旧业务比较升级为JSON空白也必须相等。
+
+资源分区目前是**待审查提案**：总观察数据仍限4 GiB，其中256 KiB留给有大小上限的外层控制文件，其余4,294,705,152字节交给Codec；Codec内部原64 KiB完成控制预留、索引预分配及数组／块上限不变。所有root控制文件、索引、blob和pending均在同一总额内核算，不另存完整JSONL或artifact列表。旧Observer的200万事件默认限制不动，新Adapter也不把块数偷换为逻辑事件配额。该新分区尚未经过Adapter整链合成验证，不声称已经可用。
+
+另有一个明确的执行前资源待决项：现有Controller的验证helper固定30秒，而已入库的本机500万事件双Reader比较耗时45.6946秒。这不证明真实S07必定超时，却足以否定“可以直接沿用旧helper并宣称准备就绪”。本轮不提高限额或改Controller；未来须先测量目标环境的合成Adapter校验，再单独冻结helper及总wall预算口径。1200秒来源对、最多6次witness和零重试不因本设计扩大，未解决或超时均hold。
+
+未来实现验收矩阵已列入方案：旧编码器合成差分；Sink/core双重故障隔离；业务返回／异常／重规划／RNG不变；缺终态、错误映射和负面完整receipt；真正Adapter链路的超200万事件和整树4 GiB压力；流式wrapper的模式、身份、完整迭代、外层marker及发布竞争。届时复用已验收Codec，不重复分析原S07前缀，也不能将这些合成验收称为真实B/C非干扰性结果。
+
+当前仅为**P4设计完成、待审查；Adapter未实现，P5未获执行授权**。既有受控RNG条件批准在初始化策略不变时继续作为依据，不因新设计重复申请；新模块导入兼容性和新运行身份仍需审查，初始化策略若改变才另作决定。原S07一次性授权已消费，新诊断必须另行绑定新manifest授权；本轮不制作可启动manifest、不复用旧授权。17／19患者资格、新增四目标批准0、30位目标、19%／32%预算、14%／27%组织硬下限均不变，正式H&E、批量四目标和医生研究继续关闭。
