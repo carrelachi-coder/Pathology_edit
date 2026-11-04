@@ -1,0 +1,23 @@
+{
+  "status": "static_structure_checks_pass",
+  "source_files_sha256": {
+    "scripts/run_readonly_budget_v2_trial.py": "b2055235a960dd2329a8f84e40e6da24a09ff9dc061413df5a2c76947e420f43",
+    "scripts/preflight_setup_telemetry_v3.py": "9762fb9fd07fbfa8981ca4777e836a021dfee66143dabe50190370f3ab013eb8",
+    "diagnostic_storage/validation_budget_policy_v2.py": "dd14628a81f1c40fedf36212e42564668553c2b5e8ba5b77f6f63c06776de7c1"
+  },
+  "stage_order": [
+    "legacy_code",
+    "runtime_code",
+    "interpreter_environment",
+    "distributions",
+    "native_binaries",
+    "input_inventory",
+    "storage"
+  ],
+  "preflight_identity_AST_after_declared_telemetry_removal_equal": true,
+  "legacy_expansion_AST_equal": true,
+  "single_hash_algorithm_AST_equal": true,
+  "library_or_launch_dispatch_found": false,
+  "server_calls": 0,
+  "scope": "structural checks plus explicit source review; not a runtime side-effect proof, independent third-party signature or target acceptance"
+}
