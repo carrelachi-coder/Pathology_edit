@@ -1,0 +1,146 @@
+{
+  "kind": "setup-v3-target-acceptance-preparation-identity",
+  "experiment_id": "setup-v3-preparation-candidate-20261104",
+  "status": "non_executable_candidate_for_independent_review",
+  "execution_permitted": false,
+  "ready_for_execution": false,
+  "production_usable": false,
+  "deploy_permitted": false,
+  "authorization_status": "not requested; old grants closed",
+  "source_review_commit": "1f8dc75ad71fcf6d3d3ed0ea30cd32021d142404",
+  "preparation_tool_sha256": "9762fb9fd07fbfa8981ca4777e836a021dfee66143dabe50190370f3ab013eb8",
+  "preparation_implementation_commit": "62122a6831665bda5a731d8d5ac4b1a6c3acbf22",
+  "review_script_sha256": "68d31cb39a340eda4e08f9348e3f2f0378f858f53e639e5f59646a0f67c61fe4",
+  "protocol_sha256": "f0bd3b927f8848ada597923c81c109ad4a0ed11b75c58181da98a6bb3c8554ce",
+  "runtime_source_files_candidate": {
+    "diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "diagnostic_storage/validator_process_gate_v1.py": "8f45bd61cb4f5fc1a0b221d3997fe8f92a5dfc64ccf3ca53d1b574dd67601f53",
+    "diagnostic_storage/validation_budget_policy_v2.py": "dd14628a81f1c40fedf36212e42564668553c2b5e8ba5b77f6f63c06776de7c1",
+    "diagnostic_storage/observer_adapter_validation_v2.py": "3cd51eb3f4495eacdcb62f8f27a37a6e9242abb23c67e5b207fb67664c16b2f8",
+    "diagnostic_storage/validator_process_gate_v2.py": "1ef4e2b587caae0c5fecd21ee7fdfece84a31de32dc6bb93fa5105aca2e2b613",
+    "scripts/validator_readonly_worker_v2.py": "e43a42c5e1bee14b45c62a4ee51844c0ff0aa3beaaed5ba5c100b43d8e6bd69e",
+    "scripts/run_readonly_budget_v2_trial.py": "b2055235a960dd2329a8f84e40e6da24a09ff9dc061413df5a2c76947e420f43",
+    "scripts/preflight_setup_telemetry_v3.py": "9762fb9fd07fbfa8981ca4777e836a021dfee66143dabe50190370f3ab013eb8"
+  },
+  "runtime_reference": {
+    "executable": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "executable_sha256": "cad15d1b37740e48e83644b2a6148fc40c84727aabb703bf9ed4218afb0a6a52",
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": "",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "PYTHONHASHSEED": null,
+      "PYTHONPATH": null,
+      "PYTHONHOME": null,
+      "LD_LIBRARY_PATH": null,
+      "CONDA_PREFIX": null,
+      "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+      "LANG": "en_US.UTF-8",
+      "LC_ALL": "C.UTF-8"
+    },
+    "packages_sha256": "eb035eb36713cdbed603927640e0ed2bb807e4486c16cbfd58f9448cbf88f6dc",
+    "package_count": 220,
+    "native_files_sha256": {
+      "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/site-packages/numpy/core/_multiarray_umath.cpython-311-x86_64-linux-gnu.so": "a735e4e8355b75c800112af8a5b1731b891b2016ed57067352eea6cab0aa00bc",
+      "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/lib-dynload/zlib.cpython-311-x86_64-linux-gnu.so": "e17f644fc0b41a84646fb07313035f40efda5045a9b0298e54d21d5cfdc59629",
+      "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/libz.so.1.3.2": "22f1601237b86f0f48ed5b83071d1505167ae2e16365b33b4eed6e96dbf71ab0"
+    },
+    "identity_scope": "frozen Python/distributions/native references, not hermetic OS closure"
+  },
+  "runtime_reference_currently_verified": false,
+  "runtime_reference_origin": "historical aabe1577 environment audit only; no new target connection",
+  "input_reference": {
+    "root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/readonly_fixture_import_v1",
+    "inventory_sha256": "6bbcf7750ced2f6814f081dc1ccda4ad7778659a957ff0e19cad32fc0f48125c",
+    "canonical_file_count": 809,
+    "canonical_bytes": 1463747425,
+    "stream_sha256": "8cfe9c6fcf2665e0f7a00f654eab6cb7f1e70c984e47f6ea353d7ec615684f43",
+    "modified_or_rescanned_this_round": false
+  },
+  "proposed_measurement_scope": {
+    "setup_only": true,
+    "measurements": 1,
+    "setup_budget_seconds": 60,
+    "automatic_retries": 0,
+    "B_C_validator_calls": 0,
+    "S07_calls": 0,
+    "publication_allowed": false,
+    "description": "Candidate plan only; no worker launch command or authorization provided. Preparation success cannot start B/C."
+  },
+  "other_budget_policy_unchanged": {
+    "B_capture": 30,
+    "C_capture": 30,
+    "BC_compare": 60
+  },
+  "target_paths": {
+    "new_snapshot": null,
+    "new_output": null,
+    "old_snapshot_or_output_reuse": false,
+    "reason": "freeze fresh paths with final supervisor and input-mapping code, not by editing a consumed manifest"
+  },
+  "final_worker_sha256": null,
+  "outer_supervisor_sha256": null,
+  "result_verifier_sha256": null,
+  "launch_manifest_sha256": null,
+  "approval_sha256": null,
+  "readiness_gates": [
+    {
+      "id": "R1",
+      "requirement": "Separate V3 source review and accepted review disposition",
+      "state": "structural audit passed; independent sign-off pending"
+    },
+    {
+      "id": "R2",
+      "requirement": "Final preparation worker/controller and source identity bound into a new launch manifest",
+      "state": "not implemented or frozen; current tool is callable only"
+    },
+    {
+      "id": "R3",
+      "requirement": "External OS supervision covers startup, preparation, telemetry finalization and timely normal exit; invalid/incomplete/late result means HOLD",
+      "state": "pending implementation and synthetic acceptance; do not equate current cooperative check with this gate"
+    },
+    {
+      "id": "R4",
+      "requirement": "Bound report/journal to exact launch request, code/runtime/input identities and validate them independently before interpreting a preparation pass",
+      "state": "pending; existing summary is local diagnostic data, not a manifest-bound target acceptance proof"
+    },
+    {
+      "id": "R5",
+      "requirement": "Recheck actual target environment/filesystem/storage at separately authorized startup",
+      "state": "not run; historical references only"
+    },
+    {
+      "id": "R6",
+      "requirement": "Separate explicit once-only approval bound to final launch SHA",
+      "state": "not requested; previous approval remains consumed and closed"
+    }
+  ],
+  "interpretation_limits": [
+    "Existing 46 local tests do not establish target runtime overhead or 60-second feasibility.",
+    "The old 60.371-second setup HOLD contains no internal stage baseline; relative per-stage overhead cannot be inferred from it.",
+    "A future setup-only run can localize progress without performing any B/C comparison.",
+    "Cooperative setup clock and an outer startup-through-finalization deadline are distinct; neither is silently increased.",
+    "No release/acceptance decision derives solely from presence of setup_summary.json."
+  ],
+  "scientific_constraints_unchanged": {
+    "source_topology_pass_patients": 17,
+    "upper_bound_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "formal_target_patients": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floor": [
+      0.14,
+      0.27
+    ],
+    "formal_HE_and_doctor_study_open": false
+  }
+}

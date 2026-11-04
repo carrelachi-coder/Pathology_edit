@@ -497,3 +497,15 @@ session退出只quiesce。显式`finalize(normal_invocation_end, business_receip
 [实现报告](../benchmarks/manuscript_validation_20261104/setup_telemetry_v3/implementation_report_v3.json)和协议封存代码SHA及旧组件SHA。本轮无服务器连接、无部署、无全量输入重扫、无新B/C测量。setup仍60秒，B／C单流各30秒、完整比较60秒，零自动重试。新增日志本身有CPU与I/O开销，不能声称它保证60秒足够；原setup门禁仍是原位置的协作式检查，阻塞读取会延迟检测，未改称OS硬实时保证。方案当前仅供独立审查，新的目标launch manifest和执行授权尚未形成；旧授权保持已消费，旧HOLD永久保留，不补写历史阶段遥测。
 
 患者17／19、新增四目标批准0、30位目标、19%／32%名义预算、14%／27%硬下限保持不变；S07、生产接入、正式H&E、批量四目标和医生研究均未启动。
+
+## V3 单独代码复核与目标验收准备：仍非正式可用
+
+按下一阶段建议，本轮保留 `b5aad69c` 的V3实现，另建[结构审查工具](../scripts/review_setup_telemetry_v3.py)和[可复核结果](../benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/static_review_v3.json)。移除明确的遥测语句后，V3与旧v2的preflight AST一致；独立核对展开的legacy检查和字节计数移除后的哈希算法也一致。审查工具不导入或执行setup，仅分析源码。其[6项测试](../benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/review_tests.txt)通过，包括正常审查及5个修改核验条件／哈希／legacy pin／deadline／委托函数的反例。旧46项结果只引用封存证据，没有在本轮重跑或合并宣称新52项验收。
+
+[审查处置记录](../benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/review_disposition_v3.json)明确这是助手源码复核及可复现结构检查，不是外部独立签名；独立终审仍待确认。未观察到新增的身份核验逻辑差异，正常／故障完成语义和日志容量设计保留。结构相同不能证明目标运行无影响，同步逐项写入、flush和fsync的实际目标开销仍未知。
+
+本轮特别明确两个启动接线边界：当前preflight协作式60秒计时从函数内部开始，journal初始化和summary/fsync不在这个内部时钟内；现有summary也没有自行绑定最终launch manifest。因此，未来目标验收必须有涵盖启动到最终退出的外层监督，以及绑定请求／代码／输入身份的独立结果核验，不能只看到`preparation_only_pass`或summary文件就放行。这里记录的是目标接入前的缺口，不修改已消费manifest或静默扩大预算。
+
+[新的目标验收准备身份](../benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json)固定V3源码、审查工具、旧producer／validator及历史环境／输入参考SHA，状态为**不可执行candidate**。环境只是历史参考，未重新核验；最终worker、外层supervisor、结果verifier及launch／approval SHA仍为空，fresh快照与输出路径留待最终封存。本轮没有部署，也没有伪造这些待完成项为ready。
+
+候选范围进一步限定为未来**一次setup-only验收**，60秒setup预算、零重试、B/C调用0；30／30／60验证预算只保留为后续独立政策，不因setup通过而启动B/C。具体监督代码与最终时钟范围还需实现及审查后才能形成启动清单。旧授权依旧已消费，新授权未申请，目标性能验收未完成。没有服务器连接、数据重扫、S07、H&E或生产接入，17／19患者记录及全部正式研究条件保持原样。
