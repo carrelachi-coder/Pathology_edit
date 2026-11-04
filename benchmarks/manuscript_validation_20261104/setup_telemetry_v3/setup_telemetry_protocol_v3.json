@@ -1,0 +1,111 @@
+{
+  "format": "setup-telemetry-preparation-protocol-v3",
+  "status": "frozen_for_review_local_implementation_only",
+  "execution_permitted": false,
+  "target_trial_authorized": false,
+  "target_deployment": false,
+  "code_commit": "62122a6831665bda5a731d8d5ac4b1a6c3acbf22",
+  "code_files_sha256": {
+    "scripts/preflight_setup_telemetry_v3.py": "9762fb9fd07fbfa8981ca4777e836a021dfee66143dabe50190370f3ab013eb8",
+    "scripts/analyze_saved_setup_workload_v1.py": "bd5b42353c54472ad0d57e4000b77c79da4e8d51725826cabcd2034f0e2d993c",
+    "tests/test_setup_telemetry_v3.py": "fcbdec19574ec0b5502c55ee695d48b22a44fe906eb93254e00ed79c51128a7e"
+  },
+  "unchanged_components_sha256": {
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "diagnostic_storage/observer_adapter_validation_v2.py": "3cd51eb3f4495eacdcb62f8f27a37a6e9242abb23c67e5b207fb67664c16b2f8",
+    "diagnostic_storage/validator_process_gate_v1.py": "8f45bd61cb4f5fc1a0b221d3997fe8f92a5dfc64ccf3ca53d1b574dd67601f53",
+    "diagnostic_storage/validator_process_gate_v2.py": "1ef4e2b587caae0c5fecd21ee7fdfece84a31de32dc6bb93fa5105aca2e2b613",
+    "diagnostic_storage/validation_budget_policy_v2.py": "dd14628a81f1c40fedf36212e42564668553c2b5e8ba5b77f6f63c06776de7c1",
+    "scripts/run_readonly_budget_v2_trial.py": "b2055235a960dd2329a8f84e40e6da24a09ff9dc061413df5a2c76947e420f43",
+    "scripts/run_limited_topology_controller.py": "ce7c30aaffa54cf89a0a2c5d0c7a242d6c1ef66d466ba92c30822a3d72bba376",
+    "scripts/validator_readonly_worker_v2.py": "e43a42c5e1bee14b45c62a4ee51844c0ff0aa3beaaed5ba5c100b43d8e6bd69e"
+  },
+  "scope": "Offline saved-metadata analysis and new preparation-only callable. No CLI launch, validation helper dispatch, producer integration or execution approval.",
+  "setup_budget_seconds": 60,
+  "future_readonly_validation_budgets_seconds": {
+    "B_capture": 30,
+    "C_capture": 30,
+    "BC_compare": 60
+  },
+  "budget_change": false,
+  "automatic_retries": 0,
+  "stage_order": [
+    "legacy_code",
+    "runtime_code",
+    "interpreter_environment",
+    "distributions",
+    "native_binaries",
+    "input_inventory",
+    "storage"
+  ],
+  "journal": {
+    "format": "append-only JSONL, exclusive-create, synchronous bounded writes; no paths, package names, raw exception text or inputs",
+    "max_bytes": 1048576,
+    "max_records": 2048,
+    "max_record_bytes": 2048,
+    "max_stage_rows": 7,
+    "fault_type_slots": 8,
+    "event_types": [
+      "stage_started",
+      "item_completed",
+      "stage_completed",
+      "stage_interrupted"
+    ],
+    "fields": [
+      "stage_started",
+      "stage_completed",
+      "elapsed_ms",
+      "items_completed",
+      "bytes_processed",
+      "last_completed_item_index"
+    ],
+    "clock": "monotonic; never resets or extends original preflight deadline",
+    "last_item_index": "zero-based completed loop item; distribution rows only hashed/enumerated until final aggregate reference hash matches",
+    "bytes": "actual bytes fed to completed SHA256 reads, including input inventory control. Partial failed hash reads are unavailable and not included, rather than estimated.",
+    "write_frequency": "one bounded record per completed item and each stage boundary; no event sampling; telemetry adds runtime and I/O overhead",
+    "flush": "unbuffered writes per event; fsync at normal/error finalization; disk failure invalidates telemetry",
+    "on_exception": "record current interrupted stage and completed item progress; preserve original exception type and identity check result",
+    "on_SIGKILL": "at most a prefix persists, last durable item may lag. No summary means incomplete evidence.",
+    "final_summary": "exclusive-create; identity_check_passed and telemetry_valid are separate; both required for preparation_only_pass. No acceptance proof or authorization."
+  },
+  "identity_semantics": {
+    "original_check_order_preserved": true,
+    "original_deadline_check_locations_preserved": true,
+    "input_count_required": 809,
+    "record_order": "existing distribution iterator order before aggregate sort, existing manifest/inventory dictionary iteration order; no new ordering",
+    "input_skip_allowed": false,
+    "hash_passes": "one per original occurrence; count byte lengths during same reads, not second file scan",
+    "loop_item_vs_stage": "An item can complete before a later aggregate check fails. Stage completion requires all original stage checks.",
+    "original_business_files_modified": false,
+    "qualified_patient_updates": false
+  },
+  "fault_policy": "Telemetry write/open/flush/close/size failure does not alter identity checking; it makes diagnostic evidence invalid, which is HOLD. Identity failures are not replaced by telemetry failures.",
+  "supervision_limits": [
+    "Original setup check() remains cooperative at original positions, so a blocking read may delay detecting deadline; no new hard realtime guarantee.",
+    "Storage stage and source checks still run in original order; telemetry only records already reached work.",
+    "New preparation wrapper does not dispatch B/C, allocate a new trial allowance, or revive old authorization.",
+    "Before any target use: independent review, new fully bound launch identity and separate once-only authorization; old manifests/output roots remain closed."
+  ],
+  "old_hold_report_sha256": "a0d9a92a1818e8c57992ffd691efd3a103f3b8e05026a77ba568338628dc69ed",
+  "old_authorization_status": "consumed and closed; never reused",
+  "historical_telemetry_backfill_permitted": false,
+  "server_rescans_this_round": 0,
+  "scientific_constraints": {
+    "source_topology_pass_patients": 17,
+    "upper_bound_including_unknown": 19,
+    "new_four_target_approved": 0,
+    "formal_target_patients": 30,
+    "nominal_budgets": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floor": [
+      0.14,
+      0.27
+    ],
+    "formal_HE_and_doctor_study_open": false
+  }
+}

@@ -483,3 +483,17 @@ session退出只quiesce。显式`finalize(normal_invocation_end, business_receip
 只读归档核对确认11个部署源码哈希仍匹配，B/C原manifest哈希未变，两个输入根目录均无外层接受证明；实际新输出仅有`trial_result.json`，本次输出目录的hardlink探针尚未到达。既有内层封存不升级为新接受证明。后续读取只收集小型控制文件和源码哈希，没有再次调用验证器、没有全量重扫输入或择优测速。本次授权至此关闭，不能因三个测量尚未启动就复用；保留目录，不resume、不扩时限。下一步先离线审查setup身份核验工作量和阶段遥测缺口，再决定是否提出新的版本化方案。
 
 旧`aabe1577`仍是30秒政策下的完整比较HOLD。本次没有修改验证标准，也没有接入生产Controller、运行S07或生成H&E。患者17／19、新增四目标批准0、30位目标、19%／32%预算和14%／27%组织硬下限均保持不变。
+
+## 2026-11-04：离线工作量分析与 setup 阶段遥测，本地验收完成
+
+依据对 `29206db6` 的审查，本轮只处理准备阶段的可观测性。[离线报告](../benchmarks/manuscript_validation_20261104/setup_telemetry_v3/offline_workload_report_v1.json)只读取本地保存的清单和环境审计JSON，没有连接服务器或打开清单所指向的数据文件。809个canonical文件总计 **1,463,747,425 bytes**：685个数组占1,432,607,288 bytes（97.8726%），108个事件块占30,271,096 bytes，16个控制／索引文件占869,041 bytes。220个distribution中217个保存了RECORD哈希，3个为空；现存记录没有RECORD大小或其他元数据读取量，这些规模保留null。不得从哈希推算文件大小，也不得据此断言旧超时发生在数组扫描或distribution阶段。
+
+新增[准备工具](../scripts/preflight_setup_telemetry_v3.py)，代码提交 `62122a68`，不修改旧runner、Codec、Adapter、Validator、门禁或生产业务文件。按原顺序记录legacy code、runtime code、解释器／环境、distributions、native binaries、input inventory、storage七个阶段。单调时钟记录开始／完成、elapsed_ms、已完成项数、完整哈希读取的字节量及零起始最后项索引。distributions的单项“完成”仅指枚举／哈希完成，必须在阶段末通过整体packages SHA才能宣布该阶段通过。失败或被中断的部分哈希字节不估算；输入inventory控制文件的哈希字节计入该阶段。原身份核验、遍历顺序、deadline检查位置与60秒setup预算均保留。
+
+[遥测协议](../benchmarks/manuscript_validation_20261104/setup_telemetry_v3/setup_telemetry_protocol_v3.json)固定日志上限1 MiB、2048条、单条2 KiB及7个阶段内存状态。每个完成项与阶段边界写一条append-only记录，不写路径、包名、原始异常内容或输入数据。异常时保存当前阶段进度和最后完整阶段；SIGKILL只能留下前缀，缺少最终summary必须视为不完整。写入、容量、flush或close失败不改变身份检查结果，但会使遥测无效、准备结论HOLD；身份通过与遥测有效分别标记。独立summary用exclusive-create发布，不是capture接受证明，工具没有验证器调用或授权入口，也不复用旧输出。
+
+[46项本地定向测试](../benchmarks/manuscript_validation_20261104/setup_telemetry_v3/pytest.txt)通过，包括23项新setup测试与23项既有预算回归。成功路径逐项核对与旧v2相同的哈希读取顺序；模拟慢哈希与慢storage保留原超时，覆盖哈希不匹配、读取异常、中断、遥测故障与身份错误同时发生、部分写入、最终summary失败及异常退出前缀。809个微型输入与220个合成distribution项的场景验证固定容量边界。这些是本地合成证据，不是目标服务器性能验收；没有重跑旧Adapter／Codec压力或全仓CI。
+
+[实现报告](../benchmarks/manuscript_validation_20261104/setup_telemetry_v3/implementation_report_v3.json)和协议封存代码SHA及旧组件SHA。本轮无服务器连接、无部署、无全量输入重扫、无新B/C测量。setup仍60秒，B／C单流各30秒、完整比较60秒，零自动重试。新增日志本身有CPU与I/O开销，不能声称它保证60秒足够；原setup门禁仍是原位置的协作式检查，阻塞读取会延迟检测，未改称OS硬实时保证。方案当前仅供独立审查，新的目标launch manifest和执行授权尚未形成；旧授权保持已消费，旧HOLD永久保留，不补写历史阶段遥测。
+
+患者17／19、新增四目标批准0、30位目标、19%／32%名义预算、14%／27%硬下限保持不变；S07、生产接入、正式H&E、批量四目标和医生研究均未启动。
