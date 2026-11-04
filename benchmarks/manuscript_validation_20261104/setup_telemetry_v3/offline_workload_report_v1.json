@@ -1,0 +1,46 @@
+{
+  "scope": "offline arithmetic from saved inventory/environment JSON only; no server connection or listed-path opens",
+  "input_inventory_sha256": "6bbcf7750ced2f6814f081dc1ccda4ad7778659a957ff0e19cad32fc0f48125c",
+  "environment_audit_sha256": "51f2dcffc02f44e550285a3765c2b65e941916f74e9946a3fe88d261442eb315",
+  "input_files": 809,
+  "canonical_input_total_bytes": 1463747425,
+  "groups": {
+    "controls_and_indexes": {
+      "files": 16,
+      "bytes": 869041,
+      "byte_fraction": 0.0005937096695490344
+    },
+    "event_blocks": {
+      "files": 108,
+      "bytes": 30271096,
+      "byte_fraction": 0.020680546030678756
+    },
+    "arrays": {
+      "files": 685,
+      "bytes": 1432607288,
+      "byte_fraction": 0.9787257442997722
+    }
+  },
+  "file_size_quantiles_nearest_rank_bytes": {
+    "0": 86,
+    "0.5": 2097513,
+    "0.9": 2097514,
+    "0.95": 2097514,
+    "0.99": 2097514,
+    "1": 2097514
+  },
+  "distribution_count": 220,
+  "saved_distribution_record_hashes": 217,
+  "distribution_record_total_bytes": null,
+  "distribution_record_size_quantiles": null,
+  "missing_record_size_evidence": "Existing audit stores RECORD SHA only, without sizes; SHA cannot recover byte lengths. No target rescan performed.",
+  "other_distribution_metadata_bytes": null,
+  "other_setup_hash_bytes": null,
+  "minimum_input_only_bytes_per_second_for_all_60_seconds": 24395790.416666668,
+  "rate_interpretation": "Arithmetic workload ratio only, ignoring all other stages, metadata and I/O latency. Not measured speed, predicted duration or grounds to increase budget.",
+  "old_setup_last_stage": null,
+  "old_timeout_root_cause": null,
+  "execution_permitted": false,
+  "server_rescans": 0,
+  "new_validation_measurements": 0
+}
