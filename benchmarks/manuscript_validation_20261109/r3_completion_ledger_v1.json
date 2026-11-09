@@ -118,5 +118,17 @@
     "real_S07_calls": 0,
     "real_S07_authorized": false,
     "remaining_wiring_gap": "Versioned read-only policy/worker/process gate for v2 capture and separate 30s single-stream/60s B-C comparison; real Controller v1 still imports Adapter v1."
+  },
+  "observer_budget_readonly_consumer_review": {
+    "status": "draft_PR_local_synthetic_passed_independent_review_pending",
+    "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/10",
+    "branch": "codex/observer-budget-readonly-consumer-review",
+    "commit": "8f42f97f",
+    "local_targeted_tests_passed": 145,
+    "single_stream_seconds": 30,
+    "double_stream_seconds": 60,
+    "target_large_synthetic_tested": false,
+    "real_controller_wired": false,
+    "real_S07_authorized": false
   }
 }
