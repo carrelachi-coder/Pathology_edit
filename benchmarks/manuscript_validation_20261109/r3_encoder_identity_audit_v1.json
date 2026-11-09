@@ -1,0 +1,75 @@
+{
+  "status": "historical_encoder_metadata_consistent",
+  "encoders": {
+    "uni2h": {
+      "metadata_files_verified": 12,
+      "metadata_sha256": [
+        "6e04797509f4ca1139a69c9b4789f2b469ae7e72c3d3840bf52a4d9fc7d4cec1",
+        "7016365e55b6b8907d1ea0e823368a1373064882bd6a6b0c898d265e47ec82a9",
+        "6e1bdaafd26c499a97210111171357a5fab0212bf6cdc6cc54d1877a4ffded75",
+        "b149484bd70387496e4e628734a078a8004583f16656cda2fb53a719f0cdd5cf",
+        "96a8e5e704f5649d97dc41691d1549cfac7359f0a5eef90882c892e6aab62d69",
+        "5e9053a92bdfb887b5350ab5e91935b8726aa51db360c267f9b11bcc9d71a2f9",
+        "10a9096e910b531a11f235f31e7e4ab35b48703f2aa87773c150293fa01eb1fa",
+        "06213611972dfff7eb29a151cb424bfb5df37b3a056ab8f72d39b49c70e55db3",
+        "d9aa66a58fc509f7fda69db42ed5eeebb5d7a10edd7df177f92b8e23cbca5275",
+        "6f156907dbb7de07094251006f7228d2439c440c7b5b00fbefc5493c3fd3afc9",
+        "f038f660c8e25f4b7c6aefedeb0f87b798288a01440bf1fea7121719cfdde499",
+        "dfb9f99ba8824afbe9a37989e187bfd425b002f37c5f0ea4d2390586868653d7"
+      ],
+      "extractor_digest": "6e5c0acee4153b0d6322a7d6d9ce8f3d1996b79ca9ab385f7c8a0f4af490ab58",
+      "checkpoint_sha256_declared": "6e077eda234bebc595868d918d3458d9dd32a050199b0ff04443b2f46a0a3b1e",
+      "extractor": {
+        "name": "uni2h",
+        "architecture": "ViT-h/14-reg8",
+        "checkpoint": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/UNI-2h/pytorch_model.bin",
+        "checkpoint_sha256": "6e077eda234bebc595868d918d3458d9dd32a050199b0ff04443b2f46a0a3b1e",
+        "input_resolution": 224,
+        "feature_policy": "raw_cls_embedding",
+        "dtype": "bf16",
+        "transform": "Compose(\n    Resize(size=224, interpolation=bilinear, max_size=None, antialias=True)\n    CenterCrop(size=(224, 224))\n    MaybeToTensor()\n    Normalize(mean=tensor([0.4850, 0.4560, 0.4060]), std=tensor([0.2290, 0.2240, 0.2250]))\n)"
+      },
+      "raw_features": true,
+      "weights_rehashed_this_round": false
+    },
+    "conch": {
+      "metadata_files_verified": 12,
+      "metadata_sha256": [
+        "20f5d49d8b58b804022c78006712f91cd9cde82f526fb8b520d69151dbdbe23f",
+        "602c8204359657ccf4d5ffa92b1628a2d6c017243dab82619ca806188a6203b3",
+        "d2b55627fe3030753ba6a82fadea33145d58a3e96a15842df6cbf503a0e0d3bc",
+        "6d2fea2ba843e99af510ac9cb07bdf7538da41966365233974468aa0eb37a3c2",
+        "8ad0e24a3ac9160811d436ed57c187842c895332dca861bbe08acc37626f8af2",
+        "7133c9a502442072c0538d921b3eb4dc8a6f8e3ec01454d4ba57dc163f19048a",
+        "0b667948a422969431647e4b494a19381610492d8a729008f0d68089262419ba",
+        "5855b79cee5b1758ee236e7b32ab17eb7f48b7263a3ce6f186c62d6ec91d1034",
+        "c1f927f7d1e43652a4bc4348b0ff6ff3100d8a743929c5f2754a81b8ee766e43",
+        "f216b4193ec20bbedcd1e13dc9381b92bf70cdb88ef932beeb4165a15eadfdc1",
+        "2f05c72db9b28bea3b69d2fc4d51acbf6c6df3131824a5b256e78c2a34d5ce09",
+        "d3554906dacdd8f9ed94eac5c4444c7ff43aa13fbbe97d2eb541a0510cd146e9"
+      ],
+      "extractor_digest": "a188820651b05dbf2b8851af249063a5be09b24cd6368abbe38b274baef61a16",
+      "checkpoint_sha256_declared": "40a9644b9ba0e83a74576e0a5e5f7313599fa9c9cdaf3c20f8a3e271b0e9ae7c",
+      "extractor": {
+        "name": "conch",
+        "architecture": "conch_ViT-B-16",
+        "checkpoint": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/CONCH-main/checkpoints/pytorch_model.bin",
+        "checkpoint_sha256": "40a9644b9ba0e83a74576e0a5e5f7313599fa9c9cdaf3c20f8a3e271b0e9ae7c",
+        "input_resolution": [
+          448,
+          448
+        ],
+        "feature_policy": "encode_image(proj_contrast=False,normalize=False)",
+        "dtype": "bf16",
+        "transform": "Compose(\n    Resize(size=448, interpolation=bicubic, max_size=None, antialias=True)\n    CenterCrop(size=(448, 448))\n    <function _convert_to_rgb at 0xADDR>\n    ToTensor()\n    Normalize(mean=(0.48145466, 0.4578275, 0.40821073), std=(0.26862954, 0.26130258, 0.27577711))\n)"
+      },
+      "raw_features": true,
+      "weights_rehashed_this_round": false
+    }
+  },
+  "input_digests_equal_across_encoders": true,
+  "input_digest_semantics": "Old extractor digest covers sample IDs and image path/size/mtime, not image content hashes. Current image files were not reread in this audit.",
+  "actual_training_overlap_status": "Requires per-model training audit. Extractor identity consistency does not determine overlap.",
+  "historical_sham_status": "Four saved cell manifests contain reference/local/global edits and two strengths; no matched sham feature set in these caches.",
+  "statistics_process": "Existing frozen reanalysis continues with these verified raw feature arrays."
+}
