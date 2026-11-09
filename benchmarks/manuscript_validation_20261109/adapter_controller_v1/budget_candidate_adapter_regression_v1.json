@@ -1,0 +1,10 @@
+{
+  "status": "candidate_adapter_regression_passed",
+  "command": "In isolated Python test process assign codec.Budget=CandidateBudget; pytest -q tests/test_observer_codec_adapter_v1.py",
+  "passed": 55,
+  "elapsed_seconds_reported_by_pytest": 3.81,
+  "scope": "Existing adapter test file with explicit process-local budget substitution. No server deployment or real witness invocation.",
+  "production_files_modified": false,
+  "new_execution_authorization": false,
+  "qualification_updates": 0
+}
