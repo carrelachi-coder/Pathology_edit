@@ -1,0 +1,77 @@
+{
+  "status": "HOLD",
+  "authorization_status": "consumed_and_closed",
+  "manifest_sha256": "303944169cc5aefc848f61fbedf70eebfd40e5a17ead578c6fa34cd1ef799b4e",
+  "launch_completion": {
+    "exit_code": 78,
+    "wall_seconds": 1321.7760214600712,
+    "stdout": "{\"status\": \"mismatch_hold\", \"launched\": [\"A\", \"B\"], \"reserved_witness_calls\": 4}\n",
+    "stderr": "",
+    "automatic_retries": 0
+  },
+  "controller_result": {
+    "launched": [
+      "A",
+      "B"
+    ],
+    "reserved_witness_calls": 4,
+    "status": "mismatch_hold"
+  },
+  "controller_events": [
+    {
+      "arm": "A",
+      "event": "launch_reserved",
+      "reserved_witness_calls": 2
+    },
+    {
+      "arm": "A",
+      "event": "arm_process_receipt",
+      "receipt": {
+        "elapsed_seconds": 113.07593958452344,
+        "exit_code": 0,
+        "pid": 3952256,
+        "timed_out": false
+      }
+    },
+    {
+      "arm": "A",
+      "event": "arm_accepted"
+    },
+    {
+      "arm": "B",
+      "event": "launch_reserved",
+      "reserved_witness_calls": 4
+    },
+    {
+      "arm": "B",
+      "event": "arm_process_receipt",
+      "receipt": {
+        "elapsed_seconds": 1200.0242199432105,
+        "exit_code": null,
+        "pid": 3959845,
+        "timed_out": true
+      }
+    },
+    {
+      "arm": "B",
+      "event": "mismatch_hold",
+      "reason": "RuntimeError: arm timeout/nonzero exit"
+    }
+  ],
+  "evidence_sha256": {
+    "launch_completion": "6b2e03a396f14febfdcc6597e9fe124601d7d2c5a431a839b37d9a8eed50bed3",
+    "result": "611a6450e8f6060a59891cd66ecc830f84959c7dfe9ad82b6238f2cbea5a2971",
+    "events": "ffe72b5eb01bee956119a6a5f2ce51d55cda4376211bf82994c9cec76764868f"
+  },
+  "interpretation": {
+    "A": "Completed normally and matched full historical business receipt. This does not confer topology qualification.",
+    "B": "Pair process exceeded frozen1200-second limit. Full business receipt and sealed capture unavailable. No B/C non-interference conclusion.",
+    "C": "Not launched.",
+    "partial_B_last_committed_sequence": 7685155,
+    "partial_capture_complete": false,
+    "automatic_retries": 0,
+    "qualification_updates": 0,
+    "new_execution_authorized": false
+  },
+  "private_raw_logs_published": false
+}
