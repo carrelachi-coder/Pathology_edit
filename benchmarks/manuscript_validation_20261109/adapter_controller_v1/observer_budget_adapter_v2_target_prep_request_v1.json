@@ -1,0 +1,9 @@
+{
+  "kind": "observer-budget-adapter-v2-target-preparation-request",
+  "status": "not_authorized_not_deployed",
+  "manifest_file": "observer_budget_adapter_v2_target_prep_manifest_v1.json",
+  "manifest_sha256": "150f4b0505b33bc125c6a44eccae27a9e3459ec170539feb89c045765bccc910",
+  "request": "Approve one isolated deployment and target preparation smoke with 60-second setup and 90-second external watchdog. Zero witness, S07, H&E or experiment acceptance; failure HOLD, zero retry.",
+  "prior_decision": "User accepted Adapter v2 scheme for target environment preparation, but this new target run is separately bound to this frozen manifest SHA.",
+  "local_tests": "173 passed in 3.69s (legacy/new adapter, codec, budget differential, target preparation smoke and authorization gate)"
+}

@@ -19,3 +19,7 @@
 2. 将新 Adapter/Validator 接入一个**新版本**真实诊断 Controller，更新 B/C 完整比较与运行身份。旧 Controller 和已消费的 S07 授权不可复用。
 3. 在目标环境进行必要的只读身份与资源验收，再单独申请有限 S07 诊断授权。
 4. 真实完整证据出现后，仍需单独研究拓扑可执行性和 30 位患者资格。此原型本身不改变 17/19 来源记录。
+
+## 目标环境准备请求
+
+新增 setup-only 脚本与冻结清单 `observer_budget_adapter_v2_target_prep_manifest_v1.json`。它在新隔离目录核对代码 SHA、Python/平台、220 个 distribution occurrence、环境和 no-replace 硬链接，然后只初始化一个零事件合成 Adapter，确认候选预算选择、格式／代码身份、默认 RNG、线程以及 Torch/业务模块导入边界。外层 90 秒、setup 60 秒、零重试；无 witness、S07、H&E 或接受证明。本地包含授权拒绝和仓库外工作目录烟雾测试的指定集合 **173 项通过**。该清单尚未获得独立的 SHA 绑定执行授权。
