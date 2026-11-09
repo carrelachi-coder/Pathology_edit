@@ -50,7 +50,7 @@ def main():
     for (file, line, function), (primitive, calls, self_time, cumulative, callers) in pstats.Stats(profiler).stats.items():
         rows.append({'file': file, 'line': line, 'function': function, 'calls': calls, 'self_seconds': self_time, 'cumulative_seconds': cumulative})
     rows.sort(key=lambda r: r['self_seconds'], reverse=True)
-    report = {'scope': 'Local profiled synthetic guard.stage only. Includes profiler overhead. No target timing inference.', 'events': args.events, 'candidate_budget': args.candidate_budget, 'elapsed_seconds': elapsed, 'global_rng_unchanged': True, 'capture_complete': False, 'qualification_updates': 0, 'top_self_time': rows[:25], 'code_sha256': {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in [Path(__file__), Path('diagnostic_storage/guard_blocks_v2.py'), Path('diagnostic_storage/observer_adapter_v1.py')]}}
+    report = {'scope': 'Local profiled synthetic guard.stage only. Includes profiler overhead. No target timing inference.', 'events': args.events, 'candidate_budget': args.candidate_budget, 'elapsed_seconds': elapsed, 'global_rng_unchanged': True, 'capture_complete': False, 'qualification_updates': 0, 'logical_stream_sha256': core.writer.raw_hash.hexdigest(), 'committed_blocks': core.writer.blocks, 'logical_events_written': core.writer.events, 'top_self_time': rows[:25], 'code_sha256': {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in [Path(__file__), Path('diagnostic_storage/guard_blocks_v2.py'), Path('diagnostic_storage/observer_adapter_v1.py')]}}
     (args.output/'report.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps({'events': args.events, 'elapsed_seconds': elapsed, 'top_self_time': rows[:6]}))
 

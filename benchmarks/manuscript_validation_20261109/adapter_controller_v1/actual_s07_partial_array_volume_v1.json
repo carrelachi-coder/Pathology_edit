@@ -1,0 +1,36 @@
+{
+  "scope": "Array occurrence metadata in the committed B prefix. Counterfactual raw C payload sum for the same prefix only, not a complete C prediction.",
+  "last_committed_event_sequence": 7685155,
+  "all_indexed_array_occurrences": 2767,
+  "committed_prefix_array_occurrences": 2767,
+  "committed_prefix_raw_payload_bytes": 924738656,
+  "indexed_but_uncommitted_event_arrays": 0,
+  "dtype_counts": {
+    "|u1": 254,
+    "<u4": 244,
+    "|b1": 1996,
+    "<f8": 168,
+    "<i8": 105
+  },
+  "payload_size_counts": {
+    "2496": 244,
+    "3536": 6,
+    "3584": 6,
+    "3728": 5,
+    "3952": 12,
+    "3968": 12,
+    "5056": 244,
+    "5280": 10,
+    "5312": 6,
+    "9680": 18,
+    "9920": 10,
+    "10064": 6,
+    "19696": 5,
+    "262144": 2006,
+    "2097152": 171,
+    "6291456": 6
+  },
+  "array_index_sha256": "5b8119364327002572343eef2e5904550fcf48a331d69bbc41ebba783ab16f41",
+  "full_capture_executed": false,
+  "qualification_updates": 0
+}

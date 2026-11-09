@@ -1,0 +1,13 @@
+{
+  "kind": "budget-cost-target-trial-authorization-request-v1",
+  "manifest_sha256": "dbf561abe8026ceca5c20cf63ea69e4765832055c288621afdd085adab125a5f",
+  "manifest_file": "budget_cost_target_trial_proposal_v1.json",
+  "status": "not_authorized_not_deployed",
+  "request": "一次隔离部署及两次100000事件合成profiling，原版和候选各一次，每项60秒，总180秒，失败HOLD零重试。无S07、H&E或真实来源调用。",
+  "local_evidence": [
+    "budget_candidate_validation_v1.json",
+    "budget_candidate_adapter_regression_v1.json"
+  ],
+  "controller_local_tests": 7,
+  "scope_limit": "性能定位，不代表完整capture验收或真实诊断可启动。"
+}

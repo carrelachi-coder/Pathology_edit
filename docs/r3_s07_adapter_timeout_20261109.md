@@ -53,3 +53,9 @@ R3 历史表征统计采用另一个独立工作流。它仍按患者聚类、�
 只读提取已提交前缀中的全部 `execution.works` 和 `probe.complete` 事件后，得到 9 组执行工作项和 17 个试验终态。17 个试验均为 `valid=false`、`topology.passed=false`。最大记录试验面积为 70,729 像素，同时源孔洞数为 13→10，不能称为合法安全面积，也不能解释为只差 50 像素即可通过。
 
 工作项的 `item_capacity_px` 合计在不同计划中为 39,318 或 72,026。这是 ownership 后工作项记录的容量，不是满足最终拓扑的可实现面积。容量合计与试验面积的差值仍不构成各步骤损失分解。当前前缀没有拓扑通过的 probe，不能从中估计该来源的最优合法面积，更不能推断 U2。完整标量与摘要分别保存为 `actual_s07_partial_trial_scalars_v1.json` 与 `actual_s07_partial_trial_summary_v1.json`。
+
+## 搜索范围及 Full Capture 的已知工作量
+
+第一块中保存的 `portfolio.preferences` 预先列出 U1 的 13 个 preference order。超时前记录了 3 次 preference 入口及 9 次 compiler attempt，不能声称已经覆盖全部搜索，更不能把已记录数量当作完整事件量上限。
+
+已提交 B 前缀的数组索引包含 2,767 个 occurrence，全部属于已提交事件。按各 occurrence 的 `decoded_bytes` 求和为 924,738,656 字节。这给出相同前缀若逐 occurrence 原样保存时的原始数组载荷量，不包含 C 的控制文件、对齐和事件块，也不是完整 C 的容量预测。它进一步说明 683 个合成数组不能代表真实全流程。当前没有据此提高存储或运行预算。
