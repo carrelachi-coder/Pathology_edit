@@ -25,3 +25,16 @@ This trial measures only the fixed synthetic workload in the target
 environment. Passing it would not establish real S07 event count, raster
 capacity, non-interference, topology qualification, or formal cohort
 eligibility.
+
+## Local full-workload development result
+
+On the local Mac, one run using the full 2,100,000-event workload per arm
+completed with a strict semantic B/C match. B and C each recorded 683
+generated arrays plus two RNG checkpoint occurrences. Independently
+regenerated C payloads matched all 683 generated arrays byte for byte.
+The full run took 84.89 seconds; B/C comparison took 16.66 seconds. B
+allocated 15.72 MB and C 1.45 GB, both below 4 GiB. The compact,
+hash-bound result is in
+`benchmarks/manuscript_validation_20261109/adapter_controller_v1/observer_budget_large_synthetic_v1/local_full_workload_result_v1.json`.
+This is local development evidence only; target environment timing and
+real S07 behavior remain untested.
