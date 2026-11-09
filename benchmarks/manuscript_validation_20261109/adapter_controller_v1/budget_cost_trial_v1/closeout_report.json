@@ -1,0 +1,29 @@
+{
+  "kind": "isolated-synthetic-budget-cost-trial-v1-closeout",
+  "status": "HOLD",
+  "manifest_sha256": "dbf561abe8026ceca5c20cf63ea69e4765832055c288621afdd085adab125a5f",
+  "authorization_consumed": true,
+  "controller_exit_code": 78,
+  "controller_elapsed_seconds": 0.05775328166782856,
+  "profile_count": 0,
+  "original_profile_started": false,
+  "candidate_profile_started": false,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "failure_type": "AssertionError",
+  "read_only_root_cause": "The frozen distribution RECORD hashes were computed from raw file bytes. Controller v1 used importlib.metadata.distribution(...).read_text(\"RECORD\").encode(), which normalized CRLF to LF. absl-py RECORD raw SHA matched the manifest; text-normalized SHA did not. The same mismatch was observed in the first eight package records.",
+  "absl_py_record": {
+    "manifest_and_raw_sha256": "c2b60492fa1e6b0e63822f45c45777861a1b6d92adc8bc1ffe0b8e0fa7cc2246",
+    "text_normalized_sha256": "29cc7bbc88f235adaa6ceca67f6bed72e20fa87da5d5da9b59ade21c36ffae58",
+    "raw_bytes": 3920,
+    "normalized_bytes": 3865,
+    "crlf_count": 55
+  },
+  "disposition": "No retry. v1 authorization permanently consumed. Versioned v2 controller and manifest require separate review and new authorization before any target execution.",
+  "source_artifacts": {
+    "trial_result_sha256": "06576e80f6410d80914ad4c672c1cb63a893fdad317c597f6398d9d1b5e28222",
+    "authorization_consumed_sha256": "1a70c865ba3f5f2d678565eee0eb79fb7a6cd04b89f1a749504572f2d550afec"
+  },
+  "recorded_utc": "2026-11-09T05:39:53.659395+00:00"
+}

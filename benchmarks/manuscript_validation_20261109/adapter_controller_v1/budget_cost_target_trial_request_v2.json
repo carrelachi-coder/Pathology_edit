@@ -1,0 +1,11 @@
+{
+  "kind": "budget-cost-target-trial-authorization-request-v2",
+  "manifest_sha256": "a5fe4a5051f7ea56e9634a94cb9fa0b272a5cb205254ccc3675812f8824f591a",
+  "manifest_file": "budget_cost_target_trial_proposal_v2.json",
+  "status": "not_authorized_not_deployed",
+  "request": "One fresh isolated deployment and one original and one candidate 100000-event synthetic profile, 60s each, 180s overall, failure HOLD, zero retry. The consumed v1 authorization is not reused.",
+  "fix": "Hash distribution RECORD raw bytes, matching frozen inventory and preserving CRLF. No other trial scope or thresholds changed.",
+  "local_tests": "9 passed in 0.19s: v1 and v2 controller tests",
+  "S07_calls": 0,
+  "HE_calls": 0
+}
