@@ -1,0 +1,52 @@
+{
+  "kind": "adapter-startup-difference-technical-disposition-v1",
+  "decision": "technically_accept_for_proposed_finite_diagnostic_subject_to_explicit_user_launch_approval",
+  "reviewer_provenance": "Assistant source review and target import evidence; no external signature",
+  "evidence_sha256": "6b619ac55f84c10901d9a7ce2a29c3ef2998673ab620198757c2060c0c1dd894",
+  "differences": [
+    {
+      "operation": "insert",
+      "A_files": [],
+      "B_files": [
+        "diagnostic_storage/observer_adapter_v1.py",
+        "diagnostic_storage/guard_blocks_v2.py",
+        "diagnostic_storage/observer_adapter_contract_v1.py",
+        "diagnostic_storage/observer_invocation_bridge_v1.py",
+        "phase3_mask_edit_refine/__init__.py",
+        "phase3_mask_edit_refine/models.py",
+        "phase3_mask_edit_refine/passive_observer.py"
+      ]
+    },
+    {
+      "operation": "delete",
+      "A_files": [
+        "phase3_mask_edit_refine/__init__.py",
+        "phase3_mask_edit_refine/models.py"
+      ],
+      "B_files": []
+    }
+  ],
+  "local_source_sha256": {
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_invocation_bridge_v1.py": "2c0427c3e11ddacea33b300bfeaf2ce7bd48aeba230c1f2e793f5498fc0e29f4",
+    "phase3_mask_edit_refine/__init__.py": "10d9e47d15057b94f4d08e5fde01f7a5bb61eafe55e22263f4d003da731b12a5",
+    "phase3_mask_edit_refine/models.py": "ab13e2515c881b10e2206ce2697ced70f1d514a29adc8ff040b9949beaa6cdc2",
+    "phase3_mask_edit_refine/passive_observer.py": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2"
+  },
+  "basis": [
+    "A and B differ by Adapter/Codec/contract/bridge and passive observer imports, plus earlier Refine package/models initialization.",
+    "B and C have identical observed source import chronology.",
+    "Default RNG/hash states unchanged, exactly one Linux thread per arm, CUDA false.",
+    "Source top-levels inspected: definitions/imports/constants and ContextVar setup; no direct source qualification or topology execution observed."
+  ],
+  "limits": [
+    "Module cache and other unobserved side effects are not ruled out.",
+    "Actual strict full business receipts and full BC semantic comparison remain required; any mismatch stops."
+  ],
+  "comparison_fields_excluded": [],
+  "receipt_normalization": false,
+  "RNG_field_exclusions": false,
+  "witness_authorization_granted_by_this_record": false
+}
