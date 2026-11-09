@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independently review candidate budget integration and freeze a new real diagnostic identity before seeking new S07 authorization; then resolve topology bottleneck, qualify four targets per patient, and run the formal matched-sham cohort. Historical results do not replace these requirements.",
+  "current_next_deliverable": "Independent review of draft PRs #9-#11; then manifest-bound fixed 2.1M-event/683-array synthetic target validation. Only after that, review production Controller wiring and seek a new real S07 diagnostic authorization. Formal cohort remains closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -123,12 +123,32 @@
     "status": "draft_PR_local_synthetic_passed_independent_review_pending",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/10",
     "branch": "codex/observer-budget-readonly-consumer-review",
-    "commit": "8f42f97f",
-    "local_targeted_tests_passed": 145,
+    "commit": "173d3069",
+    "local_targeted_tests_passed": 146,
     "single_stream_seconds": 30,
     "double_stream_seconds": 60,
     "target_large_synthetic_tested": false,
     "real_controller_wired": false,
-    "real_S07_authorized": false
+    "real_S07_authorized": false,
+    "independent_review": "pending"
+  },
+  "observer_budget_large_synthetic_review": {
+    "status": "draft_PR_candidate_manifest_frozen_review_pending_not_executed",
+    "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/11",
+    "branch": "codex/observer-budget-large-synthetic-review",
+    "commit": "ab6e8271",
+    "candidate_manifest_sha256": "147af56044386d46c95525a489707a637b6f0a3c5aba56ef33672c55356ae17f",
+    "logical_events_each": 2100000,
+    "full_capture_arrays": 683,
+    "local_targeted_tests_passed": 16,
+    "target_run_authorized": false,
+    "target_run_executed": false,
+    "real_S07_calls": 0,
+    "formal_HE_calls": 0,
+    "independent_review": "pending",
+    "predecessor_prs": [
+      9,
+      10
+    ]
   }
 }
