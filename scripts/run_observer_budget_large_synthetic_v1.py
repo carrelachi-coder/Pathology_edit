@@ -169,8 +169,6 @@ def run(manifest, approval):
             pass
         else:
             raise ValueError('hardlink no-replace failed')
-        check_setup()
-        result['setup_seconds'] = time.monotonic() - started
         import numpy as np
         from diagnostic_storage.observer_adapter_v2 import ObserverAdapter
         from diagnostic_storage.validator_process_gate_v3_budget import run_validation
@@ -178,6 +176,8 @@ def run(manifest, approval):
         global_before = hashlib.sha256(repr((random.getstate(), np.random.get_state())).encode()).hexdigest()
         if any(n.startswith(('phase3_', 'inpaint_cells')) for n in sys.modules) or 'torch' in sys.modules:
             raise ValueError('business or torch import')
+        check_setup()
+        result['setup_seconds'] = time.monotonic() - started
         for arm, mode in [('B', 'hash_only'), ('C', 'full_capture')]:
             arm_started = time.monotonic()
             core = ObserverAdapter(root / arm, mode=mode, identity=capture_identity)

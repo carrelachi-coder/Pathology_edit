@@ -1,7 +1,7 @@
 {
   "kind": "observer-budget-large-synthetic-v1",
   "status": "review_only_no_execution_authorized",
-  "manifest_sha256": "147af56044386d46c95525a489707a637b6f0a3c5aba56ef33672c55356ae17f",
+  "manifest_sha256": "1b5dff6ee1cf4d725617a5cf08c26ae2b6473ad36842206ab87f42ac42747335",
   "manifest_path": "benchmarks/manuscript_validation_20261109/adapter_controller_v1/observer_budget_large_synthetic_v1/candidate_manifest_v1.json",
   "scope": "One fixed, isolated synthetic B/C target trial; no pathology or real source calls, no outer acceptance publication.",
   "fixed_workload": {

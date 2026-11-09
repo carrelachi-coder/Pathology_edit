@@ -1,0 +1,57 @@
+{
+  "kind": "observer-budget-large-synthetic-local-development-v2",
+  "status": "synthetic_BC_strict_match",
+  "scope": "local Mac development test after setup boundary correction; not target-server acceptance or S07 authorization",
+  "trial_manifest_sha256": "2cbd8737465d132f0658222905c377b3282f2b4ae53a29ffb51145cb6f0e1a79",
+  "trial_result_sha256": "9268f246adddcd592632a7d6f5ec07cb9b51d773a706840947f3ad8b3fb6ad14",
+  "candidate_target_manifest_sha256": "1b5dff6ee1cf4d725617a5cf08c26ae2b6473ad36842206ab87f42ac42747335",
+  "workload": {
+    "events_each": 2100000,
+    "generated_float64_arrays_each": 683,
+    "total_array_occurrences_each": 685
+  },
+  "setup_seconds_including_imports": 0.21153958421200514,
+  "arms": [
+    {
+      "arm": "B",
+      "mode": "hash_only",
+      "encode_and_seal_seconds": 33.070492249913514,
+      "capture_validation_seconds": 11.324098417069763,
+      "capture_validation_ok": true,
+      "allocated_bytes": 15716352,
+      "logical_stream_sha256": "8520e32d4db80e375872fbc7f26413ce3c30f20e0dc9d7da008fd1e8d5935559"
+    },
+    {
+      "arm": "C",
+      "mode": "full_capture",
+      "encode_and_seal_seconds": 27.61953483428806,
+      "capture_validation_seconds": 11.39217224996537,
+      "capture_validation_ok": true,
+      "allocated_bytes": 1450942464,
+      "logical_stream_sha256": "8520e32d4db80e375872fbc7f26413ce3c30f20e0dc9d7da008fd1e8d5935559"
+    }
+  ],
+  "comparison": {
+    "validation_ok": true,
+    "elapsed_seconds": 24.193702707998455,
+    "semantic_match": true,
+    "excluded_semantic_fields": []
+  },
+  "independent_arrays": {
+    "array_occurrences": 683,
+    "raw_payload_bytes": 1432354816,
+    "every_original_payload_byte_equal": true,
+    "ordered_reference_hash": "845e0f25c34a52f70e69326027529a50e5ca27910a7536b35b7fba58e7802b9f"
+  },
+  "elapsed_seconds": 109.6043983749114,
+  "global_rng_unchanged": true,
+  "real_S07_calls": 0,
+  "witness_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "limitations": [
+    "Local runtime and filesystem; target-server deadlines remain unverified.",
+    "Synthetic arrays and events do not establish real S07 raster count or non-interference.",
+    "No new source qualification or formal cohort evidence."
+  ]
+}
