@@ -1,0 +1,13 @@
+{
+  "status": "awaiting_new_setup_only_authorization",
+  "manifest_sha256": "cde526bac89af86dc9000a67d4c10c4ac681724fb3e1156df6f20ed1e3a719b5",
+  "code_commit": "42dca160525ff8d649101732f5b0411c0e381114",
+  "scope": "one setup-only target trial; one60second window; no automatic retries",
+  "old_authorizations_consumed": true,
+  "code_review": "Assistant source review and structural checks; no external independent-review signature",
+  "clock_disclosure": "Sixty seconds from run_setup parent entry. Authorize/read code, consume exclusive claim, spawn worker including Python startup, prepare, seal, verify and wait for exit all draw from same window. Bootstrap of the already-running parent before run_setup is outside this window. Kill/reap cleanup may extend reported wall time, never accepted work time.",
+  "server_deployed": false,
+  "target_measurements": 0,
+  "expected_archive_contents": "15 source files plus private inventory, exact manifest, later explicit approval record. Source/input identities unchanged by staging.",
+  "limits": "Local synthetic end-to-end pass does not establish target timing. Parent bootstrap before API entry is outside measurement clock and is disclosed for review."
+}
