@@ -1,0 +1,10 @@
+{
+  "kind": "limited-topology-adapter-v1",
+  "approved": true,
+  "manifest_sha256": "303944169cc5aefc848f61fbedf70eebfd40e5a17ead578c6fa34cd1ef799b4e",
+  "rng_decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "import_difference_sha256": "19f497ecd99f16144f93290cfcdd11fa87f5c292f33989855054dfd6b3d9944a",
+  "authority": "explicit user reply recorded by assistant",
+  "answer": "接受启动差异并批准这一次有限诊断",
+  "scope": "Exactly one S07 U1/U2 A-to-B-to-C finite diagnostic; at most6 logical witnesses,1200s per pair,3600s work,5s termination cleanup,zero retries."
+}

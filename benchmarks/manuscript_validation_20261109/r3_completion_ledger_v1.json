@@ -83,5 +83,12 @@
     "role": "Historical representation evidence, distinct from the new formal sham-paired cohort.",
     "analysis_spec": "r3_historical_reanalysis_spec_v1.json",
     "results_complete": false
+  },
+  "finite_S07_diagnostic": {
+    "status": "authorized_and_verified_running_A",
+    "manifest_sha256": "303944169cc5aefc848f61fbedf70eebfd40e5a17ead578c6fa34cd1ef799b4e",
+    "reserved_witness_calls_observed": 2,
+    "completed_diagnostic": false,
+    "evidence_scope": "First live observation confirms timeout supervisor, Controller and A child active; outcome pending."
   }
 }
