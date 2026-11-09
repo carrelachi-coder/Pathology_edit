@@ -23,3 +23,9 @@
 ## 目标环境准备请求
 
 新增 setup-only 脚本与冻结清单 `observer_budget_adapter_v2_target_prep_manifest_v1.json`。它在新隔离目录核对代码 SHA、Python/平台、220 个 distribution occurrence、环境和 no-replace 硬链接，然后只初始化一个零事件合成 Adapter，确认候选预算选择、格式／代码身份、默认 RNG、线程以及 Torch/业务模块导入边界。外层 90 秒、setup 60 秒、零重试；无 witness、S07、H&E 或接受证明。本地包含授权拒绝和仓库外工作目录烟雾测试的指定集合 **173 项通过**。该清单尚未获得独立的 SHA 绑定执行授权。
+
+## 目标环境零事件验收结果
+
+SHA 绑定清单 `150f4b0505b33bc125c6a44eccae27a9e3459ec170539feb89c045765bccc910` 的一次授权已消费并结案。目标服务器隔离快照在 3.31 秒完成：身份／磁盘检查、Adapter v2 零事件初始化、候选预算选择、新格式与代码 SHA 核验均通过；Python/NumPy 默认 RNG 不变，线程数 1→1，Torch 未导入。服务器输出目录没有 `adapter_complete.json` 或 Codec 完成标记。真实 witness、S07、H&E 和实验接受证明均为零。回执见 [`observer_budget_adapter_v2_target_prep_result_v1/closeout_report.json`](../benchmarks/manuscript_validation_20261109/adapter_controller_v1/observer_budget_adapter_v2_target_prep_result_v1/closeout_report.json)。
+
+这只关闭目标环境导入与身份准备，不证明真实 B/C 非干扰、Full Capture 容量或 S07 能按时完成。下一步仍是对草稿 PR 进行独立代码审查，再设计新版本真实诊断 Controller 和完整比较清单。
