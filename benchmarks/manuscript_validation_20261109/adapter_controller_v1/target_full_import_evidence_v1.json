@@ -1,0 +1,3829 @@
+{
+  "files": {
+    "report.json": {
+      "AB_import_order_equal": false,
+      "BC_import_order_equal": true,
+      "all_default_states_unchanged_by_import": true,
+      "all_hash_fingerprints_equal_before_business": true,
+      "all_initial_states_equal": true,
+      "children": [
+        {
+          "CUDA_initialized_after": false,
+          "arm_label_for_import_path_only": "A",
+          "blocked_calls": [],
+          "default_rng_unchanged_by_import": true,
+          "error": null,
+          "hash_fingerprint_after": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+          "hash_fingerprint_before": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+          "initial_matches_parent": true,
+          "native_threads_after_import": 1,
+          "ordered_source_module_entries": [
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "scripts/probe_manuscript_joint_capacity.py",
+              "index": 0,
+              "module": "_s07_import_only_smoke"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/__init__.py",
+              "index": 1,
+              "module": "phase3_joint_edit_refine"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/executable_contract.py",
+              "index": 2,
+              "module": "phase3_joint_edit_refine.executable_contract"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/__init__.py",
+              "index": 3,
+              "module": "phase3_mask_edit"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/__init__.py",
+              "index": 4,
+              "module": "phase3_mask_edit.core"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/applicability.py",
+              "index": 5,
+              "module": "phase3_mask_edit.core.applicability"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/context.py",
+              "index": 6,
+              "module": "phase3_mask_edit.core.context"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/labels.py",
+              "index": 7,
+              "module": "phase3_mask_edit.core.labels"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/__init__.py",
+              "index": 8,
+              "module": "dataset_config"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/registry.py",
+              "index": 9,
+              "module": "dataset_config.registry"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/unified_labels.py",
+              "index": 10,
+              "module": "dataset_config.unified_labels"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/intent.py",
+              "index": 11,
+              "module": "phase3_mask_edit.core.intent"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/config.py",
+              "index": 12,
+              "module": "phase3_mask_edit.core.config"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/__init__.py",
+              "index": 13,
+              "module": "phase3_mask_edit.specialized"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/catalog.py",
+              "index": 14,
+              "module": "phase3_mask_edit.specialized.catalog"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/candidates.py",
+              "index": 15,
+              "module": "phase3_mask_edit.core.candidates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/mask_io.py",
+              "index": 16,
+              "module": "phase3_mask_edit.core.mask_io"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/gland_region.py",
+              "index": 17,
+              "module": "phase3_mask_edit.core.gland_region"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/morphology.py",
+              "index": 18,
+              "module": "phase3_mask_edit.core.morphology"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/validation.py",
+              "index": 19,
+              "module": "phase3_mask_edit.core.validation"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/__init__.py",
+              "index": 20,
+              "module": "phase3_mask_edit_refine"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/models.py",
+              "index": 21,
+              "module": "phase3_mask_edit_refine.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/budget.py",
+              "index": 22,
+              "module": "phase3_joint_edit_refine.budget"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/models.py",
+              "index": 23,
+              "module": "phase3_joint_edit_refine.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/__init__.py",
+              "index": 24,
+              "module": "phase3_joint_edit_refine.skills"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/repository.py",
+              "index": 25,
+              "module": "phase3_joint_edit_refine.skills.repository"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner_policy.py",
+              "index": 26,
+              "module": "phase3_joint_edit_refine.planner_policy"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/__init__.py",
+              "index": 27,
+              "module": "phase3_mask_edit_refine.skills"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/repository.py",
+              "index": 28,
+              "module": "phase3_mask_edit_refine.skills.repository"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/catalog_manifest.py",
+              "index": 29,
+              "module": "phase3_mask_edit_refine.skills.catalog_manifest"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/schema.py",
+              "index": 30,
+              "module": "phase3_mask_edit_refine.skills.schema"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/evidence.py",
+              "index": 31,
+              "module": "phase3_joint_edit_refine.skills.evidence"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/execution_aliases.py",
+              "index": 32,
+              "module": "phase3_joint_edit_refine.skills.execution_aliases"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/schema.py",
+              "index": 33,
+              "module": "phase3_joint_edit_refine.skills.schema"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/cell_programs.py",
+              "index": 34,
+              "module": "phase3_joint_edit_refine.cell_programs"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/authority.py",
+              "index": 35,
+              "module": "phase3_joint_edit_refine.authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/scene.py",
+              "index": 36,
+              "module": "phase3_joint_edit_refine.scene"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/evidence.py",
+              "index": 37,
+              "module": "phase3_mask_edit_refine.evidence"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/scene.py",
+              "index": 38,
+              "module": "phase3_mask_edit_refine.scene"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/nuclei.py",
+              "index": 39,
+              "module": "phase3_joint_edit_refine.nuclei"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/reference_shapes.py",
+              "index": 40,
+              "module": "phase3_joint_edit_refine.reference_shapes"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/seam.py",
+              "index": 41,
+              "module": "phase3_joint_edit_refine.seam"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/spatial_contracts.py",
+              "index": 42,
+              "module": "phase3_joint_edit_refine.spatial_contracts"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/instance_authority.py",
+              "index": 43,
+              "module": "phase3_joint_edit_refine.instance_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "inpaint_cells/__init__.py",
+              "index": 44,
+              "module": "inpaint_cells"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "inpaint_cells/instance_authority.py",
+              "index": 45,
+              "module": "inpaint_cells.instance_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/semantic_parser.py",
+              "index": 46,
+              "module": "phase3_joint_edit_refine.semantic_parser"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/agents.py",
+              "index": 47,
+              "module": "phase3_mask_edit_refine.agents"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/clarification.py",
+              "index": 48,
+              "module": "phase3_joint_edit_refine.clarification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/auxiliary.py",
+              "index": 49,
+              "module": "phase3_joint_edit_refine.auxiliary"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/lumen_observer.py",
+              "index": 50,
+              "module": "phase3_joint_edit_refine.lumen_observer"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_execution_qualification.py",
+              "index": 51,
+              "module": "phase3_joint_edit_refine.g2_execution_qualification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/gates.py",
+              "index": 52,
+              "module": "phase3_mask_edit_refine.gates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/candidates.py",
+              "index": 53,
+              "module": "phase3_mask_edit_refine.candidates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/tool_adapters.py",
+              "index": 54,
+              "module": "phase3_mask_edit_refine.tool_adapters"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/backends/__init__.py",
+              "index": 55,
+              "module": "phase3_mask_edit.backends"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/backends/organic_projection.py",
+              "index": 56,
+              "module": "phase3_mask_edit.backends.organic_projection"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/__init__.py",
+              "index": 57,
+              "module": "phase3_mask_edit.generic"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/executor.py",
+              "index": 58,
+              "module": "phase3_mask_edit.generic.executor"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/tumor_burden.py",
+              "index": 59,
+              "module": "phase3_mask_edit.generic.tumor_burden"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/necrosis.py",
+              "index": 60,
+              "module": "phase3_mask_edit.generic.necrosis"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/immune.py",
+              "index": 61,
+              "module": "phase3_mask_edit.generic.immune"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/desmoplasia.py",
+              "index": 62,
+              "module": "phase3_mask_edit.generic.desmoplasia"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/stroma.py",
+              "index": 63,
+              "module": "phase3_mask_edit.generic.stroma"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/fine_transition.py",
+              "index": 64,
+              "module": "phase3_mask_edit.specialized.fine_transition"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/topology.py",
+              "index": 65,
+              "module": "phase3_mask_edit_refine.topology"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/candidate_feasibility.py",
+              "index": 66,
+              "module": "phase3_joint_edit_refine.candidate_feasibility"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/execution.py",
+              "index": 67,
+              "module": "phase3_mask_edit_refine.execution"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/feasibility.py",
+              "index": 68,
+              "module": "phase3_joint_edit_refine.feasibility"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/cell_layouts.py",
+              "index": 69,
+              "module": "phase3_joint_edit_refine.cell_layouts"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/packing.py",
+              "index": 70,
+              "module": "phase3_joint_edit_refine.packing"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/invasive_architecture.py",
+              "index": 71,
+              "module": "phase3_joint_edit_refine.invasive_architecture"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_planner.py",
+              "index": 72,
+              "module": "phase3_joint_edit_refine.tissue_planner"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/llm_audit_tokens.py",
+              "index": 73,
+              "module": "phase3_joint_edit_refine.llm_audit_tokens"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner_inputs.py",
+              "index": 74,
+              "module": "phase3_joint_edit_refine.planner_inputs"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/visualization.py",
+              "index": 75,
+              "module": "phase3_mask_edit_refine.visualization"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/audit.py",
+              "index": 76,
+              "module": "phase3_joint_edit_refine.audit"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/portfolio_authority.py",
+              "index": 77,
+              "module": "phase3_joint_edit_refine.portfolio_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_tools.py",
+              "index": 78,
+              "module": "phase3_joint_edit_refine.tissue_tools"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_v2_shadow.py",
+              "index": 79,
+              "module": "phase3_joint_edit_refine.g2_v2_shadow"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_v2_manifest.py",
+              "index": 80,
+              "module": "phase3_joint_edit_refine.g2_v2_manifest"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_he_review.py",
+              "index": 81,
+              "module": "phase3_joint_edit_refine.g2_he_review"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_pilot.py",
+              "index": 82,
+              "module": "phase3_joint_edit_refine.g2_pilot"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_qualification.py",
+              "index": 83,
+              "module": "phase3_joint_edit_refine.g2_qualification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/visualization.py",
+              "index": 84,
+              "module": "phase3_joint_edit_refine.visualization"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner.py",
+              "index": 85,
+              "module": "phase3_joint_edit_refine.planner"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/workflow.py",
+              "index": 86,
+              "module": "phase3_joint_edit_refine.workflow"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/critic.py",
+              "index": 87,
+              "module": "phase3_joint_edit_refine.critic"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/gates.py",
+              "index": 88,
+              "module": "phase3_joint_edit_refine.gates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/handoff.py",
+              "index": 89,
+              "module": "phase3_joint_edit_refine.handoff"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/ledger.py",
+              "index": 90,
+              "module": "phase3_joint_edit_refine.ledger"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/mature_probnet_adapter.py",
+              "index": 91,
+              "module": "phase3_joint_edit_refine.mature_probnet_adapter"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_execution.py",
+              "index": 92,
+              "module": "phase3_joint_edit_refine.tissue_execution"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/__init__.py",
+              "index": 93,
+              "module": "phase3_mask_edit.benchmark"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/models.py",
+              "index": 94,
+              "module": "phase3_mask_edit.benchmark.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/experiment_identity.py",
+              "index": 95,
+              "module": "phase3_mask_edit.benchmark.experiment_identity"
+            }
+          ],
+          "per_rng_after": {
+            "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+            "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+            "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+            "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+          },
+          "per_rng_before": {
+            "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+            "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+            "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+            "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+          },
+          "post_import_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "process_receipt": {
+            "elapsed_seconds": 2.619583250954747,
+            "exit_code": 0,
+            "pid": 3885806,
+            "timed_out": false
+          },
+          "startup_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "witness_calls": 0
+        },
+        {
+          "CUDA_initialized_after": false,
+          "arm_label_for_import_path_only": "B",
+          "blocked_calls": [],
+          "default_rng_unchanged_by_import": true,
+          "error": null,
+          "hash_fingerprint_after": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+          "hash_fingerprint_before": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+          "initial_matches_parent": true,
+          "native_threads_after_import": 1,
+          "ordered_source_module_entries": [
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "diagnostic_storage/observer_adapter_v1.py",
+              "index": 0,
+              "module": "diagnostic_storage.observer_adapter_v1"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "diagnostic_storage/guard_blocks_v2.py",
+              "index": 1,
+              "module": "diagnostic_storage.guard_blocks_v2"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "diagnostic_storage/observer_adapter_contract_v1.py",
+              "index": 2,
+              "module": "diagnostic_storage.observer_adapter_contract_v1"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "diagnostic_storage/observer_invocation_bridge_v1.py",
+              "index": 3,
+              "module": "diagnostic_storage.observer_invocation_bridge_v1"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/__init__.py",
+              "index": 4,
+              "module": "phase3_mask_edit_refine"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/models.py",
+              "index": 5,
+              "module": "phase3_mask_edit_refine.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/passive_observer.py",
+              "index": 6,
+              "module": "phase3_mask_edit_refine.passive_observer"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "scripts/probe_manuscript_joint_capacity.py",
+              "index": 7,
+              "module": "_s07_import_only_smoke"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/__init__.py",
+              "index": 8,
+              "module": "phase3_joint_edit_refine"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/executable_contract.py",
+              "index": 9,
+              "module": "phase3_joint_edit_refine.executable_contract"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/__init__.py",
+              "index": 10,
+              "module": "phase3_mask_edit"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/__init__.py",
+              "index": 11,
+              "module": "phase3_mask_edit.core"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/applicability.py",
+              "index": 12,
+              "module": "phase3_mask_edit.core.applicability"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/context.py",
+              "index": 13,
+              "module": "phase3_mask_edit.core.context"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/labels.py",
+              "index": 14,
+              "module": "phase3_mask_edit.core.labels"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/__init__.py",
+              "index": 15,
+              "module": "dataset_config"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/registry.py",
+              "index": 16,
+              "module": "dataset_config.registry"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/unified_labels.py",
+              "index": 17,
+              "module": "dataset_config.unified_labels"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/intent.py",
+              "index": 18,
+              "module": "phase3_mask_edit.core.intent"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/config.py",
+              "index": 19,
+              "module": "phase3_mask_edit.core.config"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/__init__.py",
+              "index": 20,
+              "module": "phase3_mask_edit.specialized"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/catalog.py",
+              "index": 21,
+              "module": "phase3_mask_edit.specialized.catalog"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/candidates.py",
+              "index": 22,
+              "module": "phase3_mask_edit.core.candidates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/mask_io.py",
+              "index": 23,
+              "module": "phase3_mask_edit.core.mask_io"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/gland_region.py",
+              "index": 24,
+              "module": "phase3_mask_edit.core.gland_region"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/morphology.py",
+              "index": 25,
+              "module": "phase3_mask_edit.core.morphology"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/validation.py",
+              "index": 26,
+              "module": "phase3_mask_edit.core.validation"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/budget.py",
+              "index": 27,
+              "module": "phase3_joint_edit_refine.budget"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/models.py",
+              "index": 28,
+              "module": "phase3_joint_edit_refine.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/__init__.py",
+              "index": 29,
+              "module": "phase3_joint_edit_refine.skills"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/repository.py",
+              "index": 30,
+              "module": "phase3_joint_edit_refine.skills.repository"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner_policy.py",
+              "index": 31,
+              "module": "phase3_joint_edit_refine.planner_policy"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/__init__.py",
+              "index": 32,
+              "module": "phase3_mask_edit_refine.skills"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/repository.py",
+              "index": 33,
+              "module": "phase3_mask_edit_refine.skills.repository"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/catalog_manifest.py",
+              "index": 34,
+              "module": "phase3_mask_edit_refine.skills.catalog_manifest"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/schema.py",
+              "index": 35,
+              "module": "phase3_mask_edit_refine.skills.schema"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/evidence.py",
+              "index": 36,
+              "module": "phase3_joint_edit_refine.skills.evidence"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/execution_aliases.py",
+              "index": 37,
+              "module": "phase3_joint_edit_refine.skills.execution_aliases"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/schema.py",
+              "index": 38,
+              "module": "phase3_joint_edit_refine.skills.schema"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/cell_programs.py",
+              "index": 39,
+              "module": "phase3_joint_edit_refine.cell_programs"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/authority.py",
+              "index": 40,
+              "module": "phase3_joint_edit_refine.authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/scene.py",
+              "index": 41,
+              "module": "phase3_joint_edit_refine.scene"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/evidence.py",
+              "index": 42,
+              "module": "phase3_mask_edit_refine.evidence"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/scene.py",
+              "index": 43,
+              "module": "phase3_mask_edit_refine.scene"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/nuclei.py",
+              "index": 44,
+              "module": "phase3_joint_edit_refine.nuclei"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/reference_shapes.py",
+              "index": 45,
+              "module": "phase3_joint_edit_refine.reference_shapes"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/seam.py",
+              "index": 46,
+              "module": "phase3_joint_edit_refine.seam"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/spatial_contracts.py",
+              "index": 47,
+              "module": "phase3_joint_edit_refine.spatial_contracts"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/instance_authority.py",
+              "index": 48,
+              "module": "phase3_joint_edit_refine.instance_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "inpaint_cells/__init__.py",
+              "index": 49,
+              "module": "inpaint_cells"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "inpaint_cells/instance_authority.py",
+              "index": 50,
+              "module": "inpaint_cells.instance_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/semantic_parser.py",
+              "index": 51,
+              "module": "phase3_joint_edit_refine.semantic_parser"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/agents.py",
+              "index": 52,
+              "module": "phase3_mask_edit_refine.agents"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/clarification.py",
+              "index": 53,
+              "module": "phase3_joint_edit_refine.clarification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/auxiliary.py",
+              "index": 54,
+              "module": "phase3_joint_edit_refine.auxiliary"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/lumen_observer.py",
+              "index": 55,
+              "module": "phase3_joint_edit_refine.lumen_observer"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_execution_qualification.py",
+              "index": 56,
+              "module": "phase3_joint_edit_refine.g2_execution_qualification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/gates.py",
+              "index": 57,
+              "module": "phase3_mask_edit_refine.gates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/candidates.py",
+              "index": 58,
+              "module": "phase3_mask_edit_refine.candidates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/tool_adapters.py",
+              "index": 59,
+              "module": "phase3_mask_edit_refine.tool_adapters"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/backends/__init__.py",
+              "index": 60,
+              "module": "phase3_mask_edit.backends"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/backends/organic_projection.py",
+              "index": 61,
+              "module": "phase3_mask_edit.backends.organic_projection"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/__init__.py",
+              "index": 62,
+              "module": "phase3_mask_edit.generic"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/executor.py",
+              "index": 63,
+              "module": "phase3_mask_edit.generic.executor"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/tumor_burden.py",
+              "index": 64,
+              "module": "phase3_mask_edit.generic.tumor_burden"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/necrosis.py",
+              "index": 65,
+              "module": "phase3_mask_edit.generic.necrosis"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/immune.py",
+              "index": 66,
+              "module": "phase3_mask_edit.generic.immune"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/desmoplasia.py",
+              "index": 67,
+              "module": "phase3_mask_edit.generic.desmoplasia"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/stroma.py",
+              "index": 68,
+              "module": "phase3_mask_edit.generic.stroma"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/fine_transition.py",
+              "index": 69,
+              "module": "phase3_mask_edit.specialized.fine_transition"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/topology.py",
+              "index": 70,
+              "module": "phase3_mask_edit_refine.topology"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/candidate_feasibility.py",
+              "index": 71,
+              "module": "phase3_joint_edit_refine.candidate_feasibility"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/execution.py",
+              "index": 72,
+              "module": "phase3_mask_edit_refine.execution"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/feasibility.py",
+              "index": 73,
+              "module": "phase3_joint_edit_refine.feasibility"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/cell_layouts.py",
+              "index": 74,
+              "module": "phase3_joint_edit_refine.cell_layouts"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/packing.py",
+              "index": 75,
+              "module": "phase3_joint_edit_refine.packing"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/invasive_architecture.py",
+              "index": 76,
+              "module": "phase3_joint_edit_refine.invasive_architecture"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_planner.py",
+              "index": 77,
+              "module": "phase3_joint_edit_refine.tissue_planner"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/llm_audit_tokens.py",
+              "index": 78,
+              "module": "phase3_joint_edit_refine.llm_audit_tokens"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner_inputs.py",
+              "index": 79,
+              "module": "phase3_joint_edit_refine.planner_inputs"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/visualization.py",
+              "index": 80,
+              "module": "phase3_mask_edit_refine.visualization"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/audit.py",
+              "index": 81,
+              "module": "phase3_joint_edit_refine.audit"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/portfolio_authority.py",
+              "index": 82,
+              "module": "phase3_joint_edit_refine.portfolio_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_tools.py",
+              "index": 83,
+              "module": "phase3_joint_edit_refine.tissue_tools"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_v2_shadow.py",
+              "index": 84,
+              "module": "phase3_joint_edit_refine.g2_v2_shadow"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_v2_manifest.py",
+              "index": 85,
+              "module": "phase3_joint_edit_refine.g2_v2_manifest"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_he_review.py",
+              "index": 86,
+              "module": "phase3_joint_edit_refine.g2_he_review"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_pilot.py",
+              "index": 87,
+              "module": "phase3_joint_edit_refine.g2_pilot"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_qualification.py",
+              "index": 88,
+              "module": "phase3_joint_edit_refine.g2_qualification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/visualization.py",
+              "index": 89,
+              "module": "phase3_joint_edit_refine.visualization"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner.py",
+              "index": 90,
+              "module": "phase3_joint_edit_refine.planner"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/workflow.py",
+              "index": 91,
+              "module": "phase3_joint_edit_refine.workflow"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/critic.py",
+              "index": 92,
+              "module": "phase3_joint_edit_refine.critic"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/gates.py",
+              "index": 93,
+              "module": "phase3_joint_edit_refine.gates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/handoff.py",
+              "index": 94,
+              "module": "phase3_joint_edit_refine.handoff"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/ledger.py",
+              "index": 95,
+              "module": "phase3_joint_edit_refine.ledger"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/mature_probnet_adapter.py",
+              "index": 96,
+              "module": "phase3_joint_edit_refine.mature_probnet_adapter"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_execution.py",
+              "index": 97,
+              "module": "phase3_joint_edit_refine.tissue_execution"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/__init__.py",
+              "index": 98,
+              "module": "phase3_mask_edit.benchmark"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/models.py",
+              "index": 99,
+              "module": "phase3_mask_edit.benchmark.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/experiment_identity.py",
+              "index": 100,
+              "module": "phase3_mask_edit.benchmark.experiment_identity"
+            }
+          ],
+          "per_rng_after": {
+            "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+            "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+            "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+            "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+          },
+          "per_rng_before": {
+            "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+            "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+            "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+            "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+          },
+          "post_import_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "process_receipt": {
+            "elapsed_seconds": 1.927603978663683,
+            "exit_code": 0,
+            "pid": 3885983,
+            "timed_out": false
+          },
+          "startup_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "witness_calls": 0
+        },
+        {
+          "CUDA_initialized_after": false,
+          "arm_label_for_import_path_only": "C",
+          "blocked_calls": [],
+          "default_rng_unchanged_by_import": true,
+          "error": null,
+          "hash_fingerprint_after": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+          "hash_fingerprint_before": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+          "initial_matches_parent": true,
+          "native_threads_after_import": 1,
+          "ordered_source_module_entries": [
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "diagnostic_storage/observer_adapter_v1.py",
+              "index": 0,
+              "module": "diagnostic_storage.observer_adapter_v1"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "diagnostic_storage/guard_blocks_v2.py",
+              "index": 1,
+              "module": "diagnostic_storage.guard_blocks_v2"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "diagnostic_storage/observer_adapter_contract_v1.py",
+              "index": 2,
+              "module": "diagnostic_storage.observer_adapter_contract_v1"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "diagnostic_storage/observer_invocation_bridge_v1.py",
+              "index": 3,
+              "module": "diagnostic_storage.observer_invocation_bridge_v1"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/__init__.py",
+              "index": 4,
+              "module": "phase3_mask_edit_refine"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/models.py",
+              "index": 5,
+              "module": "phase3_mask_edit_refine.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/passive_observer.py",
+              "index": 6,
+              "module": "phase3_mask_edit_refine.passive_observer"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "scripts/probe_manuscript_joint_capacity.py",
+              "index": 7,
+              "module": "_s07_import_only_smoke"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/__init__.py",
+              "index": 8,
+              "module": "phase3_joint_edit_refine"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/executable_contract.py",
+              "index": 9,
+              "module": "phase3_joint_edit_refine.executable_contract"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/__init__.py",
+              "index": 10,
+              "module": "phase3_mask_edit"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/__init__.py",
+              "index": 11,
+              "module": "phase3_mask_edit.core"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/applicability.py",
+              "index": 12,
+              "module": "phase3_mask_edit.core.applicability"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/context.py",
+              "index": 13,
+              "module": "phase3_mask_edit.core.context"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/labels.py",
+              "index": 14,
+              "module": "phase3_mask_edit.core.labels"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/__init__.py",
+              "index": 15,
+              "module": "dataset_config"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/registry.py",
+              "index": 16,
+              "module": "dataset_config.registry"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "dataset_config/unified_labels.py",
+              "index": 17,
+              "module": "dataset_config.unified_labels"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/intent.py",
+              "index": 18,
+              "module": "phase3_mask_edit.core.intent"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/config.py",
+              "index": 19,
+              "module": "phase3_mask_edit.core.config"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/__init__.py",
+              "index": 20,
+              "module": "phase3_mask_edit.specialized"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/catalog.py",
+              "index": 21,
+              "module": "phase3_mask_edit.specialized.catalog"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/candidates.py",
+              "index": 22,
+              "module": "phase3_mask_edit.core.candidates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/mask_io.py",
+              "index": 23,
+              "module": "phase3_mask_edit.core.mask_io"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/gland_region.py",
+              "index": 24,
+              "module": "phase3_mask_edit.core.gland_region"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/morphology.py",
+              "index": 25,
+              "module": "phase3_mask_edit.core.morphology"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/core/validation.py",
+              "index": 26,
+              "module": "phase3_mask_edit.core.validation"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/budget.py",
+              "index": 27,
+              "module": "phase3_joint_edit_refine.budget"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/models.py",
+              "index": 28,
+              "module": "phase3_joint_edit_refine.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/__init__.py",
+              "index": 29,
+              "module": "phase3_joint_edit_refine.skills"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/repository.py",
+              "index": 30,
+              "module": "phase3_joint_edit_refine.skills.repository"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner_policy.py",
+              "index": 31,
+              "module": "phase3_joint_edit_refine.planner_policy"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/__init__.py",
+              "index": 32,
+              "module": "phase3_mask_edit_refine.skills"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/repository.py",
+              "index": 33,
+              "module": "phase3_mask_edit_refine.skills.repository"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/catalog_manifest.py",
+              "index": 34,
+              "module": "phase3_mask_edit_refine.skills.catalog_manifest"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/skills/schema.py",
+              "index": 35,
+              "module": "phase3_mask_edit_refine.skills.schema"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/evidence.py",
+              "index": 36,
+              "module": "phase3_joint_edit_refine.skills.evidence"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/execution_aliases.py",
+              "index": 37,
+              "module": "phase3_joint_edit_refine.skills.execution_aliases"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/skills/schema.py",
+              "index": 38,
+              "module": "phase3_joint_edit_refine.skills.schema"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/cell_programs.py",
+              "index": 39,
+              "module": "phase3_joint_edit_refine.cell_programs"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/authority.py",
+              "index": 40,
+              "module": "phase3_joint_edit_refine.authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/scene.py",
+              "index": 41,
+              "module": "phase3_joint_edit_refine.scene"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/evidence.py",
+              "index": 42,
+              "module": "phase3_mask_edit_refine.evidence"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/scene.py",
+              "index": 43,
+              "module": "phase3_mask_edit_refine.scene"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/nuclei.py",
+              "index": 44,
+              "module": "phase3_joint_edit_refine.nuclei"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/reference_shapes.py",
+              "index": 45,
+              "module": "phase3_joint_edit_refine.reference_shapes"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/seam.py",
+              "index": 46,
+              "module": "phase3_joint_edit_refine.seam"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/spatial_contracts.py",
+              "index": 47,
+              "module": "phase3_joint_edit_refine.spatial_contracts"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/instance_authority.py",
+              "index": 48,
+              "module": "phase3_joint_edit_refine.instance_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "inpaint_cells/__init__.py",
+              "index": 49,
+              "module": "inpaint_cells"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "inpaint_cells/instance_authority.py",
+              "index": 50,
+              "module": "inpaint_cells.instance_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/semantic_parser.py",
+              "index": 51,
+              "module": "phase3_joint_edit_refine.semantic_parser"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/agents.py",
+              "index": 52,
+              "module": "phase3_mask_edit_refine.agents"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/clarification.py",
+              "index": 53,
+              "module": "phase3_joint_edit_refine.clarification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/auxiliary.py",
+              "index": 54,
+              "module": "phase3_joint_edit_refine.auxiliary"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/lumen_observer.py",
+              "index": 55,
+              "module": "phase3_joint_edit_refine.lumen_observer"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_execution_qualification.py",
+              "index": 56,
+              "module": "phase3_joint_edit_refine.g2_execution_qualification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/gates.py",
+              "index": 57,
+              "module": "phase3_mask_edit_refine.gates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/candidates.py",
+              "index": 58,
+              "module": "phase3_mask_edit_refine.candidates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/tool_adapters.py",
+              "index": 59,
+              "module": "phase3_mask_edit_refine.tool_adapters"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/backends/__init__.py",
+              "index": 60,
+              "module": "phase3_mask_edit.backends"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/backends/organic_projection.py",
+              "index": 61,
+              "module": "phase3_mask_edit.backends.organic_projection"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/__init__.py",
+              "index": 62,
+              "module": "phase3_mask_edit.generic"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/executor.py",
+              "index": 63,
+              "module": "phase3_mask_edit.generic.executor"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/tumor_burden.py",
+              "index": 64,
+              "module": "phase3_mask_edit.generic.tumor_burden"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/necrosis.py",
+              "index": 65,
+              "module": "phase3_mask_edit.generic.necrosis"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/immune.py",
+              "index": 66,
+              "module": "phase3_mask_edit.generic.immune"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/desmoplasia.py",
+              "index": 67,
+              "module": "phase3_mask_edit.generic.desmoplasia"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/generic/stroma.py",
+              "index": 68,
+              "module": "phase3_mask_edit.generic.stroma"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/specialized/fine_transition.py",
+              "index": 69,
+              "module": "phase3_mask_edit.specialized.fine_transition"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/topology.py",
+              "index": 70,
+              "module": "phase3_mask_edit_refine.topology"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/candidate_feasibility.py",
+              "index": 71,
+              "module": "phase3_joint_edit_refine.candidate_feasibility"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/execution.py",
+              "index": 72,
+              "module": "phase3_mask_edit_refine.execution"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/feasibility.py",
+              "index": 73,
+              "module": "phase3_joint_edit_refine.feasibility"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/cell_layouts.py",
+              "index": 74,
+              "module": "phase3_joint_edit_refine.cell_layouts"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/packing.py",
+              "index": 75,
+              "module": "phase3_joint_edit_refine.packing"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/invasive_architecture.py",
+              "index": 76,
+              "module": "phase3_joint_edit_refine.invasive_architecture"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_planner.py",
+              "index": 77,
+              "module": "phase3_joint_edit_refine.tissue_planner"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/llm_audit_tokens.py",
+              "index": 78,
+              "module": "phase3_joint_edit_refine.llm_audit_tokens"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner_inputs.py",
+              "index": 79,
+              "module": "phase3_joint_edit_refine.planner_inputs"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit_refine/visualization.py",
+              "index": 80,
+              "module": "phase3_mask_edit_refine.visualization"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/audit.py",
+              "index": 81,
+              "module": "phase3_joint_edit_refine.audit"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/portfolio_authority.py",
+              "index": 82,
+              "module": "phase3_joint_edit_refine.portfolio_authority"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_tools.py",
+              "index": 83,
+              "module": "phase3_joint_edit_refine.tissue_tools"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_v2_shadow.py",
+              "index": 84,
+              "module": "phase3_joint_edit_refine.g2_v2_shadow"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_v2_manifest.py",
+              "index": 85,
+              "module": "phase3_joint_edit_refine.g2_v2_manifest"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_he_review.py",
+              "index": 86,
+              "module": "phase3_joint_edit_refine.g2_he_review"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_pilot.py",
+              "index": 87,
+              "module": "phase3_joint_edit_refine.g2_pilot"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/g2_qualification.py",
+              "index": 88,
+              "module": "phase3_joint_edit_refine.g2_qualification"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/visualization.py",
+              "index": 89,
+              "module": "phase3_joint_edit_refine.visualization"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/planner.py",
+              "index": 90,
+              "module": "phase3_joint_edit_refine.planner"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/workflow.py",
+              "index": 91,
+              "module": "phase3_joint_edit_refine.workflow"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/critic.py",
+              "index": 92,
+              "module": "phase3_joint_edit_refine.critic"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/gates.py",
+              "index": 93,
+              "module": "phase3_joint_edit_refine.gates"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/handoff.py",
+              "index": 94,
+              "module": "phase3_joint_edit_refine.handoff"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/ledger.py",
+              "index": 95,
+              "module": "phase3_joint_edit_refine.ledger"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/mature_probnet_adapter.py",
+              "index": 96,
+              "module": "phase3_joint_edit_refine.mature_probnet_adapter"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_joint_edit_refine/tissue_execution.py",
+              "index": 97,
+              "module": "phase3_joint_edit_refine.tissue_execution"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/__init__.py",
+              "index": 98,
+              "module": "phase3_mask_edit.benchmark"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/models.py",
+              "index": 99,
+              "module": "phase3_mask_edit.benchmark.models"
+            },
+            {
+              "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+              "file": "phase3_mask_edit/benchmark/experiment_identity.py",
+              "index": 100,
+              "module": "phase3_mask_edit.benchmark.experiment_identity"
+            }
+          ],
+          "per_rng_after": {
+            "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+            "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+            "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+            "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+          },
+          "per_rng_before": {
+            "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+            "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+            "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+            "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+          },
+          "post_import_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "process_receipt": {
+            "elapsed_seconds": 1.8874683044850826,
+            "exit_code": 0,
+            "pid": 3886114,
+            "timed_out": false
+          },
+          "startup_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "witness_calls": 0
+        }
+      ],
+      "comparison_note": "Relative source names used solely to compare import chronology; no production receipt/transcript normalization or exclusions added.",
+      "completed_import_children": 3,
+      "execution_permitted": false,
+      "manifest_sha256": "0f4287dcb59b5f191a9c9a5c3dd9ecb6d044dcb5de81f68b12acf1b8f5019cc9",
+      "parent_business_modules": [],
+      "parent_control_import_state_unchanged": true,
+      "parent_native_threads": 1,
+      "scope": "Import-only smoke after read-only identity checks; no main/probe/witness invocation",
+      "status": "pass",
+      "witness_calls": 0
+    },
+    "A_import_smoke.json": {
+      "CUDA_initialized_after": false,
+      "arm_label_for_import_path_only": "A",
+      "blocked_calls": [],
+      "default_rng_unchanged_by_import": true,
+      "error": null,
+      "hash_fingerprint_after": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+      "hash_fingerprint_before": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+      "initial_matches_parent": true,
+      "native_threads_after_import": 1,
+      "ordered_source_module_entries": [
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "scripts/probe_manuscript_joint_capacity.py",
+          "index": 0,
+          "module": "_s07_import_only_smoke"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/__init__.py",
+          "index": 1,
+          "module": "phase3_joint_edit_refine"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/executable_contract.py",
+          "index": 2,
+          "module": "phase3_joint_edit_refine.executable_contract"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/__init__.py",
+          "index": 3,
+          "module": "phase3_mask_edit"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/__init__.py",
+          "index": 4,
+          "module": "phase3_mask_edit.core"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/applicability.py",
+          "index": 5,
+          "module": "phase3_mask_edit.core.applicability"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/context.py",
+          "index": 6,
+          "module": "phase3_mask_edit.core.context"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/labels.py",
+          "index": 7,
+          "module": "phase3_mask_edit.core.labels"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/__init__.py",
+          "index": 8,
+          "module": "dataset_config"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/registry.py",
+          "index": 9,
+          "module": "dataset_config.registry"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/unified_labels.py",
+          "index": 10,
+          "module": "dataset_config.unified_labels"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/intent.py",
+          "index": 11,
+          "module": "phase3_mask_edit.core.intent"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/config.py",
+          "index": 12,
+          "module": "phase3_mask_edit.core.config"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/__init__.py",
+          "index": 13,
+          "module": "phase3_mask_edit.specialized"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/catalog.py",
+          "index": 14,
+          "module": "phase3_mask_edit.specialized.catalog"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/candidates.py",
+          "index": 15,
+          "module": "phase3_mask_edit.core.candidates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/mask_io.py",
+          "index": 16,
+          "module": "phase3_mask_edit.core.mask_io"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/gland_region.py",
+          "index": 17,
+          "module": "phase3_mask_edit.core.gland_region"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/morphology.py",
+          "index": 18,
+          "module": "phase3_mask_edit.core.morphology"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/validation.py",
+          "index": 19,
+          "module": "phase3_mask_edit.core.validation"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/__init__.py",
+          "index": 20,
+          "module": "phase3_mask_edit_refine"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/models.py",
+          "index": 21,
+          "module": "phase3_mask_edit_refine.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/budget.py",
+          "index": 22,
+          "module": "phase3_joint_edit_refine.budget"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/models.py",
+          "index": 23,
+          "module": "phase3_joint_edit_refine.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/__init__.py",
+          "index": 24,
+          "module": "phase3_joint_edit_refine.skills"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/repository.py",
+          "index": 25,
+          "module": "phase3_joint_edit_refine.skills.repository"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner_policy.py",
+          "index": 26,
+          "module": "phase3_joint_edit_refine.planner_policy"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/__init__.py",
+          "index": 27,
+          "module": "phase3_mask_edit_refine.skills"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/repository.py",
+          "index": 28,
+          "module": "phase3_mask_edit_refine.skills.repository"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/catalog_manifest.py",
+          "index": 29,
+          "module": "phase3_mask_edit_refine.skills.catalog_manifest"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/schema.py",
+          "index": 30,
+          "module": "phase3_mask_edit_refine.skills.schema"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/evidence.py",
+          "index": 31,
+          "module": "phase3_joint_edit_refine.skills.evidence"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/execution_aliases.py",
+          "index": 32,
+          "module": "phase3_joint_edit_refine.skills.execution_aliases"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/schema.py",
+          "index": 33,
+          "module": "phase3_joint_edit_refine.skills.schema"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/cell_programs.py",
+          "index": 34,
+          "module": "phase3_joint_edit_refine.cell_programs"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/authority.py",
+          "index": 35,
+          "module": "phase3_joint_edit_refine.authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/scene.py",
+          "index": 36,
+          "module": "phase3_joint_edit_refine.scene"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/evidence.py",
+          "index": 37,
+          "module": "phase3_mask_edit_refine.evidence"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/scene.py",
+          "index": 38,
+          "module": "phase3_mask_edit_refine.scene"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/nuclei.py",
+          "index": 39,
+          "module": "phase3_joint_edit_refine.nuclei"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/reference_shapes.py",
+          "index": 40,
+          "module": "phase3_joint_edit_refine.reference_shapes"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/seam.py",
+          "index": 41,
+          "module": "phase3_joint_edit_refine.seam"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/spatial_contracts.py",
+          "index": 42,
+          "module": "phase3_joint_edit_refine.spatial_contracts"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/instance_authority.py",
+          "index": 43,
+          "module": "phase3_joint_edit_refine.instance_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "inpaint_cells/__init__.py",
+          "index": 44,
+          "module": "inpaint_cells"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "inpaint_cells/instance_authority.py",
+          "index": 45,
+          "module": "inpaint_cells.instance_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/semantic_parser.py",
+          "index": 46,
+          "module": "phase3_joint_edit_refine.semantic_parser"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/agents.py",
+          "index": 47,
+          "module": "phase3_mask_edit_refine.agents"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/clarification.py",
+          "index": 48,
+          "module": "phase3_joint_edit_refine.clarification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/auxiliary.py",
+          "index": 49,
+          "module": "phase3_joint_edit_refine.auxiliary"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/lumen_observer.py",
+          "index": 50,
+          "module": "phase3_joint_edit_refine.lumen_observer"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_execution_qualification.py",
+          "index": 51,
+          "module": "phase3_joint_edit_refine.g2_execution_qualification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/gates.py",
+          "index": 52,
+          "module": "phase3_mask_edit_refine.gates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/candidates.py",
+          "index": 53,
+          "module": "phase3_mask_edit_refine.candidates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/tool_adapters.py",
+          "index": 54,
+          "module": "phase3_mask_edit_refine.tool_adapters"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/backends/__init__.py",
+          "index": 55,
+          "module": "phase3_mask_edit.backends"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/backends/organic_projection.py",
+          "index": 56,
+          "module": "phase3_mask_edit.backends.organic_projection"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/__init__.py",
+          "index": 57,
+          "module": "phase3_mask_edit.generic"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/executor.py",
+          "index": 58,
+          "module": "phase3_mask_edit.generic.executor"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/tumor_burden.py",
+          "index": 59,
+          "module": "phase3_mask_edit.generic.tumor_burden"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/necrosis.py",
+          "index": 60,
+          "module": "phase3_mask_edit.generic.necrosis"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/immune.py",
+          "index": 61,
+          "module": "phase3_mask_edit.generic.immune"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/desmoplasia.py",
+          "index": 62,
+          "module": "phase3_mask_edit.generic.desmoplasia"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/stroma.py",
+          "index": 63,
+          "module": "phase3_mask_edit.generic.stroma"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/fine_transition.py",
+          "index": 64,
+          "module": "phase3_mask_edit.specialized.fine_transition"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/topology.py",
+          "index": 65,
+          "module": "phase3_mask_edit_refine.topology"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/candidate_feasibility.py",
+          "index": 66,
+          "module": "phase3_joint_edit_refine.candidate_feasibility"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/execution.py",
+          "index": 67,
+          "module": "phase3_mask_edit_refine.execution"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/feasibility.py",
+          "index": 68,
+          "module": "phase3_joint_edit_refine.feasibility"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/cell_layouts.py",
+          "index": 69,
+          "module": "phase3_joint_edit_refine.cell_layouts"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/packing.py",
+          "index": 70,
+          "module": "phase3_joint_edit_refine.packing"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/invasive_architecture.py",
+          "index": 71,
+          "module": "phase3_joint_edit_refine.invasive_architecture"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_planner.py",
+          "index": 72,
+          "module": "phase3_joint_edit_refine.tissue_planner"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/llm_audit_tokens.py",
+          "index": 73,
+          "module": "phase3_joint_edit_refine.llm_audit_tokens"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner_inputs.py",
+          "index": 74,
+          "module": "phase3_joint_edit_refine.planner_inputs"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/visualization.py",
+          "index": 75,
+          "module": "phase3_mask_edit_refine.visualization"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/audit.py",
+          "index": 76,
+          "module": "phase3_joint_edit_refine.audit"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/portfolio_authority.py",
+          "index": 77,
+          "module": "phase3_joint_edit_refine.portfolio_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_tools.py",
+          "index": 78,
+          "module": "phase3_joint_edit_refine.tissue_tools"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_v2_shadow.py",
+          "index": 79,
+          "module": "phase3_joint_edit_refine.g2_v2_shadow"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_v2_manifest.py",
+          "index": 80,
+          "module": "phase3_joint_edit_refine.g2_v2_manifest"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_he_review.py",
+          "index": 81,
+          "module": "phase3_joint_edit_refine.g2_he_review"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_pilot.py",
+          "index": 82,
+          "module": "phase3_joint_edit_refine.g2_pilot"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_qualification.py",
+          "index": 83,
+          "module": "phase3_joint_edit_refine.g2_qualification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/visualization.py",
+          "index": 84,
+          "module": "phase3_joint_edit_refine.visualization"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner.py",
+          "index": 85,
+          "module": "phase3_joint_edit_refine.planner"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/workflow.py",
+          "index": 86,
+          "module": "phase3_joint_edit_refine.workflow"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/critic.py",
+          "index": 87,
+          "module": "phase3_joint_edit_refine.critic"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/gates.py",
+          "index": 88,
+          "module": "phase3_joint_edit_refine.gates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/handoff.py",
+          "index": 89,
+          "module": "phase3_joint_edit_refine.handoff"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/ledger.py",
+          "index": 90,
+          "module": "phase3_joint_edit_refine.ledger"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/mature_probnet_adapter.py",
+          "index": 91,
+          "module": "phase3_joint_edit_refine.mature_probnet_adapter"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_execution.py",
+          "index": 92,
+          "module": "phase3_joint_edit_refine.tissue_execution"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/__init__.py",
+          "index": 93,
+          "module": "phase3_mask_edit.benchmark"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/models.py",
+          "index": 94,
+          "module": "phase3_mask_edit.benchmark.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/experiment_identity.py",
+          "index": 95,
+          "module": "phase3_mask_edit.benchmark.experiment_identity"
+        }
+      ],
+      "per_rng_after": {
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+        "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+        "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+        "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+      },
+      "per_rng_before": {
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+        "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+        "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+        "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+      },
+      "post_import_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+      "startup_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+      "witness_calls": 0
+    },
+    "B_import_smoke.json": {
+      "CUDA_initialized_after": false,
+      "arm_label_for_import_path_only": "B",
+      "blocked_calls": [],
+      "default_rng_unchanged_by_import": true,
+      "error": null,
+      "hash_fingerprint_after": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+      "hash_fingerprint_before": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+      "initial_matches_parent": true,
+      "native_threads_after_import": 1,
+      "ordered_source_module_entries": [
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "diagnostic_storage/observer_adapter_v1.py",
+          "index": 0,
+          "module": "diagnostic_storage.observer_adapter_v1"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "diagnostic_storage/guard_blocks_v2.py",
+          "index": 1,
+          "module": "diagnostic_storage.guard_blocks_v2"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "diagnostic_storage/observer_adapter_contract_v1.py",
+          "index": 2,
+          "module": "diagnostic_storage.observer_adapter_contract_v1"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "diagnostic_storage/observer_invocation_bridge_v1.py",
+          "index": 3,
+          "module": "diagnostic_storage.observer_invocation_bridge_v1"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/__init__.py",
+          "index": 4,
+          "module": "phase3_mask_edit_refine"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/models.py",
+          "index": 5,
+          "module": "phase3_mask_edit_refine.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/passive_observer.py",
+          "index": 6,
+          "module": "phase3_mask_edit_refine.passive_observer"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "scripts/probe_manuscript_joint_capacity.py",
+          "index": 7,
+          "module": "_s07_import_only_smoke"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/__init__.py",
+          "index": 8,
+          "module": "phase3_joint_edit_refine"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/executable_contract.py",
+          "index": 9,
+          "module": "phase3_joint_edit_refine.executable_contract"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/__init__.py",
+          "index": 10,
+          "module": "phase3_mask_edit"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/__init__.py",
+          "index": 11,
+          "module": "phase3_mask_edit.core"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/applicability.py",
+          "index": 12,
+          "module": "phase3_mask_edit.core.applicability"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/context.py",
+          "index": 13,
+          "module": "phase3_mask_edit.core.context"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/labels.py",
+          "index": 14,
+          "module": "phase3_mask_edit.core.labels"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/__init__.py",
+          "index": 15,
+          "module": "dataset_config"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/registry.py",
+          "index": 16,
+          "module": "dataset_config.registry"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/unified_labels.py",
+          "index": 17,
+          "module": "dataset_config.unified_labels"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/intent.py",
+          "index": 18,
+          "module": "phase3_mask_edit.core.intent"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/config.py",
+          "index": 19,
+          "module": "phase3_mask_edit.core.config"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/__init__.py",
+          "index": 20,
+          "module": "phase3_mask_edit.specialized"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/catalog.py",
+          "index": 21,
+          "module": "phase3_mask_edit.specialized.catalog"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/candidates.py",
+          "index": 22,
+          "module": "phase3_mask_edit.core.candidates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/mask_io.py",
+          "index": 23,
+          "module": "phase3_mask_edit.core.mask_io"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/gland_region.py",
+          "index": 24,
+          "module": "phase3_mask_edit.core.gland_region"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/morphology.py",
+          "index": 25,
+          "module": "phase3_mask_edit.core.morphology"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/validation.py",
+          "index": 26,
+          "module": "phase3_mask_edit.core.validation"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/budget.py",
+          "index": 27,
+          "module": "phase3_joint_edit_refine.budget"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/models.py",
+          "index": 28,
+          "module": "phase3_joint_edit_refine.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/__init__.py",
+          "index": 29,
+          "module": "phase3_joint_edit_refine.skills"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/repository.py",
+          "index": 30,
+          "module": "phase3_joint_edit_refine.skills.repository"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner_policy.py",
+          "index": 31,
+          "module": "phase3_joint_edit_refine.planner_policy"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/__init__.py",
+          "index": 32,
+          "module": "phase3_mask_edit_refine.skills"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/repository.py",
+          "index": 33,
+          "module": "phase3_mask_edit_refine.skills.repository"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/catalog_manifest.py",
+          "index": 34,
+          "module": "phase3_mask_edit_refine.skills.catalog_manifest"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/schema.py",
+          "index": 35,
+          "module": "phase3_mask_edit_refine.skills.schema"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/evidence.py",
+          "index": 36,
+          "module": "phase3_joint_edit_refine.skills.evidence"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/execution_aliases.py",
+          "index": 37,
+          "module": "phase3_joint_edit_refine.skills.execution_aliases"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/schema.py",
+          "index": 38,
+          "module": "phase3_joint_edit_refine.skills.schema"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/cell_programs.py",
+          "index": 39,
+          "module": "phase3_joint_edit_refine.cell_programs"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/authority.py",
+          "index": 40,
+          "module": "phase3_joint_edit_refine.authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/scene.py",
+          "index": 41,
+          "module": "phase3_joint_edit_refine.scene"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/evidence.py",
+          "index": 42,
+          "module": "phase3_mask_edit_refine.evidence"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/scene.py",
+          "index": 43,
+          "module": "phase3_mask_edit_refine.scene"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/nuclei.py",
+          "index": 44,
+          "module": "phase3_joint_edit_refine.nuclei"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/reference_shapes.py",
+          "index": 45,
+          "module": "phase3_joint_edit_refine.reference_shapes"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/seam.py",
+          "index": 46,
+          "module": "phase3_joint_edit_refine.seam"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/spatial_contracts.py",
+          "index": 47,
+          "module": "phase3_joint_edit_refine.spatial_contracts"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/instance_authority.py",
+          "index": 48,
+          "module": "phase3_joint_edit_refine.instance_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "inpaint_cells/__init__.py",
+          "index": 49,
+          "module": "inpaint_cells"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "inpaint_cells/instance_authority.py",
+          "index": 50,
+          "module": "inpaint_cells.instance_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/semantic_parser.py",
+          "index": 51,
+          "module": "phase3_joint_edit_refine.semantic_parser"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/agents.py",
+          "index": 52,
+          "module": "phase3_mask_edit_refine.agents"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/clarification.py",
+          "index": 53,
+          "module": "phase3_joint_edit_refine.clarification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/auxiliary.py",
+          "index": 54,
+          "module": "phase3_joint_edit_refine.auxiliary"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/lumen_observer.py",
+          "index": 55,
+          "module": "phase3_joint_edit_refine.lumen_observer"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_execution_qualification.py",
+          "index": 56,
+          "module": "phase3_joint_edit_refine.g2_execution_qualification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/gates.py",
+          "index": 57,
+          "module": "phase3_mask_edit_refine.gates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/candidates.py",
+          "index": 58,
+          "module": "phase3_mask_edit_refine.candidates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/tool_adapters.py",
+          "index": 59,
+          "module": "phase3_mask_edit_refine.tool_adapters"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/backends/__init__.py",
+          "index": 60,
+          "module": "phase3_mask_edit.backends"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/backends/organic_projection.py",
+          "index": 61,
+          "module": "phase3_mask_edit.backends.organic_projection"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/__init__.py",
+          "index": 62,
+          "module": "phase3_mask_edit.generic"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/executor.py",
+          "index": 63,
+          "module": "phase3_mask_edit.generic.executor"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/tumor_burden.py",
+          "index": 64,
+          "module": "phase3_mask_edit.generic.tumor_burden"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/necrosis.py",
+          "index": 65,
+          "module": "phase3_mask_edit.generic.necrosis"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/immune.py",
+          "index": 66,
+          "module": "phase3_mask_edit.generic.immune"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/desmoplasia.py",
+          "index": 67,
+          "module": "phase3_mask_edit.generic.desmoplasia"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/stroma.py",
+          "index": 68,
+          "module": "phase3_mask_edit.generic.stroma"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/fine_transition.py",
+          "index": 69,
+          "module": "phase3_mask_edit.specialized.fine_transition"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/topology.py",
+          "index": 70,
+          "module": "phase3_mask_edit_refine.topology"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/candidate_feasibility.py",
+          "index": 71,
+          "module": "phase3_joint_edit_refine.candidate_feasibility"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/execution.py",
+          "index": 72,
+          "module": "phase3_mask_edit_refine.execution"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/feasibility.py",
+          "index": 73,
+          "module": "phase3_joint_edit_refine.feasibility"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/cell_layouts.py",
+          "index": 74,
+          "module": "phase3_joint_edit_refine.cell_layouts"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/packing.py",
+          "index": 75,
+          "module": "phase3_joint_edit_refine.packing"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/invasive_architecture.py",
+          "index": 76,
+          "module": "phase3_joint_edit_refine.invasive_architecture"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_planner.py",
+          "index": 77,
+          "module": "phase3_joint_edit_refine.tissue_planner"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/llm_audit_tokens.py",
+          "index": 78,
+          "module": "phase3_joint_edit_refine.llm_audit_tokens"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner_inputs.py",
+          "index": 79,
+          "module": "phase3_joint_edit_refine.planner_inputs"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/visualization.py",
+          "index": 80,
+          "module": "phase3_mask_edit_refine.visualization"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/audit.py",
+          "index": 81,
+          "module": "phase3_joint_edit_refine.audit"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/portfolio_authority.py",
+          "index": 82,
+          "module": "phase3_joint_edit_refine.portfolio_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_tools.py",
+          "index": 83,
+          "module": "phase3_joint_edit_refine.tissue_tools"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_v2_shadow.py",
+          "index": 84,
+          "module": "phase3_joint_edit_refine.g2_v2_shadow"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_v2_manifest.py",
+          "index": 85,
+          "module": "phase3_joint_edit_refine.g2_v2_manifest"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_he_review.py",
+          "index": 86,
+          "module": "phase3_joint_edit_refine.g2_he_review"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_pilot.py",
+          "index": 87,
+          "module": "phase3_joint_edit_refine.g2_pilot"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_qualification.py",
+          "index": 88,
+          "module": "phase3_joint_edit_refine.g2_qualification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/visualization.py",
+          "index": 89,
+          "module": "phase3_joint_edit_refine.visualization"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner.py",
+          "index": 90,
+          "module": "phase3_joint_edit_refine.planner"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/workflow.py",
+          "index": 91,
+          "module": "phase3_joint_edit_refine.workflow"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/critic.py",
+          "index": 92,
+          "module": "phase3_joint_edit_refine.critic"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/gates.py",
+          "index": 93,
+          "module": "phase3_joint_edit_refine.gates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/handoff.py",
+          "index": 94,
+          "module": "phase3_joint_edit_refine.handoff"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/ledger.py",
+          "index": 95,
+          "module": "phase3_joint_edit_refine.ledger"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/mature_probnet_adapter.py",
+          "index": 96,
+          "module": "phase3_joint_edit_refine.mature_probnet_adapter"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_execution.py",
+          "index": 97,
+          "module": "phase3_joint_edit_refine.tissue_execution"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/__init__.py",
+          "index": 98,
+          "module": "phase3_mask_edit.benchmark"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/models.py",
+          "index": 99,
+          "module": "phase3_mask_edit.benchmark.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/experiment_identity.py",
+          "index": 100,
+          "module": "phase3_mask_edit.benchmark.experiment_identity"
+        }
+      ],
+      "per_rng_after": {
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+        "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+        "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+        "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+      },
+      "per_rng_before": {
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+        "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+        "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+        "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+      },
+      "post_import_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+      "startup_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+      "witness_calls": 0
+    },
+    "C_import_smoke.json": {
+      "CUDA_initialized_after": false,
+      "arm_label_for_import_path_only": "C",
+      "blocked_calls": [],
+      "default_rng_unchanged_by_import": true,
+      "error": null,
+      "hash_fingerprint_after": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+      "hash_fingerprint_before": "1d115ecfb1c9b345653261919fb8fbf2cb33ddbc9ea19fac4f938137849cd7ec",
+      "initial_matches_parent": true,
+      "native_threads_after_import": 1,
+      "ordered_source_module_entries": [
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "diagnostic_storage/observer_adapter_v1.py",
+          "index": 0,
+          "module": "diagnostic_storage.observer_adapter_v1"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "diagnostic_storage/guard_blocks_v2.py",
+          "index": 1,
+          "module": "diagnostic_storage.guard_blocks_v2"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "diagnostic_storage/observer_adapter_contract_v1.py",
+          "index": 2,
+          "module": "diagnostic_storage.observer_adapter_contract_v1"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "diagnostic_storage/observer_invocation_bridge_v1.py",
+          "index": 3,
+          "module": "diagnostic_storage.observer_invocation_bridge_v1"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/__init__.py",
+          "index": 4,
+          "module": "phase3_mask_edit_refine"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/models.py",
+          "index": 5,
+          "module": "phase3_mask_edit_refine.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/passive_observer.py",
+          "index": 6,
+          "module": "phase3_mask_edit_refine.passive_observer"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "scripts/probe_manuscript_joint_capacity.py",
+          "index": 7,
+          "module": "_s07_import_only_smoke"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/__init__.py",
+          "index": 8,
+          "module": "phase3_joint_edit_refine"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/executable_contract.py",
+          "index": 9,
+          "module": "phase3_joint_edit_refine.executable_contract"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/__init__.py",
+          "index": 10,
+          "module": "phase3_mask_edit"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/__init__.py",
+          "index": 11,
+          "module": "phase3_mask_edit.core"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/applicability.py",
+          "index": 12,
+          "module": "phase3_mask_edit.core.applicability"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/context.py",
+          "index": 13,
+          "module": "phase3_mask_edit.core.context"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/labels.py",
+          "index": 14,
+          "module": "phase3_mask_edit.core.labels"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/__init__.py",
+          "index": 15,
+          "module": "dataset_config"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/registry.py",
+          "index": 16,
+          "module": "dataset_config.registry"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "dataset_config/unified_labels.py",
+          "index": 17,
+          "module": "dataset_config.unified_labels"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/intent.py",
+          "index": 18,
+          "module": "phase3_mask_edit.core.intent"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/config.py",
+          "index": 19,
+          "module": "phase3_mask_edit.core.config"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/__init__.py",
+          "index": 20,
+          "module": "phase3_mask_edit.specialized"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/catalog.py",
+          "index": 21,
+          "module": "phase3_mask_edit.specialized.catalog"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/candidates.py",
+          "index": 22,
+          "module": "phase3_mask_edit.core.candidates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/mask_io.py",
+          "index": 23,
+          "module": "phase3_mask_edit.core.mask_io"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/gland_region.py",
+          "index": 24,
+          "module": "phase3_mask_edit.core.gland_region"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/morphology.py",
+          "index": 25,
+          "module": "phase3_mask_edit.core.morphology"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/core/validation.py",
+          "index": 26,
+          "module": "phase3_mask_edit.core.validation"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/budget.py",
+          "index": 27,
+          "module": "phase3_joint_edit_refine.budget"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/models.py",
+          "index": 28,
+          "module": "phase3_joint_edit_refine.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/__init__.py",
+          "index": 29,
+          "module": "phase3_joint_edit_refine.skills"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/repository.py",
+          "index": 30,
+          "module": "phase3_joint_edit_refine.skills.repository"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner_policy.py",
+          "index": 31,
+          "module": "phase3_joint_edit_refine.planner_policy"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/__init__.py",
+          "index": 32,
+          "module": "phase3_mask_edit_refine.skills"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/repository.py",
+          "index": 33,
+          "module": "phase3_mask_edit_refine.skills.repository"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/catalog_manifest.py",
+          "index": 34,
+          "module": "phase3_mask_edit_refine.skills.catalog_manifest"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/skills/schema.py",
+          "index": 35,
+          "module": "phase3_mask_edit_refine.skills.schema"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/evidence.py",
+          "index": 36,
+          "module": "phase3_joint_edit_refine.skills.evidence"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/execution_aliases.py",
+          "index": 37,
+          "module": "phase3_joint_edit_refine.skills.execution_aliases"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/skills/schema.py",
+          "index": 38,
+          "module": "phase3_joint_edit_refine.skills.schema"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/cell_programs.py",
+          "index": 39,
+          "module": "phase3_joint_edit_refine.cell_programs"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/authority.py",
+          "index": 40,
+          "module": "phase3_joint_edit_refine.authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/scene.py",
+          "index": 41,
+          "module": "phase3_joint_edit_refine.scene"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/evidence.py",
+          "index": 42,
+          "module": "phase3_mask_edit_refine.evidence"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/scene.py",
+          "index": 43,
+          "module": "phase3_mask_edit_refine.scene"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/nuclei.py",
+          "index": 44,
+          "module": "phase3_joint_edit_refine.nuclei"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/reference_shapes.py",
+          "index": 45,
+          "module": "phase3_joint_edit_refine.reference_shapes"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/seam.py",
+          "index": 46,
+          "module": "phase3_joint_edit_refine.seam"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/spatial_contracts.py",
+          "index": 47,
+          "module": "phase3_joint_edit_refine.spatial_contracts"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/instance_authority.py",
+          "index": 48,
+          "module": "phase3_joint_edit_refine.instance_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "inpaint_cells/__init__.py",
+          "index": 49,
+          "module": "inpaint_cells"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "inpaint_cells/instance_authority.py",
+          "index": 50,
+          "module": "inpaint_cells.instance_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/semantic_parser.py",
+          "index": 51,
+          "module": "phase3_joint_edit_refine.semantic_parser"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/agents.py",
+          "index": 52,
+          "module": "phase3_mask_edit_refine.agents"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/clarification.py",
+          "index": 53,
+          "module": "phase3_joint_edit_refine.clarification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/auxiliary.py",
+          "index": 54,
+          "module": "phase3_joint_edit_refine.auxiliary"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/lumen_observer.py",
+          "index": 55,
+          "module": "phase3_joint_edit_refine.lumen_observer"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_execution_qualification.py",
+          "index": 56,
+          "module": "phase3_joint_edit_refine.g2_execution_qualification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/gates.py",
+          "index": 57,
+          "module": "phase3_mask_edit_refine.gates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/candidates.py",
+          "index": 58,
+          "module": "phase3_mask_edit_refine.candidates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/tool_adapters.py",
+          "index": 59,
+          "module": "phase3_mask_edit_refine.tool_adapters"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/backends/__init__.py",
+          "index": 60,
+          "module": "phase3_mask_edit.backends"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/backends/organic_projection.py",
+          "index": 61,
+          "module": "phase3_mask_edit.backends.organic_projection"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/__init__.py",
+          "index": 62,
+          "module": "phase3_mask_edit.generic"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/executor.py",
+          "index": 63,
+          "module": "phase3_mask_edit.generic.executor"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/tumor_burden.py",
+          "index": 64,
+          "module": "phase3_mask_edit.generic.tumor_burden"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/necrosis.py",
+          "index": 65,
+          "module": "phase3_mask_edit.generic.necrosis"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/immune.py",
+          "index": 66,
+          "module": "phase3_mask_edit.generic.immune"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/desmoplasia.py",
+          "index": 67,
+          "module": "phase3_mask_edit.generic.desmoplasia"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/generic/stroma.py",
+          "index": 68,
+          "module": "phase3_mask_edit.generic.stroma"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/specialized/fine_transition.py",
+          "index": 69,
+          "module": "phase3_mask_edit.specialized.fine_transition"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/topology.py",
+          "index": 70,
+          "module": "phase3_mask_edit_refine.topology"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/candidate_feasibility.py",
+          "index": 71,
+          "module": "phase3_joint_edit_refine.candidate_feasibility"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/execution.py",
+          "index": 72,
+          "module": "phase3_mask_edit_refine.execution"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/feasibility.py",
+          "index": 73,
+          "module": "phase3_joint_edit_refine.feasibility"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/cell_layouts.py",
+          "index": 74,
+          "module": "phase3_joint_edit_refine.cell_layouts"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/packing.py",
+          "index": 75,
+          "module": "phase3_joint_edit_refine.packing"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/invasive_architecture.py",
+          "index": 76,
+          "module": "phase3_joint_edit_refine.invasive_architecture"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_planner.py",
+          "index": 77,
+          "module": "phase3_joint_edit_refine.tissue_planner"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/llm_audit_tokens.py",
+          "index": 78,
+          "module": "phase3_joint_edit_refine.llm_audit_tokens"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner_inputs.py",
+          "index": 79,
+          "module": "phase3_joint_edit_refine.planner_inputs"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit_refine/visualization.py",
+          "index": 80,
+          "module": "phase3_mask_edit_refine.visualization"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/audit.py",
+          "index": 81,
+          "module": "phase3_joint_edit_refine.audit"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/portfolio_authority.py",
+          "index": 82,
+          "module": "phase3_joint_edit_refine.portfolio_authority"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_tools.py",
+          "index": 83,
+          "module": "phase3_joint_edit_refine.tissue_tools"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_v2_shadow.py",
+          "index": 84,
+          "module": "phase3_joint_edit_refine.g2_v2_shadow"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_v2_manifest.py",
+          "index": 85,
+          "module": "phase3_joint_edit_refine.g2_v2_manifest"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_he_review.py",
+          "index": 86,
+          "module": "phase3_joint_edit_refine.g2_he_review"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_pilot.py",
+          "index": 87,
+          "module": "phase3_joint_edit_refine.g2_pilot"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/g2_qualification.py",
+          "index": 88,
+          "module": "phase3_joint_edit_refine.g2_qualification"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/visualization.py",
+          "index": 89,
+          "module": "phase3_joint_edit_refine.visualization"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/planner.py",
+          "index": 90,
+          "module": "phase3_joint_edit_refine.planner"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/workflow.py",
+          "index": 91,
+          "module": "phase3_joint_edit_refine.workflow"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/critic.py",
+          "index": 92,
+          "module": "phase3_joint_edit_refine.critic"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/gates.py",
+          "index": 93,
+          "module": "phase3_joint_edit_refine.gates"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/handoff.py",
+          "index": 94,
+          "module": "phase3_joint_edit_refine.handoff"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/ledger.py",
+          "index": 95,
+          "module": "phase3_joint_edit_refine.ledger"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/mature_probnet_adapter.py",
+          "index": 96,
+          "module": "phase3_joint_edit_refine.mature_probnet_adapter"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_joint_edit_refine/tissue_execution.py",
+          "index": 97,
+          "module": "phase3_joint_edit_refine.tissue_execution"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/__init__.py",
+          "index": 98,
+          "module": "phase3_mask_edit.benchmark"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/models.py",
+          "index": 99,
+          "module": "phase3_mask_edit.benchmark.models"
+        },
+        {
+          "entry_state_sha256": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+          "file": "phase3_mask_edit/benchmark/experiment_identity.py",
+          "index": 100,
+          "module": "phase3_mask_edit.benchmark.experiment_identity"
+        }
+      ],
+      "per_rng_after": {
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+        "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+        "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+        "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+      },
+      "per_rng_before": {
+        "PYTHONHASHSEED": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "hash_fingerprint": "38f2dde66d6679c82331e62a5d700b346f33ac7807a67820da1a496fc5a67b2d",
+        "numpy": "0ce6dfa7a6684548d72998ca71b7b6756854038e9095321b3e61cff4ef3510df",
+        "python": "c61de6aadec7bf2b110e32ecc0c5a7637843a1de69b05bf13f9a5a1bbf422c8d",
+        "torch_cpu": "be5266cf839645197c1de3a0be6aecd9aeddddd8bbc348aea8f553535afc7e65"
+      },
+      "post_import_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+      "startup_digest": "5b93fd1a40756b0732b4ed0bf493c3511aee8c48cb56a11eed89ae3fc5f99a17",
+      "witness_calls": 0
+    }
+  },
+  "deployed_code_match_after": {
+    "diagnostic_storage/__init__.py": true,
+    "diagnostic_storage/guard_blocks_v2.py": true,
+    "diagnostic_storage/observer_adapter_contract_v1.py": true,
+    "diagnostic_storage/observer_adapter_v1.py": true,
+    "diagnostic_storage/observer_adapter_validation_v1.py": true,
+    "diagnostic_storage/validator_process_gate_v1.py": true,
+    "diagnostic_storage/validation_budget_policy_v2.py": true,
+    "diagnostic_storage/observer_adapter_validation_v2.py": true,
+    "diagnostic_storage/validator_process_gate_v2.py": true,
+    "scripts/validator_readonly_worker_v2.py": true,
+    "scripts/run_readonly_budget_v2_trial.py": true,
+    "diagnostic_storage/setup_process_gate_v3.py": true,
+    "diagnostic_storage/setup_result_verifier_v3.py": true,
+    "scripts/setup_preparation_worker_v3.py": true,
+    "scripts/preflight_setup_telemetry_v3.py": true,
+    "diagnostic_storage/observer_invocation_bridge_v1.py": true,
+    "scripts/run_limited_topology_adapter_controller_v1.py": true,
+    "scripts/limited_topology_startup.py": true,
+    "scripts/smoke_adapter_controlled_topology_imports_v1.py": true,
+    "scripts/probe_adapter_controlled_startup_v1.py": true,
+    "adapter_run_identity_v1.json": true
+  },
+  "launch_receipt": {
+    "exit_code": 0,
+    "elapsed_seconds": 10.848817208781838,
+    "stdout": "{\n  \"scope\": \"Import-only smoke after read-only identity checks; no main/probe/witness invocation\",\n  \"manifest_sha256\": \"0f4287dcb59b5f191a9c9a5c3dd9ecb6d044dcb5de81f68b12acf1b8f5019cc9\",\n  \"execution_permitted\": false,\n  \"witness_calls\": 0,\n  \"parent_native_threads\": 1,\n  \"parent_business_modules\": [],\n  \"completed_import_children\": 3,\n  \"all_initial_states_equal\": true,\n  \"all_hash_fingerprints_equal_before_business\": true,\n  \"all_default_states_unchanged_by_import\": true,\n  \"BC_import_order_equal\": true,\n  \"AB_import_order_equal\": false,\n  \"comparison_note\": \"Relative source names used solely to compare import chronology; no production receipt/transcript normalization or exclusions added.\",\n  \"parent_control_import_state_unchanged\": true,\n  \"status\": \"pass\"\n}\n",
+    "stderr": "",
+    "staged_files": 23,
+    "witness_calls": 0,
+    "automatic_retries": 0
+  }
+}

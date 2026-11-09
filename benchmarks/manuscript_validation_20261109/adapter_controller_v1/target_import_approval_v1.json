@@ -1,0 +1,10 @@
+{
+  "kind": "adapter-controller-import-only-v1",
+  "approved": true,
+  "manifest_sha256": "0f4287dcb59b5f191a9c9a5c3dd9ecb6d044dcb5de81f68b12acf1b8f5019cc9",
+  "answer": "批准隔离部署和一次导入审查",
+  "authority": "explicit user reply recorded by assistant",
+  "witness_calls_permitted": 0,
+  "automatic_retries": 0,
+  "watchdog_seconds": 600
+}

@@ -1,0 +1,48 @@
+{
+  "status": "target_import_smoke_pass_AB_difference_disposition_pending",
+  "manifest_sha256": "0f4287dcb59b5f191a9c9a5c3dd9ecb6d044dcb5de81f68b12acf1b8f5019cc9",
+  "approval_status": "consumed_and_closed",
+  "parent_wall_seconds": 10.848817208781838,
+  "completed_children": 3,
+  "RNG_hash_unchanged": true,
+  "native_threads_each": [
+    1,
+    1,
+    1
+  ],
+  "CUDA_initialized_each": [
+    false,
+    false,
+    false
+  ],
+  "BC_order_equal": true,
+  "AB_order_equal": false,
+  "AB_import_differences": [
+    {
+      "operation": "insert",
+      "A_files": [],
+      "B_files": [
+        "diagnostic_storage/observer_adapter_v1.py",
+        "diagnostic_storage/guard_blocks_v2.py",
+        "diagnostic_storage/observer_adapter_contract_v1.py",
+        "diagnostic_storage/observer_invocation_bridge_v1.py",
+        "phase3_mask_edit_refine/__init__.py",
+        "phase3_mask_edit_refine/models.py",
+        "phase3_mask_edit_refine/passive_observer.py"
+      ]
+    },
+    {
+      "operation": "delete",
+      "A_files": [
+        "phase3_mask_edit_refine/__init__.py",
+        "phase3_mask_edit_refine/models.py"
+      ],
+      "B_files": []
+    }
+  ],
+  "deployed_files_verified_after": 21,
+  "witness_calls": 0,
+  "S07_execution_authorized": false,
+  "limits": "Passing import invariants does not establish all side effects or actual witness non-interference. Known AB chronology requires an explicit technical disposition and new manifest-bound finite diagnostic authorization.",
+  "evidence_sha256": "6b619ac55f84c10901d9a7ce2a29c3ef2998673ab620198757c2060c0c1dd894"
+}
