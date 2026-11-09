@@ -1,0 +1,130 @@
+{
+  "launch_receipt": {
+    "parent_exit_code": 0,
+    "parent_wall_seconds": 50.792417507618666,
+    "stdout": "{\"status\": \"setup_verified\", \"manifest_sha256\": \"cde526bac89af86dc9000a67d4c10c4ac681724fb3e1156df6f20ed1e3a719b5\", \"authorization_consumed\": true, \"attempts\": 1, \"automatic_retries\": 0, \"execution_permitted\": false, \"transport\": {\"transport_ok\": true, \"reason\": null, \"exit_code\": 0, \"timed_out\": false, \"child_reaped\": true, \"stderr_sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderr_bytes\": 0, \"elapsed_seconds\": 50.52752924337983, \"hard_timeout_seconds\": 59.99944664537907}, \"worker_receipt\": {\"status\": \"setup_evidence_verified\", \"request_sha256\": \"caa9a86caddabd0b5cffb4f8b6dbe3324e01b61bb101ccde7c1cb2e82fb6a34e\", \"summary_sha256\": \"834aa335c1615dd63cedce0979cb4e1ce431777c3c1bd2ce021ee8cfaa8d1357\", \"journal_sha256\": \"d433d7238ec3570d9b7fa39fdc9ac8bd481b50c3f3b46bbd86655fc455198726\", \"execution_permitted\": false, \"manifest_sha256\": \"cde526bac89af86dc9000a67d4c10c4ac681724fb3e1156df6f20ed1e3a719b5\", \"source_identity\": {\"/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/setup_only_v3_code_42dca160/diagnostic_storage/setup_process_gate_v3.py\": \"a51ab00f008e767f41f5041a926ab67fad5e1a58d7a6b46c9d09c019eaf3b036\", \"/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/setup_only_v3_code_42dca160/diagnostic_storage/setup_result_verifier_v3.py\": \"572d2e4c22558414e3aee60308377184516674dfb487c397ae6f3238f7e49624\", \"/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/setup_only_v3_code_42dca160/scripts/setup_preparation_worker_v3.py\": \"87f0af0b9acff46907e035faa897675d0dc40a2426e86082ae65ddf686125f3e\", \"/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/setup_only_v3_code_42dca160/scripts/preflight_setup_telemetry_v3.py\": \"9762fb9fd07fbfa8981ca4777e836a021dfee66143dabe50190370f3ab013eb8\"}}}\n",
+    "stderr": "",
+    "real_source_calls": 0,
+    "automatic_retries": 0
+  },
+  "source_match_after": {
+    "diagnostic_storage/__init__.py": true,
+    "diagnostic_storage/guard_blocks_v2.py": true,
+    "diagnostic_storage/observer_adapter_contract_v1.py": true,
+    "diagnostic_storage/observer_adapter_v1.py": true,
+    "diagnostic_storage/observer_adapter_validation_v1.py": true,
+    "diagnostic_storage/validator_process_gate_v1.py": true,
+    "diagnostic_storage/validation_budget_policy_v2.py": true,
+    "diagnostic_storage/observer_adapter_validation_v2.py": true,
+    "diagnostic_storage/validator_process_gate_v2.py": true,
+    "scripts/validator_readonly_worker_v2.py": true,
+    "scripts/run_readonly_budget_v2_trial.py": true,
+    "diagnostic_storage/setup_process_gate_v3.py": true,
+    "diagnostic_storage/setup_result_verifier_v3.py": true,
+    "scripts/setup_preparation_worker_v3.py": true,
+    "scripts/preflight_setup_telemetry_v3.py": true
+  },
+  "output_files": [
+    "link_probe_final",
+    "link_probe_pending",
+    "setup_binding.json",
+    "setup_summary.json",
+    "setup_telemetry.jsonl"
+  ],
+  "setup_summary.json": {
+    "format": "bounded-setup-telemetry-v3",
+    "telemetry_valid": true,
+    "identity_check_passed": true,
+    "preparation_accepted": true,
+    "failure_type": null,
+    "fault_types": [],
+    "elapsed_ms": 50353.84136624634,
+    "last_completed_stage": "storage",
+    "stages": [
+      {
+        "stage": "legacy_code",
+        "stage_started": true,
+        "stage_completed": true,
+        "elapsed_ms": 25.222187861800194,
+        "items_completed": 5,
+        "bytes_processed": 77335,
+        "last_completed_item_index": 4
+      },
+      {
+        "stage": "runtime_code",
+        "stage_started": true,
+        "stage_completed": true,
+        "elapsed_ms": 2.3885369300842285,
+        "items_completed": 15,
+        "bytes_processed": 128193,
+        "last_completed_item_index": 14
+      },
+      {
+        "stage": "interpreter_environment",
+        "stage_started": true,
+        "stage_completed": true,
+        "elapsed_ms": 92.2970324754715,
+        "items_completed": 1,
+        "bytes_processed": 25533120,
+        "last_completed_item_index": 0
+      },
+      {
+        "stage": "distributions",
+        "stage_started": true,
+        "stage_completed": true,
+        "elapsed_ms": 4524.176046252251,
+        "items_completed": 220,
+        "bytes_processed": 4714362,
+        "last_completed_item_index": 219
+      },
+      {
+        "stage": "native_binaries",
+        "stage_started": true,
+        "stage_completed": true,
+        "elapsed_ms": 2133.146420121193,
+        "items_completed": 3,
+        "bytes_processed": 7688609,
+        "last_completed_item_index": 2
+      },
+      {
+        "stage": "input_inventory",
+        "stage_started": true,
+        "stage_completed": true,
+        "elapsed_ms": 43540.10469652712,
+        "items_completed": 809,
+        "bytes_processed": 1463872869,
+        "last_completed_item_index": 808
+      },
+      {
+        "stage": "storage",
+        "stage_started": true,
+        "stage_completed": true,
+        "elapsed_ms": 0.5977563560009003,
+        "items_completed": 3,
+        "bytes_processed": 0,
+        "last_completed_item_index": 2
+      }
+    ],
+    "records": 1070,
+    "telemetry_bytes": 240603,
+    "execution_permitted": false,
+    "bytes_definition": "actual bytes fed to completed SHA256 reads; failed or interrupted partial reads uncounted; no second file scan",
+    "index_definition": "zero-based completed loop-item index; distributions are hashed/enumerated here and accepted only by aggregate hash at stage completion; failing/in-flight item uncounted",
+    "abrupt_kill_limit": "SIGKILL may leave only a bounded journal prefix; absence of final summary is incomplete, never acceptance",
+    "identity_result": {
+      "filesystem_no_replace_checked_at_actual_output": true,
+      "reservation_allocated_not_quota": true,
+      "input_files_verified": 809,
+      "elapsed_seconds": 50.31811065971851,
+      "code_and_runtime_match": true
+    },
+    "status": "preparation_only_pass"
+  },
+  "setup_binding.json": {
+    "request_sha256": "caa9a86caddabd0b5cffb4f8b6dbe3324e01b61bb101ccde7c1cb2e82fb6a34e",
+    "summary_sha256": "834aa335c1615dd63cedce0979cb4e1ce431777c3c1bd2ce021ee8cfaa8d1357",
+    "journal_sha256": "d433d7238ec3570d9b7fa39fdc9ac8bd481b50c3f3b46bbd86655fc455198726"
+  },
+  "journal_sha256": "d433d7238ec3570d9b7fa39fdc9ac8bd481b50c3f3b46bbd86655fc455198726",
+  "journal_bytes": 240603
+}

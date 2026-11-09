@@ -1,0 +1,99 @@
+{
+  "status": "fixed_target_setup_v3_accepted_once",
+  "manifest_sha256": "cde526bac89af86dc9000a67d4c10c4ac681724fb3e1156df6f20ed1e3a719b5",
+  "authorization_status": "consumed_and_closed",
+  "parent_process_exit": 0,
+  "parent_process_wall_seconds": 50.792417507618666,
+  "worker_transport_seconds": 50.52752924337983,
+  "worker_hard_seconds_remaining_from_parent_entry": 59.99944664537907,
+  "child_reaped": true,
+  "stages": [
+    {
+      "stage": "legacy_code",
+      "stage_started": true,
+      "stage_completed": true,
+      "elapsed_ms": 25.222187861800194,
+      "items_completed": 5,
+      "bytes_processed": 77335,
+      "last_completed_item_index": 4
+    },
+    {
+      "stage": "runtime_code",
+      "stage_started": true,
+      "stage_completed": true,
+      "elapsed_ms": 2.3885369300842285,
+      "items_completed": 15,
+      "bytes_processed": 128193,
+      "last_completed_item_index": 14
+    },
+    {
+      "stage": "interpreter_environment",
+      "stage_started": true,
+      "stage_completed": true,
+      "elapsed_ms": 92.2970324754715,
+      "items_completed": 1,
+      "bytes_processed": 25533120,
+      "last_completed_item_index": 0
+    },
+    {
+      "stage": "distributions",
+      "stage_started": true,
+      "stage_completed": true,
+      "elapsed_ms": 4524.176046252251,
+      "items_completed": 220,
+      "bytes_processed": 4714362,
+      "last_completed_item_index": 219
+    },
+    {
+      "stage": "native_binaries",
+      "stage_started": true,
+      "stage_completed": true,
+      "elapsed_ms": 2133.146420121193,
+      "items_completed": 3,
+      "bytes_processed": 7688609,
+      "last_completed_item_index": 2
+    },
+    {
+      "stage": "input_inventory",
+      "stage_started": true,
+      "stage_completed": true,
+      "elapsed_ms": 43540.10469652712,
+      "items_completed": 809,
+      "bytes_processed": 1463872869,
+      "last_completed_item_index": 808
+    },
+    {
+      "stage": "storage",
+      "stage_started": true,
+      "stage_completed": true,
+      "elapsed_ms": 0.5977563560009003,
+      "items_completed": 3,
+      "bytes_processed": 0,
+      "last_completed_item_index": 2
+    }
+  ],
+  "records": 1070,
+  "journal_bytes": 240603,
+  "journal_sha256": "d433d7238ec3570d9b7fa39fdc9ac8bd481b50c3f3b46bbd86655fc455198726",
+  "telemetry_valid": true,
+  "all_809_input_files_verified": true,
+  "all_220_distributions_checked": true,
+  "distribution_completed_hash_read_bytes": 4714362,
+  "source_files_match_after": true,
+  "input_stage_includes_inventory_control_bytes": true,
+  "evidence_file_sha256": "2ea03a6b4bd2aaf701d20a961d928c829d6a524644693bc0fae74c4e2f7e7242",
+  "B_C_validator_calls": 0,
+  "S07_calls": 0,
+  "HE_generation_calls": 0,
+  "automatic_retries": 0,
+  "capture_acceptance_proofs_published": false,
+  "qualification_updates": false,
+  "clock_disclosure": "Parent bootstrap before run_setup outside task window as explicitly approved; worker startup and independent evidence verification included.",
+  "interpretation": "For this one fixed input/environment, V3 setup and evidence validation completed within approved60s. Input inventory stage43.54s dominates this measured run. Historical setup timeout has no stage telemetry, so its bottleneck remains unknown.",
+  "limits": [
+    "One observation does not guarantee future timing.",
+    "Hash read bytes for RECORD files are measured; other metadata I/O byte volume is not measured.",
+    "No complete target B/C comparison or real topology diagnostic has run under this authorization."
+  ],
+  "next_deliverable": "Freeze a separate bounded read-only B/C validation trial using the accepted fixed target inputs and explicit new authorization."
+}

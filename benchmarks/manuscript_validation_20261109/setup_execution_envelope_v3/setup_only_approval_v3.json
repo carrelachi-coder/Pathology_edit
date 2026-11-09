@@ -1,0 +1,8 @@
+{
+  "kind": "setup-v3-target-trial",
+  "approved": true,
+  "scope": "setup_only",
+  "manifest_sha256": "cde526bac89af86dc9000a67d4c10c4ac681724fb3e1156df6f20ed1e3a719b5",
+  "authority": "explicit current user reply recorded by assistant",
+  "answer": "批准这一次 V3 setup-only 验收"
+}
