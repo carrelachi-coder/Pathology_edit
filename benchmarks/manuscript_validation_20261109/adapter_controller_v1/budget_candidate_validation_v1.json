@@ -1,0 +1,31 @@
+{
+  "status": "independent_local_candidate_validated_not_integrated",
+  "change": "Avoid reparsing concrete Path objects; calculate reservation once per claim. Original rounding, index headroom and storage checks preserved. No filesystem stat result cached.",
+  "tests": [
+    {
+      "command": "python -m pytest -q tests/test_guard_budget_candidate_v1.py",
+      "passed": 6,
+      "scope": "6000 budget action differential checks across three limits, complete hash/full byte-identical files, observed allocation and freshness gate."
+    },
+    {
+      "command": "In isolated Python process assign codec.Budget=CandidateBudget then pytest tests/test_guard_blocks_v2.py",
+      "passed": 52,
+      "scope": "Existing codec test file executed against candidate budget. Process-local substitution only."
+    }
+  ],
+  "profiles": {
+    "events_per_run": 100000,
+    "original_seconds": 7.339911874849349,
+    "candidate_seconds": 5.2430046251975,
+    "observations_per_variant": 1,
+    "profiler_enabled": true,
+    "order": "original then candidate",
+    "limitation": "Local profiled observations. Uncontrolled cache and concurrent analysis load. No target S07 timing prediction or claim of strict runtime non-interference."
+  },
+  "production_codec_modified": false,
+  "production_adapter_modified": false,
+  "server_deployment": false,
+  "new_S07_authorization": false,
+  "qualification_updates": 0,
+  "candidate_sha256": "d4ac09d03509e9d149b96e184d0abdebab08462730b7e5a494af7432df03cf64"
+}
