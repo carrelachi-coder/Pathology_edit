@@ -1,0 +1,35 @@
+{
+  "status": "isolated_controller_candidate_local_integration_pass_target_launch_not_ready",
+  "controller_sha256": "21a05c9b1ac05befa82330b5bed30ec3dcf16b3691cb76be54f3c2acc9b4846d",
+  "tests": {
+    "passed": 46,
+    "new_controller": 5,
+    "bridge": 3,
+    "existing_controller_regressions": 38,
+    "command": "python -m pytest -q tests/test_limited_topology_adapter_controller_v1.py tests/test_observer_invocation_bridge_v1.py tests/test_limited_topology_controller.py"
+  },
+  "implementation": [
+    "New separately named Controller file preserves original business probe invocation, fork/restoration/identity checks and finite A-to-B-to-C sequence.",
+    "New controller_kind and explicit matching approval kind reject old Controller authorization.",
+    "B/C invoke real ObserverAdapter through existing observation_session using isolated sink; receipt finalized only after invocation.",
+    "A versus history and B/C versus A retain full JSON business receipt equality.",
+    "B assessment calls accepted v2 capture process gate30s; C assessment calls accepted strict B/C comparison60s. Both revalidate full streams and never publish capture acceptance.",
+    "Frozen S07 source and two probe case IDs are derived from source subset and templates, checked against adapter identity before execution."
+  ],
+  "local_evidence": [
+    "Actual Adapter/Codec through observe API, paired full comparison semantic_match6 synthetic events.",
+    "Controller assessment A/B/C through actual fresh validation workers, finite30/60 policies verified.",
+    "Old authorization rejected, sequence stops after invalid B, mismatched adapter case mapping rejected."
+  ],
+  "scope_limits": [
+    "Full run() against actual frozen S07 has not executed. Tests exercise real component lifecycle and assessment, not real pathology witness or full controlled-startup fork.",
+    "Parent now imports stdlib-only diagnostic_storage control modules during assessment. New parent/child import-order and RNG/hash/thread/CUDA smoke audit is required before final real launch freeze.",
+    "New Controller source/dependencies and snapshot mapping need separate frozen manifest and identity audit.",
+    "Real event/Raster volume and total runtime remain unproven until separately authorized finite diagnosis."
+  ],
+  "source_business_or_legacy_controller_modified": false,
+  "server_deployed": false,
+  "witness_calls": 0,
+  "S07_authorized": false,
+  "next_step": "Audit controlled-startup imports and source mapping, then construct reviewed new manifest with finite real diagnostic approval required."
+}
