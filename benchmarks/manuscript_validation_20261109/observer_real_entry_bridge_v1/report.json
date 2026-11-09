@@ -1,0 +1,17 @@
+{
+  "status": "existing_observation_API_bridge_local_tests_pass_controller_wiring_pending",
+  "code_sha256": "2c0427c3e11ddacea33b300bfeaf2ce7bd48aeba230c1f2e793f5498fc0e29f4",
+  "tests_passed": 3,
+  "scope": "Existing observation_session and observe functions with real FailIsolatedSink and mocked adapter core. This does not run actual Codec or pathology witness.",
+  "lifecycle": "Business invocation inside existing session; close precedes receipt finalization; normal-end flag only after callback and session return; finalize failures routed to isolated sink.",
+  "verified": [
+    "Event order and callback return preserved",
+    "Python RNG unchanged in synthetic callback",
+    "Original business exception object preserved despite record, fault handler and finalization exceptions",
+    "Session context reset after exit"
+  ],
+  "controller_wiring_complete": false,
+  "real_S07_calls": 0,
+  "target_deployed": false,
+  "next_step": "Use bridge in isolated new Controller entry, adapt business receipt path and replace legacy acceptance checks with already accepted read-only Validator gates."
+}
