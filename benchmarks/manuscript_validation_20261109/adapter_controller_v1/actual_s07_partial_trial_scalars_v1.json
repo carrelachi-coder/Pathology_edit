@@ -1,0 +1,1285 @@
+{
+  "scope": "All execution.works and probe.complete scalar summaries in the committed B prefix only. No complete witness, no target mask pixels, no population-level inference.",
+  "rows": [
+    {
+      "sequence": 24,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39318,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 275808,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 39094,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 12,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0006"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          206163
+        ],
+        "residual_area_fraction": 0.8406011604059382,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          9.700967671525234e-06,
+          0.9999902990323285
+        ],
+        "minimum_observed_residual_component_fraction": 9.700967671525234e-06,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999902990323285,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12998,
+          24478,
+          1618
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39318
+      ]
+    },
+    {
+      "sequence": 551592,
+      "event": "probe.complete",
+      "total": 70779,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 39094,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 12,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0006"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          206163
+        ],
+        "residual_area_fraction": 0.8406011604059382,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          9.700967671525234e-06,
+          0.9999902990323285
+        ],
+        "minimum_observed_residual_component_fraction": 9.700967671525234e-06,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999902990323285,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12998,
+          24478,
+          1618
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39318
+      ]
+    },
+    {
+      "sequence": 551616,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39144,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16846,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16036,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 1056945,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70729,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174528
+        ],
+        "residual_area_fraction": 0.7116150681524429,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459347963100899e-05,
+          0.9999885406520369
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459347963100899e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885406520369,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12961,
+          15297,
+          15659,
+          24345,
+          1617,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39144,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 1564892,
+      "event": "probe.complete",
+      "total": 70779,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70728,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174529
+        ],
+        "residual_area_fraction": 0.7116191454747838,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459282305149228e-05,
+          0.9999885407176948
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459282305149228e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885407176948,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12952,
+          15306,
+          15661,
+          24343,
+          1616,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        37897,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 1564916,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39144,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16846,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16036,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 2070245,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70729,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174528
+        ],
+        "residual_area_fraction": 0.7116150681524429,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459347963100899e-05,
+          0.9999885406520369
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459347963100899e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885406520369,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12961,
+          15297,
+          15659,
+          24345,
+          1617,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39144,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 2578192,
+      "event": "probe.complete",
+      "total": 70779,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70728,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174529
+        ],
+        "residual_area_fraction": 0.7116191454747838,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459282305149228e-05,
+          0.9999885407176948
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459282305149228e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885407176948,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12952,
+          15306,
+          15661,
+          24343,
+          1616,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        37897,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 2578215,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39318,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 2853999,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 39094,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 12,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0006"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          206163
+        ],
+        "residual_area_fraction": 0.8406011604059382,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          9.700967671525234e-06,
+          0.9999902990323285
+        ],
+        "minimum_observed_residual_component_fraction": 9.700967671525234e-06,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999902990323285,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12998,
+          24478,
+          1618
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39318
+      ]
+    },
+    {
+      "sequence": 3129783,
+      "event": "probe.complete",
+      "total": 70779,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 39094,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 12,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0006"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          206163
+        ],
+        "residual_area_fraction": 0.8406011604059382,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          9.700967671525234e-06,
+          0.9999902990323285
+        ],
+        "minimum_observed_residual_component_fraction": 9.700967671525234e-06,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999902990323285,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12998,
+          24478,
+          1618
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39318
+      ]
+    },
+    {
+      "sequence": 3129807,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39144,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16846,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16036,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 3635136,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70729,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174528
+        ],
+        "residual_area_fraction": 0.7116150681524429,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459347963100899e-05,
+          0.9999885406520369
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459347963100899e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885406520369,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12961,
+          15297,
+          15659,
+          24345,
+          1617,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39144,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 4143083,
+      "event": "probe.complete",
+      "total": 70779,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70728,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174529
+        ],
+        "residual_area_fraction": 0.7116191454747838,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459282305149228e-05,
+          0.9999885407176948
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459282305149228e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885407176948,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12952,
+          15306,
+          15661,
+          24343,
+          1616,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        37897,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 4143107,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39144,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16846,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16036,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 4648436,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70729,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174528
+        ],
+        "residual_area_fraction": 0.7116150681524429,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459347963100899e-05,
+          0.9999885406520369
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459347963100899e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885406520369,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12961,
+          15297,
+          15659,
+          24345,
+          1617,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39144,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 5156383,
+      "event": "probe.complete",
+      "total": 70779,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70728,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174529
+        ],
+        "residual_area_fraction": 0.7116191454747838,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459282305149228e-05,
+          0.9999885407176948
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459282305149228e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885407176948,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12952,
+          15306,
+          15661,
+          24343,
+          1616,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        37897,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 5156406,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39318,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 5432190,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 39094,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 12,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0006"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          206163
+        ],
+        "residual_area_fraction": 0.8406011604059382,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          9.700967671525234e-06,
+          0.9999902990323285
+        ],
+        "minimum_observed_residual_component_fraction": 9.700967671525234e-06,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999902990323285,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12998,
+          24478,
+          1618
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39318
+      ]
+    },
+    {
+      "sequence": 5707974,
+      "event": "probe.complete",
+      "total": 70779,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 39094,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 12,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0006"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          206163
+        ],
+        "residual_area_fraction": 0.8406011604059382,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          9.700967671525234e-06,
+          0.9999902990323285
+        ],
+        "minimum_observed_residual_component_fraction": 9.700967671525234e-06,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999902990323285,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12998,
+          24478,
+          1618
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39318
+      ]
+    },
+    {
+      "sequence": 5707998,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39144,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16846,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16036,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 6213327,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70729,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174528
+        ],
+        "residual_area_fraction": 0.7116150681524429,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459347963100899e-05,
+          0.9999885406520369
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459347963100899e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885406520369,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12961,
+          15297,
+          15659,
+          24345,
+          1617,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39144,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 6721274,
+      "event": "probe.complete",
+      "total": 70779,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70728,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174529
+        ],
+        "residual_area_fraction": 0.7116191454747838,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459282305149228e-05,
+          0.9999885407176948
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459282305149228e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885407176948,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12952,
+          15306,
+          15661,
+          24343,
+          1616,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        37897,
+        16846,
+        16036
+      ]
+    },
+    {
+      "sequence": 6721298,
+      "event": "execution.works",
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "hard_max_pixels": 82444,
+      "works": [
+        {
+          "item_capacity_px": 39144,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16846,
+          "source_deletion_limit_px": 134891
+        },
+        {
+          "item_capacity_px": 16036,
+          "source_deletion_limit_px": 134891
+        }
+      ]
+    },
+    {
+      "sequence": 7226627,
+      "event": "probe.complete",
+      "total": 82444,
+      "desired_pixels": 82444,
+      "hard_min_pixels": 70779,
+      "realized": 70729,
+      "valid": false,
+      "topology": {
+        "passed": false,
+        "source_components_before": 2,
+        "source_components_after": 2,
+        "selected_source_components_after": 2,
+        "target_components_before": 8,
+        "target_components_after": 8,
+        "source_holes_before": 13,
+        "source_holes_after": 10,
+        "target_holes_before": 0,
+        "target_holes_after": 0,
+        "fragmentation_residual_target_holes_after": 0,
+        "selected_target_component_ids": [
+          "cmp:tumor:p01:0005",
+          "cmp:tumor:p01:0006",
+          "cmp:tumor:p01:0008"
+        ],
+        "target_merge": false,
+        "source_hole_change_allowed_by_selected_target_merge": false,
+        "allow_source_component_resolution": false,
+        "allow_target_hole_resolution": false,
+        "allow_source_component_split": false,
+        "minimum_residual_components": 1,
+        "maximum_residual_components": 1,
+        "minimum_residual_component_area_px": 64,
+        "minimum_residual_spacing_px": 0,
+        "observed_minimum_residual_spacing_px": 3.1622776601683795,
+        "residual_component_sizes_px": [
+          2,
+          174528
+        ],
+        "residual_area_fraction": 0.7116150681524429,
+        "residual_area_floor_fraction": 0.0,
+        "maximum_residual_area_fraction": 1.0,
+        "residual_component_fractions": [
+          1.1459347963100899e-05,
+          0.9999885406520369
+        ],
+        "minimum_observed_residual_component_fraction": 1.1459347963100899e-05,
+        "minimum_required_residual_component_fraction": 0.0,
+        "dominant_residual_component_fraction": 0.9999885406520369,
+        "maximum_dominant_residual_component_fraction": 1.0,
+        "whole_mask_topology_passed": false,
+        "changed_component_area_passed": true,
+        "changed_component_sizes_px": [
+          12961,
+          15297,
+          15659,
+          24345,
+          1617,
+          850
+        ],
+        "minimum_changed_component_area_px": 16
+      },
+      "allocations": [
+        39144,
+        16846,
+        16036
+      ]
+    }
+  ],
+  "qualification_updates": 0
+}

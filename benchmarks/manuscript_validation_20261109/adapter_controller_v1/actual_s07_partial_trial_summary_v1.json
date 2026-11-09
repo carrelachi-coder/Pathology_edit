@@ -1,0 +1,10 @@
+{
+  "scope": "Partial first-operation prefix only, no complete source witness or population conclusion",
+  "probes_recorded": 17,
+  "valid_probes": 0,
+  "topology_passed_probes": 0,
+  "max_topology_passed_realized_pixels": null,
+  "maximum_recorded_trial_pixels": 70729,
+  "frozen_hard_minimum": 70779,
+  "qualification_updates": 0
+}
