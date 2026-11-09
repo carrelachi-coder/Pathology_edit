@@ -1,0 +1,219 @@
+{
+  "scope": "Local profiled synthetic guard.stage only. Includes profiler overhead. No target timing inference.",
+  "events": 100000,
+  "candidate_budget": true,
+  "elapsed_seconds": 14.097865955904126,
+  "global_rng_unchanged": true,
+  "capture_complete": false,
+  "qualification_updates": 0,
+  "logical_stream_sha256": "e5735a98d3372f9385cf55110f30d3ff844c9ea15a6267977379f8a51f59e307",
+  "committed_blocks": 3,
+  "logical_events_written": 100000,
+  "top_self_time": [
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method posix.fsync>",
+      "calls": 6,
+      "self_seconds": 2.9456402400000004,
+      "cumulative_seconds": 2.9456402400000004
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/guard_blocks_v2.py",
+      "line": 77,
+      "function": "refs",
+      "calls": 1400000,
+      "self_seconds": 1.0469987090000001,
+      "cumulative_seconds": 1.2744002410000002
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/guard_blocks_v2.py",
+      "line": 396,
+      "function": "write_event",
+      "calls": 100000,
+      "self_seconds": 1.0003495420000001,
+      "cumulative_seconds": 10.092719846000001
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/guard_budget_candidate_v1.py",
+      "line": 12,
+      "function": "reservation",
+      "calls": 400006,
+      "self_seconds": 0.552939364,
+      "cumulative_seconds": 0.963259382
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/observer_adapter_v1.py",
+      "line": 267,
+      "function": "_encode",
+      "calls": 700000,
+      "self_seconds": 0.548961837,
+      "cumulative_seconds": 1.287655122
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/observer_adapter_v1.py",
+      "line": 256,
+      "function": "_reserve_metadata",
+      "calls": 800000,
+      "self_seconds": 0.49922567,
+      "cumulative_seconds": 0.5662729790000001
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/json/encoder.py",
+      "line": 205,
+      "function": "iterencode",
+      "calls": 100006,
+      "self_seconds": 0.46057307500000005,
+      "cumulative_seconds": 0.46057307500000005
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/guard_budget_candidate_v1.py",
+      "line": 19,
+      "function": "claim",
+      "calls": 200006,
+      "self_seconds": 0.39518396100000003,
+      "cumulative_seconds": 0.896085314
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/observer_adapter_v1.py",
+      "line": 160,
+      "function": "record",
+      "calls": 100000,
+      "self_seconds": 0.372311483,
+      "cumulative_seconds": 13.855968059
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/guard_blocks_v2.py",
+      "line": 191,
+      "function": "claim_many",
+      "calls": 100000,
+      "self_seconds": 0.366626363,
+      "cumulative_seconds": 2.0963648050000003
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method io.open>",
+      "calls": 3,
+      "self_seconds": 0.33980872500000003,
+      "cumulative_seconds": 0.33981119800000004
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.isinstance>",
+      "calls": 3400030,
+      "self_seconds": 0.287409907,
+      "cumulative_seconds": 0.287409907
+    },
+    {
+      "file": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/observer_adapter_v1.py",
+      "line": 295,
+      "function": "<listcomp>",
+      "calls": 100000,
+      "self_seconds": 0.236164282,
+      "cumulative_seconds": 0.9474459730000001
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/json/decoder.py",
+      "line": 343,
+      "function": "raw_decode",
+      "calls": 100000,
+      "self_seconds": 0.23249434100000002,
+      "cumulative_seconds": 0.35288679300000003
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/pathlib.py",
+      "line": 56,
+      "function": "parse_parts",
+      "calls": 100012,
+      "self_seconds": 0.231932734,
+      "cumulative_seconds": 0.318208676
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/queue.py",
+      "line": 122,
+      "function": "put",
+      "calls": 100000,
+      "self_seconds": 0.23016254600000002,
+      "cumulative_seconds": 0.537533154
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/pathlib.py",
+      "line": 536,
+      "function": "__str__",
+      "calls": 600036,
+      "self_seconds": 0.212054771,
+      "cumulative_seconds": 0.325200015
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/json/__init__.py",
+      "line": 299,
+      "function": "loads",
+      "calls": 100000,
+      "self_seconds": 0.21185689600000002,
+      "cumulative_seconds": 1.058280688
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/pathlib.py",
+      "line": 622,
+      "function": "name",
+      "calls": 400006,
+      "self_seconds": 0.19683872300000002,
+      "cumulative_seconds": 0.23722957000000003
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.len>",
+      "calls": 1700037,
+      "self_seconds": 0.18039253500000002,
+      "cumulative_seconds": 0.18039253500000002
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/json/decoder.py",
+      "line": 284,
+      "function": "__init__",
+      "calls": 100000,
+      "self_seconds": 0.178015171,
+      "cumulative_seconds": 0.178015171
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/queue.py",
+      "line": 154,
+      "function": "get",
+      "calls": 100000,
+      "self_seconds": 0.177621524,
+      "cumulative_seconds": 0.435815838
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/pathlib.py",
+      "line": 484,
+      "function": "_parse_args",
+      "calls": 100012,
+      "self_seconds": 0.17617300300000002,
+      "cumulative_seconds": 0.5406780050000001
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/json/decoder.py",
+      "line": 332,
+      "function": "decode",
+      "calls": 100000,
+      "self_seconds": 0.172574628,
+      "cumulative_seconds": 0.634085659
+    },
+    {
+      "file": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/lib/python3.11/pathlib.py",
+      "line": 530,
+      "function": "_make_child",
+      "calls": 100006,
+      "self_seconds": 0.15839735100000002,
+      "cumulative_seconds": 0.814659515
+    }
+  ],
+  "code_sha256": {
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/scripts/profile_adapter_synthetic_cost_v2.py": "aec877ecd0fc0c564408f51ce3c4309d3499b48bc6d6e877267d08110d19633b",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/budget_cost_candidate_v4_isolated/diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421"
+  }
+}

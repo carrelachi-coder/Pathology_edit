@@ -19,7 +19,7 @@
       "id": "topology_diagnosis",
       "required": "Valid complete process evidence and disposition of legal execution bottleneck",
       "status": "incomplete",
-      "current_evidence": "Both consumed S07 diagnostics lack complete observed execution evidence. Latest B timed out after partial7685155 committed logical events."
+      "current_evidence": "Both consumed S07 diagnostics lack complete observed execution evidence. Latest B timed out after partial7685156 committed logical events."
     },
     {
       "id": "generation",
@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Resolve complete topology-process evidence under a fresh reviewed diagnostic identity, then four-target qualification and formal matched-sham cohort. Historical results are now available and do not replace these requirements.",
+  "current_next_deliverable": "Independently review candidate budget integration and freeze a new real diagnostic identity before seeking new S07 authorization; then resolve topology bottleneck, qualify four targets per patient, and run the formal matched-sham cohort. Historical results do not replace these requirements.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -94,5 +94,16 @@
     "reserved_witness_calls_observed": 4,
     "completed_diagnostic": false,
     "evidence_scope": "actual_s07_terminal_report_v1.json records A historical receipt match, B1200s timeout and C not launched. Authorization consumed."
+  },
+  "synthetic_observer_cost_trial_v4": {
+    "status": "completed_synthetic_only",
+    "manifest_sha256": "c300ee63fb878358275b7a53682f8aeca53dc4244410d3f1b8444d0d04f0325a",
+    "original_transport_seconds": 31.032731072977185,
+    "candidate_transport_seconds": 16.4756300766021,
+    "events_each": 100000,
+    "logical_stream_sha_equal": true,
+    "production_integrated": false,
+    "real_S07_authorized": false,
+    "evidence": "adapter_controller_v1/budget_cost_trial_v4/closeout_report.json"
   }
 }

@@ -1,0 +1,43 @@
+{
+  "kind": "isolated-synthetic-budget-cost-trial-v4-closeout",
+  "status": "synthetic_profiles_complete_stream_hash_equal",
+  "manifest_sha256": "c300ee63fb878358275b7a53682f8aeca53dc4244410d3f1b8444d0d04f0325a",
+  "authorization_consumed": true,
+  "scope": "100000 synthetic guard.stage events per variant, one original and one candidate, profiler enabled. No real source, S07, H&E, full capture or acceptance publication.",
+  "setup_seconds": 0.17082740180194378,
+  "whole_controller_seconds": 47.68325296975672,
+  "original": {
+    "producer_transport_seconds": 31.032731072977185,
+    "profiled_loop_seconds": 28.55206493102014,
+    "logical_events": 100000,
+    "committed_blocks": 3,
+    "logical_stream_sha256": "e5735a98d3372f9385cf55110f30d3ff844c9ea15a6267977379f8a51f59e307"
+  },
+  "candidate": {
+    "producer_transport_seconds": 16.4756300766021,
+    "profiled_loop_seconds": 14.097865955904126,
+    "logical_events": 100000,
+    "committed_blocks": 3,
+    "logical_stream_sha256": "e5735a98d3372f9385cf55110f30d3ff844c9ea15a6267977379f8a51f59e307"
+  },
+  "observed_ratios": {
+    "transport_original_over_candidate": 1.8835535229119025,
+    "profiled_loop_original_over_candidate": 2.0252756708232607
+  },
+  "limitations": [
+    "One fixed-order observation per variant; cache and filesystem effects are not separated.",
+    "Profiler overhead affects both timings.",
+    "No Full Capture arrays were included.",
+    "Synthetic speed does not predict real S07 completion or strict noninterference.",
+    "Candidate remains outside production Codec and Adapter."
+  ],
+  "artifact_sha256": {
+    "trial_result.json": "a43afdec36262e958472de45d638f67d4181de407f40e696093d5c211d0077c5",
+    "authorization_consumed.json": "be40d8dca28311e11d3c6ecf12243bc846a239b368c7367d38ccbacc219405f4",
+    "original/report.json": "6ac5058951b9b4fd12cf03455d6ffeee806fe45dc60811cb97e7335cb08037a2",
+    "candidate/report.json": "d26331564b27b893af942cfe4b426e4f6178930be9b9a0b867e50c3bb88ef855",
+    "original/profile.pstats": "5e8d2b23b8f7dc808df2ce8fec19e309cfa7c7aeef0435f624d6e68603015d70",
+    "candidate/profile.pstats": "70290a79f1a220f4c1caf3617f5184780a10ee8281a008dd578415f4cf3105aa"
+  },
+  "recorded_utc": "2026-11-09T06:56:50.463322+00:00"
+}

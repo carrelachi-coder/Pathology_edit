@@ -1,0 +1,44 @@
+{
+  "status": "synthetic_profiles_complete_stream_hash_equal",
+  "automatic_retries": 0,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "profiles": [
+    {
+      "label": "original",
+      "transport": {
+        "transport_ok": true,
+        "reason": null,
+        "exit_code": 0,
+        "timed_out": false,
+        "child_reaped": true,
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_bytes": 0,
+        "elapsed_seconds": 31.032731072977185,
+        "hard_timeout_seconds": 60
+      }
+    },
+    {
+      "label": "candidate",
+      "transport": {
+        "transport_ok": true,
+        "reason": null,
+        "exit_code": 0,
+        "timed_out": false,
+        "child_reaped": true,
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_bytes": 0,
+        "elapsed_seconds": 16.4756300766021,
+        "hard_timeout_seconds": 60
+      }
+    }
+  ],
+  "setup_seconds": 0.17082740180194378,
+  "seconds": [
+    28.55206493102014,
+    14.097865955904126
+  ],
+  "interpretation": "Profiled observations only. No real-source timing, complete capture or eligibility conclusion.",
+  "elapsed_seconds": 47.68325296975672
+}
