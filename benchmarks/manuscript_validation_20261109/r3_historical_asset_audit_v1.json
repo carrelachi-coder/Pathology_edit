@@ -1,0 +1,373 @@
+{
+  "root_exists": true,
+  "scope": "read-only saved manifests/report and bounded cache metadata; no image, feature extraction or statistics run",
+  "cells": {
+    "u1_moderate": {
+      "exists": true,
+      "rows": 300,
+      "sha256": "a309020476c132ecfa9032f4be31b1d809128b3bb345b9187caacbe44aabc83e",
+      "reference_count": 300,
+      "wsi_count": 90,
+      "patient_field_rows": 300,
+      "row_fields": [
+        "change_region",
+        "changed_area_fraction_of_patch",
+        "cross_image",
+        "cross_primitive_mask_iou_moderate",
+        "cross_primitive_mask_iou_significant",
+        "dose_increase_fraction",
+        "generation_change_region",
+        "generation_seed",
+        "inpaint_image",
+        "moderate_containment_in_significant",
+        "moderate_realized_dose_fraction",
+        "moderate_sample_id",
+        "moderate_significant_mask_iou",
+        "pair_id",
+        "patient_id",
+        "primitive",
+        "primitive_code",
+        "profile",
+        "realized_dose_fraction",
+        "reference_id",
+        "reference_image",
+        "sample_id",
+        "schema_version",
+        "sha256",
+        "significant_realized_dose_fraction",
+        "strength",
+        "target_nuclei_mask",
+        "target_tissue_mask",
+        "wsi_id"
+      ],
+      "ordered_reference_id_sha256": "e538594bf0517f920c56d686ac1d6a71d60b716374e08728ecd6510edbdbe50c"
+    },
+    "u1_significant": {
+      "exists": true,
+      "rows": 300,
+      "sha256": "4c78e6085793f885251252df6e16e75dbc5822945de4a02d083225549b23e2dc",
+      "reference_count": 300,
+      "wsi_count": 90,
+      "patient_field_rows": 300,
+      "row_fields": [
+        "change_region",
+        "changed_area_fraction_of_patch",
+        "cross_image",
+        "cross_primitive_mask_iou_moderate",
+        "cross_primitive_mask_iou_significant",
+        "dose_increase_fraction",
+        "generation_change_region",
+        "generation_seed",
+        "inpaint_image",
+        "moderate_containment_in_significant",
+        "moderate_realized_dose_fraction",
+        "moderate_sample_id",
+        "moderate_significant_mask_iou",
+        "pair_id",
+        "patient_id",
+        "primitive",
+        "primitive_code",
+        "profile",
+        "realized_dose_fraction",
+        "reference_id",
+        "reference_image",
+        "sample_id",
+        "schema_version",
+        "sha256",
+        "significant_realized_dose_fraction",
+        "strength",
+        "target_nuclei_mask",
+        "target_tissue_mask",
+        "wsi_id"
+      ],
+      "ordered_reference_id_sha256": "e538594bf0517f920c56d686ac1d6a71d60b716374e08728ecd6510edbdbe50c"
+    },
+    "u2_moderate": {
+      "exists": true,
+      "rows": 300,
+      "sha256": "a42ddd06c242aa9091d1e1860051b9a7ba7051c676a12abd75f0ead884d648bc",
+      "reference_count": 300,
+      "wsi_count": 90,
+      "patient_field_rows": 300,
+      "row_fields": [
+        "change_region",
+        "changed_area_fraction_of_patch",
+        "cross_image",
+        "cross_primitive_mask_iou_moderate",
+        "cross_primitive_mask_iou_significant",
+        "dose_increase_fraction",
+        "generation_change_region",
+        "generation_seed",
+        "inpaint_image",
+        "moderate_containment_in_significant",
+        "moderate_realized_dose_fraction",
+        "moderate_sample_id",
+        "moderate_significant_mask_iou",
+        "pair_id",
+        "patient_id",
+        "primitive",
+        "primitive_code",
+        "profile",
+        "realized_dose_fraction",
+        "reference_id",
+        "reference_image",
+        "sample_id",
+        "schema_version",
+        "sha256",
+        "significant_realized_dose_fraction",
+        "strength",
+        "target_nuclei_mask",
+        "target_tissue_mask",
+        "wsi_id"
+      ],
+      "ordered_reference_id_sha256": "e538594bf0517f920c56d686ac1d6a71d60b716374e08728ecd6510edbdbe50c"
+    },
+    "u2_significant": {
+      "exists": true,
+      "rows": 300,
+      "sha256": "45b5e9a7e389e0322eaf706c052a1cb34943c50b3279f55a80dd6c09a0481b1f",
+      "reference_count": 300,
+      "wsi_count": 90,
+      "patient_field_rows": 300,
+      "row_fields": [
+        "change_region",
+        "changed_area_fraction_of_patch",
+        "cross_image",
+        "cross_primitive_mask_iou_moderate",
+        "cross_primitive_mask_iou_significant",
+        "dose_increase_fraction",
+        "generation_change_region",
+        "generation_seed",
+        "inpaint_image",
+        "moderate_containment_in_significant",
+        "moderate_realized_dose_fraction",
+        "moderate_sample_id",
+        "moderate_significant_mask_iou",
+        "pair_id",
+        "patient_id",
+        "primitive",
+        "primitive_code",
+        "profile",
+        "realized_dose_fraction",
+        "reference_id",
+        "reference_image",
+        "sample_id",
+        "schema_version",
+        "sha256",
+        "significant_realized_dose_fraction",
+        "strength",
+        "target_nuclei_mask",
+        "target_tissue_mask",
+        "wsi_id"
+      ],
+      "ordered_reference_id_sha256": "e538594bf0517f920c56d686ac1d6a71d60b716374e08728ecd6510edbdbe50c"
+    }
+  },
+  "cache_files": [
+    {
+      "path": "embeddings/uni2h/u1_moderate/cache/uni2h/cross.json",
+      "bytes": 937
+    },
+    {
+      "path": "embeddings/uni2h/u1_moderate/cache/uni2h/cross.npz",
+      "bytes": 869617
+    },
+    {
+      "path": "embeddings/uni2h/u1_moderate/cache/uni2h/inpaint.json",
+      "bytes": 939
+    },
+    {
+      "path": "embeddings/uni2h/u1_moderate/cache/uni2h/inpaint.npz",
+      "bytes": 869657
+    },
+    {
+      "path": "embeddings/uni2h/u1_moderate/cache/uni2h/reference.json",
+      "bytes": 941
+    },
+    {
+      "path": "embeddings/uni2h/u1_moderate/cache/uni2h/reference.npz",
+      "bytes": 869997
+    },
+    {
+      "path": "embeddings/uni2h/u1_significant/cache/uni2h/cross.json",
+      "bytes": 937
+    },
+    {
+      "path": "embeddings/uni2h/u1_significant/cache/uni2h/cross.npz",
+      "bytes": 869902
+    },
+    {
+      "path": "embeddings/uni2h/u1_significant/cache/uni2h/inpaint.json",
+      "bytes": 939
+    },
+    {
+      "path": "embeddings/uni2h/u1_significant/cache/uni2h/inpaint.npz",
+      "bytes": 869667
+    },
+    {
+      "path": "embeddings/uni2h/u1_significant/cache/uni2h/reference.json",
+      "bytes": 941
+    },
+    {
+      "path": "embeddings/uni2h/u1_significant/cache/uni2h/reference.npz",
+      "bytes": 870024
+    },
+    {
+      "path": "embeddings/uni2h/u2_moderate/cache/uni2h/cross.json",
+      "bytes": 937
+    },
+    {
+      "path": "embeddings/uni2h/u2_moderate/cache/uni2h/cross.npz",
+      "bytes": 870032
+    },
+    {
+      "path": "embeddings/uni2h/u2_moderate/cache/uni2h/inpaint.json",
+      "bytes": 939
+    },
+    {
+      "path": "embeddings/uni2h/u2_moderate/cache/uni2h/inpaint.npz",
+      "bytes": 869987
+    },
+    {
+      "path": "embeddings/uni2h/u2_moderate/cache/uni2h/reference.json",
+      "bytes": 941
+    },
+    {
+      "path": "embeddings/uni2h/u2_moderate/cache/uni2h/reference.npz",
+      "bytes": 869999
+    },
+    {
+      "path": "embeddings/uni2h/u2_significant/cache/uni2h/cross.json",
+      "bytes": 937
+    },
+    {
+      "path": "embeddings/uni2h/u2_significant/cache/uni2h/cross.npz",
+      "bytes": 869711
+    },
+    {
+      "path": "embeddings/uni2h/u2_significant/cache/uni2h/inpaint.json",
+      "bytes": 939
+    },
+    {
+      "path": "embeddings/uni2h/u2_significant/cache/uni2h/inpaint.npz",
+      "bytes": 869916
+    },
+    {
+      "path": "embeddings/uni2h/u2_significant/cache/uni2h/reference.json",
+      "bytes": 941
+    },
+    {
+      "path": "embeddings/uni2h/u2_significant/cache/uni2h/reference.npz",
+      "bytes": 870032
+    },
+    {
+      "path": "embeddings/conch/u1_moderate/cache/conch/cross.json",
+      "bytes": 1053
+    },
+    {
+      "path": "embeddings/conch/u1_moderate/cache/conch/cross.npz",
+      "bytes": 292807
+    },
+    {
+      "path": "embeddings/conch/u1_moderate/cache/conch/inpaint.json",
+      "bytes": 1055
+    },
+    {
+      "path": "embeddings/conch/u1_moderate/cache/conch/inpaint.npz",
+      "bytes": 292956
+    },
+    {
+      "path": "embeddings/conch/u1_moderate/cache/conch/reference.json",
+      "bytes": 1057
+    },
+    {
+      "path": "embeddings/conch/u1_moderate/cache/conch/reference.npz",
+      "bytes": 292735
+    },
+    {
+      "path": "embeddings/conch/u1_significant/cache/conch/cross.json",
+      "bytes": 1053
+    },
+    {
+      "path": "embeddings/conch/u1_significant/cache/conch/cross.npz",
+      "bytes": 293001
+    },
+    {
+      "path": "embeddings/conch/u1_significant/cache/conch/inpaint.json",
+      "bytes": 1055
+    },
+    {
+      "path": "embeddings/conch/u1_significant/cache/conch/inpaint.npz",
+      "bytes": 292985
+    },
+    {
+      "path": "embeddings/conch/u1_significant/cache/conch/reference.json",
+      "bytes": 1057
+    },
+    {
+      "path": "embeddings/conch/u1_significant/cache/conch/reference.npz",
+      "bytes": 292762
+    },
+    {
+      "path": "embeddings/conch/u2_moderate/cache/conch/cross.json",
+      "bytes": 1053
+    },
+    {
+      "path": "embeddings/conch/u2_moderate/cache/conch/cross.npz",
+      "bytes": 292883
+    },
+    {
+      "path": "embeddings/conch/u2_moderate/cache/conch/inpaint.json",
+      "bytes": 1055
+    },
+    {
+      "path": "embeddings/conch/u2_moderate/cache/conch/inpaint.npz",
+      "bytes": 292776
+    },
+    {
+      "path": "embeddings/conch/u2_moderate/cache/conch/reference.json",
+      "bytes": 1057
+    },
+    {
+      "path": "embeddings/conch/u2_moderate/cache/conch/reference.npz",
+      "bytes": 292737
+    },
+    {
+      "path": "embeddings/conch/u2_significant/cache/conch/cross.json",
+      "bytes": 1053
+    },
+    {
+      "path": "embeddings/conch/u2_significant/cache/conch/cross.npz",
+      "bytes": 292954
+    },
+    {
+      "path": "embeddings/conch/u2_significant/cache/conch/inpaint.json",
+      "bytes": 1055
+    },
+    {
+      "path": "embeddings/conch/u2_significant/cache/conch/inpaint.npz",
+      "bytes": 292969
+    },
+    {
+      "path": "embeddings/conch/u2_significant/cache/conch/reference.json",
+      "bytes": 1057
+    },
+    {
+      "path": "embeddings/conch/u2_significant/cache/conch/reference.npz",
+      "bytes": 292770
+    }
+  ],
+  "old_report_exists": true,
+  "old_report_sha256": "216f73fc1a36eda96729710d372f430bbb5ac081b11e8df0d36959c3f1c1d29b",
+  "old_report_top_keys": [
+    "analysis",
+    "created_at_utc",
+    "encoders",
+    "inference",
+    "input_manifests",
+    "run_root",
+    "schema_version",
+    "status"
+  ],
+  "cache_payloads_revalidated": false
+}

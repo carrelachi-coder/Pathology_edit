@@ -1,0 +1,261 @@
+{
+  "status": "historical_feature_payload_pairing_verified",
+  "scope": "Private copied feature caches and manifests, no source images or models copied",
+  "source_root": "historical paired300 epoch29 run",
+  "archive_sha256": "9ec27e684b0c4c7a79680e073468833b85c6c4745e83777e5fd2370e4b854ca0",
+  "archive_bytes": 17285120,
+  "files": 53,
+  "cells": 4,
+  "sources_per_cell": 300,
+  "patients": 90,
+  "wsi_aliases": 90,
+  "max_wsi_aliases_per_patient": 1,
+  "reference_patient_mapping_unique": true,
+  "numeric_caches": [
+    {
+      "encoder": "uni2h",
+      "cell": "u1_moderate",
+      "mode": "reference",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "42e44cf78e479f6815f05046278a62d7ef2fdd01bc9e2a17663e7f86e06d075a"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u1_moderate",
+      "mode": "inpaint",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "1749b50eabfdb5cbe3aa55caecb41eb535538b78fa8901c62910327b9964aaac"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u1_moderate",
+      "mode": "cross",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "5b509237a3c103113b208cf6995df48e5fe2ccd12c9dd2eac28d38ac4ea31d4a"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u1_moderate",
+      "mode": "reference",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "c69c5a8332c359ecc0a0fa2636035db2b9f8460d5a435ab653d1366ad5b4b3ba"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u1_moderate",
+      "mode": "inpaint",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "afca7e9d6cb1b2defe5f862357b7242fad00951a9ed379804c2b5513fa4e61b8"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u1_moderate",
+      "mode": "cross",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "7da2663e1d1bf3165d3a7551c3fbe4ace95a6575a925c35a2125e2d6b4df2801"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u1_significant",
+      "mode": "reference",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "f72684dde4022dd6c3db62288e120f0d305324ca9a6f1fc9227f37d9c4077987"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u1_significant",
+      "mode": "inpaint",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "a5d8eefbb2c3ee68447c6a6f12c30597da1265df88614f4650a3fac48c5e2754"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u1_significant",
+      "mode": "cross",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "3437b93e8c5ff9a84483a47ae083f0a4a6d51aee9e7937a5f1e2088989f2732d"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u1_significant",
+      "mode": "reference",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "e216a00e5a5a1b6c63b9ef7b63382ac39eff936301d23e8bf8621829c51dc742"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u1_significant",
+      "mode": "inpaint",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "731b9af663389c008dd958ac4fc12cfa0292df5b75307ad974740adf7953d052"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u1_significant",
+      "mode": "cross",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "4a091fe031e13afed5f42fbffa9b389016b835f1b49decea46e8859a7477431c"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u2_moderate",
+      "mode": "reference",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "ec967deb65d66605a1165b7d9975bae8eac28cb6ed976cf6f06540fb585445cf"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u2_moderate",
+      "mode": "inpaint",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "6ff5e6d289a9d79538be11225adb77010150f889096b3cb11738dbcce3f41f6e"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u2_moderate",
+      "mode": "cross",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "67d5b1c477b8edfc1026175c8529165673971b1ac064a5bf9c3458e935d2fda6"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u2_moderate",
+      "mode": "reference",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "37914f043346baffe69e3e2e4ad82976452e77b412e903227dbc000566ecfe2b"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u2_moderate",
+      "mode": "inpaint",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "77f9c956dfc533de6d2bdbafd0d0e5841379ab9ced39b71d5a681f4fad4b8f66"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u2_moderate",
+      "mode": "cross",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "a9764609b6f9899a034ed8ecbff511aba5db10ed5087244832c0e709c306d8ca"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u2_significant",
+      "mode": "reference",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "169f844c7122a07281a23c5d8a4868012a2df0a2998dfb182af91feb90487144"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u2_significant",
+      "mode": "inpaint",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "9ea655341be6aad415db33b3f2d4def1e794df9bfbcc2f5c6a345102becc1737"
+    },
+    {
+      "encoder": "uni2h",
+      "cell": "u2_significant",
+      "mode": "cross",
+      "shape": [
+        300,
+        1536
+      ],
+      "sha256": "e16a8474cc105c43bcb01bcf3a850a8accc1fc481516006586d3d2a2c2f5fffc"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u2_significant",
+      "mode": "reference",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "d652ea01cd54aad84b04a16cd5f69d9e23adcaa84a1c206979d0d5902fd6129f"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u2_significant",
+      "mode": "inpaint",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "b556c5f0efec8d099f7dafd13892d6f5b518425ec51f13e28f5d61427db0557f"
+    },
+    {
+      "encoder": "conch",
+      "cell": "u2_significant",
+      "mode": "cross",
+      "shape": [
+        300,
+        512
+      ],
+      "sha256": "5ffbad0e2ba4452f32323bf367229dfd2aae47ceae7552239f06d20cba825060"
+    }
+  ],
+  "cache_payloads_checked": 24,
+  "patient_cluster_recomputation": "supported by saved patient_id; final analysis still pending",
+  "old_report_hash_matches": true,
+  "S07_calls": 0,
+  "image_generation_calls": 0
+}
