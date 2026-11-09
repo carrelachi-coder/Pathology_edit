@@ -1,0 +1,22 @@
+{
+  "status": "sealed_waiting_explicit_real_diagnostic_approval",
+  "kind": "limited-topology-adapter-v1",
+  "manifest_sha256": "303944169cc5aefc848f61fbedf70eebfd40e5a17ead578c6fa34cd1ef799b4e",
+  "rng_decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "import_difference_sha256": "19f497ecd99f16144f93290cfcdd11fa87f5c292f33989855054dfd6b3d9944a",
+  "scope": "One actual finite S07 U1/U2 A-to-B-to-C diagnostic, at most6 logical witnesses,1200s per pair, overall3600s work cap with5s termination cleanup, zero retries.",
+  "helpers": "B complete capture30s; full BC strict comparison60s, no capture acceptance publication",
+  "required_user_decision": "Accept this disclosed new Adapter startup difference and authorize this single bound actual diagnostic. Existing accepted RNG condition is carried forward.",
+  "failure": "Any historical mismatch, business receipt mismatch, invalid evidence, timeout or comparison mismatch stops all later arms.",
+  "control_files_to_stage": {
+    "adapter_startup_difference_disposition_v1.json": "19f497ecd99f16144f93290cfcdd11fa87f5c292f33989855054dfd6b3d9944a",
+    "adapter_launch_manifest_v2.json": "303944169cc5aefc848f61fbedf70eebfd40e5a17ead578c6fa34cd1ef799b4e"
+  },
+  "source_snapshot_immutable": true,
+  "qualification_updates_permitted": false,
+  "formal_generation_permitted": false,
+  "physician_study_permitted": false,
+  "executed": false,
+  "supersedes_unexecuted_request": "adapter_finite_launch_request_v1.json",
+  "revision_reason": "Remove inherited unused legacy Observer limits, including the old2M event cap. New Controller uses pinned Adapter defaults. No source code changed and no real diagnostic has executed."
+}
