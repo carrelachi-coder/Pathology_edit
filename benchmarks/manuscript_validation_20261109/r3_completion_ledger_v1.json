@@ -1,0 +1,77 @@
+{
+  "objective": "继续进行直到R3结束",
+  "status": "active",
+  "completion_definition": "All eight requirements verified against final artifacts; engineering component acceptance alone does not complete R3",
+  "requirements": [
+    {
+      "id": "cohort",
+      "required": "30 independent patients with four approved targets",
+      "status": "incomplete",
+      "current_evidence": "Current frozen source-topology count17, upper bound19; fully approved four-target count0"
+    },
+    {
+      "id": "diagnostic_preparation",
+      "required": "Reviewed preparation worker, whole-process supervisor and manifest-bound result verifier",
+      "status": "incomplete",
+      "current_evidence": "V3 callable and structural review exist; execution envelope pending"
+    },
+    {
+      "id": "topology_diagnosis",
+      "required": "Valid complete process evidence and disposition of legal execution bottleneck",
+      "status": "incomplete",
+      "current_evidence": "Old S07 B invalid at event limit; C not executed"
+    },
+    {
+      "id": "generation",
+      "required": "Original plus matched sham and U1/U2 Moderate/Significant for final eligible cohort",
+      "status": "incomplete",
+      "current_evidence": "Five-state technical GPU chain previously accepted; formal cohort generation pending"
+    },
+    {
+      "id": "measurements",
+      "required": "Frozen primary morphology endpoints and per-state completeness with fixed source ROI",
+      "status": "incomplete",
+      "current_evidence": "Technical measurements exist; formal paired cohort absent"
+    },
+    {
+      "id": "statistics",
+      "required": "Patient-clustered ordered-response estimates, uncertainty, missing/ties/reversals and sham drift",
+      "status": "incomplete",
+      "current_evidence": "Analysis implementation exists; formal results pending"
+    },
+    {
+      "id": "figures",
+      "required": "R3 same-source intensity panels and quantitative figures from frozen result tables",
+      "status": "incomplete",
+      "current_evidence": "Final paired tables pending"
+    },
+    {
+      "id": "manuscript",
+      "required": "R3 Results, Methods, figure captions and limitations matching actual data",
+      "status": "incomplete",
+      "current_evidence": "Final measured evidence pending"
+    }
+  ],
+  "inspected_reference_sha256": {
+    "docs/manuscript_work_plan_20261102.md": "e3bcba3d3c7c9eadafe7f2f51e2c28444c9e77e809c6ff6e5886716672455b59",
+    "scripts/analyze_two_primitive_trajectory.py": "3e357518daa73bc4d66ca8706f7fe8157071e36c5df7a9816bea21ed363d0930",
+    "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
+    "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
+  },
+  "current_next_deliverable": "Implement and locally verify the preparation-only execution envelope identified by V3 review, then freeze concrete reviewable execution identity",
+  "scientific_rules": {
+    "patient_target": 30,
+    "nominal_joint": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floor": [
+      0.14,
+      0.27
+    ],
+    "minimum_target_gap": 0.05,
+    "selection_uses_generated_HE": false
+  },
+  "execution_permissions": "Specific consumed authorizations remain closed. New target runs follow existing separate manifest-bound approval requirements.",
+  "historical_results": "Audit and recompute usable historical data separately; do not substitute it for the prescribed formal paired cohort."
+}
