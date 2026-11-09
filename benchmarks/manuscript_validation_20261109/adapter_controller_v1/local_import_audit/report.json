@@ -1,0 +1,88 @@
+{
+  "status": "pass",
+  "scope": "Parent assessment imports plus child Adapter/bridge imports only; excludes business probe import and actual witness execution",
+  "parent_control_import_rng_hash_unchanged": true,
+  "platform": "darwin",
+  "linux_thread_gate_verified": false,
+  "parent_native_threads": null,
+  "torch_preloaded_cpu": true,
+  "children": [
+    {
+      "arm": "A",
+      "before_digest": "5dc42b1303002d6b0d08ff9f3227c6e89560bb5f0fad3591ebc9bd914d0c4ab2",
+      "after_digest": "5dc42b1303002d6b0d08ff9f3227c6e89560bb5f0fad3591ebc9bd914d0c4ab2",
+      "unchanged": true,
+      "native_threads": null,
+      "torch_loaded": true,
+      "CUDA_initialized": false,
+      "module_order": [
+        "diagnostic_storage",
+        "diagnostic_storage.validation_budget_policy_v2",
+        "diagnostic_storage.validator_process_gate_v2"
+      ],
+      "process": {
+        "pid": 55541,
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.029828208032995462
+      }
+    },
+    {
+      "arm": "B",
+      "before_digest": "5dc42b1303002d6b0d08ff9f3227c6e89560bb5f0fad3591ebc9bd914d0c4ab2",
+      "after_digest": "5dc42b1303002d6b0d08ff9f3227c6e89560bb5f0fad3591ebc9bd914d0c4ab2",
+      "unchanged": true,
+      "native_threads": null,
+      "torch_loaded": true,
+      "CUDA_initialized": false,
+      "module_order": [
+        "diagnostic_storage",
+        "diagnostic_storage.validation_budget_policy_v2",
+        "diagnostic_storage.validator_process_gate_v2",
+        "diagnostic_storage.guard_blocks_v2",
+        "diagnostic_storage.observer_adapter_contract_v1",
+        "diagnostic_storage.observer_adapter_v1",
+        "phase3_mask_edit_refine.models",
+        "phase3_mask_edit_refine",
+        "phase3_mask_edit_refine.passive_observer",
+        "diagnostic_storage.observer_invocation_bridge_v1"
+      ],
+      "process": {
+        "pid": 55542,
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.04147154185920954
+      }
+    },
+    {
+      "arm": "C",
+      "before_digest": "5dc42b1303002d6b0d08ff9f3227c6e89560bb5f0fad3591ebc9bd914d0c4ab2",
+      "after_digest": "5dc42b1303002d6b0d08ff9f3227c6e89560bb5f0fad3591ebc9bd914d0c4ab2",
+      "unchanged": true,
+      "native_threads": null,
+      "torch_loaded": true,
+      "CUDA_initialized": false,
+      "module_order": [
+        "diagnostic_storage",
+        "diagnostic_storage.validation_budget_policy_v2",
+        "diagnostic_storage.validator_process_gate_v2",
+        "diagnostic_storage.guard_blocks_v2",
+        "diagnostic_storage.observer_adapter_contract_v1",
+        "diagnostic_storage.observer_adapter_v1",
+        "phase3_mask_edit_refine.models",
+        "phase3_mask_edit_refine",
+        "phase3_mask_edit_refine.passive_observer",
+        "diagnostic_storage.observer_invocation_bridge_v1"
+      ],
+      "process": {
+        "pid": 55543,
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.041192333213984966
+      }
+    }
+  ],
+  "BC_module_order_equal": true,
+  "witness_calls": 0,
+  "execution_permitted": false
+}

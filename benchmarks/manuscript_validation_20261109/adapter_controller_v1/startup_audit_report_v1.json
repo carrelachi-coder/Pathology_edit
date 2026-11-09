@@ -1,0 +1,23 @@
+{
+  "status": "local_CPU_Torch_control_import_smoke_pass_target_audit_pending",
+  "script_sha256": "72e6a4e89497caa8c633d7dcb5a78ba683f970657d46f8d08c81fd3f5b264bf6",
+  "controller_sha256": "21a05c9b1ac05befa82330b5bed30ec3dcf16b3691cb76be54f3c2acc9b4846d",
+  "evidence_sha256": "79eede3cc0c7a7a306c78ec67ef1383d419fe8eabe1659bd18992ed63bf8f546",
+  "scope": "Parent assessment imports plus child Adapter/bridge imports only; excludes business probe import and actual witness execution",
+  "parent_control_import_rng_hash_unchanged": true,
+  "child_before_after_rng_hash_unchanged": true,
+  "BC_import_order_equal": true,
+  "CPU_Torch_preloaded": true,
+  "CUDA_initialized": false,
+  "platform": "darwin",
+  "linux_thread_gate_verified": false,
+  "local_probes_run": 1,
+  "witness_calls": 0,
+  "server_deployed": false,
+  "limits": [
+    "Darwin native thread count is unavailable in this probe; no Linux one-thread claim.",
+    "Full business probe module import is excluded and must be included in target startup verification.",
+    "No real source/receipt execution or topology qualification is established."
+  ],
+  "next_step": "Construct fresh target snapshot identity and complete Linux/full-probe startup checks as conditional preflight before separately authorized real S07 finite diagnostic."
+}
