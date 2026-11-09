@@ -1,0 +1,13 @@
+{
+  "kind": "readonly-budget-v2-fixed-synthetic-trial",
+  "approved": true,
+  "manifest_sha256": "a2d98a0311765532a9f478a93c0547888b73601a81db042facf84cf7f70fe47f",
+  "policy": {
+    "policy_id": "readonly-validation-budget-v2-30-60",
+    "policy_sha256": "3447b500c8f458db2735c32f2b720919645fb6333b5c2976401bc4cd51c57873"
+  },
+  "compatibility_profile": "producer-32dc6007-readonly-primitives-v1",
+  "compatibility_reviewed": true,
+  "authority": "current explicit user reply recorded by assistant",
+  "answer": "批准这一次 B/C 固定输入验证"
+}

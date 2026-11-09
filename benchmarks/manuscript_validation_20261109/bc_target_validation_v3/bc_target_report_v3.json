@@ -1,0 +1,73 @@
+{
+  "status": "fixed_synthetic_target_BC_complete_pass",
+  "manifest_sha256": "a2d98a0311765532a9f478a93c0547888b73601a81db042facf84cf7f70fe47f",
+  "authorization_status": "consumed_and_closed",
+  "rows": [
+    {
+      "label": "B_capture_receipt.json",
+      "elapsed_seconds": 21.647826680913568,
+      "hard_seconds": 30,
+      "peak_rss_bytes": 53080064
+    },
+    {
+      "label": "C_capture_receipt.json",
+      "elapsed_seconds": 21.640331720933318,
+      "hard_seconds": 30,
+      "peak_rss_bytes": 53137408
+    },
+    {
+      "label": "BC_compare_receipt.json",
+      "elapsed_seconds": 40.635778123512864,
+      "hard_seconds": 60,
+      "peak_rss_bytes": 60964864
+    }
+  ],
+  "preflight": {
+    "filesystem_no_replace_checked_at_actual_output": true,
+    "reservation_allocated_not_quota": true,
+    "input_files_verified": 809,
+    "elapsed_seconds": 1.8839869126677513,
+    "code_and_runtime_match": true
+  },
+  "parent_runner_wall_seconds": 91.62974438071251,
+  "strict_comparison": {
+    "status": "semantic_match",
+    "events": 2100000,
+    "excluded_semantic_fields": [],
+    "interpretation_permitted": false,
+    "qualification_updates_permitted": false,
+    "scope": "read-only versioned consumer; no source qualification or new capture proof",
+    "policy_id": "readonly-validation-budget-v2-30-60",
+    "policy_sha256": "3447b500c8f458db2735c32f2b720919645fb6333b5c2976401bc4cd51c57873",
+    "compatibility_profile": "producer-32dc6007-readonly-primitives-v1",
+    "validation_budget_seconds": 60,
+    "producer_component_sha256": {
+      "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+      "observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+      "observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+      "observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf"
+    },
+    "consumer_component_sha256": {
+      "validation_budget_policy_v2.py": "dd14628a81f1c40fedf36212e42564668553c2b5e8ba5b77f6f63c06776de7c1",
+      "observer_adapter_validation_v2.py": "3cd51eb3f4495eacdcb62f8f27a37a6e9242abb23c67e5b207fb67664c16b2f8",
+      "validator_process_gate_v2.py": "1ef4e2b587caae0c5fecd21ee7fdfece84a31de32dc6bb93fa5105aca2e2b613",
+      "validator_readonly_worker_v2.py": "e43a42c5e1bee14b45c62a4ee51844c0ff0aa3beaaed5ba5c100b43d8e6bd69e"
+    }
+  },
+  "source_code_match_after": true,
+  "acceptance_markers_published": false,
+  "attempts_per_job": 1,
+  "automatic_retries": 0,
+  "S07_calls": 0,
+  "real_source_calls": 0,
+  "HE_calls": 0,
+  "evidence_sha256": "c189fc49437db1db38484d9b312d6ba4d5b5d3d375776079e6e9c7b8ef5fb09c",
+  "interpretation": "Fixed target2.1M-event streams fully verified and compared inside frozen30/30/60 budgets. Exact producer identities and all raw semantic fields retained.",
+  "limits": [
+    "This observation is synthetic fixed-input validation, not real S07 runtime non-interference.",
+    "Preflight1.884s differs from preceding setup run with43.54s input phase; cache and system state were not experimentally controlled. No causal explanation or speedup claim follows.",
+    "Real S07 event and array volume and timing remain unknown.",
+    "Production observer/controller integration and a new finite real diagnostic approval remain pending."
+  ],
+  "next_step": "Integrate already accepted adapter through the existing observer interface on an isolated version, validate failure isolation and strict A/B/C controls locally, then freeze a new real diagnostic identity."
+}
