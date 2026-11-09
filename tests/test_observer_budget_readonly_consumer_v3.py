@@ -1,6 +1,9 @@
 """Read-only 30/60 consumer of the pinned Adapter v2 budget capture."""
+import ast
 import hashlib
+import inspect
 import json
+import textwrap
 from unittest import mock
 
 import pytest
@@ -8,6 +11,8 @@ import pytest
 from diagnostic_storage import validation_budget_policy_v3_budget as policy
 from diagnostic_storage import observer_adapter_validation_v3_budget as validator
 from diagnostic_storage import validator_process_gate_v3_budget as gate
+from diagnostic_storage import validator_process_gate_v2 as old_gate
+from diagnostic_storage import observer_adapter_validation_v2 as old_validator
 from tests.test_observer_codec_adapter_v2_budget import complete, identity
 from tests.test_observer_codec_adapter_v1 import complete as old_complete
 from tests.test_validator_process_gate_v1 import command
@@ -107,3 +112,13 @@ def test_full_capture_array_corruption_is_rejected(tmp_path):
 def test_short_process_timeout_reaps_worker():
     result = gate._run_process(command('import time;time.sleep(2)'), b'{}', 0.05, kind='compare')
     assert result['timed_out'] and result['child_reaped'] and not result['transport_ok']
+
+
+def test_transport_and_strict_stream_comparison_ast_unchanged():
+    for old, new in ((old_gate.request_value, gate.request_value),
+                     (old_gate._run_process, gate._run_process),
+                     (old_validator.validate_capture, validator.validate_capture),
+                     (old_validator.compare_captures, validator.compare_captures)):
+        old_ast = ast.parse(textwrap.dedent(inspect.getsource(old)))
+        new_ast = ast.parse(textwrap.dedent(inspect.getsource(new)))
+        assert ast.dump(old_ast, include_attributes=False) == ast.dump(new_ast, include_attributes=False)
