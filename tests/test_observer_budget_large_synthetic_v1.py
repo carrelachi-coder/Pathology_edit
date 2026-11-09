@@ -54,3 +54,15 @@ def test_small_BC_synthetic_strict_match_no_outer_acceptance(tmp_path):
     assert not result['outer_acceptance_published']
     assert not (tmp_path / 'result/B/adapter_complete.json').exists()
     assert not (tmp_path / 'result/C/adapter_complete.json').exists()
+
+
+def test_unbound_approval_stops_before_output_creation(tmp_path):
+    root, mp, ap = manifest_for(tmp_path)
+    approval = json.loads(ap.read_text())
+    approval['manifest_sha256'] = '0' * 64
+    ap.write_text(json.dumps(approval))
+    completed = subprocess.run([sys.executable, str(root / 'scripts/run_observer_budget_large_synthetic_v1.py'),
+                                '--manifest', str(mp), '--approval', str(ap)],
+                               cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert completed.returncode != 0
+    assert not (tmp_path / 'result').exists()

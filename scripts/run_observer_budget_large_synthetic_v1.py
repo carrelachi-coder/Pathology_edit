@@ -71,18 +71,17 @@ def receipt(path):
     return path
 
 
-def allocated(root):
+def allocated(root, extra_files=()):
     seen = set()
     total = 0
-    for directory in (root, root / 'codec'):
-        for path in directory.iterdir():
-            if path.is_dir():
-                continue
-            stat = path.stat()
-            key = stat.st_dev, stat.st_ino
-            if key not in seen:
-                seen.add(key)
-                total += stat.st_blocks * 512
+    for path in (*root.rglob('*'), *extra_files):
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        key = stat.st_dev, stat.st_ino
+        if key not in seen:
+            seen.add(key)
+            total += stat.st_blocks * 512
     return {'unique_file_allocated_bytes': total, 'unique_file_count': len(seen)}
 
 
@@ -216,7 +215,7 @@ def run(manifest, approval):
             gate = run_validation(capture_request, python_executable=sys.executable)
             if gate['validation_ok'] is not True:
                 raise RuntimeError('capture validation HOLD')
-            storage = allocated(core.root)
+            storage = allocated(core.root, (rp,))
             if storage['unique_file_allocated_bytes'] > m['max_bytes_per_arm']:
                 raise ValueError('arm storage over budget')
             result['arms'].append({'arm': arm, 'mode': mode, 'events': core.events,
