@@ -1,0 +1,29 @@
+{
+  "status": "frozen_before_launch",
+  "scope": "Recompute historical paired300 representation evidence with corrected inference; separate from prospective sham-paired cohort",
+  "input_payload_audit_sha256": "f6978c85e0c9934bf727811f70d68a87986dede655107b309239e0cdc37a67e2",
+  "code_sha256": {
+    "scripts/analyze_two_primitive_trajectory.py": "3e357518daa73bc4d66ca8706f7fe8157071e36c5df7a9816bea21ed363d0930",
+    "phase3_mask_edit/benchmark/embedding_utility.py": "abc9e64e40fb446b52711f1e09ac1884b3df36b0b13e20005ec5ac9491fad8c4",
+    "phase3_mask_edit/benchmark/pathokid.py": "2148e181373bf25cfd769176dad8d85a5463dc69a179e3a5a7ab073d46980423"
+  },
+  "independent_unit": "patient_id",
+  "patients": 90,
+  "sources": 300,
+  "bootstrap_repeats": 5000,
+  "permutation_repeats": 20000,
+  "seed": 20260724,
+  "high_overlap_quantile": 0.75,
+  "operation_label_null": "raw paired operation-label swaps by patient; refit all held-out axes on every permutation",
+  "runtime": {
+    "python": "/Users/wangqinxin/anaconda3/bin/python",
+    "python_version": "3.11.4 (main, Jul  5 2023, 08:54:11) [Clang 14.0.6 ]",
+    "BLAS_threads": 1
+  },
+  "private_input_root": "/Users/wangqinxin/.codex/worktrees/manuscript-validation-20261102/Pathology_edit/.codex-artifacts/manuscript_validation_20261109/r3_historical_inputs_v1/run",
+  "private_output_root": "/Users/wangqinxin/.codex/worktrees/manuscript-validation-20261102/Pathology_edit/.codex-artifacts/manuscript_validation_20261109/r3_historical_reanalysis_v1",
+  "attempts": 1,
+  "output_overwrite": false,
+  "claim_scope": "Historical computed representation response. Source eligibility, model overlap, lack of matched sham and independent morphology limitations retain their prior interpretation.",
+  "formal_cohort_replacement": false
+}
