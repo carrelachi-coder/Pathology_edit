@@ -1,0 +1,25 @@
+encoder,operation,backend,label,metric,mean,ci95_low,ci95_high,patients,patches
+uni2h,u1,inpaint,UNI-2h / Tumor / Local,strict_original_moderate_significant_order,0.9224074074074073,0.8907314814814814,0.951851851851852,90,300
+uni2h,u1,inpaint,UNI-2h / Tumor / Local,mean_incremental_projection,0.6843573861295235,0.6204337140020912,0.7523071810534911,90,300
+uni2h,u1,inpaint,UNI-2h / Tumor / Local,displacement_norm_ratio,1.3358622847002066,1.3097900190402254,1.3641896216775353,90,300
+uni2h,u1,cross,UNI-2h / Tumor / Global,strict_original_moderate_significant_order,0.8570370370370369,0.8035185185185185,0.9051898148148148,90,300
+uni2h,u1,cross,UNI-2h / Tumor / Global,mean_incremental_projection,0.5326646076173174,0.456699191047489,0.6101915677062769,90,300
+uni2h,u1,cross,UNI-2h / Tumor / Global,displacement_norm_ratio,1.115799663359272,1.1044387276259464,1.127945515116449,90,300
+uni2h,u2,inpaint,UNI-2h / Immune / Local,strict_original_moderate_significant_order,0.893888888888889,0.8455555555555556,0.9363009259259258,90,300
+uni2h,u2,inpaint,UNI-2h / Immune / Local,mean_incremental_projection,0.39010203868543586,0.3436123972826219,0.4365916282661042,90,300
+uni2h,u2,inpaint,UNI-2h / Immune / Local,displacement_norm_ratio,1.2647202792121337,1.2407121095453228,1.290970199027995,90,300
+uni2h,u2,cross,UNI-2h / Immune / Global,strict_original_moderate_significant_order,0.7933333333333334,0.7366666666666666,0.8477777777777777,90,300
+uni2h,u2,cross,UNI-2h / Immune / Global,mean_incremental_projection,0.34019820839189124,0.28583809971058777,0.39550704484410054,90,300
+uni2h,u2,cross,UNI-2h / Immune / Global,displacement_norm_ratio,1.0664292319380628,1.0535245548382857,1.0795133664086516,90,300
+conch,u1,inpaint,CONCH / Tumor / Local,strict_original_moderate_significant_order,0.9018518518518518,0.8549953703703702,0.9411157407407407,90,300
+conch,u1,inpaint,CONCH / Tumor / Local,mean_incremental_projection,1.3274943266020363,1.1842190588909178,1.473871052177213,90,300
+conch,u1,inpaint,CONCH / Tumor / Local,displacement_norm_ratio,1.4451256186659989,1.395485753568915,1.4989961202642088,90,300
+conch,u1,cross,CONCH / Tumor / Global,strict_original_moderate_significant_order,0.9255555555555557,0.8816666666666667,0.9622222222222223,90,300
+conch,u1,cross,CONCH / Tumor / Global,mean_incremental_projection,1.3801754025065582,1.2408365900590537,1.518671225135582,90,300
+conch,u1,cross,CONCH / Tumor / Global,displacement_norm_ratio,1.167203024617008,1.145156860699431,1.1888691095165262,90,300
+conch,u2,inpaint,CONCH / Immune / Local,strict_original_moderate_significant_order,0.8348148148148147,0.7805509259259259,0.8859305555555557,90,300
+conch,u2,inpaint,CONCH / Immune / Local,mean_incremental_projection,0.677586297556021,0.5989367797322467,0.7604166039439557,90,300
+conch,u2,inpaint,CONCH / Immune / Local,displacement_norm_ratio,1.2722005781749977,1.246062803368315,1.29911560963676,90,300
+conch,u2,cross,CONCH / Immune / Global,strict_original_moderate_significant_order,0.7775925925925926,0.7103611111111111,0.8403703703703703,90,300
+conch,u2,cross,CONCH / Immune / Global,mean_incremental_projection,0.6004971231125656,0.4815127139060075,0.708337804385285,90,300
+conch,u2,cross,CONCH / Immune / Global,displacement_norm_ratio,1.1165562233490534,1.0977619157328313,1.1373302050215592,90,300

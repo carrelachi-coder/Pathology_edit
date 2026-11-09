@@ -1,0 +1,8 @@
+{
+  "status": "duplicate_original_arithmetic_attempt_deliberately_stopped_after_equivalent_full_analysis_completed",
+  "reason": "Full unchanged-count patient-sum implementation completed normally and passed identity/numeric audit. Preserve unfinished original attempt without claiming it completed.",
+  "worker_pid": 7889,
+  "signal": "SIGTERM",
+  "automatic_retry": false,
+  "completed_result": "r3_historical_corrected_results_v1/result_audit.json"
+}

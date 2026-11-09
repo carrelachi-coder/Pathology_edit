@@ -1,0 +1,170 @@
+{
+  "scope": "Interpretation annotation only. Original numerical report is preserved. No new filtering or alternative estimator.",
+  "observations": [
+    "U1 Moderate input dose is constant across300 sources. U1 Significant has299 identical doses and one exceptional source fromone patient.",
+    "U2 Moderate and Significant input doses vary byless than0.000008 absolute fraction within each band.",
+    "U1 correlation bootstrap samples without adequate input-dose variation are undefined; only3117..3200 of5000 draws yield a coefficient. Conditional intervals must not be promoted to robust continuous-dose evidence."
+  ],
+  "rows": [
+    {
+      "encoder": "uni2h",
+      "operation": "u1",
+      "backend": "inpaint",
+      "metric": "dose_increase_vs_incremental_projection",
+      "rho": -0.008347303415213902,
+      "valid_bootstrap_repeats": 3160,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "uni2h",
+      "operation": "u1",
+      "backend": "inpaint",
+      "metric": "significant_dose_vs_displacement_norm",
+      "rho": 0.02036742033312192,
+      "valid_bootstrap_repeats": 3140,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "uni2h",
+      "operation": "u1",
+      "backend": "cross",
+      "metric": "dose_increase_vs_incremental_projection",
+      "rho": 0.04641100698858929,
+      "valid_bootstrap_repeats": 3200,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "uni2h",
+      "operation": "u1",
+      "backend": "cross",
+      "metric": "significant_dose_vs_displacement_norm",
+      "rho": 0.032387537251029934,
+      "valid_bootstrap_repeats": 3143,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "uni2h",
+      "operation": "u2",
+      "backend": "inpaint",
+      "metric": "dose_increase_vs_incremental_projection",
+      "rho": 0.07320348003866708,
+      "valid_bootstrap_repeats": 5000,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "uni2h",
+      "operation": "u2",
+      "backend": "inpaint",
+      "metric": "significant_dose_vs_displacement_norm",
+      "rho": 0.09153657262858476,
+      "valid_bootstrap_repeats": 5000,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "uni2h",
+      "operation": "u2",
+      "backend": "cross",
+      "metric": "dose_increase_vs_incremental_projection",
+      "rho": 0.018163757375081947,
+      "valid_bootstrap_repeats": 5000,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "uni2h",
+      "operation": "u2",
+      "backend": "cross",
+      "metric": "significant_dose_vs_displacement_norm",
+      "rho": 0.10260469560772896,
+      "valid_bootstrap_repeats": 5000,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "conch",
+      "operation": "u1",
+      "backend": "inpaint",
+      "metric": "dose_increase_vs_incremental_projection",
+      "rho": 0.07579351501014223,
+      "valid_bootstrap_repeats": 3117,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "conch",
+      "operation": "u1",
+      "backend": "inpaint",
+      "metric": "significant_dose_vs_displacement_norm",
+      "rho": 0.09449147466022134,
+      "valid_bootstrap_repeats": 3155,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "conch",
+      "operation": "u1",
+      "backend": "cross",
+      "metric": "dose_increase_vs_incremental_projection",
+      "rho": 0.06243782954579998,
+      "valid_bootstrap_repeats": 3169,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "conch",
+      "operation": "u1",
+      "backend": "cross",
+      "metric": "significant_dose_vs_displacement_norm",
+      "rho": 0.09048476902091869,
+      "valid_bootstrap_repeats": 3149,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "conch",
+      "operation": "u2",
+      "backend": "inpaint",
+      "metric": "dose_increase_vs_incremental_projection",
+      "rho": -0.013533039255991733,
+      "valid_bootstrap_repeats": 5000,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "conch",
+      "operation": "u2",
+      "backend": "inpaint",
+      "metric": "significant_dose_vs_displacement_norm",
+      "rho": -0.05945532728141424,
+      "valid_bootstrap_repeats": 5000,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "conch",
+      "operation": "u2",
+      "backend": "cross",
+      "metric": "dose_increase_vs_incremental_projection",
+      "rho": 0.002671140790453227,
+      "valid_bootstrap_repeats": 5000,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    },
+    {
+      "encoder": "conch",
+      "operation": "u2",
+      "backend": "cross",
+      "metric": "significant_dose_vs_displacement_norm",
+      "rho": -0.050127223635818174,
+      "valid_bootstrap_repeats": 5000,
+      "requested_bootstrap_repeats": 5000,
+      "interpretation": "dose-support-limited; not evidence of continuous dose calibration"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "status": "complete_aggregate_and_identity_checks_passed",
+  "source_report_sha256": "d1bd11dd9daeddc6d067d755bd4957638fc83e20785cc6dd7921bdaf007d98d1",
+  "public_report_sha256": "ad2619b6ef92b2f328b9faadc3d527b7b3b88bc4d2cf7ece458f0994c8800709",
+  "source_report_path_changes_only": [
+    "run_root",
+    "input_manifests.*.path",
+    "computation.code_sha256 absolute key"
+  ],
+  "scientific_values_modified": false,
+  "exit_receipt": {
+    "exit_code": 0,
+    "elapsed_seconds": 669.7708911895752,
+    "automatic_retries": 0
+  },
+  "counts": {
+    "summaries": 174,
+    "pvalues": 40
+  },
+  "encoders": 2,
+  "sources_per_encoder": 300,
+  "patients_per_encoder": 90,
+  "private_per_source_csv_published": false,
+  "formal_cohort_replacement": false,
+  "statistical_code_sha256": {
+    "scripts/analyze_two_primitive_trajectory.py": "3e357518daa73bc4d66ca8706f7fe8157071e36c5df7a9816bea21ed363d0930",
+    "phase3_mask_edit/benchmark/embedding_utility.py": "abc9e64e40fb446b52711f1e09ac1884b3df36b0b13e20005ec5ac9491fad8c4",
+    "phase3_mask_edit/benchmark/pathokid.py": "2148e181373bf25cfd769176dad8d85a5463dc69a179e3a5a7ab073d46980423",
+    "scripts/analyze_trajectory_group_sums_v1.py": "d005c4fbb5b95fd65e0fd0c7cfbc5e7d0dce79dbfe63a71176208d0b02246f84",
+    "scripts/trajectory_permutation_candidate_v1.py": "4bf1dd114945351fc61edb6af8f47b5f9f81448a7b20ced113afbe04cb343e7a"
+  }
+}

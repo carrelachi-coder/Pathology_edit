@@ -37,19 +37,19 @@
       "id": "statistics",
       "required": "Patient-clustered ordered-response estimates, uncertainty, missing/ties/reversals and sham drift",
       "status": "incomplete",
-      "current_evidence": "Analysis implementation exists; formal results pending"
+      "current_evidence": "Historical representation inference completed on300 sources/90 patients, with5000 bootstraps and20000 refitted-label permutations. Formal paired morphology results pending."
     },
     {
       "id": "figures",
       "required": "R3 same-source intensity panels and quantitative figures from frozen result tables",
       "status": "incomplete",
-      "current_evidence": "Final paired tables pending"
+      "current_evidence": "Historical representation forest plot PDF/PNG/24-row table rendered and visually inspected. Formal matched-sham image panels pending."
     },
     {
       "id": "manuscript",
       "required": "R3 Results, Methods, figure captions and limitations matching actual data",
       "status": "incomplete",
-      "current_evidence": "Final measured evidence pending"
+      "current_evidence": "Historical Results and figure caption written from completed results. Formal R3 morphology text requires formal cohort."
     }
   ],
   "inspected_reference_sha256": {
@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Archive real diagnostic timeout and determine bounded next evidence collection strategy. Resume historical computation through a durable, separately recorded attempt with unchanged statistical specification.",
+  "current_next_deliverable": "Resolve complete topology-process evidence under a fresh reviewed diagnostic identity, then four-target qualification and formal matched-sham cohort. Historical results are now available and do not replace these requirements.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -75,15 +75,18 @@
   "execution_permissions": "Specific consumed authorizations remain closed. New target runs follow existing separate manifest-bound approval requirements.",
   "historical_results": "Audit and recompute usable historical data separately; do not substitute it for the prescribed formal paired cohort.",
   "historical_analysis_progress": {
-    "status": "original_and_independent_equivalent_computation_running",
+    "status": "corrected_patient_cluster_analysis_figures_and_text_complete",
     "sources": 300,
     "patients": 90,
     "cache_arrays_verified": 24,
     "evidence": "r3_historical_payload_audit_v1.json",
     "role": "Historical representation evidence, distinct from the new formal sham-paired cohort.",
     "analysis_spec": "r3_historical_reanalysis_attempt2_spec.json",
-    "results_complete": false,
-    "equivalent_computation_spec": "r3_historical_group_sums_spec_v1.json"
+    "results_complete": true,
+    "equivalent_computation_spec": "r3_historical_group_sums_spec_v1.json",
+    "result_bundle": "r3_historical_corrected_results_v1",
+    "results_text": "docs/manuscript_R3_historical_results_v1.md",
+    "correlation_limitation": "U1 dose variation concentrated inone patient; U2 within-band input variation below0.000008. No continuous calibration claim."
   },
   "finite_S07_diagnostic": {
     "status": "closed_HOLD_B_pair_timeout",

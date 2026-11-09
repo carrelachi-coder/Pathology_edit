@@ -1,0 +1,15 @@
+{
+  "source_report_sha256": "ad2619b6ef92b2f328b9faadc3d527b7b3b88bc4d2cf7ece458f0994c8800709",
+  "inference": {
+    "direction_fit": "leave_one_independent_unit_out; within primitive, equal-weight unit mean of local and global Moderate mean directions",
+    "bootstrap_unit": "patient_id",
+    "permutation_unit": "patient_id",
+    "correlation_unit": "patient_id",
+    "bootstrap_repeats": 5000,
+    "direction_label_null": "raw paired operation-label swaps by independent unit; refit held-out axes each permutation",
+    "permutation_repeats": 20000,
+    "high_overlap_quantile": 0.75
+  },
+  "figure_scope": "historical computed representation response",
+  "rows": 24
+}
