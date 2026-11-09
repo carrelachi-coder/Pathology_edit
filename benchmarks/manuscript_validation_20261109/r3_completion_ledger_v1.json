@@ -105,5 +105,15 @@
     "production_integrated": false,
     "real_S07_authorized": false,
     "evidence": "adapter_controller_v1/budget_cost_trial_v4/closeout_report.json"
+  },
+  "observer_budget_adapter_review": {
+    "status": "draft_PR_independent_review_pending",
+    "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/9",
+    "branch": "codex/observer-budget-integration-review",
+    "commit": "e974924c",
+    "local_targeted_tests_passed": 171,
+    "legacy_codec_adapter_unchanged": true,
+    "deployed_to_target": false,
+    "real_S07_authorized": false
   }
 }
