@@ -136,8 +136,8 @@
     "status": "draft_PR_candidate_manifest_frozen_review_pending_not_executed",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/11",
     "branch": "codex/observer-budget-large-synthetic-review",
-    "commit": "732b2c56",
-    "candidate_manifest_sha256": "147af56044386d46c95525a489707a637b6f0a3c5aba56ef33672c55356ae17f",
+    "commit": "814a6095",
+    "candidate_manifest_sha256": "1b5dff6ee1cf4d725617a5cf08c26ae2b6473ad36842206ab87f42ac42747335",
     "logical_events_each": 2100000,
     "full_capture_arrays": 683,
     "local_targeted_tests_passed": 16,
@@ -151,11 +151,11 @@
       10
     ],
     "local_full_workload_test": {
-      "status": "synthetic_BC_strict_match",
+      "status": "synthetic_BC_strict_match_after_setup_boundary_correction",
       "events_each": 2100000,
       "generated_arrays_each": 683,
-      "elapsed_seconds": 84.88738262513652,
-      "result": "adapter_controller_v1/observer_budget_large_synthetic_v1/local_full_workload_result_v1.json",
+      "elapsed_seconds": 109.6043983749114,
+      "result": "adapter_controller_v1/observer_budget_large_synthetic_v1/local_full_workload_result_v2.json",
       "target_server_acceptance": false
     }
   }
