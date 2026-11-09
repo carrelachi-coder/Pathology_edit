@@ -1,0 +1,22 @@
+{
+  "kind": "isolated-synthetic-budget-cost-trial-v2-closeout",
+  "status": "HOLD",
+  "manifest_sha256": "a5fe4a5051f7ea56e9634a94cb9fa0b272a5cb205254ccc3675812f8824f591a",
+  "authorization_consumed": true,
+  "controller_exit_code": 78,
+  "controller_elapsed_seconds": 0.11468165926635265,
+  "profile_count": 0,
+  "original_profile_started": false,
+  "candidate_profile_started": false,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "failure_type": "AssertionError",
+  "read_only_root_cause": "Frozen inventory contains two RF-Solver-Editing 0.0.0 distributions: dist-info with RECORD SHA 889b64... and egg-info with no RECORD. Controller v2 looked up each by name and resolved the dist-info twice. Read-only full inventory comparison found all 220 frozen (name,version,raw RECORD SHA) occurrences matched current target inventory.",
+  "disposition": "No retry. v2 authorization permanently consumed. Versioned v3 controller and manifest require separate review and new authorization before target execution.",
+  "source_artifacts": {
+    "trial_result_sha256": "3fe28d1ad23a7c001ccbfe5606f58f9dc875f7fbcf6a7a134ac6f735a1c7292d",
+    "authorization_consumed_sha256": "6a51021fa0558b8192101a96bacf6c9028883e6361ee11cbcb6a78afcbbc4c24"
+  },
+  "recorded_utc": "2026-11-09T05:57:12.636891+00:00"
+}

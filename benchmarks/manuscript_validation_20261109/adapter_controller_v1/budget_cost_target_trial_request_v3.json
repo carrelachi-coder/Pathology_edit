@@ -1,0 +1,11 @@
+{
+  "kind": "budget-cost-target-trial-authorization-request-v3",
+  "manifest_sha256": "08439d285f48b90f264c0ffd30a14edada2a4003955b0d29677cc0026dac4255",
+  "manifest_file": "budget_cost_target_trial_proposal_v3.json",
+  "status": "not_authorized_not_deployed",
+  "request": "One fresh isolated deployment and one original and one candidate 100000-event synthetic profile, 60s each, 180s overall, failure HOLD, zero retry. Prior v1/v2 authorizations are consumed.",
+  "fix": "Verify the complete distribution multiset by name, version and raw RECORD byte SHA, preserving duplicate names. No other trial scope or thresholds changed.",
+  "local_tests": "11 passed in 0.10s: v1/v2/v3 controller tests",
+  "S07_calls": 0,
+  "HE_calls": 0
+}

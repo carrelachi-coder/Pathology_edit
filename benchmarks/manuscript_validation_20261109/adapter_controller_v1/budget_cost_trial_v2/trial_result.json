@@ -1,0 +1,10 @@
+{
+  "status": "HOLD",
+  "automatic_retries": 0,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "profiles": [],
+  "failure_type": "AssertionError",
+  "elapsed_seconds": 0.11468165926635265
+}
