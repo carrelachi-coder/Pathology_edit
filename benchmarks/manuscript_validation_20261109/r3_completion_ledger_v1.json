@@ -75,14 +75,15 @@
   "execution_permissions": "Specific consumed authorizations remain closed. New target runs follow existing separate manifest-bound approval requirements.",
   "historical_results": "Audit and recompute usable historical data separately; do not substitute it for the prescribed formal paired cohort.",
   "historical_analysis_progress": {
-    "status": "second_attempt_running_with_exit_receipt_supervisor",
+    "status": "original_and_independent_equivalent_computation_running",
     "sources": 300,
     "patients": 90,
     "cache_arrays_verified": 24,
     "evidence": "r3_historical_payload_audit_v1.json",
     "role": "Historical representation evidence, distinct from the new formal sham-paired cohort.",
     "analysis_spec": "r3_historical_reanalysis_attempt2_spec.json",
-    "results_complete": false
+    "results_complete": false,
+    "equivalent_computation_spec": "r3_historical_group_sums_spec_v1.json"
   },
   "finite_S07_diagnostic": {
     "status": "closed_HOLD_B_pair_timeout",
