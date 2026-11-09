@@ -1,0 +1,40 @@
+{
+  "status": "preparatory_import_audit_request_ready_no_execution_authority",
+  "manifest_sha256": "0f4287dcb59b5f191a9c9a5c3dd9ecb6d044dcb5de81f68b12acf1b8f5019cc9",
+  "source_files": {
+    "diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_contract_v1.py": "18b4fcb5e8721df2b3ed835105cb479b920ec91f1b8c1ae65e683648451e7342",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421",
+    "diagnostic_storage/observer_adapter_validation_v1.py": "8888495d26574ce6bd9b5f811a0c83c8b5f64cdf4edf7315504310bcb21f8fcf",
+    "diagnostic_storage/validator_process_gate_v1.py": "8f45bd61cb4f5fc1a0b221d3997fe8f92a5dfc64ccf3ca53d1b574dd67601f53",
+    "diagnostic_storage/validation_budget_policy_v2.py": "dd14628a81f1c40fedf36212e42564668553c2b5e8ba5b77f6f63c06776de7c1",
+    "diagnostic_storage/observer_adapter_validation_v2.py": "3cd51eb3f4495eacdcb62f8f27a37a6e9242abb23c67e5b207fb67664c16b2f8",
+    "diagnostic_storage/validator_process_gate_v2.py": "1ef4e2b587caae0c5fecd21ee7fdfece84a31de32dc6bb93fa5105aca2e2b613",
+    "scripts/validator_readonly_worker_v2.py": "e43a42c5e1bee14b45c62a4ee51844c0ff0aa3beaaed5ba5c100b43d8e6bd69e",
+    "scripts/run_readonly_budget_v2_trial.py": "b2055235a960dd2329a8f84e40e6da24a09ff9dc061413df5a2c76947e420f43",
+    "diagnostic_storage/setup_process_gate_v3.py": "a51ab00f008e767f41f5041a926ab67fad5e1a58d7a6b46c9d09c019eaf3b036",
+    "diagnostic_storage/setup_result_verifier_v3.py": "572d2e4c22558414e3aee60308377184516674dfb487c397ae6f3238f7e49624",
+    "scripts/setup_preparation_worker_v3.py": "87f0af0b9acff46907e035faa897675d0dc40a2426e86082ae65ddf686125f3e",
+    "scripts/preflight_setup_telemetry_v3.py": "9762fb9fd07fbfa8981ca4777e836a021dfee66143dabe50190370f3ab013eb8",
+    "diagnostic_storage/observer_invocation_bridge_v1.py": "2c0427c3e11ddacea33b300bfeaf2ce7bd48aeba230c1f2e793f5498fc0e29f4",
+    "scripts/run_limited_topology_adapter_controller_v1.py": "21a05c9b1ac05befa82330b5bed30ec3dcf16b3691cb76be54f3c2acc9b4846d",
+    "scripts/limited_topology_startup.py": "468276457111d91d0192fca4afae9b348f174fe080289e804687b23efa4bafac",
+    "scripts/smoke_adapter_controlled_topology_imports_v1.py": "306342b4a6e6105fc3f7e4e6ecf5b1808500fcc7171f23905d69411737e1dad6",
+    "scripts/probe_adapter_controlled_startup_v1.py": "72e6a4e89497caa8c633d7dcb5a78ba683f970657d46f8d08c81fd3f5b264bf6"
+  },
+  "source_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_candidate_5625b2b1",
+  "target_smoke_output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_full_import_audit_v1_5625b2b1",
+  "scope": "Stage only fresh isolated candidate snapshot then one guarded Linux import-only audit. No business main, probe, witness or H&E calls. No production paths replaced.",
+  "outer_watchdog_seconds": 600,
+  "per_import_child_seconds": 90,
+  "automatic_retries": 0,
+  "new_S07_authorization": false,
+  "historical_RNG_approval_retained": true,
+  "old_authorizations_consumed": true,
+  "known_limits": [
+    "Candidate still has old import-order acceptance as historical reference only; actual new import differences require their own disposition.",
+    "Only source subset/template SHA were read live so far; image/mask identities remain census declarations until full identity preflight.",
+    "Runtime and snapshot closure must be rechecked by import tool before its guarded child imports."
+  ]
+}
