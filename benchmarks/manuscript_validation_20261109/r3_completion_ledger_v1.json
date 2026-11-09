@@ -107,13 +107,15 @@
     "evidence": "adapter_controller_v1/budget_cost_trial_v4/closeout_report.json"
   },
   "observer_budget_adapter_review": {
-    "status": "draft_PR_independent_review_pending",
+    "status": "draft_PR_target_zero_event_preparation_passed_independent_review_pending",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/9",
     "branch": "codex/observer-budget-integration-review",
-    "commit": "e974924c",
-    "local_targeted_tests_passed": 171,
+    "commit": "dd88fc63",
+    "local_targeted_tests_passed": 173,
+    "target_preparation_manifest_sha256": "150f4b0505b33bc125c6a44eccae27a9e3459ec170539feb89c045765bccc910",
+    "target_preparation_status": "zero_event_smoke_passed",
     "legacy_codec_adapter_unchanged": true,
-    "deployed_to_target": false,
+    "real_S07_calls": 0,
     "real_S07_authorized": false
   }
 }
