@@ -1,0 +1,17 @@
+{
+  "kind": "readonly-budget-v2-fixed-synthetic-trial",
+  "manifest_sha256": "a2d98a0311765532a9f478a93c0547888b73601a81db042facf84cf7f70fe47f",
+  "status": "new_explicit_approval_required",
+  "scope": "One B capture30s, C capture30s, full BC comparison60s; preceding full preflight60s, overall185s. Each measurement once; any HOLD stops all subsequent work; zero retries.",
+  "code_modified": false,
+  "consumer_compatibility": "Accepted exact producer32dc6007 and readonly consumer1c8ad6ff policy retained. All captured producer identity fields preserved.",
+  "full_inputs": "Each2.1M events,685 arrays,809 canonical files total. Strict raw event and receipt comparison with full array/index integrity.",
+  "preflight_disclosure": "Once: unchanged pinned v2 runner preflight with60-second cooperative budget. Full inventory scan may warm cache. No selective cache treatment or extra warmup. V3 telemetry is not wired into this v2 runner.",
+  "source_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/setup_only_v3_code_42dca160",
+  "new_output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_target_preflight_v1_32dc6007/bc_readonly_fixed_trial_v3_20261109",
+  "deployment_or_measurement_started": false,
+  "S07_calls": 0,
+  "real_source_calls": 0,
+  "capture_acceptance_publication": false,
+  "prior_setup_authorization_status": "consumed_and_closed"
+}
