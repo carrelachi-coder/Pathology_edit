@@ -50,6 +50,8 @@ def test_small_BC_synthetic_strict_match_no_outer_acceptance(tmp_path):
     assert result['logical_events_each'] == 1000 and result['arrays_each'] == 4
     assert result['independent_arrays']['every_original_payload_byte_equal']
     assert result['comparison']['validation_ok']
+    adapter_manifest = json.loads((tmp_path / 'result/B/adapter_manifest.json').read_text())
+    assert adapter_manifest['identity']['run_manifest_sha256'] == hashlib.sha256(mp.read_bytes()).hexdigest()
     assert result['S07_calls'] == result['HE_calls'] == result['witness_calls'] == 0
     assert not result['outer_acceptance_published']
     assert not (tmp_path / 'result/B/adapter_complete.json').exists()

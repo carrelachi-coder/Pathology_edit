@@ -36,15 +36,16 @@ def distribution_inventory():
     return rows
 
 
-def identity():
+def identity(manifest_sha256):
     return {
         'reference_id': 'synthetic-source', 'patient_id': 'synthetic-patient',
         'operations': [
             {'case_id': 'synthetic-U1', 'primitive_id': 'synthetic-primitive1'},
             {'case_id': 'synthetic-U2', 'primitive_id': 'synthetic-primitive2'},
         ],
-        **{k: '1' * 64 for k in ('run_manifest_sha256', 'input_identity_sha256',
-                                'case_mapping_sha256', 'contract_sha256', 'startup_identity_sha256')},
+        'run_manifest_sha256': manifest_sha256,
+        **{k: '1' * 64 for k in ('input_identity_sha256', 'case_mapping_sha256',
+                                'contract_sha256', 'startup_identity_sha256')},
     }
 
 
@@ -54,7 +55,7 @@ class Case:
     primitive_id: str
 
 
-def receipt(path):
+def receipt(path, identity_row):
     row = {
         'reference_id': 'synthetic-source', 'patient_id': 'synthetic-patient',
         'source_only': True, 'target_mask_created': False,
@@ -64,7 +65,7 @@ def receipt(path):
             'passed_topology_witness': False,
             'failure_reasons': ['synthetic-negative'],
             'metrics': {'whole_mask_topology_witness': {'errors': ['synthetic-negative']}},
-        } for op in identity()['operations']],
+        } for op in identity_row['operations']],
         'both_significant_capacity_pass': True, 'both_significant_topology_pass': False,
     }
     path.open('x').write(json.dumps([row], indent=2) + '\n')
@@ -126,6 +127,7 @@ def preflight(manifest, approval):
 def run(manifest, approval):
     started = time.monotonic()
     m = preflight(manifest, approval)
+    capture_identity = identity(sha(manifest))
     root = Path(m['output_root'])
     root.mkdir(parents=True, exist_ok=False)
     (root / 'authorization_consumed.json').open('x').write(json.dumps({'manifest_sha256': sha(manifest), 'consumed': True}) + '\n')
@@ -172,7 +174,7 @@ def run(manifest, approval):
             raise ValueError('business or torch import')
         for arm, mode in [('B', 'hash_only'), ('C', 'full_capture')]:
             arm_started = time.monotonic()
-            core = ObserverAdapter(root / arm, mode=mode, identity=identity())
+            core = ObserverAdapter(root / arm, mode=mode, identity=capture_identity)
             if not core.valid:
                 raise RuntimeError('adapter initialization')
             rng = np.random.default_rng(20261103)
@@ -185,7 +187,7 @@ def run(manifest, approval):
                 if i % 4096 == 0 and time.monotonic() - arm_started >= m['seconds_per_arm']:
                     raise TimeoutError('arm generation deadline')
                 if i in (0, m['events_per_arm'] // 2):
-                    op = identity()['operations'][0 if i == 0 else 1]
+                    op = capture_identity['operations'][0 if i == 0 else 1]
                     core.sink.record('qualification.begin', {'case': Case(**op)})
                 elif i in (m['events_per_arm'] // 2 - 1, m['events_per_arm'] - 1):
                     core.sink.record('qualification.complete', {
@@ -204,12 +206,14 @@ def run(manifest, approval):
             if snapshots != m['arrays_per_arm']:
                 raise ValueError('snapshot count mismatch')
             core.sink.close()
-            rp = receipt(root / (arm + '_receipt.json'))
+            rp = receipt(root / (arm + '_receipt.json'), capture_identity)
             core.finalize(normal_invocation_end=True, business_receipt_path=rp)
             if not core.valid or core.status()['phase'] != 'SEALED_PENDING_VALIDATION':
                 raise RuntimeError('adapter sealing failure')
             encode_and_seal_seconds = time.monotonic() - arm_started
-            capture_request = json.dumps({'kind': 'capture', 'identity': identity(),
+            if encode_and_seal_seconds >= m['seconds_per_arm']:
+                raise TimeoutError('arm encode/seal deadline')
+            capture_request = json.dumps({'kind': 'capture', 'identity': capture_identity,
                                           'capture': str(core.root), 'receipt': str(rp),
                                           'mode': mode}, sort_keys=True).encode()
             gate = run_validation(capture_request, python_executable=sys.executable)
@@ -222,7 +226,7 @@ def run(manifest, approval):
                                   'arrays': snapshots, 'encode_and_seal_seconds': encode_and_seal_seconds,
                                   'arm_total_seconds': time.monotonic() - arm_started,
                                   'storage': storage, 'validation': gate})
-        comparison_request = json.dumps({'kind': 'compare', 'identity': identity(),
+        comparison_request = json.dumps({'kind': 'compare', 'identity': capture_identity,
                                          'left': str(root / 'B'), 'right': str(root / 'C'),
                                          'left_receipt': str(root / 'B_receipt.json'),
                                          'right_receipt': str(root / 'C_receipt.json')}, sort_keys=True).encode()
