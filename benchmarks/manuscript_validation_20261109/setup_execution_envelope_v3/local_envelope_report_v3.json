@@ -1,0 +1,33 @@
+{
+  "status": "local_preparation_envelope_implemented_target_acceptance_pending",
+  "components_sha256": {
+    "diagnostic_storage/setup_process_gate_v3.py": "a51ab00f008e767f41f5041a926ab67fad5e1a58d7a6b46c9d09c019eaf3b036",
+    "scripts/setup_preparation_worker_v3.py": "87f0af0b9acff46907e035faa897675d0dc40a2426e86082ae65ddf686125f3e",
+    "diagnostic_storage/setup_result_verifier_v3.py": "572d2e4c22558414e3aee60308377184516674dfb487c397ae6f3238f7e49624",
+    "scripts/preflight_setup_telemetry_v3.py": "9762fb9fd07fbfa8981ca4777e836a021dfee66143dabe50190370f3ab013eb8"
+  },
+  "tests_passed": 34,
+  "test_scope": {
+    "new_gate": 5,
+    "verifier": 6,
+    "existing_budget": 23
+  },
+  "command": "python -m pytest -q tests/test_setup_process_gate_v3.py tests/test_setup_result_verifier_v3.py tests/test_validation_budget_policy_v2.py",
+  "failure_retained": "Initial pytest collection failed due to test import path; fixed package-qualified import, original log retained.",
+  "clock": "Fixed sixty seconds measured from parent entry, remaining time passed to existing bounded process-group transport; includes worker startup, capture, binding write, independent verification and exit; parent rechecks after response parsing.",
+  "request_binding": "Explicit setup-only approval bound to exact manifest SHA, worker request SHA and summary/journal SHA. Worker completes verification before exit.",
+  "one_attempt": "Exclusive claim beside fresh output; HOLD or spawn failure consumes the claim, no automatic retries.",
+  "local_end_to_end": "Actual child process with 809 small synthetic files and current local distribution metadata passed. Corrupt input exits78 and is reaped; no binding published.",
+  "supervisor_reuse": "Existing validator_process_gate_v2._run_process bounded transport, unchanged. Uses its compare task sixty-second cap solely as transport bound, no B/C function dispatch.",
+  "server_connections": 0,
+  "target_deployments": 0,
+  "target_acceptance_complete": false,
+  "S07_calls": 0,
+  "qualification_updates": false,
+  "limits": [
+    "Target timing and telemetry I/O cost remain unmeasured.",
+    "Caller must freeze fresh target paths and exact worker/runtime/input code identity in a new manifest before requesting new target authorization.",
+    "The current functional API has no target launch command or granted target approval file.",
+    "Successful setup evidence does not dispatch validation helpers."
+  ]
+}
