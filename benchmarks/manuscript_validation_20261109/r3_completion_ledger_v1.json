@@ -110,12 +110,13 @@
     "status": "draft_PR_target_zero_event_preparation_passed_independent_review_pending",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/9",
     "branch": "codex/observer-budget-integration-review",
-    "commit": "dd88fc63",
+    "commit": "2c1b7b1d",
     "local_targeted_tests_passed": 173,
     "target_preparation_manifest_sha256": "150f4b0505b33bc125c6a44eccae27a9e3459ec170539feb89c045765bccc910",
     "target_preparation_status": "zero_event_smoke_passed",
     "legacy_codec_adapter_unchanged": true,
     "real_S07_calls": 0,
-    "real_S07_authorized": false
+    "real_S07_authorized": false,
+    "remaining_wiring_gap": "Versioned read-only policy/worker/process gate for v2 capture and separate 30s single-stream/60s B-C comparison; real Controller v1 still imports Adapter v1."
   }
 }
