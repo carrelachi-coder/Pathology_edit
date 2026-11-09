@@ -1,0 +1,21 @@
+{
+  "source_reference": "BCSS_native_recovery_205cb2398525fe94",
+  "patient_id": "TCGA-E2-A1LL",
+  "operations": [
+    {
+      "case_id": "BCSS_native_recovery_205cb2398525fe94__cohesive-boundary-expansion-v1__capacity",
+      "primitive_id": "cohesive-boundary-expansion-v1"
+    },
+    {
+      "case_id": "BCSS_native_recovery_205cb2398525fe94__generic-immune-infiltrate-increase-v1__capacity",
+      "primitive_id": "generic-immune-infiltrate-increase-v1"
+    }
+  ],
+  "source_asset_sha256": {
+    "reference_image": "c64dcc8dd0ecb73e1d823bc4d699033d52ba362bfb60f3d58685866aaac876a8",
+    "reference_tissue_mask": "4465140a7f1c00581dc596782df91018c6f4715381fb96a5e346f20528b010b8",
+    "reference_nuclei_mask": "9080a157d64fa476a27ff4708821ae0939426690bc463b1901eb68ab667aebb0"
+  },
+  "frozen_subset_and_templates_match": true,
+  "witness_calls": 0
+}

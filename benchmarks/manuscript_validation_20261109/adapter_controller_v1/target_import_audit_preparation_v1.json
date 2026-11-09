@@ -1,0 +1,12 @@
+{
+  "status": "target_full_import_audit_tool_prepared_not_executed",
+  "sha256": "306342b4a6e6105fc3f7e4e6ecf5b1808500fcc7171f23905d69411737e1dad6",
+  "derivation": "Separate version of existing guarded full business-import smoke. Matches new child Adapter/bridge import order and parent stdlib-only gate import.",
+  "guard": "Profiles calls and rejects probe/main/witness/compiler execution, uses import-only run name. Child90-second bound, stops after nonzero/timeout.",
+  "required_pass": "All restored initial RNG/hash equal, unchanged after imports, BC chronology equal, one Linux native thread, CUDA false, no guarded calls or error. Otherwise exit78 HOLD. AB chronology reported without exclusion.",
+  "validation_this_turn": "Python compilation only; full Linux run pending reviewed preparatory scope.",
+  "source_mapping": "Two frozen JSON files read and exact SHA verified on target, S07 identities extracted from index7. Asset SHA fields are census declarations, not new direct image/mask checks.",
+  "read_only_connection_failure": "Initial oversized read-command request ended with connection reset. Retried with only two small path/hash descriptors; succeeded, no job or witness was launched.",
+  "witness_calls": 0,
+  "deployed": false
+}
