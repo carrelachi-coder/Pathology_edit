@@ -127,6 +127,10 @@ def preflight(manifest, approval):
 def run(manifest, approval):
     started = time.monotonic()
     m = preflight(manifest, approval)
+    if m.get('controls'):
+        controls = Path(m['controls']).resolve()
+        if Path(manifest).resolve() != controls / 'manifest.json' or Path(approval).resolve() != controls / 'approval.json':
+            raise ValueError('control path identity mismatch')
     capture_identity = identity(sha(manifest))
     root = Path(m['output_root'])
     root.mkdir(parents=True, exist_ok=False)
@@ -140,6 +144,8 @@ def run(manifest, approval):
             if time.monotonic() >= deadline:
                 raise TimeoutError('setup deadline')
         here = Path(__file__).resolve().parents[1]
+        if m.get('snapshot') and here != Path(m['snapshot']).resolve():
+            raise ValueError('snapshot path identity mismatch')
         for name, expected in m['code_files_sha256'].items():
             check_setup()
             if sha(here / name) != expected:

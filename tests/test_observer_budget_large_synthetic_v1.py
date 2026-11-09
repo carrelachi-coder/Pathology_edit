@@ -68,3 +68,17 @@ def test_unbound_approval_stops_before_output_creation(tmp_path):
                                cwd=tmp_path, capture_output=True, text=True, timeout=30)
     assert completed.returncode != 0
     assert not (tmp_path / 'result').exists()
+
+
+def test_control_path_mismatch_stops_before_output_creation(tmp_path):
+    root, mp, ap = manifest_for(tmp_path)
+    manifest = json.loads(mp.read_text())
+    manifest['controls'] = str(tmp_path / 'different_controls')
+    mp.write_text(json.dumps(manifest))
+    ap.write_text(json.dumps({'kind': manifest['kind'], 'approved': True,
+                              'manifest_sha256': hashlib.sha256(mp.read_bytes()).hexdigest()}))
+    completed = subprocess.run([sys.executable, str(root / 'scripts/run_observer_budget_large_synthetic_v1.py'),
+                                '--manifest', str(mp), '--approval', str(ap)],
+                               cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert completed.returncode != 0
+    assert not (tmp_path / 'result').exists()

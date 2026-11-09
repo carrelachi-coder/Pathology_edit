@@ -28,7 +28,7 @@
     "diagnostic_storage/observer_adapter_validation_v3_budget.py": "5ff6f0ad6f586a54883f42db0ab8cbb73c3db73b7fdef2bb73e03be5e9c05564",
     "diagnostic_storage/validator_process_gate_v3_budget.py": "23ac9dd0b6cf0730a73844b2daf8dba95d3cd6f0af9bf747760b1a392f3b238b",
     "scripts/validator_readonly_worker_v3_budget.py": "7a055509ae8791729b9ea7318c0b89d61c58003c0c4a5d25c28971ef7a79df43",
-    "scripts/run_observer_budget_large_synthetic_v1.py": "89b709ae4b7637984d257c4d912a9a47862889c23bdcc73e5334425a0604ae45"
+    "scripts/run_observer_budget_large_synthetic_v1.py": "0f6161b7929544e5f94048d93954b28a9bb90532f0c492ee43b91f26793d9045"
   },
   "runtime": {
     "executable": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
