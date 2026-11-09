@@ -1,0 +1,215 @@
+{
+  "scope": "Local profiled synthetic guard.stage only. Includes profiler overhead. No target timing inference. This is cost attribution, not a non-interference or performance acceptance trial.",
+  "events": 100000,
+  "elapsed_seconds": 7.339911874849349,
+  "global_rng_unchanged": true,
+  "capture_complete": false,
+  "qualification_updates": 0,
+  "top_self_time": [
+    {
+      "file": "<local_python>/lib/python3.11/pathlib.py",
+      "line": 56,
+      "function": "parse_parts",
+      "calls": 700024,
+      "self_seconds": 1.3950401330000002,
+      "cumulative_seconds": 1.9985121140000002
+    },
+    {
+      "file": "diagnostic_storage/guard_blocks_v2.py",
+      "line": 77,
+      "function": "refs",
+      "calls": 1400000,
+      "self_seconds": 0.467883386,
+      "cumulative_seconds": 0.574947941
+    },
+    {
+      "file": "diagnostic_storage/guard_blocks_v2.py",
+      "line": 152,
+      "function": "reservation",
+      "calls": 600012,
+      "self_seconds": 0.41505513400000005,
+      "cumulative_seconds": 3.1733238040000002
+    },
+    {
+      "file": "diagnostic_storage/guard_blocks_v2.py",
+      "line": 396,
+      "function": "write_event",
+      "calls": 100000,
+      "self_seconds": 0.41345010600000004,
+      "cumulative_seconds": 5.703976738000001
+    },
+    {
+      "file": "<local_python>/lib/python3.11/pathlib.py",
+      "line": 239,
+      "function": "splitroot",
+      "calls": 3700114,
+      "self_seconds": 0.292399889,
+      "cumulative_seconds": 0.292399889
+    },
+    {
+      "file": "<local_python>/lib/python3.11/pathlib.py",
+      "line": 484,
+      "function": "_parse_args",
+      "calls": 700024,
+      "self_seconds": 0.260308243,
+      "cumulative_seconds": 2.305413155
+    },
+    {
+      "file": "diagnostic_storage/observer_adapter_v1.py",
+      "line": 267,
+      "function": "_encode",
+      "calls": 700000,
+      "self_seconds": 0.23075709400000002,
+      "cumulative_seconds": 0.535185784
+    },
+    {
+      "file": "diagnostic_storage/observer_adapter_v1.py",
+      "line": 256,
+      "function": "_reserve_metadata",
+      "calls": 800000,
+      "self_seconds": 0.203300121,
+      "cumulative_seconds": 0.23744247300000001
+    },
+    {
+      "file": "<local_python>/lib/python3.11/pathlib.py",
+      "line": 504,
+      "function": "_from_parts",
+      "calls": 600018,
+      "self_seconds": 0.19633837,
+      "cumulative_seconds": 2.354577625
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.isinstance>",
+      "calls": 4000042,
+      "self_seconds": 0.16324474900000002,
+      "cumulative_seconds": 0.16324474900000002
+    },
+    {
+      "file": "<local_python>/lib/python3.11/json/encoder.py",
+      "line": 205,
+      "function": "iterencode",
+      "calls": 100006,
+      "self_seconds": 0.158587434,
+      "cumulative_seconds": 0.158587434
+    },
+    {
+      "file": "<local_python>/lib/python3.11/pathlib.py",
+      "line": 868,
+      "function": "__new__",
+      "calls": 600018,
+      "self_seconds": 0.154654029,
+      "cumulative_seconds": 2.509231654
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'append' of 'list' objects>",
+      "calls": 3800120,
+      "self_seconds": 0.14862239400000002,
+      "cumulative_seconds": 0.14862239400000002
+    },
+    {
+      "file": "diagnostic_storage/observer_adapter_v1.py",
+      "line": 160,
+      "function": "record",
+      "calls": 100000,
+      "self_seconds": 0.143857241,
+      "cumulative_seconds": 7.274503180000001
+    },
+    {
+      "file": "diagnostic_storage/guard_blocks_v2.py",
+      "line": 191,
+      "function": "claim_many",
+      "calls": 100000,
+      "self_seconds": 0.14312733700000002,
+      "cumulative_seconds": 3.71356936
+    },
+    {
+      "file": "diagnostic_storage/guard_blocks_v2.py",
+      "line": 169,
+      "function": "claim",
+      "calls": 200006,
+      "self_seconds": 0.140918745,
+      "cumulative_seconds": 2.3627249860000004
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method sys.intern>",
+      "calls": 3700114,
+      "self_seconds": 0.134792624,
+      "cumulative_seconds": 0.134792624
+    },
+    {
+      "file": "<local_python>/lib/python3.11/pathlib.py",
+      "line": 622,
+      "function": "name",
+      "calls": 600012,
+      "self_seconds": 0.113104095,
+      "cumulative_seconds": 0.139387657
+    },
+    {
+      "file": "<local_python>/lib/python3.11/pathlib.py",
+      "line": 536,
+      "function": "__str__",
+      "calls": 900045,
+      "self_seconds": 0.10770459800000001,
+      "cumulative_seconds": 0.139426408
+    },
+    {
+      "file": "diagnostic_storage/guard_blocks_v2.py",
+      "line": 163,
+      "function": "check",
+      "calls": 200006,
+      "self_seconds": 0.10015217300000001,
+      "cumulative_seconds": 1.1722387890000001
+    },
+    {
+      "file": "<local_python>/lib/python3.11/queue.py",
+      "line": 122,
+      "function": "put",
+      "calls": 100000,
+      "self_seconds": 0.095896228,
+      "cumulative_seconds": 0.24158246000000003
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.len>",
+      "calls": 1900031,
+      "self_seconds": 0.089424844,
+      "cumulative_seconds": 0.089424844
+    },
+    {
+      "file": "diagnostic_storage/observer_adapter_v1.py",
+      "line": 295,
+      "function": "<listcomp>",
+      "calls": 100000,
+      "self_seconds": 0.08897226500000001,
+      "cumulative_seconds": 0.397775139
+    },
+    {
+      "file": "<local_python>/lib/python3.11/json/__init__.py",
+      "line": 299,
+      "function": "loads",
+      "calls": 100000,
+      "self_seconds": 0.08662702800000001,
+      "cumulative_seconds": 0.418652171
+    },
+    {
+      "file": "<local_python>/lib/python3.11/json/decoder.py",
+      "line": 343,
+      "function": "raw_decode",
+      "calls": 100000,
+      "self_seconds": 0.08533251900000001,
+      "cumulative_seconds": 0.125968426
+    }
+  ],
+  "code_sha256": {
+    "/Users/wangqinxin/.codex/worktrees/manuscript-validation-20261102/Pathology_edit/scripts/profile_adapter_synthetic_cost_v1.py": "792eb8bf5729b334b2a7649ed209b1a68e1cb5fb64ab57ebaae9704cdf5dc03a",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/observer_adapter_v1.py": "d646b6d072cb45d400c00ab90a352deeaee67db808735a61a06b3d68a2e4d421"
+  }
+}

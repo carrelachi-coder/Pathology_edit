@@ -1,0 +1,47 @@
+{
+  "scope": "Read-only integrity and event-name counts for committed partial blocks. No completion or scientific validity inferred.",
+  "blocks_verified": 234,
+  "logical_lines_verified": 7685156,
+  "event_counts": {
+    "qualification.begin": 1,
+    "qualification.preflight": 1,
+    "portfolio.preferences": 1,
+    "portfolio.preference": 3,
+    "compiler.attempt": 9,
+    "planner.label_filter": 9,
+    "planner.preflight_filter": 9,
+    "planner.directional_limit_inputs": 93,
+    "planner.front_filter": 9,
+    "planner.ranking": 9,
+    "planner.selection": 9,
+    "planner.ready": 9,
+    "execution.begin": 9,
+    "envelopes.ready": 9,
+    "ownership.ready": 9,
+    "ownership.works": 9,
+    "execution.works": 9,
+    "grow.begin": 96,
+    "grow.seeds": 96,
+    "guard.stage": 5472892,
+    "guard.local_result": 1126925,
+    "guard.accept": 1077125,
+    "guard.reject": 7600,
+    "grow.end": 95,
+    "front.contribution": 95,
+    "probe.complete": 17,
+    "compiler.exception": 8
+  },
+  "qualification_boundaries": [
+    {
+      "sequence": 0,
+      "event": "qualification.begin"
+    },
+    {
+      "sequence": 1,
+      "event": "qualification.preflight"
+    }
+  ],
+  "elapsed_seconds": 7.664715951308608,
+  "capture_complete": false,
+  "topology_qualification_updates": 0
+}

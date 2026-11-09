@@ -1,0 +1,33 @@
+{
+  "scope": "Committed index and block-header metadata only. Does not validate complete capture or all payloads.",
+  "blocks": 234,
+  "logical_events": 7685156,
+  "last_committed_sequence": 7685155,
+  "decoded_bytes": 981452916,
+  "compressed_bytes": 73908422,
+  "index_sha256": "d21f3f83766bbe5486e33417b89c27ef1fa9ee66fdeb44800b2be06f56760b7b",
+  "all_header_hashes_match_index": true,
+  "completion_present": false,
+  "array_index_bytes": 1514829,
+  "physical_unique_inode_bytes": 76107776,
+  "first_block_edge_events": [
+    {
+      "sequence": 0,
+      "event": "qualification.begin"
+    },
+    {
+      "sequence": 31103,
+      "event": "guard.stage"
+    }
+  ],
+  "last_block_edge_events": [
+    {
+      "sequence": 7652115,
+      "event": "guard.accept"
+    },
+    {
+      "sequence": 7685155,
+      "event": "guard.stage"
+    }
+  ]
+}
