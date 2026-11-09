@@ -1,0 +1,26 @@
+{
+  "status": "HOLD",
+  "automatic_retries": 0,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "profiles": [
+    {
+      "label": "original",
+      "transport": {
+        "transport_ok": false,
+        "reason": "worker_nonzero_or_signal",
+        "exit_code": 1,
+        "timed_out": false,
+        "child_reaped": true,
+        "stderr_sha256": "a8230401fc48917bc24be3c7847e839d12d5d9df3419c4942c80fdce105012b5",
+        "stderr_bytes": 3751,
+        "elapsed_seconds": 28.618918891996145,
+        "hard_timeout_seconds": 60
+      }
+    }
+  ],
+  "setup_seconds": 0.1652659010142088,
+  "failure_type": "RuntimeError",
+  "elapsed_seconds": 28.786971859633923
+}

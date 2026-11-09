@@ -1,0 +1,11 @@
+{
+  "kind": "budget-cost-target-trial-authorization-request-v4",
+  "manifest_sha256": "c300ee63fb878358275b7a53682f8aeca53dc4244410d3f1b8444d0d04f0325a",
+  "manifest_file": "budget_cost_target_trial_proposal_v4.json",
+  "status": "not_authorized_not_deployed",
+  "request": "One fresh isolated deployment and one original and one candidate 100000-event synthetic profile, 60s each, 180s overall, failure HOLD, zero retry. Prior v1-v3 authorizations consumed.",
+  "fix": "Producer v2 reads code identity files from its snapshot path, independent of target cwd. Distribution identity remains full raw-byte multiset. No other trial scope or thresholds changed.",
+  "local_tests": "12 passed in 0.16s; independent outside-repo cwd producer v2 original and candidate at 1000 events matched logical stream SHA",
+  "S07_calls": 0,
+  "HE_calls": 0
+}

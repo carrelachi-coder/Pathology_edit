@@ -1,0 +1,34 @@
+{
+  "kind": "isolated-synthetic-budget-cost-trial-v3-closeout",
+  "status": "HOLD",
+  "manifest_sha256": "08439d285f48b90f264c0ffd30a14edada2a4003955b0d29677cc0026dac4255",
+  "authorization_consumed": true,
+  "controller_exit_code": 78,
+  "controller_elapsed_seconds": 28.786971859633923,
+  "setup_seconds": 0.1652659010142088,
+  "profile_count": 1,
+  "original_profile_started": true,
+  "candidate_profile_started": false,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "failure_type": "RuntimeError",
+  "original_transport": {
+    "transport_ok": false,
+    "reason": "worker_nonzero_or_signal",
+    "exit_code": 1,
+    "timed_out": false,
+    "child_reaped": true,
+    "stderr_sha256": "a8230401fc48917bc24be3c7847e839d12d5d9df3419c4942c80fdce105012b5",
+    "stderr_bytes": 3751,
+    "elapsed_seconds": 28.618918891996145,
+    "hard_timeout_seconds": 60
+  },
+  "read_only_diagnosis": "Original producer reached profile.pstats creation then exited1 before writing report.json. Its next report-construction step reads relative diagnostic_storage paths while target cwd is /home/lyw, where these files are absent; the isolated snapshot has them. The transport saved only stderr digest and byte count, so the exact exception text is unavailable. A local outside-repo cwd test of producer v2 completed and wrote report with code hashes.",
+  "disposition": "No retry. v3 authorization permanently consumed. Versioned v4 producer/controller and manifest require separate review and new authorization.",
+  "source_artifacts": {
+    "trial_result_sha256": "419ae4ae8e8d4e09b1f0b18da20590b0db23b5bcae74bc2bae679ba1fbeb9336",
+    "authorization_consumed_sha256": "58011c0cec2c5bcc6f6d433d499083de3ad16f562b492586523307a998343417"
+  },
+  "recorded_utc": "2026-11-09T06:42:26.549502+00:00"
+}
