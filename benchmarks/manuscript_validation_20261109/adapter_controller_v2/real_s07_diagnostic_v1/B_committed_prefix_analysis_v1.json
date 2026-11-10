@@ -1,0 +1,73 @@
+{
+  "kind": "adapter-v2-S07-B-committed-prefix-offline-analysis-v1",
+  "scope": "All 270 committed blocks of the incomplete B hash-only stream; no event sampling. Analysis does not validate missing business-process tail.",
+  "status": "prefix_integrity_pass_business_process_incomplete",
+  "committed_blocks": 270,
+  "contiguous_events": 8864998,
+  "decoded_bytes": 1132445494,
+  "integrity_checks": {
+    "block_file_sha256": "270/270",
+    "decoded_content_sha256": "270/270",
+    "header_chain_and_sequence": "270/270",
+    "final_index_present": false,
+    "business_receipt_present": false,
+    "observer_completion_present": false
+  },
+  "event_counts": {
+    "compiler.attempt": 11,
+    "compiler.exception": 10,
+    "envelopes.ready": 11,
+    "execution.begin": 11,
+    "execution.works": 11,
+    "front.contribution": 112,
+    "grow.begin": 113,
+    "grow.end": 112,
+    "grow.seeds": 113,
+    "guard.accept": 1242626,
+    "guard.local_result": 1299726,
+    "guard.reject": 8933,
+    "guard.stage": 6312980,
+    "ownership.ready": 11,
+    "ownership.works": 11,
+    "planner.directional_limit_inputs": 113,
+    "planner.front_filter": 11,
+    "planner.label_filter": 11,
+    "planner.preflight_filter": 11,
+    "planner.ranking": 11,
+    "planner.ready": 11,
+    "planner.selection": 11,
+    "portfolio.preference": 4,
+    "portfolio.preferences": 1,
+    "probe.complete": 21,
+    "qualification.begin": 1,
+    "qualification.preflight": 1
+  },
+  "guard_event_total": 8864265,
+  "guard_event_fraction": 0.9999173152661738,
+  "guard_stage_counts": {
+    "source_present": 1299727,
+    "source_connectivity_passed": 1264983,
+    "source_hole_passed": 1263018,
+    "target_connectivity_passed": 1242626,
+    "target_hole_passed": 1242626
+  },
+  "observed_case": "U1 cohesive-boundary-expansion-v1 Significant target_fraction 0.32, hard tissue minimum 0.27, source BCSS_native_recovery_205cb2398525fe94",
+  "observed_compiler_state": "Ten saved compiler.exception events are TopologySafeAreaUnderfillError; the eleventh compiler attempt was active at timeout. The last committed grow.begin has no matching grow.end in this prefix.",
+  "last_committed_event": {
+    "sequence": 8864997,
+    "event": "guard.stage",
+    "stage": "source_present"
+  },
+  "inferences_supported": [
+    "The 1200-second B arm ended during U1 guard execution, before a complete U1/U2 business receipt.",
+    "The committed prefix is dominated by high-frequency guard events and remained far below the 4 GiB physical storage ceiling."
+  ],
+  "inferences_not_supported": [
+    "B business equivalence to A",
+    "C semantic equivalence to B",
+    "full U1 or U2 topology outcome under Adapter v2",
+    "patient qualification update",
+    "exact attribution of runtime cost to Codec versus guard algorithm without profiling"
+  ],
+  "authorization_reuse_permitted": false
+}
