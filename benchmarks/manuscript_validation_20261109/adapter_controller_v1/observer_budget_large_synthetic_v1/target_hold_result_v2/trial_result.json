@@ -1,0 +1,105 @@
+{
+  "status": "HOLD",
+  "automatic_retries": 0,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "witness_calls": 0,
+  "outer_acceptance_published": false,
+  "arms": [
+    {
+      "arm": "B",
+      "mode": "hash_only",
+      "events": 2100000,
+      "arrays": 683,
+      "encode_and_seal_seconds": 293.96584052219987,
+      "arm_total_seconds": 313.7746955808252,
+      "storage": {
+        "unique_file_allocated_bytes": 15699968,
+        "unique_file_count": 62
+      },
+      "validation": {
+        "status": "validated_readonly",
+        "validation_ok": true,
+        "reason": null,
+        "transport": {
+          "transport_ok": true,
+          "reason": null,
+          "exit_code": 0,
+          "timed_out": false,
+          "child_reaped": true,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0,
+          "elapsed_seconds": 19.799002250656486,
+          "hard_timeout_seconds": 30
+        },
+        "worker_receipt": {
+          "request_sha256": "f6bef5efb0fbeed721addb880800b21175ffceaf0edf80835dc2b64c8605274d",
+          "kind": "capture",
+          "worker_readonly": true,
+          "validation_budget_seconds": 30,
+          "policy_id": "readonly-validation-budget-v3-adapter-v2-30-60",
+          "policy_sha256": "f00befb2244602e808a1a4ea92d57d0567b3cf956dc7c35a20025ed64192805a",
+          "verdict": {
+            "candidate_validated": true,
+            "interpretation_permitted": false,
+            "qualification_updates_permitted": false,
+            "mode": "hash_only",
+            "stream": {
+              "block_integrity_complete": true,
+              "business_process_complete": true,
+              "logical_events": 2100000,
+              "physical_blocks": 54,
+              "array_occurrences": 685,
+              "stream_sha256": "7218993c47c5ea57c48e58a70ee2a028d82b2beb9d3a337b9193fe94fbf0679a"
+            },
+            "allocated_bytes_before_optional_outer_publication": 15695872,
+            "bindings": {
+              "manifest_sha256": "60f16cf0ac9bbf188b87f387a7e28d05b6fa1a559c3ba4a539015e07ad17ce10",
+              "status_sha256": "cb6d6222a031406228ce96a729c9ad7dd6921b3b6476b7a8dbc067c8b6d0b21b",
+              "codec_summary_sha256": "9ce8c3948a254645625ef5240b6837bfc30bfb9b0a5de80fd079d838330437ad",
+              "business_receipt": {
+                "sha256": "4cb1d6e4d3b8bd838717dd99c25301edb14956b983fb9d0f6bfdbe847e1b187b",
+                "bytes": 1072
+              }
+            },
+            "source_had_outer_proof": false,
+            "policy_id": "readonly-validation-budget-v3-adapter-v2-30-60",
+            "policy_sha256": "f00befb2244602e808a1a4ea92d57d0567b3cf956dc7c35a20025ed64192805a",
+            "compatibility_profile": "producer-adapter-v2-budget-readonly-primitives-v1",
+            "validation_budget_seconds": 30,
+            "producer_component_sha256": {
+              "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+              "guard_budget_candidate_v1.py": "d4ac09d03509e9d149b96e184d0abdebab08462730b7e5a494af7432df03cf64",
+              "observer_adapter_contract_v2.py": "76c2ef88254cbffece3cca947546ae67a0c6fbcb17530caef8b2525e41c54188",
+              "observer_adapter_v2.py": "35cf0841325b51e809f803fa9fd3346ebd12ea5d6ae04fcaa03c5c3abc2104f7",
+              "observer_adapter_validation_v2_budget.py": "4e513943a97bd07b022b7103457e936896a10315612d5353a55cf7745d1faac1"
+            },
+            "consumer_component_sha256": {
+              "validation_budget_policy_v3_budget.py": "ecb503aab14a74269c4ae119494bf6d6deecededaf91811a15f684a28f3eb9ea",
+              "observer_adapter_validation_v3_budget.py": "5ff6f0ad6f586a54883f42db0ab8cbb73c3db73b7fdef2bb73e03be5e9c05564",
+              "validator_process_gate_v3_budget.py": "23ac9dd0b6cf0730a73844b2daf8dba95d3cd6f0af9bf747760b1a392f3b238b",
+              "validator_readonly_worker_v3_budget.py": "7a055509ae8791729b9ea7318c0b89d61c58003c0c4a5d25c28971ef7a79df43"
+            }
+          },
+          "peak_rss_bytes": 57171968,
+          "business_modules_loaded": false,
+          "torch_loaded": false
+        },
+        "interpretation_permitted": false,
+        "capture_marker_published": false,
+        "execution_permitted": false,
+        "qualification_updates_permitted": false,
+        "validation_budget_seconds": 30,
+        "policy_id": "readonly-validation-budget-v3-adapter-v2-30-60",
+        "policy_sha256": "f00befb2244602e808a1a4ea92d57d0567b3cf956dc7c35a20025ed64192805a",
+        "attempts": 1,
+        "automatic_retries": 0
+      }
+    }
+  ],
+  "setup_seconds": 0.19159710966050625,
+  "failure_type": "TimeoutError",
+  "failure_text": "arm generation deadline",
+  "stopped_arm": "C",
+  "elapsed_seconds": 798.0821567326784
+}

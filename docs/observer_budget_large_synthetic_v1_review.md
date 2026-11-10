@@ -1,7 +1,7 @@
 # Adapter v2 large synthetic B/C trial preparation
 
-This branch prepares a **synthetic-only** target trial. It does not authorize or
-start that trial. The previous setup-only authorization was consumed when the
+This branch began as preparation for a **synthetic-only** target trial. The
+previous setup-only authorization was consumed when the
 zero-event target preparation passed; the previous S07 authorization was also
 consumed. Neither can authorize this workload.
 
@@ -43,8 +43,8 @@ arrays. It took 109.60 seconds overall; setup was 0.21 seconds and B/C
 comparison was 24.19 seconds. The second result is
 `benchmarks/manuscript_validation_20261109/adapter_controller_v1/observer_budget_large_synthetic_v1/local_full_workload_result_v2.json`.
 The first result remains archived with its original code identity. Both
-are local development evidence only; target environment timing and real
-S07 behavior remain untested.
+are local development evidence only; neither established target timing
+or real S07 behavior.
 
 ## One authorized target trial
 
@@ -65,3 +65,25 @@ This HOLD does not show a Codec or comparison mismatch; neither full
 capture nor comparison ran. The target workload rate and future
 engineering budget need separate analysis before proposing another
 trial.
+
+## Bounded budget v2 target closeout
+
+The user reviewed the synthetic-only engineering budget revision and
+separately authorized one run bound to manifest SHA256
+`cd90f2839e5aaec74beb459e38a9cb3d412af0e2ccf65259815b35d9ee76173d`.
+The old HOLD remains unchanged. The v2 run also ended in **HOLD**, after
+798.08 seconds. B completed all 2,100,000 events and passed its
+30-second single-stream validator in 19.80 seconds. C then reached the
+480-second generation deadline before finishing. Its pending block
+index has 36 rows through sequence 1,404,893; all 36 referenced block
+files matched their SHA256 values. C has no codec completion marker, so
+this partial physical evidence is not a valid complete capture. Strict
+B/C comparison never started, and no outer acceptance proof was
+published. The authorization is consumed; S07, witness, H&E and
+automatic retry counts were zero.
+
+The terminal evidence is
+`benchmarks/manuscript_validation_20261109/adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_result_v2/closeout_report.json`.
+This establishes a target-environment Full Capture throughput
+constraint for the frozen synthetic workload. It does not establish a
+B/C mismatch or a real S07 runtime bound.
