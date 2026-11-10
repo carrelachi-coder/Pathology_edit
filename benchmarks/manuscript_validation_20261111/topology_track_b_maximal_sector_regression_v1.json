@@ -1,0 +1,33 @@
+{
+  "schema_version": "topology-track-b-maximal-sector-regression-v1",
+  "recorded_at": "2026-11-11",
+  "implementation_commit": "40e57752",
+  "focused": {
+    "command_scope": "topology Track B, anchor subdivision, and import-smoke tests",
+    "passed": 33,
+    "failed": 0
+  },
+  "broad_local": {
+    "passed": 1746,
+    "subtests_passed": 485,
+    "skipped": 8,
+    "failed": 22,
+    "elapsed_seconds": 397.75,
+    "excluded_at_collection": [
+      "Seven generation/measurement modules requiring unavailable local cv2 or torchvision dependencies"
+    ],
+    "failure_categories": {
+      "unavailable_local_generation_dependencies": "Manuscript generation/ROI imports require cv2 or torchvision not installed in the local environment.",
+      "local_shadow_registry_environment": "The G2 shadow fixture reported no_registered_mechanism; the frozen target-server real entry passed both operations.",
+      "unrelated_p1_resource_state": "P1 authority tests require a 22-evaluation resource while this worktree resource is not that frozen state.",
+      "intentional_versioned_business_ast_change": "Legacy passive-observer tests require business AST identity with the historical snapshot; the reviewed Track B mechanism deliberately changes versioned business code."
+    }
+  },
+  "target_server_real_entry": {
+    "result": "both Significant topology witnesses passed",
+    "result_record": "topology_track_b_s07_development_result_v7.json",
+    "u1_realized_tissue_pixels": 78659,
+    "u2_realized_tissue_pixels": 82313
+  },
+  "interpretation": "Focused regression and the frozen real target-server entry pass. The broad local failures are retained and bounded; this record does not claim full-repository green status or authorize H&E."
+}
