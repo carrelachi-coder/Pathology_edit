@@ -1,0 +1,74 @@
+{
+  "schema_version": "topology-track-b-s07-development-result-v6",
+  "recorded_at": "2026-11-11",
+  "status": "completed_u2_front_block_resolved_but_area_underfilled",
+  "launch_manifest": "topology_track_b_s07_development_launch_manifest_v6.json",
+  "implementation_commit": "f71eaa18",
+  "authorization_commit": "5d461e67",
+  "automatic_retries": 0,
+  "execution": {
+    "target": "amax2",
+    "elapsed_seconds": 340.39,
+    "exit_code": 0,
+    "output_directory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v6",
+    "capacity_screen_sha256": "31ee251a7a535cd584936125e248e09a24eba8274a2b5c6482c952ee3266e0ac",
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_only": true,
+    "target_mask_created": false
+  },
+  "results": {
+    "both_significant_capacity_pass": true,
+    "both_significant_topology_pass": false,
+    "u1": {
+      "passed_topology_witness": true,
+      "track_b_used": true,
+      "trigger_kind": "topology_passing_area_underfill",
+      "transformed_interface_count": 3,
+      "realized_tissue_pixels": 78659,
+      "hard_gate_passed": true
+    },
+    "u2": {
+      "passed_topology_witness": false,
+      "track_b_used": true,
+      "trigger_kind": "directional_single_anchor_front_block",
+      "transformed_interface_count": 11,
+      "eligibility_rejection_count": 1,
+      "fresh_preflight_rejected_interface_count": 0,
+      "original_joint_interface_block_resolved": true,
+      "new_terminal_class": "TopologySafeAreaUnderfillError",
+      "hard_floor_pixels": 70779,
+      "maximum_saved_topology_passing_pixels": 48979,
+      "deficit_to_hard_floor_pixels": 21800,
+      "maximum_saved_selected_interface_count": 11,
+      "maximum_saved_remaining_feasible_interface_count": 1,
+      "structured_failure_count": 24,
+      "persisted_target_mask": false
+    }
+  },
+  "interpretation": {
+    "supported": [
+      "Balanced subdivision removed the U2 zero-selectable-interface contradiction without changing the directional-front thresholds.",
+      "All eleven transformed U2 interfaces retained by the transformation passed the fresh nuclei preflight.",
+      "The next observed U2 bottleneck is topology-passing area underfill, with a maximum saved trial of 48979 pixels against the unchanged 70779-pixel floor."
+    ],
+    "not_supported": [
+      "U2 did not pass its topology witness.",
+      "S07 is not a fully qualified source.",
+      "No formal four-target approval, patient qualification update, H&E generation, or physician study is authorized."
+    ]
+  },
+  "frozen_research_state": {
+    "source_topology_passed_patients": 17,
+    "theoretical_upper_bound_including_old_unknown": 19,
+    "four_target_approved_patients": 0,
+    "formal_target_patients": 30,
+    "nominal_budgets_percent": [19, 32],
+    "tissue_hard_floors_percent": [14, 27]
+  },
+  "next_work": {
+    "priority": "u2_topology_safe_area_reachability_diagnosis",
+    "question": "Why does the bounded replan plateau near 49k pixels after selecting eleven fresh-preflight-valid interfaces, and can a uniform mask-only execution schedule reach the unchanged 70779-pixel floor without relaxing topology or front contracts?",
+    "reserved_evaluation_access": false
+  }
+}
