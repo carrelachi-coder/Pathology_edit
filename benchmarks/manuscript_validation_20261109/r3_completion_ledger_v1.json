@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Read-only analysis of the 8,864,998-event B prefix and timeout cost. The finite S07 authorization is consumed; no replay or formal 30-patient H&E launch. R3 qualification and four-target gates remain open.",
+  "current_next_deliverable": "Offline, versioned diagnosis of Adapter v2 per-event overhead and topology evidence limits from the archived 8,864,998-event U1 prefix. S07 authorization consumed; no replay, four-target batch, formal H&E or doctor study.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -363,7 +363,12 @@
     "real_S07_execution_result_sha256": "79ff4603ef14c932e30dbd51c77a446b7f769922db5f8913b4d70acf52eee1e1",
     "real_S07_A": "exit 0 in 126.884s; full business receipt exactly matches historical S07, two operation checks",
     "real_S07_B": "timed out at 1200.035s, no business receipt or observer completion; 270 SHA/chain-valid committed blocks contain 8,864,998 contiguous partial events",
-    "real_S07_C": "not started"
+    "real_S07_C": "not started",
+    "B_prefix_analysis": "https://github.com/carrelachi-coder/Pathology_edit/blob/de713755/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/B_committed_prefix_analysis_v1.json",
+    "B_prefix_analysis_sha256": "366fc38d1dc6f46ef4711fad9b9a204a457d5a7f7bbbd2328b5d777eb206d358",
+    "B_prefix_observed_case": "U1 Significant; 11 compiler attempts, 10 recorded topology-safe area underfill exceptions, last attempt unfinished at B timeout",
+    "B_prefix_guard_event_fraction": 0.9999173152661738,
+    "next_engineering_question": "Determine per-event recording cost from existing synthetic profiling and archived B prefix; propose a versioned, lossless optimization only if evidence supports it. Do not simply extend frozen S07 deadline or reuse its authorization."
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
