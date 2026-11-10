@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independent review of draft PRs #9-#11; then manifest-bound fixed 2.1M-event/683-array synthetic target validation. Only after that, review production Controller wiring and seek a new real S07 diagnostic authorization. Formal cohort remains closed.",
+  "current_next_deliverable": "Obtain a separate one-shot approval bound to the frozen large synthetic launch manifest SHA; then run the isolated target B/C trial once and archive its terminal result. Real S07 and formal cohort remain separately gated.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -107,7 +107,7 @@
     "evidence": "adapter_controller_v1/budget_cost_trial_v4/closeout_report.json"
   },
   "observer_budget_adapter_review": {
-    "status": "draft_PR_target_zero_event_preparation_passed_independent_review_pending",
+    "status": "user_review_passed_target_zero_event_preparation_passed",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/9",
     "branch": "codex/observer-budget-integration-review",
     "commit": "2c1b7b1d",
@@ -117,10 +117,11 @@
     "legacy_codec_adapter_unchanged": true,
     "real_S07_calls": 0,
     "real_S07_authorized": false,
-    "remaining_wiring_gap": "Versioned read-only policy/worker/process gate for v2 capture and separate 30s single-stream/60s B-C comparison; real Controller v1 still imports Adapter v1."
+    "remaining_wiring_gap": "Versioned read-only policy/worker/process gate for v2 capture and separate 30s single-stream/60s B-C comparison; real Controller v1 still imports Adapter v1.",
+    "independent_review": "user approved in current conversation; no GitHub reviewer signature claimed"
   },
   "observer_budget_readonly_consumer_review": {
-    "status": "draft_PR_local_synthetic_passed_independent_review_pending",
+    "status": "user_review_passed_local_synthetic_passed",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/10",
     "branch": "codex/observer-budget-readonly-consumer-review",
     "commit": "173d3069",
@@ -130,13 +131,13 @@
     "target_large_synthetic_tested": false,
     "real_controller_wired": false,
     "real_S07_authorized": false,
-    "independent_review": "pending"
+    "independent_review": "user approved in current conversation; no GitHub reviewer signature claimed"
   },
   "observer_budget_large_synthetic_review": {
-    "status": "draft_PR_candidate_manifest_frozen_review_pending_not_executed",
+    "status": "user_review_passed_launch_manifest_frozen_awaiting_new_one_shot_target_authorization",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/11",
     "branch": "codex/observer-budget-large-synthetic-review",
-    "commit": "814a6095",
+    "commit": "c3982a37",
     "candidate_manifest_sha256": "1b5dff6ee1cf4d725617a5cf08c26ae2b6473ad36842206ab87f42ac42747335",
     "logical_events_each": 2100000,
     "full_capture_arrays": 683,
@@ -145,7 +146,7 @@
     "target_run_executed": false,
     "real_S07_calls": 0,
     "formal_HE_calls": 0,
-    "independent_review": "pending",
+    "independent_review": "user approved in current conversation; no GitHub reviewer signature claimed",
     "predecessor_prs": [
       9,
       10
@@ -157,6 +158,8 @@
       "elapsed_seconds": 109.6043983749114,
       "result": "adapter_controller_v1/observer_budget_large_synthetic_v1/local_full_workload_result_v2.json",
       "target_server_acceptance": false
-    }
+    },
+    "review_acceptance_sha256": "478aff9dd41c6a730143fb3882dabb4bd8190e4b1393aa014abc325942a12d87",
+    "launch_manifest_sha256": "91ffabf1ae6a45e7270328fde2ad746649e11884a8ad658b187768ccb44ff5c5"
   }
 }
