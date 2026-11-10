@@ -12,8 +12,8 @@
     {
       "id": "diagnostic_preparation",
       "required": "Reviewed preparation worker, whole-process supervisor and manifest-bound result verifier",
-      "status": "real_controller_stop_gate_observed",
-      "current_evidence": "Target 2.1M-event/683-array synthetic Adapter v2 B/C capture, single-stream validation and strict comparison passed under v3; real S07 Controller integration and noninterference remain unverified."
+      "status": "real_controller_v2_candidate_local_tests_passed",
+      "current_evidence": "Target 2.1M-event/683-array synthetic Adapter v2 B/C validation passed. Versioned real Controller v2 candidate is in draft PR #13; local 24-test scoped suite passed. Target Linux startup/import, pinned execution identity and real S07 noninterference remain unverified."
     },
     {
       "id": "topology_diagnosis",
@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independently review the completed v3 synthetic B/C target result, then close the real Controller-to-Adapter-v2 wiring and execution identity gap before requesting any new S07 diagnostic authorization. Formal cohort remains closed.",
+  "current_next_deliverable": "Independent review and target Linux preparation for draft PR #13 Controller v2. Freeze a new execution identity before any separate real S07 authorization; formal cohort remains closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -314,5 +314,14 @@
       "historical CellViT pseudolabel generation checkpoint"
     ],
     "final_selected_30_audit_complete": false
+  },
+  "real_controller_v2_candidate": {
+    "status": "draft_review_pending",
+    "commit": "4104ec7c",
+    "pull_request": "https://github.com/carrelachi-coder/Pathology_edit/pull/13",
+    "local_test_command": "python -m pytest -q tests/test_limited_topology_adapter_controller_v1.py tests/test_limited_topology_adapter_controller_v2.py tests/test_observer_budget_readonly_consumer_v3.py",
+    "local_tests_passed": 24,
+    "target_deployed": false,
+    "real_S07_authorized": false
   }
 }
