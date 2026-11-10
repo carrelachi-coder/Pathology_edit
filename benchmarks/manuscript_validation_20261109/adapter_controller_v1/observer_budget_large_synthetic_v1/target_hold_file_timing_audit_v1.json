@@ -1,0 +1,45 @@
+{
+  "kind": "observer-budget-v2-target-file-timing-audit",
+  "scope": "Read-only stat of saved B/C block and C array files after the consumed target HOLD; no execution, no write to target.",
+  "source_closeout": "target_hold_result_v2/closeout_report.json",
+  "observations": {
+    "B_blocks": {
+      "files": 54,
+      "intervals": 53,
+      "median_seconds": 2.664052186,
+      "p10_seconds": 1.78803624,
+      "p90_seconds": 10.916203722,
+      "max_seconds": 25.076449134,
+      "first_half_mean_seconds": 5.344414391769231,
+      "second_half_mean_seconds": 5.445134613518518
+    },
+    "C_blocks": {
+      "files": 36,
+      "intervals": 35,
+      "median_seconds": 5.888094223,
+      "p10_seconds": 2.752041563,
+      "p90_seconds": 32.860520459,
+      "max_seconds": 48.264685425,
+      "first_half_mean_seconds": 15.447536084235296,
+      "second_half_mean_seconds": 10.791041868277778
+    },
+    "C_arrays": {
+      "files": 471,
+      "intervals": 470,
+      "median_seconds": 0.2520036235,
+      "p10_seconds": 0.156002354,
+      "p90_seconds": 4.668068322,
+      "max_seconds": 8.792143587,
+      "first_half_mean_seconds": 1.1365114307191486,
+      "second_half_mean_seconds": 0.9030765887531914,
+      "intervals_over_5_seconds": 25
+    }
+  },
+  "static_code_path": "Full Capture writes and fsyncs each raw array blob, publishes its no-replace hardlink, then appends/fsyncs the array index; Hash-only does not write the raw blob.",
+  "interpretation": [
+    "Full Capture file publication coincides with materially slower and variable target progress in this single run.",
+    "File modification intervals include event processing, array generation, hashing, copying, writes, fsync, scheduling and filesystem effects; they are not isolated function timings.",
+    "The source of long intervals is not identified; no change to Codec or deadline is justified from these timestamps alone."
+  ],
+  "next_evidence": "A narrowly scoped target profile that separates CPU copy/hash, blob write/fsync and index append/fsync under the frozen synthetic event and array semantics; it needs its own versioned code identity and authorization."
+}
