@@ -1,0 +1,159 @@
+{
+  "kind": "observer-array-microprofile-local-validation-v1",
+  "status": "synthetic_codec_microprofile_complete",
+  "scope": "Local Mac only; unchanged Codec v2, synthetic 100k events/32 arrays per mode, no pathology.",
+  "manifest_sha256": "c1752199bf281042188dcff03c911c4b87c33b9b4b900f385d2d30c1d20e4063",
+  "trial_result_sha256": "63210d65d368784ad87f2fecd849fa5cf413d7c25376eafa90726b46a4062d9a",
+  "events_each": 100000,
+  "arrays_each": 32,
+  "strict_match": true,
+  "global_rng_unchanged": true,
+  "arms": [
+    {
+      "mode": "hash_only",
+      "events": 100000,
+      "arrays": 32,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0",
+      "loop_seconds": 6.101179417222738,
+      "total_seconds": 6.111400083173066,
+      "profile_sha256": "2daaacaa12635767b67d435bf675ab8c04ea300b19eabeed2267ed3a442b7c0f",
+      "profile_rows": [
+        {
+          "function": "<built-in method posix.fsync>",
+          "file": "~",
+          "line": 0,
+          "calls": 34,
+          "self_seconds": 0.0010664560000000001,
+          "cumulative_seconds": 0.0010664560000000001
+        },
+        {
+          "function": "_append",
+          "file": "guard_blocks_v2.py",
+          "line": 268,
+          "calls": 33,
+          "self_seconds": 0.000117089,
+          "cumulative_seconds": 0.0034065410000000003
+        },
+        {
+          "function": "_copy_array",
+          "file": "guard_blocks_v2.py",
+          "line": 337,
+          "calls": 32,
+          "self_seconds": 6.5466e-05,
+          "cumulative_seconds": 0.0043735860000000005
+        },
+        {
+          "function": "_flush",
+          "file": "guard_blocks_v2.py",
+          "line": 301,
+          "calls": 1,
+          "self_seconds": 0.000682373,
+          "cumulative_seconds": 0.010052750000000001
+        },
+        {
+          "function": "_publish",
+          "file": "guard_blocks_v2.py",
+          "line": 277,
+          "calls": 1,
+          "self_seconds": 1.4585e-05,
+          "cumulative_seconds": 0.0006490420000000001
+        },
+        {
+          "function": "add_array",
+          "file": "guard_blocks_v2.py",
+          "line": 342,
+          "calls": 32,
+          "self_seconds": 0.000530324,
+          "cumulative_seconds": 0.032618709
+        },
+        {
+          "function": "write_event",
+          "file": "guard_blocks_v2.py",
+          "line": 396,
+          "calls": 100000,
+          "self_seconds": 0.37414827900000003,
+          "cumulative_seconds": 5.66985985
+        }
+      ]
+    },
+    {
+      "mode": "full_capture",
+      "events": 100000,
+      "arrays": 32,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0",
+      "loop_seconds": 6.174154166132212,
+      "total_seconds": 6.18362533301115,
+      "profile_sha256": "07c3a38149336dc33e5fe271b227099bd8edbe2ca4fbbcd5c0a419b71626fdac",
+      "profile_rows": [
+        {
+          "function": "<built-in method posix.fsync>",
+          "file": "~",
+          "line": 0,
+          "calls": 66,
+          "self_seconds": 0.008607834,
+          "cumulative_seconds": 0.008607834
+        },
+        {
+          "function": "_append",
+          "file": "guard_blocks_v2.py",
+          "line": 268,
+          "calls": 33,
+          "self_seconds": 9.354400000000001e-05,
+          "cumulative_seconds": 0.002653879
+        },
+        {
+          "function": "_copy_array",
+          "file": "guard_blocks_v2.py",
+          "line": 337,
+          "calls": 32,
+          "self_seconds": 6.0047e-05,
+          "cumulative_seconds": 0.004113752
+        },
+        {
+          "function": "_flush",
+          "file": "guard_blocks_v2.py",
+          "line": 301,
+          "calls": 1,
+          "self_seconds": 0.000535626,
+          "cumulative_seconds": 0.010056750000000001
+        },
+        {
+          "function": "_publish",
+          "file": "guard_blocks_v2.py",
+          "line": 277,
+          "calls": 33,
+          "self_seconds": 0.000341831,
+          "cumulative_seconds": 0.07867591900000001
+        },
+        {
+          "function": "add_array",
+          "file": "guard_blocks_v2.py",
+          "line": 342,
+          "calls": 32,
+          "self_seconds": 0.0005434050000000001,
+          "cumulative_seconds": 0.10991387500000001
+        },
+        {
+          "function": "write_event",
+          "file": "guard_blocks_v2.py",
+          "line": 396,
+          "calls": 100000,
+          "self_seconds": 0.37510649500000004,
+          "cumulative_seconds": 5.6618778800000005
+        }
+      ]
+    }
+  ],
+  "elapsed_seconds": 13.347495124675333,
+  "observed_counters": {
+    "S07_calls": 0,
+    "witness_calls": 0,
+    "HE_calls": 0,
+    "outer_acceptance_published": false
+  },
+  "limits": [
+    "cProfile overhead and Mac filesystem make these durations unsuitable as target-server predictions.",
+    "fsync aggregate time cannot be assigned to blob vs index from these rows alone.",
+    "No real S07 or formal study evidence."
+  ]
+}
