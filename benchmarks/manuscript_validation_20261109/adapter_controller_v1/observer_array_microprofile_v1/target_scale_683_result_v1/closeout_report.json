@@ -1,0 +1,139 @@
+{
+  "kind": "observer-array-scale-683-target-closeout-v1",
+  "status": "synthetic_target_completed_authorization_consumed",
+  "launch_manifest_sha256": "c21bab61f25fed0e4aeb8399ccb385fe3194466c109b341552e3afdb44f82138",
+  "source": "benchmarks/manuscript_validation_20261109/adapter_controller_v1/observer_array_microprofile_v1/target_scale_683_result_v1",
+  "copied_evidence_files": {
+    "authorization_consumed.json": {
+      "bytes": 106,
+      "sha256": "66dcac3b5bf6f1e6eab3f24aaf4761ac38837767f05de85e19cca7f788554f91"
+    },
+    "trial_result.json": {
+      "bytes": 5022,
+      "sha256": "440156fb8119ceb4931d37ce1b2525f99633e7593a84d19a2418e8fb2509d618"
+    },
+    "full_capture.pstats": {
+      "bytes": 11857,
+      "sha256": "4a970779e4e8d44353cebdd48af8170ff65ad4b205b45cd1081475e8d6e42c9b"
+    },
+    "hash_only.pstats": {
+      "bytes": 11892,
+      "sha256": "28d7ee2777ad0efe339d2e399ed7b6a343cfbf058aacda5931ae7c6aa2ec34a5"
+    }
+  },
+  "result": {
+    "elapsed_seconds": 491.16052562370896,
+    "hash_only": {
+      "events": 100000,
+      "arrays": 683,
+      "loop_seconds": 178.09623022004962,
+      "total_seconds": 178.25082771107554,
+      "stream_sha256": "091979fd90a97a255ef6d266dc81786d7c9146c3e07c288715ae401d777ba5da"
+    },
+    "full_capture": {
+      "events": 100000,
+      "arrays": 683,
+      "loop_seconds": 308.16053429991007,
+      "total_seconds": 308.3405415266752,
+      "stream_sha256": "091979fd90a97a255ef6d266dc81786d7c9146c3e07c288715ae401d777ba5da"
+    },
+    "strict_codec_comparison": {
+      "logical_events": 100000,
+      "strict_match": true,
+      "excluded_fields": [],
+      "left": {
+        "block_integrity_complete": true,
+        "business_process_complete": true,
+        "logical_events": 100000,
+        "physical_blocks": 2,
+        "array_occurrences": 683,
+        "stream_sha256": "091979fd90a97a255ef6d266dc81786d7c9146c3e07c288715ae401d777ba5da"
+      },
+      "right": {
+        "block_integrity_complete": true,
+        "business_process_complete": true,
+        "logical_events": 100000,
+        "physical_blocks": 2,
+        "array_occurrences": 683,
+        "stream_sha256": "091979fd90a97a255ef6d266dc81786d7c9146c3e07c288715ae401d777ba5da"
+      }
+    },
+    "global_rng_unchanged": true,
+    "profile_selected": {
+      "hash_only": {
+        "<built-in method posix.fsync>": {
+          "calls": 685,
+          "self_seconds": 149.169739421,
+          "cumulative_seconds": 149.169739421
+        },
+        "_append": {
+          "calls": 684,
+          "self_seconds": 0.006193589,
+          "cumulative_seconds": 150.2456823
+        },
+        "_publish": {
+          "calls": 1,
+          "self_seconds": 6.619e-05,
+          "cumulative_seconds": 0.020542449
+        },
+        "add_array": {
+          "calls": 683,
+          "self_seconds": 0.029118449,
+          "cumulative_seconds": 151.86025008200002
+        },
+        "write_event": {
+          "calls": 100000,
+          "self_seconds": 1.457753713,
+          "cumulative_seconds": 23.563394847
+        }
+      },
+      "full_capture": {
+        "<built-in method posix.fsync>": {
+          "calls": 1368,
+          "self_seconds": 269.83241001100004,
+          "cumulative_seconds": 269.83241001100004
+        },
+        "_append": {
+          "calls": 684,
+          "self_seconds": 0.010938428,
+          "cumulative_seconds": 89.305098473
+        },
+        "_publish": {
+          "calls": 684,
+          "self_seconds": 0.023101638,
+          "cumulative_seconds": 185.10929621600002
+        },
+        "add_array": {
+          "calls": 683,
+          "self_seconds": 0.039139560000000004,
+          "cumulative_seconds": 275.724558709
+        },
+        "write_event": {
+          "calls": 100000,
+          "self_seconds": 1.8418650680000002,
+          "cumulative_seconds": 29.577415275000003
+        }
+      }
+    },
+    "unique_inode_allocation_bytes": {
+      "hash_only": 1126400,
+      "full_capture": 1436348416
+    },
+    "complete_markers_present": {
+      "hash_only": true,
+      "full_capture": true
+    },
+    "S07_calls": 0,
+    "witness_calls": 0,
+    "HE_calls": 0,
+    "outer_acceptance_published": false
+  },
+  "analysis": [
+    "Both synthetic streams completed with 100000 logical events, 683 arrays, identical raw stream SHA and strict Codec comparison. The one-shot authorization is consumed.",
+    "In this target run, posix.fsync had 685 calls and 149.17 seconds self time for Hash-only, versus 1368 calls and 269.83 seconds for Full Capture. The extra 683 calls correspond to Full Capture blob publication in the current code path. These are observed profile totals, not a causal estimate of an unobserved run.",
+    "Full Capture encode/seal took 308.34 seconds versus 178.25 seconds for Hash-only. Storage sync occupies most measured runtime in both arms; this supports investigating durability/publication scheduling as an engineering bottleneck.",
+    "The profile is 100000 events, not the 2100000-event Adapter workload. It does not prove the existing 480-second C deadline can pass, does not validate the Adapter/Controller full path, and does not change the previous HOLD.",
+    "No real S07, witness, H&E or formal cohort call occurred; patient qualification remains17 pass, at most19 with old unknown, four-target approvals0."
+  ],
+  "next_gate": "Review any storage-path change separately with losslessness, crash/interruption and completion-marker invariants before implementation; any further target run needs a fresh manifest and authorization."
+}
