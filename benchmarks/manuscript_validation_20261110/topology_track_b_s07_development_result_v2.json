@@ -1,0 +1,33 @@
+{
+  "schema_version": "topology-track-b-s07-development-result-v2",
+  "status": "HOLD_timeout_no_business_result",
+  "authorization_consumed": true,
+  "automatic_retries": 0,
+  "controller_exit_code": 124,
+  "timeout_seconds": 1200,
+  "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+  "patient_id": "TCGA-E2-A1LL",
+  "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v2",
+  "saved_output": {
+    "screen_identity_json_bytes": 908,
+    "capacity_screen_present": false,
+    "stdout_bytes": 0,
+    "remaining_probe_processes": 0
+  },
+  "interpretation": [
+    "The corrected target snapshot started and created its identity receipt.",
+    "The source-level U1/U2 loop did not reach a persisted business record before the frozen 1200-second deadline.",
+    "No topology success, topology failure, Track B audit, or qualification result can be inferred from this run.",
+    "This is a runtime HOLD, not evidence that Codec, H&E, or the reserved evaluation cohort failed."
+  ],
+  "next_allowed_work": "Offline code-path cost analysis and a separately frozen development-only timing diagnostic. Do not retry this manifest and do not increase its timeout after the fact.",
+  "research_state_change": false,
+  "qualification_counts_unchanged": {
+    "source_topology_passed_patients": 17,
+    "upper_bound_including_old_unknown": 19,
+    "new_four_target_approved_patients": 0
+  },
+  "formal_cohort_open": false,
+  "he_generation_open": false,
+  "physician_study_open": false
+}
