@@ -1,34 +1,39 @@
 {
   "kind": "directional-anchor-subdivision-v1-local-validation",
-  "status": "local_synthetic_candidate_only",
+  "status": "local_synthetic_scene_and_nuclei_preflight_candidate",
   "candidate_version": "directional-single-anchor-geodesic-bisection-v1",
-  "candidate_code_sha256": "8dba1e0ddc29d666612012800e68d954ff3df43ce0a5166338930e2bbbd3de4b",
-  "test_code_sha256": "a0d7dc262606ff360de7195139834f1f02362d7232953232eb008a88f3351754",
+  "candidate_code_sha256": "b4583c822763c76d06878e9d4b7f6fb0237c45b7c28433235a13c3491a90b334",
+  "test_code_sha256": "8769a58ea94997cc37bccee5ca142dc674866572973b9100a48c42d38aee0ed9",
   "production_integration": false,
   "production_imports_candidate": false,
   "real_patient_runs": 0,
   "tests": {
-    "command": "python -m pytest -q tests/test_research_anchor_subdivision_v1.py tests/test_topology_hole_semantics_v2.py",
-    "passed": 6,
+    "command": "python -m pytest -q tests/test_research_anchor_subdivision_v1.py tests/test_topology_hole_semantics_v2.py tests/test_mask_edit_refine.py tests/test_native_topology_diagnosis.py",
+    "passed": 84,
+    "subtests_passed": 85,
     "failed": 0,
-    "seconds": 1.69
+    "seconds": 4.07
   },
   "validated_properties": [
     "deterministic output for a fixed connected interface mask",
     "exhaustive and disjoint two-way partition",
     "each returned subanchor remains 8-connected",
     "the existing 0.75 maximum-selected fraction and minimum-one-unselected rule admits exactly one of two subanchors",
-    "undersized and disconnected inputs fail closed"
+    "undersized and disconnected inputs fail closed",
+    "a rebuilt synthetic BCSS joint scene assigns new subanchor identities without mutating the source scene",
+    "the full joint nuclei preflight is recomputed against the rebuilt scene and emits continuity reports only for the new subanchor identities",
+    "at least one recomputed subanchor is cell feasible while the unchanged directional witness rule still limits selection to one",
+    "the synthetic CandidateFeasibilityCompiler produces a hard-gate-passing survivor that references a new subanchor identity and never the retired parent anchor",
+    "eligibility is limited to a topology-passing area-underfill replan where the parent interface remains feasible, the parent anchor is cell feasible, and the unchanged witness rule alone leaves zero selectable anchors",
+    "initial compile, topology failure, removed-interface and parent-cell-infeasible counterexamples all fail closed"
   ],
   "required_before_any_integration": [
-    "rebuild SceneInterface and SceneAnchorSegment identities under a versioned policy",
-    "rerun nuclei preflight for every new subanchor rather than reusing parent-anchor feasibility",
-    "verify that at least one selected subanchor is cell feasible while at least one unedited boundary witness remains",
-    "run synthetic tissue and nuclei contract tests without changing the frozen 0.75 fraction or minimum-one-unselected rule",
+    "add a candidate-local negative case in which all regenerated subanchors fail nuclei continuity and confirm the compiler rejects the interface",
+    "independently review whether the topology-passing-underfill prerequisite correctly separates the hole-semantics change from the reachable-area mechanism",
     "complete independent code review and freeze a new development-only execution manifest"
   ],
   "limits": [
-    "The candidate proves only partition mechanics, not additional legal tissue capacity.",
+    "The candidate proves partition mechanics and synthetic nuclei-preflight recomputation, not additional topology-safe tissue capacity.",
     "It does not show that any S07 excluded interface supplies the missing 51 pixels.",
     "It does not establish topology validity after tissue growth or complete-nucleus placement.",
     "It must not be applied to reserved evaluation patients during method development."

@@ -10,11 +10,148 @@ old feasible-anchor result is not valid for the returned subanchors.
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import replace
 
 import numpy as np
 
+from phase3_mask_edit_refine.models import SceneAnchorSegment
+from phase3_mask_edit_refine.scene import SceneAnalysis
+
 
 CANDIDATE_VERSION = "directional-single-anchor-geodesic-bisection-v1"
+
+
+def subdivision_eligibility_for_underfill_replan(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    cell_feasible_anchor_ids: tuple[str, ...],
+    remaining_feasible_interface_ids: tuple[str, ...],
+    prior_topology_passed: bool,
+    area_underfill_replan: bool,
+    maximum_selected_anchor_fraction: float,
+    minimum_unselected_anchor_count: int,
+    minimum_subanchor_pixels: int = 2,
+) -> tuple[bool, tuple[str, ...]]:
+    """Fail-closed eligibility for proposing subdivision after safe underfill.
+
+    This policy never runs on the initial compile and never converts a failed
+    topology trial into an admissible replan.  It only identifies an interface
+    whose parent anchor was cell-feasible but was excluded solely because the
+    unchanged directional witness rule could select zero of one anchors.
+    """
+
+    reasons: list[str] = []
+    interface = next(
+        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
+        None,
+    )
+    if interface is None:
+        return False, ("unknown_interface",)
+    if not area_underfill_replan:
+        reasons.append("not_area_underfill_replan")
+    if not prior_topology_passed:
+        reasons.append("prior_topology_not_passed")
+    if interface_id not in set(remaining_feasible_interface_ids):
+        reasons.append("interface_not_remaining_feasible")
+    if len(interface.anchor_segment_ids) != 1:
+        reasons.append("interface_not_single_anchor")
+        return False, tuple(reasons)
+    anchor_id = interface.anchor_segment_ids[0]
+    feasible = set(cell_feasible_anchor_ids)
+    if anchor_id not in feasible:
+        reasons.append("parent_anchor_not_cell_feasible")
+    total = 1
+    selection_limit = max(
+        0,
+        min(
+            1 if anchor_id in feasible else 0,
+            int(np.floor(total * maximum_selected_anchor_fraction)),
+            total - minimum_unselected_anchor_count,
+        ),
+    )
+    if selection_limit != 0:
+        reasons.append("parent_anchor_already_selectable")
+    if int(np.count_nonzero(scene.anchor_masks[anchor_id])) < 2 * int(
+        minimum_subanchor_pixels
+    ):
+        reasons.append("parent_anchor_too_small")
+    return not reasons, tuple(reasons)
+
+
+def rebuild_scene_with_bisected_single_anchor(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    minimum_subanchor_pixels: int = 2,
+) -> SceneAnalysis:
+    """Return a new scene whose named single-anchor interface has two anchors.
+
+    All graph and mask identities are regenerated in the returned immutable
+    scene.  The function does not carry any nuclei-preflight result across the
+    identity change; callers must recompute preflight against the new scene.
+    """
+
+    interface = next(
+        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
+        None,
+    )
+    if interface is None:
+        raise ValueError(f"unknown interface: {interface_id}")
+    if len(interface.anchor_segment_ids) != 1:
+        raise ValueError("candidate applies only to a single-anchor interface")
+    old_anchor_id = interface.anchor_segment_ids[0]
+    parts = bisect_connected_interface_anchor(
+        scene.anchor_masks[old_anchor_id],
+        minimum_subanchor_pixels=minimum_subanchor_pixels,
+    )
+    new_ids = tuple(
+        f"{old_anchor_id}:sub:{index:04d}" for index in range(1, 3)
+    )
+
+    anchor_masks = dict(scene.anchor_masks)
+    anchor_masks.pop(old_anchor_id)
+    anchor_masks.update(zip(new_ids, parts))
+    new_segments: list[SceneAnchorSegment] = []
+    for segment in scene.graph.anchor_segments:
+        if segment.anchor_segment_id != old_anchor_id:
+            new_segments.append(segment)
+            continue
+        for anchor_id, part in zip(new_ids, parts):
+            rows, cols = np.where(part)
+            new_segments.append(
+                replace(
+                    segment,
+                    anchor_segment_id=anchor_id,
+                    contact_pixels=int(rows.size),
+                    bbox_xyxy=(
+                        int(cols.min()),
+                        int(rows.min()),
+                        int(cols.max()) + 1,
+                        int(rows.max()) + 1,
+                    ),
+                    centroid_xy=(float(np.mean(cols)), float(np.mean(rows))),
+                )
+            )
+    new_segments = [
+        replace(item, display_index=index)
+        for index, item in enumerate(new_segments, start=1)
+    ]
+    interfaces = tuple(
+        replace(item, anchor_segment_ids=new_ids)
+        if item.interface_id == interface_id
+        else item
+        for item in scene.graph.interfaces
+    )
+    return replace(
+        scene,
+        graph=replace(
+            scene.graph,
+            interfaces=interfaces,
+            anchor_segments=tuple(new_segments),
+        ),
+        anchor_masks=anchor_masks,
+    )
 
 
 def bisect_connected_interface_anchor(
