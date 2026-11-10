@@ -1,0 +1,43 @@
+{
+  "schema_version": "topology-selected-maximal-sectors-development-probe-v1",
+  "status": "self_authorized_once",
+  "purpose": "Test maximal-legal-sector plus witness partitions for every selected feasible anchor on the closest saved U2 development underfill.",
+  "code": {
+    "commit": "bac89300",
+    "git_tree": "045a660b60b3f06263141c1ddd1c7550ec615f11",
+    "topology_track_b_sha256": "9abd31ae6083c46f44eeb712c4a6ce0b29c88144a09bfd504a44406232b95c5f",
+    "anchor_subdivision_sha256": "2ebe3db2ea76daccdff01e8cbcc403733be1209ca02e41de5aac52c5a91436a6",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_selected_maximal_bac89300"
+  },
+  "input": {
+    "source_freeze_parent_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "single_source_derivation": "Exact candidate_sources[6] from the immutable development freeze.",
+    "partition": "development",
+    "patient_id": "TCGA-AN-A0AR",
+    "reference_id": "BCSS_joint_supplement_b546a330a49d",
+    "source_index": 6,
+    "prior_balanced_u2_topology_passing_area_pixels": 68933,
+    "hard_floor_pixels": 70779
+  },
+  "candidate_contract": {
+    "trigger": "Saved topology-passing area underfill on selected multi-anchor interfaces.",
+    "choice_rule": "For every original selected, freshly nuclei-feasible and legally partitionable anchor, create the largest connected sector allowed by the unchanged 0.75 fraction and a connected minimum-size witness.",
+    "rounds": 1,
+    "recursive_subdivision": false,
+    "threshold_changes": 0,
+    "topology_failure_rescue_permitted": false,
+    "fresh_nuclei_preflight_required": true
+  },
+  "execution": {
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "reserved_evaluation_access": false,
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, incomplete receipt, or source identity failure is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized one development counterexample because the balanced all-anchor probe preserved topology but remained 1,846 pixels below the floor, while the already validated maximal-sector representation addresses the same count-to-area quantization without changing the front contract."
+}
