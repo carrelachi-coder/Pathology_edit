@@ -1,0 +1,40 @@
+{
+  "schema_version": "topology-track-b-s07-development-launch-v7",
+  "status": "self_authorized_once",
+  "purpose": "Test maximal legal directional sectors for U2 while retaining the validated balanced U1 path on development-only S07.",
+  "code": {
+    "archive_commit": "40e57752",
+    "git_tree": "c1dcadf212ea101fd2b9798f79889578e3a67f1e",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_maximal_sector_40e57752",
+    "anchor_subdivision_sha256": "426c358c228d955857c71461a7bfd9c4433e07ba7a22e80d1b56e87ba9037f4e",
+    "track_b_workflow_sha256": "5e4264e699c133a004f0604111eee1b2e4c64bb6062e11c759632e2fedeae7e1"
+  },
+  "validation": {
+    "targeted_local": "33 passed",
+    "v6_basis": "The balanced two-child U2 representation made 11 interfaces legal but quantized the 0.75 front contract to 0.5 and plateaued at 48979 pixels versus the unchanged 70779-pixel floor.",
+    "mechanism_change": "For the pre-planner directional-front block only, exhaustively choose the largest connected child not exceeding the unchanged selected-fraction ceiling while retaining one source-scaled connected witness child. U1 continues using balanced geodesic bisection.",
+    "thresholds_changed": false
+  },
+  "input": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_index": 7,
+    "source_freeze_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v7",
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, or incomplete receipt is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized this bounded development-only mask diagnostic after v6 localized the representational 0.5 quantization and the new implementation passed focused regression without changing scientific thresholds."
+}
