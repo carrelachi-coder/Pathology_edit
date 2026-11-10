@@ -177,5 +177,19 @@
     "budget_v2_BC_comparison_started": false,
     "budget_v2_offline_analysis": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_full_capture_offline_analysis_v1.json",
     "budget_v2_file_timing_audit": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_file_timing_audit_v1.json"
+  },
+  "observer_array_microprofile_review": {
+    "status": "draft_PR_open_independent_review_pending_no_target_authorization",
+    "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/12",
+    "branch": "codex/observer-array-microprofile-review",
+    "commit": "5f321aa8",
+    "candidate_manifest_sha256": "4fd10df6a937c96da2b943fcd3a2f5c923f4827afb062925b8186e901aeded6e",
+    "scope": "Synthetic direct Codec B/C array-path microprofile: 100000 events and 32 generated arrays per arm; no Adapter, S07, witness, H&E or outer acceptance.",
+    "local_targeted_tests_passed": 3,
+    "local_full_candidate_status": "strict_Codec_match_and_global_RNG_unchanged",
+    "target_deployed": false,
+    "target_executed": false,
+    "target_authorized": false,
+    "previous_large_synthetic_authorizations_consumed": true
   }
 }
