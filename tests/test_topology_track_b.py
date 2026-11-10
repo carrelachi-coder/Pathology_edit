@@ -311,7 +311,7 @@ def test_selected_multi_anchor_underfill_refines_one_selected_anchor(monkeypatch
     assert result.track_b_used is True
     assert result.audit["trigger_kind"] == "topology_passing_area_underfill"
     assert result.audit["candidate_version"] == (
-        "selected-multi-anchor-balanced-geodesic-refinement-v2"
+        "selected-multi-anchor-maximal-legal-sector-refinement-v3"
     )
     records = result.audit["transformed_interfaces"]
     assert {item["retired_parent_anchor_id"] for item in records} == set(selected)

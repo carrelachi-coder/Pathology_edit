@@ -23,7 +23,7 @@ from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     minimum_witness_contact_pixels,
     rebuild_scene_with_directional_sector_partition,
     rebuild_scene_with_bisected_single_anchor,
-    rebuild_scene_with_bisected_anchor,
+    rebuild_scene_with_directional_sector_anchor,
     selected_multi_anchor_refinement_candidates,
     subdivision_eligibility_for_directional_front_block,
     subdivision_eligibility_for_underfill_replan,
@@ -274,6 +274,9 @@ def _compile_fresh_track_b_portfolio(
                     selected_anchor_ids=selected_anchor_ids_by_interface[interface_id],
                     cell_feasible_anchor_ids=feasible_anchor_ids,
                     minimum_subanchor_pixels=minimum_pixels,
+                    maximum_selected_anchor_fraction=(
+                        front.maximum_selected_anchor_fraction
+                    ),
                 )
             )
             eligible = bool(selected_refinement_anchors)
@@ -320,11 +323,14 @@ def _compile_fresh_track_b_portfolio(
         ]
         if selected_refinement_anchors:
             for parent in selected_refinement_anchors:
-                transformed_tissue = rebuild_scene_with_bisected_anchor(
+                transformed_tissue = rebuild_scene_with_directional_sector_anchor(
                     transformed_tissue,
                     interface_id=interface_id,
                     anchor_id=parent,
                     minimum_subanchor_pixels=minimum_pixels,
+                    maximum_selected_anchor_fraction=(
+                        front.maximum_selected_anchor_fraction
+                    ),
                 )
             used_candidate_versions.add(SELECTED_MULTI_ANCHOR_CANDIDATE_VERSION)
         elif directional_front_block:
