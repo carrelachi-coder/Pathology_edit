@@ -1,0 +1,93 @@
+{
+  "kind": "r3-topology-method-split-old-pass-overlap-audit-v1",
+  "status": "read_only_audit_proposal_unchanged",
+  "split_proposal_file": "topology_method_patient_split_proposal_v1.json",
+  "split_proposal_sha256": "1f44bfd0598629f4ea48f8c8af73956c9c45ced58af5249b86c7b00520b65af3",
+  "frozen_waves": [
+    {
+      "wave": "initial",
+      "rows": 74,
+      "passing_sources_including_technical": 14,
+      "unknown_sources": 0,
+      "source_sha256": "8952838a61744a3d3943b62be6ac9626061f05f10ce12e2bd63f019e52e428d7"
+    },
+    {
+      "wave": "supplemental_v1",
+      "rows": 145,
+      "passing_sources_including_technical": 5,
+      "unknown_sources": 2,
+      "source_sha256": "5dca1e4d723afd49660a849e9bd6ad19f0dd44717dd48904ac8c617df2fc0c15"
+    },
+    {
+      "wave": "supplemental_v2_wave00",
+      "rows": 51,
+      "passing_sources_including_technical": 2,
+      "unknown_sources": 1,
+      "source_sha256": "048c170a4804893ed73dda99b898879a2da2e11a6a0ab20652c200ab19b6b19c"
+    },
+    {
+      "wave": "supplemental_v2_wave01",
+      "rows": 89,
+      "passing_sources_including_technical": 11,
+      "unknown_sources": 0,
+      "source_sha256": "f6c573c4d5d355c31dd79ca03fe9e406839e34dd0dc8a620ec95f39f0d1ef3b0"
+    },
+    {
+      "wave": "supplemental_v2_wave02",
+      "rows": 170,
+      "passing_sources_including_technical": 5,
+      "unknown_sources": 0,
+      "source_sha256": "896ada6971b828305748d9a8ba5a49d2d1b01212f286b235f286b8827a0df032"
+    }
+  ],
+  "filter": "A source passes only when its saved result.both_significant_topology_pass is true; exclude the five technical patient IDs from the capacity identity audit; deduplicate by patient_id.",
+  "old_method_topology_pass_patient_aliases": [
+    "TCGA-A2-A0D0",
+    "TCGA-A2-A0T2",
+    "TCGA-A7-A0DA",
+    "TCGA-A8-A07C",
+    "TCGA-A8-A07O",
+    "TCGA-A8-A09X",
+    "TCGA-AC-A2BK",
+    "TCGA-AN-A0AT",
+    "TCGA-BH-A0BW",
+    "TCGA-C8-A12V",
+    "TCGA-D8-A1XQ",
+    "TCGA-E2-A14X",
+    "TCGA-E2-A1LI",
+    "TCGA-EW-A1P8",
+    "TCGA-EW-A1PB",
+    "TCGA-OL-A6VO",
+    "TCGA-S3-AA10"
+  ],
+  "counts": {
+    "old_method_topology_pass_patients": 17,
+    "in_proposed_development": 3,
+    "in_proposed_reserved_evaluation": 14,
+    "S07_old_method_pass": false
+  },
+  "development_overlap": [
+    "TCGA-AN-A0AT",
+    "TCGA-E2-A14X",
+    "TCGA-E2-A1LI"
+  ],
+  "reserved_evaluation_overlap": [
+    "TCGA-A2-A0D0",
+    "TCGA-A2-A0T2",
+    "TCGA-A7-A0DA",
+    "TCGA-A8-A07C",
+    "TCGA-A8-A07O",
+    "TCGA-A8-A09X",
+    "TCGA-AC-A2BK",
+    "TCGA-BH-A0BW",
+    "TCGA-C8-A12V",
+    "TCGA-D8-A1XQ",
+    "TCGA-EW-A1P8",
+    "TCGA-EW-A1PB",
+    "TCGA-OL-A6VO",
+    "TCGA-S3-AA10"
+  ],
+  "interpretation": "The deterministic proposal was formed before this per-patient overlap was inspected. Do not reassign patients based on these pass outcomes. Under the old mechanism, only14 of17 pass patients remain in the proposed evaluation set; this does not bound what a future prespecified method may achieve. The split is still a proposal and does not select a formal cohort.",
+  "qualification_updates_permitted": false,
+  "formal_cohort_permitted": false
+}

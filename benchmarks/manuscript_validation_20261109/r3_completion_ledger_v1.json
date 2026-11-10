@@ -336,6 +336,11 @@
     "development_patients": 16,
     "reserved_evaluation_patients": 68,
     "S07_development_only": true,
-    "qualification_changed": false
+    "qualification_changed": false,
+    "old_pass_overlap_audit": "topology_method_patient_split_old_pass_overlap_audit_v1.json",
+    "old_pass_overlap_audit_sha256": "9e4adb30de86a9f2bfc8bedc2c29257fae1af68dd2db97a4a0a0b6dfc6575a95",
+    "old_method_pass_patients_in_development": 3,
+    "old_method_pass_patients_in_reserved_evaluation": 14,
+    "outcome_based_reassignment_permitted": false
   }
 }
