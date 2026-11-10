@@ -328,5 +328,14 @@
     "target_import_preparation_request": "https://github.com/carrelachi-coder/Pathology_edit/blob/a6178492/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_request_v1.json",
     "target_import_preparation_manifest_sha256": "fe7ba33381772fcef90add513d9b8b25bf5440f912ef43db290c4f4f4c815dcb",
     "target_import_authorized": false
+  },
+  "topology_method_patient_split_proposal": {
+    "status": "proposal_pending_review_not_frozen",
+    "file": "topology_method_patient_split_proposal_v1.json",
+    "sha256": "1f44bfd0598629f4ea48f8c8af73956c9c45ced58af5249b86c7b00520b65af3",
+    "development_patients": 16,
+    "reserved_evaluation_patients": 68,
+    "S07_development_only": true,
+    "qualification_changed": false
   }
 }
