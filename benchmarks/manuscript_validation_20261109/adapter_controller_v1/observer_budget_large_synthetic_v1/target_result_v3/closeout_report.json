@@ -1,0 +1,80 @@
+{
+  "kind": "observer-budget-large-synthetic-target-closeout-v3",
+  "status": "synthetic_BC_target_validation_completed_authorization_consumed",
+  "launch_manifest_sha256": "df4bf74feb64e090d19d2e61205db8c140a412ea1e27cac1a320c63554fff328",
+  "user_authorization": "One fixed synthetic target B/C attempt approved in this conversation; consumed. Prior v1/v2 HOLD records and authorizations remain unchanged.",
+  "copied_evidence_files": {
+    "authorization_consumed.json": {
+      "bytes": 106,
+      "sha256": "6783a5e63ea8ae4f673a03dc09251d9b69383345c96d8e5aca3f845d2e8337f3"
+    },
+    "trial_result.json": {
+      "bytes": 12608,
+      "sha256": "8399052691570707f005421ccbf4a2affde69f5a2a40a8cce02f08253fc48338"
+    },
+    "C/summary.json": {
+      "bytes": 1201,
+      "sha256": "355ff2b5c6b7b6a40246f7cdf978a176ceb7538b14c22646ba05ed61dd480b77"
+    },
+    "C/adapter_status.json": {
+      "bytes": 452,
+      "sha256": "dfb7ecfaaf1dfc086ff490489b4576adc1e8d79df322452a38bcf047f8c53e8a"
+    },
+    "C/observer_complete.json": {
+      "bytes": 86,
+      "sha256": "4823a2b7b0fcdc4f70bc50ee0f6445286411e2592b92c9b7a37aea2ad1bb27cf"
+    },
+    "B/summary.json": {
+      "bytes": 1196,
+      "sha256": "3e3d269b6410c992c0f3781ab7542caabf7a7377373e5ab05d7a986954b94907"
+    },
+    "B/adapter_status.json": {
+      "bytes": 452,
+      "sha256": "dfb7ecfaaf1dfc086ff490489b4576adc1e8d79df322452a38bcf047f8c53e8a"
+    },
+    "B/observer_complete.json": {
+      "bytes": 86,
+      "sha256": "11a615be8a72af6418b69858dca137b8121f7b5b0e5c6e2d8b48bacb8d0675d8"
+    }
+  },
+  "result": {
+    "runner_exit_code": 0,
+    "elapsed_seconds": 990.2892101388425,
+    "setup_seconds": 1.0792540609836578,
+    "B": {
+      "encode_and_seal_seconds": 335.7154802363366,
+      "single_stream_validation_seconds": 19.37196784093976,
+      "events": 2100000,
+      "generated_arrays": 683,
+      "unique_allocated_bytes": 15699968
+    },
+    "C": {
+      "encode_and_seal_seconds": 567.5070594940335,
+      "single_stream_validation_seconds": 23.637931479141116,
+      "events": 2100000,
+      "generated_arrays": 683,
+      "unique_allocated_bytes": 1450934272
+    },
+    "strict_BC_comparison_seconds": 40.68001536093652,
+    "strict_BC_semantic_match": true,
+    "excluded_semantic_fields": [],
+    "logical_stream_sha256": "cad3ee924ac2227c63fe0bdefd3a4e8254ea87f4c5586903a905fa0239508caa",
+    "total_array_occurrences_each": 685,
+    "independent_generated_arrays_bytes_equal": true,
+    "independent_generated_array_raw_bytes": 1432354816,
+    "global_rng_unchanged": true,
+    "B_C_codec_complete_markers_valid": true,
+    "outer_adapter_complete_markers_published": false,
+    "S07_calls": 0,
+    "witness_calls": 0,
+    "HE_calls": 0,
+    "formal_cohort_calls": 0,
+    "automatic_retries": 0
+  },
+  "interpretation": [
+    "This closes the target large synthetic B/C capture and strict read-only comparison gate for the frozen v3 workload and code identity.",
+    "It does not prove real S07 runtime noninterference, complete topology process evidence, source qualification or four-target approval.",
+    "The historical v1 and v2 target HOLDs remain valid records; v3 does not retroactively change their outcomes.",
+    "The next real S07 diagnostic requires independent review of this result, a new code/input/run manifest and a separate one-shot authorization. The formal 30-patient H&E cohort remains closed."
+  ]
+}
