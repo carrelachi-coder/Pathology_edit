@@ -1,0 +1,44 @@
+{
+  "schema_version": "topology-cascade-reserved-launch-v2",
+  "recorded_at": "2026-11-11",
+  "status": "self_authorized_once_after_zero_call_startup_correction",
+  "supersedes_launch_manifest": "topology_cascade_reserved_launch_v1.json",
+  "prior_failure_record": "topology_cascade_reserved_launch_v1_startup_failure.json",
+  "authorization_record": "topology_cascade_method_freeze_v1.json",
+  "code": {
+    "commit": "0ac9bdda",
+    "git_tree": "872d19be5ec1e70630008ce0727a5217485c5c4b",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_0ac9bdda",
+    "probe_sha256": "ef824365ce0b541be9ec4159798c7f1d33689fe3d8c5480e218a06ce3d5aebca",
+    "controller_sha256": "2ab85dc39add55484098df7a77731ba96d75f4b5efe33556d459328d04a8b0d0"
+  },
+  "input": {
+    "source_freeze": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_reserved_source_freeze_v1.json",
+    "source_freeze_sha256": "d9c4e4f8cd4eb9c98c4635574c810de40aec26253a8cac6c4c8209d9b9cfa31c",
+    "partition": "reserved_evaluation",
+    "patients": 68,
+    "available_sources": 418,
+    "case_templates": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_v2",
+    "run_log": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_v2.run.log",
+    "run_log_location_policy": "The sibling log path may be created by shell redirection; the final output path remains absent until the controller creates it.",
+    "workers": 8,
+    "seconds_per_source": 1200,
+    "overall_watchdog_seconds": 86400,
+    "automatic_retries": 0,
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "acceptance": {
+    "all_68_patients_terminal": true,
+    "indeterminate_patients": 0,
+    "threshold_changes": 0,
+    "patient_yield_report_required": true,
+    "formal_accounting_review_required_after_completion": true
+  },
+  "failure_policy": "Any timeout, nonzero exit, missing receipt, identity mismatch, or controller failure is HOLD with no automatic retry."
+}

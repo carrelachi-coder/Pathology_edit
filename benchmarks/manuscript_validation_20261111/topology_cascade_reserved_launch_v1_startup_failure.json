@@ -1,0 +1,21 @@
+{
+  "schema_version": "topology-cascade-reserved-launch-v1-startup-failure",
+  "recorded_at": "2026-11-11",
+  "status": "consumed_startup_hold_no_source_calls",
+  "launch_manifest": "topology_cascade_reserved_launch_v1.json",
+  "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_v1",
+  "exit_code": 1,
+  "failure": {
+    "type": "FileExistsError",
+    "stage": "controller_output_directory_creation",
+    "cause": "The launch wrapper created the final output directory in order to place the redirected run log inside it, while the fail-closed controller requires that directory not to exist before launch."
+  },
+  "observed_scope": {
+    "controller_identity_written": false,
+    "patient_directories_created": 0,
+    "source_calls": 0,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "disposition": "The failed directory and log are retained. The v1 authorization is consumed and is not reused."
+}
