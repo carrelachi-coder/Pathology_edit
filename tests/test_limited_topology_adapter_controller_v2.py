@@ -122,8 +122,14 @@ def test_controller_assessment_uses_actual_process_gate_and_full_receipts(tmp_pa
         "runtime": {"executable": sys.executable},
     }
     assert controller.assess_real(plan, "A")
+    parent_modules_before = set(sys.modules)
+    parent_path_before = list(sys.path)
     assert controller.assess_real(plan, "B")
+    assert set(sys.modules) == parent_modules_before
+    assert sys.path == parent_path_before
     assert controller.assess_real(plan, "C")
+    assert set(sys.modules) == parent_modules_before
+    assert sys.path == parent_path_before
     b = json.loads((tmp_path / "B/validation_gate_receipt.json").read_text())
     c = json.loads((tmp_path / "C/validation_gate_receipt.json").read_text())
     assert b["validation_budget_seconds"] == 30 and c["validation_budget_seconds"] == 60

@@ -279,11 +279,6 @@ def assess_real(plan, arm):
         a = business_receipt(output / "A/business/capacity_screen.json", reference)
         if current != a:
             return False
-        # This gate imports stdlib-only control code into the parent. Business
-        # modules and Codec are imported only in isolated helper processes.
-        sys.path.insert(0, plan["adapter_snapshot"])
-        from diagnostic_storage.validator_process_gate_v3_budget import run_validation
-
         request = {"identity": plan["adapter_identity"]}
         if arm == "B":
             request.update(
@@ -300,12 +295,29 @@ def assess_real(plan, arm):
                 left_receipt=str(output / "B/business/capacity_screen.json"),
                 right_receipt=str(output / "C/business/capacity_screen.json"),
             )
-        result = run_validation(
-            json.dumps(request, sort_keys=True).encode(),
-            python_executable=plan["runtime"]["executable"],
+        # Keep the common parent import state identical for B and C. The
+        # process gate and its policy are imported only in this disposable
+        # helper, which itself starts a bounded read-only validation worker.
+        def validate_in_child():
+            sys.path.insert(0, plan["adapter_snapshot"])
+            from diagnostic_storage.validator_process_gate_v3_budget import (
+                run_validation,
+            )
+
+            result = run_validation(
+                json.dumps(request, sort_keys=True).encode(),
+                python_executable=plan["runtime"]["executable"],
+            )
+            write_new(output / arm / "validation_gate_receipt.json", result)
+            if result["validation_ok"] is not True:
+                raise RuntimeError("read-only validation HOLD")
+
+        # The gate's own OS deadline remains 30/60 seconds. This extra five
+        # seconds only bounds helper termination and receipt handoff.
+        helper = bounded_fork(
+            validate_in_child, timeout=35 if arm == "B" else 65
         )
-        write_new(output / arm / "validation_gate_receipt.json", result)
-        if result["validation_ok"] is not True:
+        if helper["timed_out"] or helper["exit_code"] != 0:
             return False
     return True
 
