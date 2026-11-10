@@ -1,0 +1,43 @@
+{
+  "schema_version": "topology-all-selected-anchors-development-probe-v1",
+  "status": "self_authorized_once",
+  "purpose": "Test the predeclared one-round all-selected-anchor refinement on the closest saved U2 development underfill.",
+  "code": {
+    "commit": "69798d7f",
+    "git_tree": "7389018d4e12d6593d87e20fc2b48baa492f95c8",
+    "topology_track_b_sha256": "498c7c190f404cf0e4b8028d03215068a5986171243f62d4c47bb29299206b97",
+    "anchor_subdivision_sha256": "5f4a07b6f58b10f5c22fbe10f5eff3e786539c7d1d8d429863e3a9b89d404593",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_all_selected_69798d7f"
+  },
+  "input": {
+    "source_freeze_parent_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "single_source_derivation": "Exact candidate_sources[6] from the immutable development freeze; patient and source identity retained.",
+    "partition": "development",
+    "patient_id": "TCGA-AN-A0AR",
+    "reference_id": "BCSS_joint_supplement_b546a330a49d",
+    "source_index": 6,
+    "prior_u2_topology_passing_area_pixels": 68135,
+    "hard_floor_pixels": 70779
+  },
+  "candidate_contract": {
+    "trigger": "Saved topology-passing area underfill on selected multi-anchor interfaces.",
+    "choice_rule": "Within each selected interface, bisect every original anchor that was selected, freshly nuclei-feasible, and legally bisectable; rank anchors by mask area then stable id only for deterministic execution.",
+    "rounds": 1,
+    "recursive_subdivision": false,
+    "threshold_changes": 0,
+    "topology_failure_rescue_permitted": false,
+    "fresh_nuclei_preflight_required": true
+  },
+  "execution": {
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "reserved_evaluation_access": false,
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, incomplete receipt, or failure to bind the frozen source is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized one development counterexample after 41 focused tests passed and the complete 15-patient development result showed thirty U1 and fourteen U2 failures reached the one-anchor-only selected-refinement path."
+}
