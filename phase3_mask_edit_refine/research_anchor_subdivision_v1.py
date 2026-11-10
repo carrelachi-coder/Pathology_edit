@@ -17,7 +17,6 @@ import numpy as np
 from phase3_mask_edit_refine.models import SceneAnchorSegment
 from phase3_mask_edit_refine.scene import SceneAnalysis
 
-
 CANDIDATE_VERSION = "directional-single-anchor-geodesic-bisection-v1"
 
 
@@ -27,6 +26,12 @@ def minimum_witness_contact_pixels(reference_area_p95: float) -> int:
     if not np.isfinite(reference_area_p95) or reference_area_p95 <= 0.0:
         raise ValueError("reference area p95 must be positive and finite")
     return int(np.ceil(np.sqrt(4.0 * float(reference_area_p95) / np.pi)))
+
+
+def geodesic_span_steps(anchor_mask: np.ndarray) -> int:
+    """Return the exact 8-neighbour diameter used by the reviewed policy."""
+
+    return _geodesic_diameter_steps(np.asarray(anchor_mask, dtype=bool))
 
 
 def subdivision_eligibility_for_underfill_replan(

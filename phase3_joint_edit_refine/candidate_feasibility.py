@@ -11,8 +11,6 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
-from phase3_mask_edit_refine.passive_observer import observe
-
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import validate_edit_plan
 from phase3_mask_edit_refine.candidates import (
@@ -24,6 +22,7 @@ from phase3_mask_edit_refine.execution import (
 )
 from phase3_mask_edit_refine.gates import GateContext, GateRegistry
 from phase3_mask_edit_refine.models import CaseContext, EditPlan
+from phase3_mask_edit_refine.passive_observer import observe
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
 from .feasibility import (
@@ -42,7 +41,7 @@ from .tissue_planner import MultiInterfaceResearchTissuePlanner
 from .tissue_tools import compile_tissue_tool_program
 
 CANDIDATE_FEASIBILITY_COMPILER_VERSION = (
-    "joint-candidate-feasibility-compiler-v3"
+    "joint-candidate-feasibility-compiler-v4-track-b-feedback"
 )
 _COMPILER_CAPABILITY_ISSUER = object()
 _ISSUED_TISSUE_PORTFOLIOS: dict[int, tuple[tuple[int, str], ...]] = {}
@@ -58,6 +57,38 @@ _PANDA_GROWTH_ARCHITECTURE_PRIMITIVES = frozenset(
         "cohesive-boundary-expansion-v1",
     }
 )
+
+
+class TissueWitnessCompilationError(JointContractError):
+    """One bounded witness search failed with immutable structured feedback."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        errors: tuple[str, ...],
+        terminal_feedback: Mapping[str, Any],
+    ) -> None:
+        super().__init__(message)
+        self.errors = tuple(errors)
+        self.terminal_feedback = dict(terminal_feedback)
+
+
+class TissuePortfolioCompilationError(JointContractError):
+    """An ordinary portfolio failed and exposes only audited retry evidence."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        vetoes: tuple["TissueCandidateVeto", ...],
+        structured_failures: tuple[Mapping[str, Any], ...],
+    ) -> None:
+        super().__init__(message)
+        self.vetoes = tuple(vetoes)
+        self.structured_failures = tuple(
+            dict(item) for item in structured_failures
+        )
 
 
 def _tissue_portfolio_allows_anchor_diversification(
@@ -698,6 +729,7 @@ class CandidateFeasibilityCompiler:
         seen_changes: set[str] = set()
         failures: list[str] = []
         vetoes: list[TissueCandidateVeto] = []
+        structured_failures: list[dict[str, Any]] = []
         # Compile the ordinary global solve, then independently prefer every
         # feasible interface/anchor pair.  An interface can expose several
         # legal spatial sectors; treating it as one candidate would collapse
@@ -882,6 +914,19 @@ class CandidateFeasibilityCompiler:
             except Exception as exc:  # noqa: BLE001 - every veto is audited
                 error = f"{type(exc).__name__}: {exc}"
                 failures.append(error)
+                if isinstance(exc, TissueWitnessCompilationError):
+                    structured_failures.append(
+                        {
+                            "preferred_interface_ids": [
+                                value
+                                for value in feasible
+                                if value not in deprioritized
+                            ],
+                            "preferred_anchor_ids": list(preferred_anchor_ids),
+                            "terminal_feedback": dict(exc.terminal_feedback),
+                            "errors": list(exc.errors),
+                        }
+                    )
                 payload = {
                     "preferred_interface_ids": [
                         value
@@ -933,9 +978,11 @@ class CandidateFeasibilityCompiler:
             if len(witnesses) >= max(1, maximum_candidates):
                 break
         if not witnesses:
-            raise JointContractError(
+            raise TissuePortfolioCompilationError(
                 "whole-mask topology portfolio has no executable survivor: "
-                + "; ".join(failures)
+                + "; ".join(failures),
+                vetoes=tuple(vetoes),
+                structured_failures=tuple(structured_failures),
             )
         portfolio = TissueCandidatePortfolio(
             survivors=tuple(witnesses),
@@ -1300,10 +1347,12 @@ class CandidateFeasibilityCompiler:
                     "attempted_interface_ids": attempted_interface_ids,
                     "preferred_anchor_ids": list(preferred_anchor_ids),
                 }
-        raise JointContractError(
+        raise TissueWitnessCompilationError(
             "whole-mask topology witness is not executable after bounded "
             "replan: "
-            + "; ".join(errors)
+            + "; ".join(errors),
+            errors=tuple(errors),
+            terminal_feedback=feedback,
         )
 
 

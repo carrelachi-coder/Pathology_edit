@@ -120,7 +120,7 @@ from .tissue_tools import (
     bind_tissue_plan_tool_program,
     compile_tissue_tool_program,
 )
-
+from .topology_track_b import compile_tissue_portfolio_with_track_b
 
 INFILTRATION_BUDGET_PRIMITIVES = frozenset(
     {
@@ -200,6 +200,8 @@ class _PreparedInterpretation:
     tissue_bundle: Any | None
     nuclei_preflight: Any | None
     tissue_feasibility_portfolio: Any | None
+    scene: Any
+    track_b_audit: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -817,6 +819,7 @@ class JointPathologyEditWorkflow:
             )
             usage["mechanism_selection"] = selection_usage
             bundle = selected.bundle
+            scene = selected.scene
             if bundle.primitive.scope == "cell_only":
                 return self._run_cell_only(
                     audit=audit,
@@ -851,6 +854,11 @@ class JointPathologyEditWorkflow:
                 audit.write_json(
                     "candidate_feasibility_portfolio.json",
                     tissue_feasibility_portfolio.to_metadata(),
+                )
+            if selected.track_b_audit is not None:
+                audit.write_json(
+                    "topology_track_b_preparation.json",
+                    selected.track_b_audit,
                 )
             tissue_scene = augment_tissue_scene_with_nuclei_preflight(
                 scene.tissue,
@@ -1135,29 +1143,56 @@ class JointPathologyEditWorkflow:
                         and planning_pass == 0
                     )
                     if not portfolio_is_current:
-                        tissue_feasibility_portfolio = (
-                            CandidateFeasibilityCompiler(
+                        track_b_result = compile_tissue_portfolio_with_track_b(
+                            compiler=CandidateFeasibilityCompiler(
                                 maximum_attempts=(
                                     self.config.maximum_tissue_planning_attempts
                                 ),
                                 gates=self.tissue_gates,
-                            ).compile_tissue_portfolio(
-                                tissue_case=tissue_case,
-                                source_tissue=source_tissue,
-                                schema=schema,
-                                scene=scene,
-                                tissue_bundle=tissue_bundle,
-                                joint_bundle=bundle,
-                                nuclei_preflight=nuclei_preflight,
-                                authority_binding=current_portfolio_binding,
-                                maximum_candidates=(
-                                    self.config.maximum_tissue_candidates
+                            ),
+                            joint_case=case,
+                            tissue_case=tissue_case,
+                            source_tissue=source_tissue,
+                            schema=schema,
+                            scene=scene,
+                            tissue_bundle=tissue_bundle,
+                            joint_bundle=bundle,
+                            allocation=allocation,
+                            nuclei_preflight=nuclei_preflight,
+                            maximum_candidates=(
+                                self.config.maximum_tissue_candidates
+                            ),
+                            revoked_candidate_ids=tuple(
+                                sorted(revoked_tissue_candidate_ids)
+                            ),
+                        )
+                        tissue_feasibility_portfolio = track_b_result.portfolio
+                        if track_b_result.track_b_used:
+                            scene = track_b_result.scene
+                            nuclei_preflight = track_b_result.nuclei_preflight
+                            tissue_scene = augment_tissue_scene_with_nuclei_preflight(
+                                scene.tissue,
+                                nuclei_preflight,
+                                auxiliary_structure_masks=(
+                                    scene.auxiliary_structure_masks
                                 ),
-                                revoked_candidate_ids=tuple(
-                                    sorted(revoked_tissue_candidate_ids)
+                                required_auxiliary_structure_ids=(
+                                    bundle.mechanism.representability.protected_auxiliary_structures
+                                ),
+                                receiving_auxiliary_structure_ids=(
+                                    bundle.mechanism.representability.receiving_auxiliary_structures
                                 ),
                             )
-                        )
+                            audit.write_json(
+                                f"topology_track_b_pass_{planning_pass + 1}.json",
+                                track_b_result.audit,
+                            )
+                            current_portfolio_binding = track_b_result.authority_binding
+                            current_portfolio_binding_sha = (
+                                _canonical_metadata_sha256(
+                                    current_portfolio_binding
+                                )
+                            )
                     tissue_feasibility_portfolio.validate_authority(
                         expected_binding_sha256=current_portfolio_binding_sha
                     )
@@ -2384,33 +2419,27 @@ class JointPathologyEditWorkflow:
                             allocation=allocation,
                             shape=source_tissue.shape,
                         )
-                        tissue_feasibility_portfolio = (
-                            CandidateFeasibilityCompiler(
+                        track_b_result = compile_tissue_portfolio_with_track_b(
+                            compiler=CandidateFeasibilityCompiler(
                                 maximum_attempts=(
                                     self.config.maximum_tissue_planning_attempts
                                 ),
                                 gates=self.tissue_gates,
-                            ).compile_tissue_portfolio(
-                                tissue_case=tissue_case,
-                                source_tissue=source_tissue,
-                                schema=schema,
-                                scene=scene,
-                                tissue_bundle=tissue_bundle,
-                                joint_bundle=bundle,
-                                nuclei_preflight=nuclei_preflight,
-                                authority_binding=(
-                                    _tissue_portfolio_authority_binding(
-                                        case=candidate_case,
-                                        tissue_case=tissue_case,
-                                        source_tissue=source_tissue,
-                                        bundle=bundle,
-                                        tissue_bundle=tissue_bundle,
-                                        allocation=allocation,
-                                        nuclei_preflight=nuclei_preflight,
-                                    )
-                                ),
-                            )
+                            ),
+                            joint_case=candidate_case,
+                            tissue_case=tissue_case,
+                            source_tissue=source_tissue,
+                            schema=schema,
+                            scene=scene,
+                            tissue_bundle=tissue_bundle,
+                            joint_bundle=bundle,
+                            allocation=allocation,
+                            nuclei_preflight=nuclei_preflight,
                         )
+                        tissue_feasibility_portfolio = track_b_result.portfolio
+                        nuclei_preflight = track_b_result.nuclei_preflight
+                        prepared_scene = track_b_result.scene
+                        track_b_audit = track_b_result.audit
                         feasibility.update(
                             {
                                 "feasible_interface_count": len(
@@ -2558,6 +2587,16 @@ class JointPathologyEditWorkflow:
                         nuclei_preflight=nuclei_preflight,
                         tissue_feasibility_portfolio=(
                             tissue_feasibility_portfolio
+                        ),
+                        scene=(
+                            prepared_scene
+                            if bundle.primitive.scope == "tissue_and_cell"
+                            else scene
+                        ),
+                        track_b_audit=(
+                            track_b_audit
+                            if bundle.primitive.scope == "tissue_and_cell"
+                            else None
                         ),
                     )
                 except (JointContractError, RefineContractError, ValueError) as exc:

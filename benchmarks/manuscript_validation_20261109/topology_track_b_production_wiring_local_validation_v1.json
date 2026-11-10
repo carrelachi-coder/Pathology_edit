@@ -1,0 +1,68 @@
+{
+  "kind": "topology-track-b-production-wiring-local-validation-v1",
+  "date": "2026-11-10",
+  "status": "local_implementation_complete_not_deployed_not_execution_authorized",
+  "review_decision": "accepted_in_codex_chat",
+  "review_scope": "topology_track_b_production_wiring_proposal_v1",
+  "implementation": {
+    "compiler_version": "joint-candidate-feasibility-compiler-v4-track-b-feedback",
+    "workflow_version": "directional-anchor-subdivision-workflow-v1",
+    "subdivision_candidate_version": "directional-single-anchor-geodesic-bisection-v1",
+    "files": {
+      "phase3_joint_edit_refine/candidate_feasibility.py": "672b3920789fb0860bf6a94dea7847e19519aa200fda37a3221bf5d6208eb70f",
+      "phase3_joint_edit_refine/topology_track_b.py": "06cd9d6df3b8f19e7513fc922e5970818c2c4ac883c91ff7ff5f9bb421d13550",
+      "phase3_joint_edit_refine/workflow.py": "dcbba65f6ae9411e392db1797588666e6f93ac884e9b5eb1b16f4fcca7f1db03",
+      "phase3_mask_edit_refine/research_anchor_subdivision_v1.py": "a3dd0a5349cd1f5bde39c9b6b979ad8ab419eb898f4781065c7eea6b9150b2bc",
+      "tests/test_topology_track_b.py": "d21a08b7393ef25ceb6d843e17837725b06f854149928c1985f2c7bf071b08cd"
+    }
+  },
+  "implemented_contract": [
+    "ordinary Track A portfolio always runs first",
+    "Track B requires structured topology-passing area-underfill feedback",
+    "all and only eligible remaining single-anchor interfaces are transformed in sorted interface-id order",
+    "there is one transformation round and no recursive subdivision",
+    "the transformed joint scene receives a fresh nuclei preflight",
+    "parent-anchor feasibility is never reused",
+    "the transformed preflight receives a fresh complete authority binding",
+    "the transformed portfolio is compiled by a fresh compiler invocation",
+    "original and transformed scene, preflight, authority, parent anchors and subanchors are hashed in the audit",
+    "only an ordinary hard-gate-passing compiler survivor is accepted",
+    "a failed Track B portfolio retains both the original and transformed audited failures"
+  ],
+  "tests": [
+    {
+      "command": "python -m pytest -q tests/test_topology_track_b.py tests/test_research_anchor_subdivision_v1.py",
+      "result": "21 passed",
+      "scope": "Track B orchestration, fail-closed eligibility, deterministic bisection, fresh preflight and identity separation"
+    },
+    {
+      "command": "python -m pytest -q tests/test_joint_edit_refine.py tests/test_joint_breast_workflow.py tests/test_topology_track_b.py tests/test_research_anchor_subdivision_v1.py",
+      "result": "253 passed, 346 subtests passed",
+      "scope": "joint workflow and historical Track A regression"
+    },
+    {
+      "command": "python -m pytest -q tests/test_joint_edit_refine.py tests/test_joint_breast_workflow.py tests/test_p1_authority_preflight.py tests/test_glas_authority_integration.py tests/test_panda_primitive_safety.py",
+      "result": "254 passed, 354 subtests passed, 5 failed before the changed execution path",
+      "scope": "broader regression including an existing P1 resource fixture",
+      "known_fixture_failure": "the checked-in p1_glas_panda_meta_eval_selection_v1.json does not contain the 22 evaluations required by the P1 authority materializer; all five failures stop at that unchanged input-count check"
+    }
+  ],
+  "boundaries": {
+    "target_server_deployment": false,
+    "real_development_patient_execution": false,
+    "reserved_evaluation_execution": false,
+    "qualification_updates_permitted": false,
+    "four_target_compilation": false,
+    "h_and_e_generation": false,
+    "physician_study": false,
+    "new_execution_manifest_required": true
+  },
+  "research_state_unchanged": {
+    "source_topology_passed_patients": 17,
+    "upper_bound_including_unknown": 19,
+    "four_target_approved_patients": 0,
+    "formal_target_patients": 30,
+    "nominal_budgets_percent": [19, 32],
+    "tissue_hard_floors_percent": [14, 27]
+  }
+}
