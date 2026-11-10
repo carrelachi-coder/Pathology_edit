@@ -1,0 +1,32 @@
+{
+  "schema_version": "topology-cascade-counterexample-probe-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "incomplete_after_first_case_transport_termination",
+  "launch_manifest": "topology_cascade_counterexample_probe_v1.json",
+  "implementation_commit": "0ac9bdda",
+  "authorization_commit": "c3b96539",
+  "capacity_screen_sha256": "e3054a89e24716b0a55c9198874950eba7c6a7c6527093004b141d93dd64598b",
+  "automatic_retries": 0,
+  "completed_cases": 1,
+  "requested_cases": 2,
+  "completed_case": {
+    "patient_id": "TCGA-AN-A0AR",
+    "reference_id": "BCSS_joint_supplement_b546a330a49d",
+    "both_significant_topology_pass": false,
+    "u1_topology_pass": false,
+    "u2_topology_pass": true,
+    "u2_realized_tissue_pixels": 73591,
+    "u2_hard_gate_passed": true,
+    "u2_track_b_mode": "maximal_selected"
+  },
+  "not_started_case": {
+    "patient_id": "TCGA-E2-A158",
+    "reference_id": "BCSS_joint_supplement_19a0fd2142da",
+    "reason": "The first case emitted an approximately 11 MB receipt to the SSH PTY; the transport terminated after that print and before the second source entered the loop."
+  },
+  "disposition": {
+    "first_case_retry_permitted": false,
+    "second_case_may_receive_new_single_case_authorization": true,
+    "formal_qualification_update_permitted": false
+  }
+}
