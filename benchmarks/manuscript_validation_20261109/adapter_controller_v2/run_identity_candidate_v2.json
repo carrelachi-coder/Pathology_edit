@@ -70,10 +70,12 @@
     "seconds_per_source_pair": 1200,
     "retries": 0
   },
-  "identity_field_semantics": "Input SHA is the canonical source-asset SHA mapping; case mapping SHA is canonical sorted compact JSON. Contract SHA is retained from unchanged historical source/operation contract and must be independently reconciled before launch. Startup SHA binds the explicit v2 descriptor. Run SHA binds this candidate descriptor, not the eventual launch manifest or a recovered historical RNG state.",
+  "identity_field_semantics": "Source and case mappings match the prior frozen descriptor. The new contract identity binds the 521-file inventory and unchanged source/templates/budgets/floors/limits; the old opaque contract SHA is historical reference only. Startup SHA binds the explicit v2 descriptor. Run SHA binds this candidate descriptor, not a launch manifest or recovered historical RNG state.",
   "startup_identity_descriptor_sha256": "c879c5ac7c935c2370ea0c6f994a1935b7e430cd9a2c172df6b0d1c88bb400a4",
   "startup_difference_acceptance_sha256": "7f9b57c2622cddb6fb1ec123d326a1f32d9e8161948c59d7f9127c5427d4aa73",
   "target_import_closeout_sha256": "94569d21e3b3f0de1313ed90a295a478dc67a60c5b878587c040894a248419c0",
   "validator_policy_sha256": "ecb503aab14a74269c4ae119494bf6d6deecededaf91811a15f684a28f3eb9ea",
-  "execution_permitted": false
+  "execution_permitted": false,
+  "contract_identity_descriptor_sha256": "4998189b7396ab84320022bc5097d4efa5efa43c510baef45b55cfa263937f7d",
+  "legacy_contract_sha256_unverified_derivation": "b65eb80539e905a3a26d7a723006c9ec77c17d250d271c7f751ef95ed3cbc24d"
 }
