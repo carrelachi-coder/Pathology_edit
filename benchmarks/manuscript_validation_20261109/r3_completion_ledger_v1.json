@@ -286,5 +286,20 @@
     "pix2pix_final_checkpoint_lineage": "unknown",
     "formal_30_patient_audit_complete": false,
     "interpretation": "References and absent references are not proof of final-checkpoint use or independence; audit the selected source and checkpoint identities after cohort freeze."
+  },
+  "capacity_patient_checkpoint_crosswalk": {
+    "status": "candidate_universe_prepared_not_final_30_patient_audit",
+    "evidence": "capacity_patient_checkpoint_reference_crosswalk_v1.json",
+    "patient_groups": 84,
+    "candidate_source_image_sha_bound": true,
+    "frozen_model_asset_sha_bound": true,
+    "cross_segmentator_manifest_references_bound": true,
+    "unknowns_retained": [
+      "FLUX patient training overlap",
+      "CellViT patient training overlap",
+      "Pix2pix final checkpoint training lineage",
+      "historical CellViT pseudolabel generation checkpoint"
+    ],
+    "final_selected_30_audit_complete": false
   }
 }
