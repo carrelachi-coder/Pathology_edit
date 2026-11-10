@@ -7,11 +7,15 @@ import pytest
 from phase3_joint_edit_refine.candidate_feasibility import (
     TissuePortfolioCompilationError,
 )
+from phase3_joint_edit_refine.tissue_planner import (
+    _expected_tissue_authority_binding_sha256,
+)
 from phase3_joint_edit_refine.topology_track_b import (
     TrackBPortfolioCompilationError,
     compile_tissue_portfolio_with_track_b,
 )
 from phase3_mask_edit.core.labels import MaskProfileSchema
+from phase3_mask_edit_refine.models import RefineContractError
 from phase3_mask_edit_refine.scene import build_scene_analysis
 
 
@@ -238,3 +242,89 @@ def test_fresh_track_b_failure_retains_both_audited_failures(monkeypatch):
     assert caught.value.track_b_error is transformed
     assert caught.value.audit["rounds"] == 1
     assert caught.value.audit["track_b_failure"]["message"] == str(transformed)
+
+
+def test_planner_preserves_valid_track_b_authority_extension(monkeypatch):
+    import phase3_joint_edit_refine.tissue_planner as module
+
+    base = {"schema_version": "test", "nuclei_preflight_sha256": "preflight"}
+    extension = {
+        "workflow_version": "workflow-v1",
+        "candidate_version": "candidate-v1",
+        "original_scene_sha256": "a" * 64,
+        "transformed_scene_sha256": "b" * 64,
+        "transformed_interfaces_sha256": "c" * 64,
+    }
+    monkeypatch.setattr(
+        module,
+        "build_tissue_portfolio_authority_binding",
+        lambda **kwargs: dict(base),
+    )
+    monkeypatch.setattr(
+        module,
+        "load_id_mask",
+        lambda path: np.zeros((2, 2), dtype=np.uint8),
+    )
+    portfolio = SimpleNamespace(
+        authority_binding={
+            **base,
+            "track_b_transformation_authority": extension,
+        }
+    )
+    digest = _expected_tissue_authority_binding_sha256(
+        case=SimpleNamespace(source_mask_uri="unused"),
+        joint_case=object(),
+        joint_bundle=object(),
+        tissue_bundle=object(),
+        allocation=object(),
+        nuclei_preflight=object(),
+        candidate_portfolio=portfolio,
+    )
+    assert digest == module.canonical_metadata_sha256(portfolio.authority_binding)
+
+
+@pytest.mark.parametrize(
+    "extension",
+    [
+        {"workflow_version": "workflow-v1"},
+        {
+            "workflow_version": "workflow-v1",
+            "candidate_version": "candidate-v1",
+            "original_scene_sha256": "a" * 64,
+            "transformed_scene_sha256": "a" * 64,
+            "transformed_interfaces_sha256": "c" * 64,
+        },
+    ],
+)
+def test_planner_rejects_invalid_track_b_authority_extension(
+    monkeypatch, extension
+):
+    import phase3_joint_edit_refine.tissue_planner as module
+
+    base = {"schema_version": "test"}
+    monkeypatch.setattr(
+        module,
+        "build_tissue_portfolio_authority_binding",
+        lambda **kwargs: dict(base),
+    )
+    monkeypatch.setattr(
+        module,
+        "load_id_mask",
+        lambda path: np.zeros((2, 2), dtype=np.uint8),
+    )
+    portfolio = SimpleNamespace(
+        authority_binding={
+            **base,
+            "track_b_transformation_authority": extension,
+        }
+    )
+    with pytest.raises(RefineContractError, match="transformation authority"):
+        _expected_tissue_authority_binding_sha256(
+            case=SimpleNamespace(source_mask_uri="unused"),
+            joint_case=object(),
+            joint_bundle=object(),
+            tissue_bundle=object(),
+            allocation=object(),
+            nuclei_preflight=object(),
+            candidate_portfolio=portfolio,
+        )

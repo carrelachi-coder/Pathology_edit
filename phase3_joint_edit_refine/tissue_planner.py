@@ -11,8 +11,6 @@ from typing import Any
 
 import numpy as np
 from scipy import ndimage
-
-from phase3_mask_edit_refine.passive_observer import observe
 from skimage.morphology import convex_hull_image
 
 from phase3_mask_edit_refine.agents import (
@@ -30,6 +28,7 @@ from phase3_mask_edit_refine.models import (
     RefineContractError,
     ToolProgram,
 )
+from phase3_mask_edit_refine.passive_observer import observe
 from phase3_mask_edit_refine.scene import SceneAnalysis
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
@@ -87,10 +86,42 @@ def _expected_tissue_authority_binding_sha256(
         allocation=allocation,
         nuclei_preflight=nuclei_preflight,
     )
-    if dict(binding) != expected:
+    observed = dict(binding)
+    transformation_authority = observed.pop(
+        "track_b_transformation_authority", None
+    )
+    if observed != expected:
         raise RefineContractError(
             "tissue portfolio authority is detached from current runtime inputs or skills"
         )
+    if transformation_authority is not None:
+        required = {
+            "workflow_version",
+            "candidate_version",
+            "original_scene_sha256",
+            "transformed_scene_sha256",
+            "transformed_interfaces_sha256",
+        }
+        if (
+            not isinstance(transformation_authority, Mapping)
+            or set(transformation_authority) != required
+            or any(
+                not isinstance(transformation_authority.get(key), str)
+                or not transformation_authority.get(key)
+                for key in required
+            )
+            or transformation_authority["original_scene_sha256"]
+            == transformation_authority["transformed_scene_sha256"]
+        ):
+            raise RefineContractError(
+                "Track B transformation authority is incomplete or invalid"
+            )
+        expected = {
+            **expected,
+            "track_b_transformation_authority": dict(
+                transformation_authority
+            ),
+        }
     return canonical_metadata_sha256(expected)
 
 

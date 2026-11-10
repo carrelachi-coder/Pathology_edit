@@ -841,6 +841,15 @@ class JointPathologyEditWorkflow:
             tissue_bundle = selected.tissue_bundle
             nuclei_preflight = selected.nuclei_preflight
             tissue_feasibility_portfolio = selected.tissue_feasibility_portfolio
+            track_b_transformation_authority = (
+                dict(
+                    tissue_feasibility_portfolio.authority_binding.get(
+                        "track_b_transformation_authority", {}
+                    )
+                )
+                if tissue_feasibility_portfolio
+                else {}
+            )
             if (
                 allocation is None
                 or tissue_bundle is None
@@ -1131,6 +1140,13 @@ class JointPathologyEditWorkflow:
                             nuclei_preflight=nuclei_preflight,
                         )
                     )
+                    if track_b_transformation_authority:
+                        current_portfolio_binding = {
+                            **current_portfolio_binding,
+                            "track_b_transformation_authority": dict(
+                                track_b_transformation_authority
+                            ),
+                        }
                     current_portfolio_binding_sha = _canonical_metadata_sha256(
                         current_portfolio_binding
                     )
@@ -1191,6 +1207,11 @@ class JointPathologyEditWorkflow:
                                 track_b_result.audit,
                             )
                             current_portfolio_binding = track_b_result.authority_binding
+                            track_b_transformation_authority = dict(
+                                current_portfolio_binding.get(
+                                    "track_b_transformation_authority", {}
+                                )
+                            )
                             current_portfolio_binding_sha = (
                                 _canonical_metadata_sha256(
                                     current_portfolio_binding
