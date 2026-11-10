@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Review and disposition of the versioned Adapter v2 startup difference, then freeze a real execution manifest and obtain separate one-shot S07 authorization. Import-only target smoke passed; no real diagnostic or formal cohort authorized.",
+  "current_next_deliverable": "Freeze a final Adapter v2 S07 launch manifest from the accepted startup difference and recheckable contract identity; then perform independent/live preflight before any new one-shot S07 authorization. No formal cohort or H&E launch permitted.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -339,10 +339,14 @@
     "target_import_preparation_v2_authorization_consumed": true,
     "startup_difference_acceptance": "https://github.com/carrelachi-coder/Pathology_edit/blob/53080224/benchmarks/manuscript_validation_20261109/adapter_controller_v2/startup_difference_acceptance_v1.json",
     "startup_difference_acceptance_sha256": "7f9b57c2622cddb6fb1ec123d326a1f32d9e8161948c59d7f9127c5427d4aa73",
-    "real_run_identity_candidate": "https://github.com/carrelachi-coder/Pathology_edit/blob/6a232cba/benchmarks/manuscript_validation_20261109/adapter_controller_v2/run_identity_candidate_v2.json",
-    "real_run_identity_candidate_sha256": "037bcafcba2cd8407fa65543c31df4d8ac684d32d8a272898b708c2ed3a50e13",
+    "real_run_identity_candidate": "https://github.com/carrelachi-coder/Pathology_edit/blob/539b9e2d/benchmarks/manuscript_validation_20261109/adapter_controller_v2/run_identity_candidate_v2.json",
+    "real_run_identity_candidate_sha256": "9fa6074884298227ce2348ddc71e00540a3a56680c2523f77428957290525fdd",
     "real_run_identity_candidate_execution_permitted": false,
-    "remaining_gate": "Independently reconcile contract SHA, freeze final launch manifest and live target preflight, then request a new SHA-bound one-shot authorization before real S07."
+    "remaining_gate": "Freeze final launch manifest with recheckable v2 contract identity, perform live target preflight and independent review, then request a new SHA-bound one-shot authorization before real S07.",
+    "contract_identity_candidate": "https://github.com/carrelachi-coder/Pathology_edit/blob/539b9e2d/benchmarks/manuscript_validation_20261109/adapter_controller_v2/contract_identity_candidate_v2.json",
+    "contract_identity_candidate_sha256": "4998189b7396ab84320022bc5097d4efa5efa43c510baef45b55cfa263937f7d",
+    "contract_inventory_local_hash_audit": "521/521 local resource hashes match the frozen inventory; source/template/mapping/budget/floor/limit fields match prior launch manifest. Target live assets must be rechecked before launch.",
+    "legacy_contract_sha256_status": "Opaque historical value retained as reference; derivation unavailable, not used as proof of v2 contract identity."
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
