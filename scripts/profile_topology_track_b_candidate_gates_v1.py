@@ -28,6 +28,7 @@ def _install_gate_timing() -> None:
             {
                 "check_id": item.check_id,
                 "detail": item.detail[:500],
+                "metrics": item.metrics,
             }
             for item in report.checks
             if not item.passed

@@ -1,0 +1,14 @@
+{
+  "schema_version": "topology-track-b-s07-gate-profile-result-v1",
+  "status": "completed_as_bounded_profile_not_qualification",
+  "authorization_consumed": true,
+  "profile_exit_code": 124,
+  "hard_timeout_seconds": 360,
+  "gate_results": [
+    {"call": 1, "candidate_id": "cand:001", "tool": "interface_sdf", "changed_pixels": 78781, "elapsed_seconds": 111.72183049656451, "failed_check": "execution_contract_fidelity"},
+    {"call": 2, "candidate_id": "cand:001", "tool": "connected_morphology", "changed_pixels": 78781, "elapsed_seconds": 190.45750955492258, "failed_check": "execution_contract_fidelity"},
+    {"call": 3, "candidate_id": "cand:001", "tool": "organic_v2", "changed_pixels": 78781, "elapsed_seconds": 287.6974536757916, "failed_check": "execution_contract_fidelity"}
+  ],
+  "conclusion": "All three concrete-executor replay candidates carry the same compiled 78,781-pixel raster and fail the same fidelity gate before any shape variation can be selected. Structured gate metrics are required to distinguish replay identity, per-interface ownership/allocation, anchor coverage, and depth-profile causes.",
+  "research_state_change": false
+}
