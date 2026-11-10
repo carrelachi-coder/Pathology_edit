@@ -1,0 +1,34 @@
+{
+  "kind": "limited-topology-adapter-v2-import-preparation-request-v2",
+  "status": "not_authorized_not_run",
+  "manifest_file": "benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_manifest_v2.json",
+  "manifest_sha256": "ac7d7fbec769bb9ebe2089f6e6136aa7484e583bd8caf4530446b390244eb7d7",
+  "prior_attempt": "v1 import-only launch failed at identity_gate before child import; authorization consumed and HOLD retained. See import_preparation_target_hold_v1.json.",
+  "scope": "Rehash the already isolated 14-file snapshot, stage this v2 manifest without replacing any file, then make one import-only smoke attempt in a new output directory. No source, S07, witness, H&E or formal-cohort call.",
+  "launch_environment": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1"
+  },
+  "launch_argv": [
+    "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_candidate_0acdaf3e/scripts/smoke_adapter_controlled_topology_imports_v2.py",
+    "--manifest",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_candidate_0acdaf3e/import_preparation_manifest_v2.json",
+    "--output",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_v2_import_audit_v2_0acdaf3e"
+  ],
+  "bounds": {
+    "outer_watchdog_seconds": 600,
+    "per_import_child_seconds": 90,
+    "automatic_retries": 0,
+    "S07_calls": 0,
+    "witness_calls": 0,
+    "H_E_calls": 0
+  },
+  "failure_policy": "Any identity drift, timeout, invalid child report or import-order/state mismatch is HOLD; no retry under this authorization.",
+  "old_authorization_consumed": true,
+  "real_S07_authorized": false
+}
