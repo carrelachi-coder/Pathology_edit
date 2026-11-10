@@ -1,0 +1,88 @@
+{
+  "kind": "r3-topology-method-split-evaluator-reference-audit-v1",
+  "status": "read_only_proposal_audit_no_cohort_change",
+  "split_proposal_sha256": "1f44bfd0598629f4ea48f8c8af73956c9c45ced58af5249b86c7b00520b65af3",
+  "training_reference_audit_sha256": "2275ee67dd823c19fc1ccc3127b74540861d026bb37d8f16596109a1aa2859b1",
+  "partitions": {
+    "development": {
+      "patient_count": 16,
+      "manifest_references": {
+        "cross_train": {
+          "patients_with_exact_candidate_filename_reference": 15,
+          "patients_with_group_reference": 15
+        },
+        "cross_val": {
+          "patients_with_exact_candidate_filename_reference": 1,
+          "patients_with_group_reference": 1
+        },
+        "segmentator_coarse_train": {
+          "patients_with_exact_candidate_filename_reference": 15,
+          "patients_with_group_reference": 16
+        },
+        "segmentator_coarse_val": {
+          "patients_with_exact_candidate_filename_reference": 7,
+          "patients_with_group_reference": 16
+        },
+        "segmentator_fine_test": {
+          "patients_with_exact_candidate_filename_reference": 3,
+          "patients_with_group_reference": 3
+        },
+        "segmentator_fine_train": {
+          "patients_with_exact_candidate_filename_reference": 12,
+          "patients_with_group_reference": 12
+        },
+        "segmentator_fine_val": {
+          "patients_with_exact_candidate_filename_reference": 1,
+          "patients_with_group_reference": 1
+        }
+      },
+      "flux_patient_overlap_unknown": 16,
+      "cellvit_patient_overlap_unknown": 16,
+      "pix2pix_final_lineage_unknown": 16
+    },
+    "reserved_method_evaluation": {
+      "patient_count": 68,
+      "manifest_references": {
+        "cross_train": {
+          "patients_with_exact_candidate_filename_reference": 63,
+          "patients_with_group_reference": 63
+        },
+        "cross_val": {
+          "patients_with_exact_candidate_filename_reference": 5,
+          "patients_with_group_reference": 5
+        },
+        "segmentator_coarse_train": {
+          "patients_with_exact_candidate_filename_reference": 66,
+          "patients_with_group_reference": 68
+        },
+        "segmentator_coarse_val": {
+          "patients_with_exact_candidate_filename_reference": 25,
+          "patients_with_group_reference": 68
+        },
+        "segmentator_fine_test": {
+          "patients_with_exact_candidate_filename_reference": 10,
+          "patients_with_group_reference": 10
+        },
+        "segmentator_fine_train": {
+          "patients_with_exact_candidate_filename_reference": 50,
+          "patients_with_group_reference": 50
+        },
+        "segmentator_fine_val": {
+          "patients_with_exact_candidate_filename_reference": 8,
+          "patients_with_group_reference": 8
+        }
+      },
+      "flux_patient_overlap_unknown": 68,
+      "cellvit_patient_overlap_unknown": 68,
+      "pix2pix_final_lineage_unknown": 68
+    }
+  },
+  "interpretation": [
+    "These are retained manifest references, not proof of what final checkpoints trained on.",
+    "Segmentator coarse has a patient-group reference for every patient in both partitions. This proposed method holdout would not establish evaluator training independence.",
+    "FLUX and CellViT patient-level overlap and Pix2pix final checkpoint training lineage remain unknown for all patients in these partitions.",
+    "No patient is selected or excluded for formal R3 by this read-only audit."
+  ],
+  "formal_cohort_permitted": false,
+  "qualification_updates_permitted": false
+}

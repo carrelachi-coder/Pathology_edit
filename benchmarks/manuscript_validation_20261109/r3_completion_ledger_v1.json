@@ -341,6 +341,9 @@
     "old_pass_overlap_audit_sha256": "9e4adb30de86a9f2bfc8bedc2c29257fae1af68dd2db97a4a0a0b6dfc6575a95",
     "old_method_pass_patients_in_development": 3,
     "old_method_pass_patients_in_reserved_evaluation": 14,
-    "outcome_based_reassignment_permitted": false
+    "outcome_based_reassignment_permitted": false,
+    "evaluator_reference_audit": "topology_method_patient_split_evaluator_overlap_audit_v1.json",
+    "evaluator_reference_audit_sha256": "260f39489d541fb00434e32502d22b617e58e0735df5eb09d2cc1f7a50ab834b",
+    "reserved_evaluator_training_independence_proven": false
   }
 }
