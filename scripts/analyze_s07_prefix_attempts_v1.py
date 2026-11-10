@@ -96,6 +96,7 @@ def analyze(codec_dir: Path, expected_index_sha256: str) -> dict:
                     "probe_values_sha256": [],
                     "probe_rng_sha256": [],
                     "planner_selection_values_sha256": [],
+                    "probe_topology": [],
                 }
                 attempts.append(current)
             elif current is not None:
@@ -105,6 +106,21 @@ def analyze(codec_dir: Path, expected_index_sha256: str) -> dict:
                     current["probe_rng_sha256"].append(fingerprint(event.get("rng")))
                     current["hard_min_pixels"] = values["hard_min_pixels"]
                     topology = mapping(values["topology"])
+                    current["probe_topology"].append({
+                        "requested_pixels": values["total"],
+                        "realized_pixels": values["realized"],
+                        "hard_min_pixels": values["hard_min_pixels"],
+                        "passed": topology["passed"],
+                        "source_components_before": topology["source_components_before"],
+                        "source_components_after": topology["source_components_after"],
+                        "source_holes_before": topology["source_holes_before"],
+                        "source_holes_after": topology["source_holes_after"],
+                        "target_components_before": topology["target_components_before"],
+                        "target_components_after": topology["target_components_after"],
+                        "target_holes_before": topology["target_holes_before"],
+                        "target_holes_after": topology["target_holes_after"],
+                        "changed_component_area_passed": topology["changed_component_area_passed"],
+                    })
                     key = (
                         "max_topology_passing_realized_pixels"
                         if topology["passed"] is True

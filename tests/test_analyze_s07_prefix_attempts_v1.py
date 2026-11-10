@@ -24,8 +24,9 @@ def test_summarizes_only_committed_prefix_and_refuses_changed_index(tmp_path):
     writer = Writer(root, expected_operations=["U1", "U2"], target_block_bytes=512)
     _write(writer, "qualification.begin", {"case": {"fields": [["case_id", "U1"]]}})
     _write(writer, "compiler.attempt", {"attempt": 1})
-    _write(writer, "probe.complete", {"realized": 70, "hard_min_pixels": 100, "topology": {"mapping": [["passed", True]]}})
-    _write(writer, "probe.complete", {"realized": 110, "hard_min_pixels": 100, "topology": {"mapping": [["passed", False]]}})
+    topology = {"mapping": [["passed", True], ["source_components_before", 1], ["source_components_after", 1], ["source_holes_before", 0], ["source_holes_after", 0], ["target_components_before", 1], ["target_components_after", 1], ["target_holes_before", 0], ["target_holes_after", 0], ["changed_component_area_passed", True]]}
+    _write(writer, "probe.complete", {"total": 100, "realized": 70, "hard_min_pixels": 100, "topology": topology})
+    _write(writer, "probe.complete", {"total": 100, "realized": 110, "hard_min_pixels": 100, "topology": {"mapping": [[k, False if k == "passed" else v] for k, v in topology["mapping"]]}})
     _write(writer, "compiler.exception", {"exception": {"exception_type": "Underfill"}})
     _write(writer, "compiler.attempt", {"attempt": 2})
     writer._flush()  # Simulate a process that stops after a committed block.
@@ -35,6 +36,7 @@ def test_summarizes_only_committed_prefix_and_refuses_changed_index(tmp_path):
     assert result["committed_events"] == 6
     assert result["attempts"][0]["max_topology_passing_realized_pixels"] == 70
     assert result["attempts"][0]["max_topology_failing_realized_pixels"] == 110
+    assert result["attempts"][0]["probe_topology"][0]["source_holes_after"] == 0
     assert result["attempts"][0]["exception_type"] == "Underfill"
     assert len(result["attempts"][0]["probe_values_sha256"]) == 2
     assert len(result["attempts"][0]["probe_rng_sha256"]) == 2

@@ -1,0 +1,83 @@
+{
+  "kind": "s07-B-saved-probe-topology-readout-v1",
+  "source_report": "B_attempts_report.json",
+  "source_report_sha256": "52cfd0b6afc88ece033a00f81882d5551f096383ef82041c8af804ca44119fc8",
+  "evidence_scope": "21 probe.complete events in 270 committed blocks of an incomplete B process; U1 only",
+  "probe_events": 21,
+  "distinct_reported_probe_states": 4,
+  "probe_classes": [
+    {
+      "count": 4,
+      "requested_pixels": 82444,
+      "realized_pixels": 39094,
+      "source_holes_before": 13,
+      "source_holes_after": 12,
+      "source_components_before": 2,
+      "source_components_after": 2,
+      "target_components_before": 8,
+      "target_components_after": 8,
+      "target_holes_before": 0,
+      "target_holes_after": 0,
+      "changed_component_area_passed": true,
+      "topology_passed": false
+    },
+    {
+      "count": 4,
+      "requested_pixels": 70779,
+      "realized_pixels": 39094,
+      "source_holes_before": 13,
+      "source_holes_after": 12,
+      "source_components_before": 2,
+      "source_components_after": 2,
+      "target_components_before": 8,
+      "target_components_after": 8,
+      "target_holes_before": 0,
+      "target_holes_after": 0,
+      "changed_component_area_passed": true,
+      "topology_passed": false
+    },
+    {
+      "count": 7,
+      "requested_pixels": 82444,
+      "realized_pixels": 70729,
+      "source_holes_before": 13,
+      "source_holes_after": 10,
+      "source_components_before": 2,
+      "source_components_after": 2,
+      "target_components_before": 8,
+      "target_components_after": 8,
+      "target_holes_before": 0,
+      "target_holes_after": 0,
+      "changed_component_area_passed": true,
+      "topology_passed": false
+    },
+    {
+      "count": 6,
+      "requested_pixels": 70779,
+      "realized_pixels": 70728,
+      "source_holes_before": 13,
+      "source_holes_after": 10,
+      "source_components_before": 2,
+      "source_components_after": 2,
+      "target_components_before": 8,
+      "target_components_after": 8,
+      "target_holes_before": 0,
+      "target_holes_after": 0,
+      "changed_component_area_passed": true,
+      "topology_passed": false
+    }
+  ],
+  "proximate_saved_probe_failure": "All saved probes preserve source component count, target component count and target hole count; all decrease source hole count from 13 to 12 or 10. Under the frozen whole-mask audit with source-component resolution disabled and no selected target merge, this source-hole change makes topology.passed false. Realized area also falls below 70,779 in every saved probe.",
+  "mechanism_hypothesis": "The local guard updates selected source-component states while the final audit evaluates the entire source region; investigate whether multi-interface growth, source-component boundaries, or guard/whole-mask digital topology conventions permit a global source-hole resolution that local per-pixel checks miss. This is a hypothesis, not an established root cause.",
+  "follow_up_evidence_needed": [
+    "Reconstruct original source and each selected probe mask from complete capture or an independently authorized diagnostic with no business changes.",
+    "Locate exact pixels and step at which the whole-source hole count changes; distinguish component-wise from global union and digital connectivity conventions.",
+    "On frozen patient-level development cases, test a general mechanism only after the failure mode is confirmed; keep S07 out of independent validation."
+  ],
+  "prohibited_inferences": [
+    "Do not call any 70,729/70,728/39,094 result a valid safe area.",
+    "Do not infer a globally optimal area or that source-hole change explains all historical topology failures.",
+    "Do not change the 17/19 patient counts or issue S07 re-execution authorization from this partial trace."
+  ],
+  "qualification_updates_permitted": false
+}
