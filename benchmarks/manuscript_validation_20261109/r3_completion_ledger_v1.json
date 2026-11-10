@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Offline, versioned diagnosis of Adapter v2 per-event overhead and topology evidence limits from the archived 8,864,998-event U1 prefix. S07 authorization consumed; no replay, four-target batch, formal H&E or doctor study.",
+  "current_next_deliverable": "Build and test a standalone lossless fast-path candidate to remove duplicate per-event parsing, using the existing target profiling as a bounded hypothesis. S07 authorization consumed; no real replay or formal H&E.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -368,7 +368,10 @@
     "B_prefix_analysis_sha256": "366fc38d1dc6f46ef4711fad9b9a204a457d5a7f7bbbd2328b5d777eb206d358",
     "B_prefix_observed_case": "U1 Significant; 11 compiler attempts, 10 recorded topology-safe area underfill exceptions, last attempt unfinished at B timeout",
     "B_prefix_guard_event_fraction": 0.9999173152661738,
-    "next_engineering_question": "Determine per-event recording cost from existing synthetic profiling and archived B prefix; propose a versioned, lossless optimization only if evidence supports it. Do not simply extend frozen S07 deadline or reuse its authorization."
+    "next_engineering_question": "Independent default-off pre-parsed event fast-path prototype and differential benchmark; preserve byte-exact stream, completion, fault isolation and storage policy before any production integration.",
+    "B_event_cost_diagnosis": "https://github.com/carrelachi-coder/Pathology_edit/blob/1cc41250/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/B_event_cost_diagnosis_v1.json",
+    "B_event_cost_diagnosis_sha256": "4b385945f0a0a6bcdefd677a0b73d7a1ba9f6b5d36203fae9ffcc09a88494d38",
+    "cost_conclusion_boundary": "Real B committed at least 7387 events/s before timeout. Earlier target synthetic v4 profile identifies Writer.write_event/JSON reparse/reference traversal/reservation as likely cost centers, but is not a causal real-run profile. Do not extrapolate a required new deadline from this alone."
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
