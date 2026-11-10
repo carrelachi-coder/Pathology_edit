@@ -1,0 +1,31 @@
+{
+  "kind": "observer-array-scale-683-launch-request-v1",
+  "status": "design_budget_review_accepted_target_authorization_not_granted",
+  "proposal_sha256": "382c64e53956f85aef286df1aa86805575bb38925eea9130266604ca5904412c",
+  "review_acceptance": "User accepted the 683-array design and engineering budget in this conversation. This acceptance does not authorize target deployment or execution.",
+  "launch_manifest": "array_scale_683_launch_manifest_v1.json",
+  "launch_manifest_sha256": "c21bab61f25fed0e4aeb8399ccb385fe3194466c109b341552e3afdb44f82138",
+  "fixed_workload": {
+    "logical_events_each": 100000,
+    "generated_arrays_each": 683,
+    "array_shape": [
+      512,
+      512
+    ],
+    "array_dtype": "float64"
+  },
+  "limits": {
+    "setup_seconds": 60,
+    "encode_seal_each_arm_seconds": 900,
+    "overall_OS_watchdog_seconds": 2000,
+    "automatic_retries": 0
+  },
+  "failure_policy": "HOLD, no retry, no experimental acceptance proof.",
+  "forbidden_calls": {
+    "S07": 0,
+    "witness": 0,
+    "HE": 0,
+    "formal_cohort": 0
+  },
+  "old_authorizations_reusable": false
+}
