@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independently review the frozen dual-track local request. Track A aligns hole semantics; Track B is eligible only after a topology-passing underfill and now rebuilds scene identities, recomputes nuclei preflight, passes a synthetic CandidateFeasibilityCompiler execution and fails closed without complete source nucleus references. Do not integrate or prepare a real development-patient manifest until the separation invariant and boundary-witness meaning are reviewed. Historical 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
+  "current_next_deliverable": "Independently review the revised dual-track local request. Track A aligns hole semantics; Track B is eligible only after a topology-passing underfill, rebuilds scene identities, recomputes nuclei preflight and requires both subanchors to retain at least one source-reference equivalent cell diameter of boundary contact. Do not integrate or prepare a real development-patient manifest until the separation invariant and this case-calibrated witness scale are reviewed. Historical 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -75,35 +75,37 @@
   "directional_front_filter_diagnosis": {
     "status": "read_only_incomplete_prefix_analysis",
     "branch": "codex/limited-topology-adapter-controller-v2",
-    "commit": "92c60943",
+    "commit": "beeb7185",
     "evidence": "adapter_controller_v2/real_s07_diagnostic_v1/S07_directional_front_filter_readout_v1.json",
-    "evidence_sha256": "4fd8c42b3d9dd209eb644dc44f8b2bd0c14e3e9a85c3caaddbe39c027c914333",
+    "evidence_sha256": "39de5b1a31f8206bbde2f5698dc2418427d9ab520a0e291056c9f7e3c067de51",
     "nuclei_preflight_feasible_interfaces": 8,
     "retained_interfaces": 3,
     "excluded_single_anchor_interfaces": 5,
     "retained_floor_pixels": 70728,
     "hard_floor_pixels": 70779,
+    "single_anchor_contact_pixels": [44, 50, 85, 115, 150],
+    "reference_equivalent_diameter_pixels_ceiling": 29,
     "qualification_updates_permitted": false
   },
   "directional_anchor_subdivision_candidate": {
     "status": "local_synthetic_scene_preflight_and_compiler_candidate",
     "branch": "codex/topology-hole-semantics-v2",
-    "commit": "60aebb31",
+    "commit": "99f8fd10",
     "evidence": "directional_anchor_subdivision_v1_local_validation.json",
-    "evidence_sha256": "fca57089c87a967867792bc8cf0edbddc6e9dc77ec5fcd49f63e4998e7ba647e",
-    "targeted_tests_passed": 88,
+    "evidence_sha256": "4d54a075ffd82040223d4e52d092b4bf964f038d8741f321c067532af267ab15",
+    "targeted_tests_passed": 90,
     "targeted_subtests_passed": 85,
     "production_integrated": false,
     "real_patient_runs": 0,
-    "required_next": "Independently review the topology-passing-underfill eligibility boundary and whether the retained witness needs a minimum physical arc length.",
+    "required_next": "Independently review the topology-passing-underfill eligibility boundary and the one-reference-equivalent-diameter minimum witness scale.",
     "qualification_updates_permitted": false
   },
   "topology_dual_track_local_review": {
     "status": "frozen_for_independent_review_no_execution_authority",
     "branch": "codex/topology-hole-semantics-v2",
-    "commit": "13575af8",
+    "commit": "c7dad70f",
     "request": "topology_dual_track_local_review_request_v1.json",
-    "request_sha256": "4765f3ea9600cdfb0a76e34315d987afe42bcffd76bfef99ca3f0908ab9a1573",
+    "request_sha256": "8ca683df0afdb7cc56ca84a180406a9ef328427128fb2ca1ac3062340abeed85",
     "separation_invariant": "Track B cannot rescue topology failure; it is evaluated only after Track A independently yields topology-passing underfill.",
     "execution_authorized": false
   },
