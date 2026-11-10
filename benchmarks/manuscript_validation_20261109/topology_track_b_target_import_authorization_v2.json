@@ -1,0 +1,17 @@
+{
+  "kind": "topology-track-b-target-import-authorization-v2",
+  "date": "2026-11-10",
+  "status": "authorized_once_not_consumed",
+  "authorization_basis": "Codex readiness decision under the user's standing authorization policy",
+  "readiness_evidence": "The real G2 qualification entry now invokes the reviewed workflow-level Track A to Track B compiler; 261 regression tests and 346 subtests pass; local import-only tests pass.",
+  "manifest": "topology_track_b_target_import_manifest_v2.json",
+  "manifest_sha256": "0219d4e7eacaca5c8698f99d2c4330a796477dfab390640053ad0826ea41f57e",
+  "attempts": 1,
+  "automatic_retries": 0,
+  "failure_action": "HOLD",
+  "real_patient_calls": 0,
+  "witness_calls": 0,
+  "four_target_calls": 0,
+  "h_and_e_calls": 0,
+  "reserved_evaluation_access": false
+}
