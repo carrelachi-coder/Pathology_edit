@@ -1,0 +1,14 @@
+{
+  "kind": "local-683-array-synthetic-codec-scaling-check",
+  "status": "completed_local_only",
+  "result_sha256": "3e80ce89706b3d27d66812a205f210547e32291ae290bd424178236407785a9b",
+  "manifest_sha256": "a79548ef1fe369e0e32d689b7ffc3cf9c09144a973409213d269cb96f421c800",
+  "events_each": 100000,
+  "arrays_each": 683,
+  "elapsed_seconds": 15.60749450000003,
+  "hash_only_total_seconds": 6.163800125010312,
+  "full_capture_total_seconds": 7.145722875371575,
+  "strict_match": true,
+  "global_rng_unchanged": true,
+  "interpretation": "Local filesystem and workload completed; timings cannot predict target server C behavior or establish full-scale target completion. No target server or real S07 calls."
+}

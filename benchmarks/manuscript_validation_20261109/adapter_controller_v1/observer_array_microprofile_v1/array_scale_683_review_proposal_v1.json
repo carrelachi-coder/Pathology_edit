@@ -1,0 +1,44 @@
+{
+  "kind": "observer-array-scale-683-target-proposal-v1",
+  "status": "proposal_only_no_target_authorization",
+  "candidate_manifest_sha256": "4d783f41c491141006326f933478dfc4c7bc1af8b8d31749e2b5a83e5e4f3c0c",
+  "purpose": "Distinguish 683-array target filesystem cost from 2.1M-event event-loop cost using the reviewed direct Codec microprofile, without changing Codec, Adapter, event fields, array content or research contracts.",
+  "evidence": [
+    {
+      "file": "target_result_v1/closeout_report.json",
+      "observation": "100k/32 target B/C completed; C was faster than B in this one run; fsync time varied substantially."
+    },
+    {
+      "file": "local_scale_683_v1/summary.json",
+      "observation": "100k/683 local B/C completed with strict match; local timings are not target predictions."
+    },
+    {
+      "file": "../observer_budget_large_synthetic_v1/target_hold_result_v2/closeout_report.json",
+      "observation": "2.1M/683 target B complete; C stopped after471 array index rows at480s."
+    }
+  ],
+  "fixed_workload": {
+    "logical_events_each": 100000,
+    "generated_arrays_each": 683,
+    "array_shape": [
+      512,
+      512
+    ],
+    "array_dtype": "float64",
+    "raw_generated_array_bytes_each_arm": 1432354816
+  },
+  "candidate_limits": {
+    "setup_seconds": 60,
+    "encode_seal_each_arm_seconds": 900,
+    "overall_OS_watchdog_seconds": 2000,
+    "free_bytes_required": 12884901888,
+    "automatic_retries": 0
+  },
+  "budget_reasoning": "900s is a bounded diagnostic ceiling informed by the prior C partial 471 arrays in480s and required683 arrays; no linear projection is treated as proof of completion. It is not a revision of the formal study or prior HOLD.",
+  "interpretation_limits": [
+    "cProfile changes absolute runtime.",
+    "One B and one C run cannot characterize I/O variance or certify full 2.1M-event Controller performance.",
+    "A pass would isolate array scaling only; it would not authorize S07, change patient qualification, or complete R3."
+  ],
+  "approval_boundary": "Review this proposal first. A final manifest and separate manifest-bound one-shot authorization are required for target execution."
+}
