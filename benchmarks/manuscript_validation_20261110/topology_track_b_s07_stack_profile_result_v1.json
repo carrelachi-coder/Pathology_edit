@@ -1,0 +1,43 @@
+{
+  "schema_version": "topology-track-b-s07-stack-profile-result-v1",
+  "status": "completed_as_bounded_profile_not_a_qualification_run",
+  "authorization_consumed": true,
+  "profile_exit_code": 124,
+  "hard_timeout_seconds": 360,
+  "automatic_retries": 0,
+  "stderr_sha256": "8104dfee8758cc3dbfd5c26dad00809ce40bbfa32bf2727bb8d9f1f43cab9691",
+  "stderr_bytes": 12245,
+  "samples": [
+    {
+      "offset_seconds": 60,
+      "stage": "ordinary Track A portfolio",
+      "stack_leaf": "phase3_mask_edit_refine.topology.topology_safe_priority_grow",
+      "caller": "execution._resolve_topology_safe_area via candidate_feasibility._compile_one"
+    },
+    {
+      "offset_seconds": 180,
+      "stage": "fresh Track B portfolio",
+      "stack_leaf": "phase3_mask_edit_refine.topology._neighbor_pattern_at",
+      "caller": "candidates._generate_one via candidate_feasibility._compile_one"
+    },
+    {
+      "offset_seconds": 300,
+      "stage": "fresh Track B portfolio",
+      "stack_leaf": "phase3_mask_edit_refine.topology.topology_safe_priority_grow",
+      "caller": "candidates._generate_one via candidate_feasibility._compile_one"
+    }
+  ],
+  "conclusions": [
+    "The corrected bisection no longer fails immediately.",
+    "The process progresses from the ordinary portfolio into the fresh Track B portfolio between the 60- and 180-second samples.",
+    "The dominant sampled cost is topology-safe pixel growth and local neighbor-pattern evaluation during candidate generation, not source loading, scene reconstruction, nuclei preflight, Codec, or H&E.",
+    "The 1200-second HOLD is therefore consistent with an active but computationally expensive topology path rather than a deadlock."
+  ],
+  "limits": [
+    "Three stack samples do not provide a completion-time estimate.",
+    "Signal sampling can briefly pause execution, so this run cannot be used for qualification or exact timing.",
+    "No timeout increase or algorithm optimization is authorized by this result alone."
+  ],
+  "research_state_change": false,
+  "next_work": "Review topology-safe growth cost and design a semantics-preserving bounded performance change or a separately justified runtime budget before another real qualification run."
+}
