@@ -16,6 +16,7 @@ from phase3_joint_edit_refine.workflow import JointPathologyEditWorkflow
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     bisect_connected_interface_anchor,
+    geodesic_span_steps,
     minimum_witness_contact_pixels,
     rebuild_scene_with_bisected_single_anchor,
     subdivision_eligibility_for_underfill_replan,
@@ -154,6 +155,23 @@ def test_scene_rebuild_gives_subanchors_new_identities_without_mutating_source()
     )
     assert eligible
     assert reasons == ()
+
+
+def test_two_sweep_endpoints_avoid_mid_branch_undersized_partition():
+    anchor = np.zeros((25, 45), dtype=bool)
+    anchor[:20, 22] = True
+    anchor[10, 2:43] = True
+
+    first, second = bisect_connected_interface_anchor(
+        anchor,
+        minimum_subanchor_pixels=20,
+    )
+
+    assert (int(np.count_nonzero(first)), int(np.count_nonzero(second))) == (40, 20)
+    assert geodesic_span_steps(first) >= 19
+    assert geodesic_span_steps(second) >= 19
+    assert np.array_equal(first | second, anchor)
+    assert not np.any(first & second)
 
 
 @pytest.mark.parametrize(

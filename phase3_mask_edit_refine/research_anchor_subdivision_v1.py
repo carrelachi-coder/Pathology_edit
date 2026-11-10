@@ -17,7 +17,7 @@ import numpy as np
 from phase3_mask_edit_refine.models import SceneAnchorSegment
 from phase3_mask_edit_refine.scene import SceneAnalysis
 
-CANDIDATE_VERSION = "directional-single-anchor-geodesic-bisection-v1"
+CANDIDATE_VERSION = "directional-single-anchor-geodesic-bisection-v2"
 
 
 def minimum_witness_contact_pixels(reference_area_p95: float) -> int:
@@ -100,10 +100,19 @@ def subdivision_eligibility_for_underfill_replan(
     )
     if selection_limit != 0:
         reasons.append("parent_anchor_already_selectable")
-    if int(np.count_nonzero(scene.anchor_masks[anchor_id])) < 2 * int(
+    anchor_mask = scene.anchor_masks[anchor_id]
+    if int(np.count_nonzero(anchor_mask)) < 2 * int(
         minimum_subanchor_pixels
     ):
         reasons.append("parent_anchor_too_small")
+    elif not reasons:
+        try:
+            bisect_connected_interface_anchor(
+                anchor_mask,
+                minimum_subanchor_pixels=minimum_subanchor_pixels,
+            )
+        except ValueError:
+            reasons.append("parent_anchor_not_bisectable")
     return not reasons, tuple(reasons)
 
 
@@ -189,10 +198,13 @@ def bisect_connected_interface_anchor(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return a deterministic, exhaustive 8-connected geodesic bisection.
 
-    The two seeds are the lexicographically first mask pixel and the pixel
-    farthest from it along the interface graph.  Equal-distance pixels are
-    assigned to the first seed.  The function fails closed if either result
-    is too small or disconnected.
+    The two seeds are deterministic two-sweep geodesic endpoints: first take
+    the pixel farthest from the lexicographically first mask pixel, then take
+    the pixel farthest from that endpoint.  Starting from an endpoint avoids
+    the severe imbalance produced when the lexicographically first pixel lies
+    near the middle of a branched or folded interface.  Equal-distance pixels
+    are assigned to the first endpoint.  The function fails closed if either
+    result is too small or disconnected.
     """
 
     mask = np.asarray(anchor_mask, dtype=bool)
@@ -204,11 +216,15 @@ def bisect_connected_interface_anchor(
     if coordinates.shape[0] < 2 * int(minimum_subanchor_pixels):
         raise ValueError("anchor is too small for the requested bisection")
 
-    first_seed = tuple(int(value) for value in coordinates[0])
+    lexical_seed = tuple(int(value) for value in coordinates[0])
+    lexical_distance = _geodesic_distance(mask, lexical_seed)
+    first_value = int(np.max(lexical_distance[mask]))
+    first_coordinates = np.argwhere(mask & (lexical_distance == first_value))
+    first_seed = tuple(int(value) for value in first_coordinates[0])
     first_distance = _geodesic_distance(mask, first_seed)
-    farthest_value = int(np.max(first_distance[mask]))
-    farthest_coordinates = np.argwhere(mask & (first_distance == farthest_value))
-    second_seed = tuple(int(value) for value in farthest_coordinates[0])
+    second_value = int(np.max(first_distance[mask]))
+    second_coordinates = np.argwhere(mask & (first_distance == second_value))
+    second_seed = tuple(int(value) for value in second_coordinates[0])
     second_distance = _geodesic_distance(mask, second_seed)
 
     first = mask & (first_distance <= second_distance)
