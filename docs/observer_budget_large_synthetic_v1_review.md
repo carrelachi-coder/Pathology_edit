@@ -45,3 +45,23 @@ comparison was 24.19 seconds. The second result is
 The first result remains archived with its original code identity. Both
 are local development evidence only; target environment timing and real
 S07 behavior remain untested.
+
+## One authorized target trial
+
+The user separately approved the frozen launch manifest SHA256
+`91ffabf1ae6a45e7270328fde2ad746649e11884a8ad658b187768ccb44ff5c5`.
+The one-shot target run ended in **HOLD** after 193.67 seconds: B hit the
+180-second generation deadline before completing its event loop. No B
+capture was finalized, C and B/C comparison did not start, and no outer
+acceptance proof was published. The partial B index has 25 block rows
+through sequence 978,493; the 25 referenced block files match their
+SHA256 values. The index is still pending, so this is partial physical
+evidence, not a complete business record. S07, witness and H&E calls
+were zero. The authorization is consumed and will not be reused.
+
+The immutable terminal and partial-evidence summary is
+`benchmarks/manuscript_validation_20261109/adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_result_v1/closeout_report.json`.
+This HOLD does not show a Codec or comparison mismatch; neither full
+capture nor comparison ran. The target workload rate and future
+engineering budget need separate analysis before proposing another
+trial.
