@@ -1,0 +1,41 @@
+{
+  "schema_version": "topology-track-b-s07-development-launch-v6",
+  "status": "self_authorized_once",
+  "purpose": "Test the mask-only directional single-anchor front-block extension through the real G2 qualification entry on development-only S07.",
+  "code": {
+    "archive_commit": "f71eaa18",
+    "git_tree": "d4e9b8c70f538085b5f2980a8b46c513c2b8a241",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_front_block_f71eaa18",
+    "anchor_subdivision_sha256": "ffa98618a841fdf11fd1e61deb833f855501a5deadce1731b3717a78801c7a53",
+    "track_b_workflow_sha256": "f738ed79a927130b68a5f56be397846b6450821a64bf79d8246211b2b30896c3",
+    "candidate_feasibility_sha256": "3453d8f49bbb6e725dd312d30dc1bab41b8579990bea916bfb40d1b8c75d57a7"
+  },
+  "validation": {
+    "targeted_local": "31 passed",
+    "diagnosis": "Twelve U2 interfaces pass nuclei preflight, but each has one anchor; the unchanged 0.75 maximum-selected fraction and one-unselected-anchor rule make every per-interface selection limit zero.",
+    "mechanism_change": "Bisect only sufficiently long, nuclei-feasible single anchors with the reviewed balanced geodesic rule, then rebuild scene identity and rerun nuclei preflight before compiling one fresh portfolio.",
+    "thresholds_changed": false
+  },
+  "input": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_index": 7,
+    "source_freeze_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v6",
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, or incomplete receipt is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized this bounded development-only mask diagnostic under the user's standing instruction after exact failure localization, fail-closed implementation, and targeted regression."
+}
