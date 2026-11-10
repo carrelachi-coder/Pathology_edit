@@ -22,7 +22,7 @@ DIRECTIONAL_SECTOR_CANDIDATE_VERSION = (
     "directional-single-anchor-maximal-legal-sector-v1"
 )
 SELECTED_MULTI_ANCHOR_CANDIDATE_VERSION = (
-    "selected-multi-anchor-maximal-legal-sector-refinement-v3"
+    "selected-multi-anchor-balanced-geodesic-refinement-v1"
 )
 
 
@@ -253,7 +253,6 @@ def selected_multi_anchor_refinement_candidate(
     selected_anchor_ids: tuple[str, ...],
     cell_feasible_anchor_ids: tuple[str, ...],
     minimum_subanchor_pixels: int,
-    maximum_selected_anchor_fraction: float,
 ) -> tuple[str | None, tuple[str, ...]]:
     """Choose one already-selected feasible anchor for a single refinement.
 
@@ -263,36 +262,14 @@ def selected_multi_anchor_refinement_candidate(
     qualification outcome participates in the choice.
     """
 
-    candidates, reasons = selected_multi_anchor_refinement_candidates(
-        scene,
-        interface_id=interface_id,
-        selected_anchor_ids=selected_anchor_ids,
-        cell_feasible_anchor_ids=cell_feasible_anchor_ids,
-        minimum_subanchor_pixels=minimum_subanchor_pixels,
-        maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
-    )
-    return (candidates[0] if candidates else None), reasons
-
-
-def selected_multi_anchor_refinement_candidates(
-    scene: SceneAnalysis,
-    *,
-    interface_id: str,
-    selected_anchor_ids: tuple[str, ...],
-    cell_feasible_anchor_ids: tuple[str, ...],
-    minimum_subanchor_pixels: int,
-    maximum_selected_anchor_fraction: float,
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Return every original selected feasible anchor bisectable in one round."""
-
     interface = next(
         (item for item in scene.graph.interfaces if item.interface_id == interface_id),
         None,
     )
     if interface is None:
-        return (), ("unknown_interface",)
+        return None, ("unknown_interface",)
     if len(interface.anchor_segment_ids) < 2:
-        return (), ("interface_not_multi_anchor",)
+        return None, ("interface_not_multi_anchor",)
     selected = set(selected_anchor_ids)
     feasible = set(cell_feasible_anchor_ids)
     candidates: list[tuple[int, str]] = []
@@ -306,17 +283,16 @@ def selected_multi_anchor_refinement_candidates(
         if pixels < 2 * minimum_subanchor_pixels:
             continue
         try:
-            partition_connected_interface_anchor_for_directional_sector(
+            bisect_connected_interface_anchor(
                 mask,
                 minimum_subanchor_pixels=minimum_subanchor_pixels,
-                maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
             )
         except ValueError:
             continue
         candidates.append((-pixels, anchor_id))
     if not candidates:
-        return (), ("no_selected_feasible_bisectable_anchor",)
-    return tuple(anchor_id for _size, anchor_id in sorted(candidates)), ()
+        return None, ("no_selected_feasible_bisectable_anchor",)
+    return min(candidates)[1], ()
 
 
 def rebuild_scene_with_bisected_anchor(
@@ -339,32 +315,6 @@ def rebuild_scene_with_bisected_anchor(
     parts = bisect_connected_interface_anchor(
         scene.anchor_masks[anchor_id],
         minimum_subanchor_pixels=minimum_subanchor_pixels,
-    )
-    return _replace_anchor(scene, interface_id, anchor_id, parts)
-
-
-def rebuild_scene_with_directional_sector_anchor(
-    scene: SceneAnalysis,
-    *,
-    interface_id: str,
-    anchor_id: str,
-    minimum_subanchor_pixels: int,
-    maximum_selected_anchor_fraction: float,
-) -> SceneAnalysis:
-    """Replace one named anchor by its maximal legal sector and witness."""
-
-    interface = next(
-        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
-        None,
-    )
-    if interface is None:
-        raise ValueError(f"unknown interface: {interface_id}")
-    if anchor_id not in interface.anchor_segment_ids:
-        raise ValueError("anchor does not belong to the named interface")
-    parts = partition_connected_interface_anchor_for_directional_sector(
-        scene.anchor_masks[anchor_id],
-        minimum_subanchor_pixels=minimum_subanchor_pixels,
-        maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
     )
     return _replace_anchor(scene, interface_id, anchor_id, parts)
 

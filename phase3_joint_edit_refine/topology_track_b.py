@@ -23,8 +23,8 @@ from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     minimum_witness_contact_pixels,
     rebuild_scene_with_directional_sector_partition,
     rebuild_scene_with_bisected_single_anchor,
-    rebuild_scene_with_directional_sector_anchor,
-    selected_multi_anchor_refinement_candidates,
+    rebuild_scene_with_bisected_anchor,
+    selected_multi_anchor_refinement_candidate,
     subdivision_eligibility_for_directional_front_block,
     subdivision_eligibility_for_underfill_replan,
 )
@@ -255,7 +255,7 @@ def _compile_fresh_track_b_portfolio(
             if report is not None
             else ()
         )
-        selected_refinement_anchors: tuple[str, ...] = ()
+        selected_refinement_anchor = None
         if (
             not directional_front_block
             and interface_id in selected_anchor_ids_by_interface
@@ -267,19 +267,16 @@ def _compile_fresh_track_b_portfolio(
                 ).anchor_segment_ids
             ) > 1
         ):
-            selected_refinement_anchors, reasons = (
-                selected_multi_anchor_refinement_candidates(
+            selected_refinement_anchor, reasons = (
+                selected_multi_anchor_refinement_candidate(
                     transformed_tissue,
                     interface_id=interface_id,
                     selected_anchor_ids=selected_anchor_ids_by_interface[interface_id],
                     cell_feasible_anchor_ids=feasible_anchor_ids,
                     minimum_subanchor_pixels=minimum_pixels,
-                    maximum_selected_anchor_fraction=(
-                        front.maximum_selected_anchor_fraction
-                    ),
                 )
             )
-            eligible = bool(selected_refinement_anchors)
+            eligible = selected_refinement_anchor is not None
         elif directional_front_block:
             eligible, reasons = subdivision_eligibility_for_directional_front_block(
                 transformed_tissue,
@@ -310,28 +307,19 @@ def _compile_fresh_track_b_portfolio(
                 {"interface_id": interface_id, "reasons": list(reasons)}
             )
             continue
-        parents = selected_refinement_anchors or (
-            next(
-                item
-                for item in transformed_tissue.graph.interfaces
-                if item.interface_id == interface_id
-            ).anchor_segment_ids[0],
-        )
-        parent_receipts = [
-            (parent, _array_sha256(transformed_tissue.anchor_masks[parent]))
-            for parent in parents
-        ]
-        if selected_refinement_anchors:
-            for parent in selected_refinement_anchors:
-                transformed_tissue = rebuild_scene_with_directional_sector_anchor(
-                    transformed_tissue,
-                    interface_id=interface_id,
-                    anchor_id=parent,
-                    minimum_subanchor_pixels=minimum_pixels,
-                    maximum_selected_anchor_fraction=(
-                        front.maximum_selected_anchor_fraction
-                    ),
-                )
+        parent = selected_refinement_anchor or next(
+            item
+            for item in transformed_tissue.graph.interfaces
+            if item.interface_id == interface_id
+        ).anchor_segment_ids[0]
+        parent_sha = _array_sha256(transformed_tissue.anchor_masks[parent])
+        if selected_refinement_anchor is not None:
+            transformed_tissue = rebuild_scene_with_bisected_anchor(
+                transformed_tissue,
+                interface_id=interface_id,
+                anchor_id=selected_refinement_anchor,
+                minimum_subanchor_pixels=minimum_pixels,
+            )
             used_candidate_versions.add(SELECTED_MULTI_ANCHOR_CANDIDATE_VERSION)
         elif directional_front_block:
             transformed_tissue = rebuild_scene_with_directional_sector_partition(
@@ -355,35 +343,34 @@ def _compile_fresh_track_b_portfolio(
             for item in transformed_tissue.graph.interfaces
             if item.interface_id == interface_id
         )
-        for parent, parent_sha in parent_receipts:
-            children = []
-            child_ids = tuple(
-                anchor_id
-                for anchor_id in rebuilt.anchor_segment_ids
-                if anchor_id.startswith(f"{parent}:sub:")
-            )
-            for child_id in child_ids:
-                child = transformed_tissue.anchor_masks[child_id]
-                children.append(
-                    {
-                        "anchor_segment_id": child_id,
-                        "contact_pixels": int(np.count_nonzero(child)),
-                        "geodesic_span_steps": geodesic_span_steps(child),
-                        "mask_sha256": _array_sha256(child),
-                    }
-                )
-            transformed_records.append(
+        children = []
+        child_ids = tuple(
+            anchor_id
+            for anchor_id in rebuilt.anchor_segment_ids
+            if anchor_id.startswith(f"{parent}:sub:")
+        )
+        for child_id in child_ids:
+            child = transformed_tissue.anchor_masks[child_id]
+            children.append(
                 {
-                    "interface_id": interface_id,
-                    "retired_parent_anchor_id": parent,
-                    "retired_parent_mask_sha256": parent_sha,
-                    "reference_area_p95": float(
-                        nuclei_preflight.reference_area_p95
-                    ),
-                    "equivalent_diameter_pixels": minimum_pixels,
-                    "new_subanchors": children,
+                    "anchor_segment_id": child_id,
+                    "contact_pixels": int(np.count_nonzero(child)),
+                    "geodesic_span_steps": geodesic_span_steps(child),
+                    "mask_sha256": _array_sha256(child),
                 }
             )
+        transformed_records.append(
+            {
+                "interface_id": interface_id,
+                "retired_parent_anchor_id": parent,
+                "retired_parent_mask_sha256": parent_sha,
+                "reference_area_p95": float(
+                    nuclei_preflight.reference_area_p95
+                ),
+                "equivalent_diameter_pixels": minimum_pixels,
+                "new_subanchors": children,
+            }
+        )
     if not transformed_records:
         raise original_error
 
