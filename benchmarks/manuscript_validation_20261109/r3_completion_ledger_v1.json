@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independently review the separated topology-semantics correction and reachable-area research tracks, then freeze patient-level development/evaluation membership before any real-case method experiment. The consumed S07 HOLD and 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
+  "current_next_deliverable": "Implement and locally validate the accepted versioned 4-connected whole-hole semantics correction. Prepare separate development-only execution identities before any real-patient capacity research. The consumed S07 HOLD and historical 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -399,7 +399,7 @@
     "topology_research_status": "proposal_pending_independent_review_no_execution_permission_no_qualification_change"
   },
   "topology_method_patient_split_proposal": {
-    "status": "proposal_pending_review_not_frozen",
+    "status": "frozen_for_topology_method_development_reserved_evaluation_unopened",
     "file": "topology_method_patient_split_proposal_v1.json",
     "sha256": "1f44bfd0598629f4ea48f8c8af73956c9c45ced58af5249b86c7b00520b65af3",
     "development_patients": 16,
@@ -416,6 +416,10 @@
     "reserved_evaluator_training_independence_proven": false,
     "old_unknown_overlap_audit": "topology_method_patient_split_unknown_overlap_audit_v1.json",
     "old_unknown_overlap_audit_sha256": "e498db7c00a91a9d121be5959a54a4edd1f9c1fde3bc34f477e45bf047a62f46",
-    "reserved_old_method_upper_if_unknown_pass": 16
+    "reserved_old_method_upper_if_unknown_pass": 16,
+    "acceptance_record": "topology_dual_track_and_patient_split_acceptance_v1.json",
+    "acceptance_record_sha256": "db49a925dc32031c6ff0ed930f10fcf50d21ee0b3970de3781f6b86ea3fc4ef6",
+    "acceptance_scope": "Local versioned semantics implementation and development-only mechanism work accepted; no target execution, qualification update or formal generation authorized.",
+    "frozen": true
   }
 }

@@ -1,0 +1,32 @@
+{
+  "kind": "r3-topology-dual-track-and-patient-split-acceptance-v1",
+  "status": "accepted_for_local_implementation_and_development_only",
+  "decision_date": "2026-11-10",
+  "decision_timezone": "Asia/Shanghai",
+  "decision_source": "The user replied '接受' in the current Codex chat to the explicit combined review question.",
+  "reviewed_patient_split": {
+    "proposal": "benchmarks/manuscript_validation_20261109/topology_method_patient_split_proposal_v1.json",
+    "proposal_sha256": "1f44bfd0598629f4ea48f8c8af73956c9c45ced58af5249b86c7b00520b65af3",
+    "readiness_review": "benchmarks/manuscript_validation_20261109/topology_method_patient_split_readiness_review_v1.json",
+    "development_patients": 16,
+    "reserved_evaluation_patients": 68,
+    "S07_development_only": true
+  },
+  "reviewed_dual_track": {
+    "decision_record_url": "https://github.com/carrelachi-coder/Pathology_edit/blob/7b6c1999/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/topology_semantics_and_capacity_research_decision_v1.json",
+    "decision_record_sha256": "c7b6c6c96f9c57fdd926ab48a9ffd16ac21e98a08082a6a344c5f89f17efa5d4",
+    "change_surface_review_url": "https://github.com/carrelachi-coder/Pathology_edit/blob/e79eb6af/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/topology_semantics_change_surface_audit_v1.json"
+  },
+  "authorized": [
+    "Freeze the listed 16/68 patient-level development/evaluation assignment.",
+    "Implement a separately versioned 4-connected whole-hole semantics correction locally.",
+    "Develop and test a general reachable-area mechanism using only the 16 development patients after separate execution manifests are prepared."
+  ],
+  "not_authorized": [
+    "No target-server or real-patient execution under this acceptance alone.",
+    "No use of the 68 reserved patients for tuning.",
+    "No qualification-count update, formal four-target compilation, H&E generation or physician study.",
+    "No retroactive modification of old S07 or 17/19 qualification evidence."
+  ],
+  "external_independent_reviewer_signature": false
+}
