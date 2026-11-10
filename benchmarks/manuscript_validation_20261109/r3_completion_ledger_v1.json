@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Request a new one-shot target synthetic B/C authorization bound to budget v2 launch manifest SHA cd90f2839e5aaec74beb459e38a9cb3d412af0e2ccf65259815b35d9ee76173d; then execute once or HOLD. Real S07 remains closed.",
+  "current_next_deliverable": "Analyze the C Full Capture throughput constraint using archived v2 evidence. Preserve both consumed HOLDs; do not rerun or treat B validation as B/C success. Any new engineering trial requires a newly reviewed version and authorization. Real S07 and formal cohort remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -137,7 +137,7 @@
     "status": "one_shot_target_HOLD_B_generation_deadline_authorization_consumed",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/11",
     "branch": "codex/observer-budget-large-synthetic-review",
-    "commit": "6fa2d2e0",
+    "commit": "24937538",
     "candidate_manifest_sha256": "1b5dff6ee1cf4d725617a5cf08c26ae2b6473ad36842206ab87f42ac42747335",
     "logical_events_each": 2100000,
     "full_capture_arrays": 683,
@@ -166,10 +166,14 @@
     "target_partial_block_files_sha_verified": 25,
     "target_partial_last_sequence": 978493,
     "offline_throughput_analysis": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_throughput_analysis_v1.json",
-    "budget_v2_proposal_status": "user_review_accepted_launch_manifest_frozen_awaiting_new_one_shot_authorization",
+    "budget_v2_proposal_status": "user_review_accepted_one_shot_target_HOLD_C_generation_deadline_authorization_consumed",
     "budget_v2_candidate_manifest_sha256": "6222ae6da05276b9a5f99ba5b566cb9846c44d52e4ff4bbacabfa60c8da00a01",
     "budget_v2_launch_manifest_sha256": "cd90f2839e5aaec74beb459e38a9cb3d412af0e2ccf65259815b35d9ee76173d",
-    "budget_v2_target_run_authorized": false,
-    "budget_v2_target_run_executed": false
+    "budget_v2_target_run_authorized": true,
+    "budget_v2_target_run_executed": true,
+    "budget_v2_target_result": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_result_v2/closeout_report.json",
+    "budget_v2_B_status": "2.1M complete; single-stream validation passed in 19.80s",
+    "budget_v2_C_status": "partial at 480s deadline; 36 block files verified through sequence 1,404,893; no completion",
+    "budget_v2_BC_comparison_started": false
   }
 }
