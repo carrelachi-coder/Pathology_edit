@@ -13,7 +13,7 @@
       "id": "diagnostic_preparation",
       "required": "Reviewed preparation worker, whole-process supervisor and manifest-bound result verifier",
       "status": "real_controller_v2_candidate_local_tests_passed",
-      "current_evidence": "Target 2.1M-event/683-array synthetic Adapter v2 B/C validation passed. Versioned real Controller v2 candidate is in draft PR #13; local 24-test scoped suite passed. Target Linux startup/import, pinned execution identity and real S07 noninterference remain unverified."
+      "current_evidence": "Target 2.1M-event/683-array synthetic Adapter v2 B/C validation passed. Versioned real Controller v2 candidate c9b1ef20 is in draft PR #13; local 24-test scoped suite passed, including parent import-state equality. Target Linux startup/import, pinned execution identity and real S07 noninterference remain unverified."
     },
     {
       "id": "topology_diagnosis",
@@ -317,11 +317,12 @@
   },
   "real_controller_v2_candidate": {
     "status": "draft_review_pending",
-    "commit": "4104ec7c",
+    "commit": "c9b1ef20",
     "pull_request": "https://github.com/carrelachi-coder/Pathology_edit/pull/13",
     "local_test_command": "python -m pytest -q tests/test_limited_topology_adapter_controller_v1.py tests/test_limited_topology_adapter_controller_v2.py tests/test_observer_budget_readonly_consumer_v3.py",
     "local_tests_passed": 24,
     "target_deployed": false,
-    "real_S07_authorized": false
+    "real_S07_authorized": false,
+    "startup_review_finding": "Versioned candidate initially imported validation gate into common parent after B. Corrected to a disposable helper child; local test confirms parent module set and sys.path remain unchanged across B/C assessment. Target Linux import audit remains pending."
   }
 }
