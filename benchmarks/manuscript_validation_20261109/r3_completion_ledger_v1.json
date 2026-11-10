@@ -19,7 +19,7 @@
       "id": "topology_diagnosis",
       "required": "Valid complete process evidence and disposition of legal execution bottleneck",
       "status": "incomplete",
-      "current_evidence": "Both consumed S07 diagnostics lack complete observed execution evidence. Latest B timed out after 8,864,998 committed logical events; 10 completed U1 attempts in the saved prefix all ended in topology-safe-area underfill, with no topology-passing probe."
+      "current_evidence": "Both consumed S07 diagnostics lack complete observed execution evidence. Latest B timed out after 8,864,998 committed logical events. Read-only analysis now separates two bottlenecks: the retained fronts 6/5/8 saturated at 70,728 pixels, 51 below the floor; before execution, the directional witness rule excluded five nuclei-preflight-feasible single-anchor interfaces. This does not prove that an excluded interface supplies legal capacity."
     },
     {
       "id": "generation",
@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independently review the locally validated topology-hole-semantics v2 candidate, then define and synthetically test one bounded reachable-area mechanism for the 51-pixel development-case deficit. Prepare separate execution identities before any real-patient development run. Historical 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
+  "current_next_deliverable": "Independently review both local candidates: topology-hole-semantics v2 and the unwired deterministic single-anchor geodesic bisection. Next, integrate neither into production; first build a synthetic scene/preflight experiment that regenerates subanchor identities and recomputes nuclei feasibility while retaining the frozen directional witness rule. Prepare separate execution identities before any real development-patient run. Historical 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -71,6 +71,31 @@
     ],
     "minimum_target_gap": 0.05,
     "selection_uses_generated_HE": false
+  },
+  "directional_front_filter_diagnosis": {
+    "status": "read_only_incomplete_prefix_analysis",
+    "branch": "codex/limited-topology-adapter-controller-v2",
+    "commit": "92c60943",
+    "evidence": "adapter_controller_v2/real_s07_diagnostic_v1/S07_directional_front_filter_readout_v1.json",
+    "evidence_sha256": "4fd8c42b3d9dd209eb644dc44f8b2bd0c14e3e9a85c3caaddbe39c027c914333",
+    "nuclei_preflight_feasible_interfaces": 8,
+    "retained_interfaces": 3,
+    "excluded_single_anchor_interfaces": 5,
+    "retained_floor_pixels": 70728,
+    "hard_floor_pixels": 70779,
+    "qualification_updates_permitted": false
+  },
+  "directional_anchor_subdivision_candidate": {
+    "status": "local_synthetic_unwired_candidate",
+    "branch": "codex/topology-hole-semantics-v2",
+    "commit": "d984697d",
+    "evidence": "directional_anchor_subdivision_v1_local_validation.json",
+    "evidence_sha256": "3391566fbf53682d894a61d45491fe3abd3cc5044b61d2ed9cfdafdef3306a23",
+    "targeted_tests_passed": 6,
+    "production_integrated": false,
+    "real_patient_runs": 0,
+    "required_next": "Regenerate scene identities and rerun nuclei preflight for subanchors in a synthetic-only experiment; do not reuse parent-anchor feasibility.",
+    "qualification_updates_permitted": false
   },
   "execution_permissions": "Specific consumed authorizations remain closed. New target runs follow existing separate manifest-bound approval requirements.",
   "historical_results": "Audit and recompute usable historical data separately; do not substitute it for the prescribed formal paired cohort.",
