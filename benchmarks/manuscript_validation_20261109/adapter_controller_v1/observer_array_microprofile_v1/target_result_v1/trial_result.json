@@ -1,0 +1,169 @@
+{
+  "status": "synthetic_codec_microprofile_complete",
+  "automatic_retries": 0,
+  "S07_calls": 0,
+  "witness_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "arms": [
+    {
+      "mode": "hash_only",
+      "events": 100000,
+      "arrays": 32,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0",
+      "loop_seconds": 36.98835246823728,
+      "total_seconds": 38.65368580445647,
+      "profile_sha256": "4e93e66b2e6bd6296f4b5a6eef17d448b29876589f568e47e9efabd8cec3f60e",
+      "profile_rows": [
+        {
+          "function": "<built-in method posix.fsync>",
+          "file": "~",
+          "line": 0,
+          "calls": 34,
+          "self_seconds": 19.322582603,
+          "cumulative_seconds": 19.322582603
+        },
+        {
+          "function": "_append",
+          "file": "guard_blocks_v2.py",
+          "line": 268,
+          "calls": 33,
+          "self_seconds": 0.000449791,
+          "cumulative_seconds": 19.335929798000002
+        },
+        {
+          "function": "_copy_array",
+          "file": "guard_blocks_v2.py",
+          "line": 337,
+          "calls": 32,
+          "self_seconds": 0.000181804,
+          "cumulative_seconds": 0.024797277000000003
+        },
+        {
+          "function": "_flush",
+          "file": "guard_blocks_v2.py",
+          "line": 301,
+          "calls": 1,
+          "self_seconds": 0.002431796,
+          "cumulative_seconds": 0.10739630700000001
+        },
+        {
+          "function": "_publish",
+          "file": "guard_blocks_v2.py",
+          "line": 277,
+          "calls": 1,
+          "self_seconds": 4.5569000000000004e-05,
+          "cumulative_seconds": 0.057546921
+        },
+        {
+          "function": "add_array",
+          "file": "guard_blocks_v2.py",
+          "line": 342,
+          "calls": 32,
+          "self_seconds": 0.0016102310000000002,
+          "cumulative_seconds": 19.386530914
+        },
+        {
+          "function": "write_event",
+          "file": "guard_blocks_v2.py",
+          "line": 396,
+          "calls": 100000,
+          "self_seconds": 1.0296707790000001,
+          "cumulative_seconds": 16.406508560000002
+        }
+      ]
+    },
+    {
+      "mode": "full_capture",
+      "events": 100000,
+      "arrays": 32,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0",
+      "loop_seconds": 29.894981276243925,
+      "total_seconds": 30.029703326523304,
+      "profile_sha256": "8b8c3f3a6bab1b490570136e1a4ffd1684f647d67aaef98fcc966469336ef351",
+      "profile_rows": [
+        {
+          "function": "<built-in method posix.fsync>",
+          "file": "~",
+          "line": 0,
+          "calls": 66,
+          "self_seconds": 12.025311462000001,
+          "cumulative_seconds": 12.025311462000001
+        },
+        {
+          "function": "_append",
+          "file": "guard_blocks_v2.py",
+          "line": 268,
+          "calls": 33,
+          "self_seconds": 0.0005713970000000001,
+          "cumulative_seconds": 3.0855205160000003
+        },
+        {
+          "function": "_copy_array",
+          "file": "guard_blocks_v2.py",
+          "line": 337,
+          "calls": 32,
+          "self_seconds": 0.000148782,
+          "cumulative_seconds": 0.007884143
+        },
+        {
+          "function": "_flush",
+          "file": "guard_blocks_v2.py",
+          "line": 301,
+          "calls": 1,
+          "self_seconds": 0.000537542,
+          "cumulative_seconds": 0.6834858490000001
+        },
+        {
+          "function": "_publish",
+          "file": "guard_blocks_v2.py",
+          "line": 277,
+          "calls": 33,
+          "self_seconds": 0.00120886,
+          "cumulative_seconds": 9.136370186
+        },
+        {
+          "function": "add_array",
+          "file": "guard_blocks_v2.py",
+          "line": 342,
+          "calls": 32,
+          "self_seconds": 0.001959808,
+          "cumulative_seconds": 11.627477567000001
+        },
+        {
+          "function": "write_event",
+          "file": "guard_blocks_v2.py",
+          "line": 396,
+          "calls": 100000,
+          "self_seconds": 1.047563574,
+          "cumulative_seconds": 17.066630289000003
+        }
+      ]
+    }
+  ],
+  "setup_seconds": 0.2890259250998497,
+  "strict_match": true,
+  "comparison": {
+    "logical_events": 100000,
+    "strict_match": true,
+    "excluded_fields": [],
+    "left": {
+      "block_integrity_complete": true,
+      "business_process_complete": true,
+      "logical_events": 100000,
+      "physical_blocks": 2,
+      "array_occurrences": 32,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0"
+    },
+    "right": {
+      "block_integrity_complete": true,
+      "business_process_complete": true,
+      "logical_events": 100000,
+      "physical_blocks": 2,
+      "array_occurrences": 32,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0"
+    }
+  },
+  "global_rng_unchanged": true,
+  "elapsed_seconds": 70.44057081267238
+}
