@@ -316,18 +316,18 @@
     "final_selected_30_audit_complete": false
   },
   "real_controller_v2_candidate": {
-    "status": "draft_review_pending",
+    "status": "target_import_review_passed_startup_difference_accepted_real_launch_identity_candidate_only",
     "commit": "0acdaf3e",
     "pull_request": "https://github.com/carrelachi-coder/Pathology_edit/pull/13",
     "local_test_command": "python -m pytest -q tests/test_limited_topology_adapter_controller_v1.py tests/test_limited_topology_adapter_controller_v2.py tests/test_observer_budget_readonly_consumer_v3.py",
     "local_tests_passed": 24,
-    "target_deployed": false,
+    "target_deployed": "isolated_import_only_snapshot",
     "real_S07_authorized": false,
-    "startup_review_finding": "Versioned candidate initially imported validation gate into common parent after B. Corrected to a disposable helper child; local test confirms parent module set and sys.path remain unchanged across B/C assessment. Target Linux import audit remains pending.",
-    "import_smoke_candidate": "scripts/smoke_adapter_controlled_topology_imports_v2.py; import-only, not yet run on target Linux",
+    "startup_review_finding": "Target import-only smoke passed under frozen effective environment. B/C import order matched exactly; A/B/C shared modules differ by two earlier refine imports in B/C, and B/C additionally import seven observer modules. Difference accepted and disclosed; no claim of all side effects absent.",
+    "import_smoke_candidate": "scripts/smoke_adapter_controlled_topology_imports_v2.py; target import-only smoke passed; no witness executed",
     "target_import_preparation_request": "https://github.com/carrelachi-coder/Pathology_edit/blob/a6178492/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_request_v1.json",
     "target_import_preparation_manifest_sha256": "fe7ba33381772fcef90add513d9b8b25bf5440f912ef43db290c4f4f4c815dcb",
-    "target_import_authorized": false,
+    "target_import_authorized": true,
     "target_import_preparation_v1_status": "HOLD_environment_drift_pre_business",
     "target_import_preparation_v1_hold_report": "adapter_controller_v2/import_preparation_target_hold_v1.json",
     "target_import_preparation_v1_authorization_consumed": true,
@@ -336,7 +336,13 @@
     "target_import_preparation_v2_status": "import_only_smoke_passed_with_disclosed_A_vs_BC_difference",
     "target_import_preparation_v2_closeout": "https://github.com/carrelachi-coder/Pathology_edit/blob/13777219/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_target_result_v2/closeout_report.json",
     "target_import_preparation_v2_closeout_sha256": "94569d21e3b3f0de1313ed90a295a478dc67a60c5b878587c040894a248419c0",
-    "target_import_preparation_v2_authorization_consumed": true
+    "target_import_preparation_v2_authorization_consumed": true,
+    "startup_difference_acceptance": "https://github.com/carrelachi-coder/Pathology_edit/blob/53080224/benchmarks/manuscript_validation_20261109/adapter_controller_v2/startup_difference_acceptance_v1.json",
+    "startup_difference_acceptance_sha256": "7f9b57c2622cddb6fb1ec123d326a1f32d9e8161948c59d7f9127c5427d4aa73",
+    "real_run_identity_candidate": "https://github.com/carrelachi-coder/Pathology_edit/blob/6a232cba/benchmarks/manuscript_validation_20261109/adapter_controller_v2/run_identity_candidate_v2.json",
+    "real_run_identity_candidate_sha256": "037bcafcba2cd8407fa65543c31df4d8ac684d32d8a272898b708c2ed3a50e13",
+    "real_run_identity_candidate_execution_permitted": false,
+    "remaining_gate": "Independently reconcile contract SHA, freeze final launch manifest and live target preflight, then request a new SHA-bound one-shot authorization before real S07."
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
