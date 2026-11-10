@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independently review a bounded topology mechanism hypothesis using the archived partial trace and a frozen patient-level development/evaluation split. Repeated recorded outputs do not establish safe memoization. The consumed S07 HOLD remains immutable; formal R3 gates remain closed.",
+  "current_next_deliverable": "Independently review a bounded topology mechanism hypothesis focused on the U1 global source-hole discrepancy and a frozen patient-level development/evaluation split. The archived B process is incomplete and S07 authorization consumed; no qualification update or production edit is justified yet.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -377,7 +377,10 @@
     "preparsed_writer_status": "standalone_default_off_57_related_local_tests_pass_byte_exact_100k_single_run_1.208x_observed_no_production_integration",
     "B_attempt_report": "https://github.com/carrelachi-coder/Pathology_edit/blob/cfde2b7c/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/B_attempts_report.json",
     "B_attempt_repetition_review": "https://github.com/carrelachi-coder/Pathology_edit/blob/cfde2b7c/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/B_attempt_repetition_review_v1.json",
-    "B_attempt_repetition_boundary": "Ten completed U1 attempts: zero topology-passing probes; per-label planner selection and probe values repeat while compiler.attempt values differ. No evidence that bypassing repeated work would preserve business semantics; no qualification update."
+    "B_attempt_repetition_boundary": "Ten completed U1 attempts: zero topology-passing probes; per-label planner selection and probe values repeat while compiler.attempt values differ. No evidence that bypassing repeated work would preserve business semantics; no qualification update.",
+    "B_saved_probe_topology_readout": "https://github.com/carrelachi-coder/Pathology_edit/blob/cd94be8c/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/B_probe_topology_readout_v1.json",
+    "B_saved_probe_topology_readout_sha256": "f1cdc421916cb841c2f3a3fd31cd47e50c4d6a9fb38dd409aad4958b31950aac",
+    "B_saved_probe_topology_conclusion": "21 saved U1 probes yield 4 distinct reported states; all fail whole-mask topology with source holes 13->12 or 13->10, while source/target component counts and target hole counts are unchanged. All realized areas remain below 70779. Proximate failure is source-hole change in these probes, not an established cross-patient root cause."
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
