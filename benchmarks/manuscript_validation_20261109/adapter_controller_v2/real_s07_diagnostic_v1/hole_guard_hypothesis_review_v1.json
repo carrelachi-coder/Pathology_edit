@@ -1,0 +1,29 @@
+{
+  "kind": "dual-background-local-guard-hypothesis-review-v1",
+  "status": "research_hypothesis_not_production_accepted",
+  "source_counterexample_sha256": "fd66db5653a4bd2bad949b1015dc94089fff3d50fd9328a332d85a03d8baa4c2",
+  "archived_s07_probe_readout_sha256": "f1cdc421916cb841c2f3a3fd31cd47e50c4d6a9fb38dd409aad4958b31950aac",
+  "synthetic_screen_sha256": "f997fa82ea267e52ddee10b03aecfca6979e9e35c842acb9da68b7019cb21526",
+  "code_sha256": {
+    "scripts/screen_hole_guard_hypothesis_v1.py": "166adaf808d1194edb686e7c0ef7d66150dfbe2217b37d36de0355f399988b35",
+    "tests/test_topology_hole_semantics_counterexample.py": "2ef77c027c05b83cdd691a83488a12abf88ea1b98114488049b5a7fe33dd9079",
+    "phase3_mask_edit_refine/topology.py": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
+    "phase3_mask_edit_refine/execution.py": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e"
+  },
+  "candidate_rule": "Retain existing source foreground 8-connected and background 4-connected local checks; additionally require exactly one center-adjacent 8-connected source-background component before accepting a source pixel. Do not alter the frozen whole-mask hole count, area floor, budget, target contract or final audit.",
+  "evidence": [
+    "The fixed 7x7 fixture is accepted by the current local guard yet changes current whole-mask source-hole count from 2 to 1; its 4-connected hole count remains 3. The extra local condition rejects this fixture.",
+    "In a fixed-seed source-only screen of 20,000 random 9x9 masks, 304,969 candidates met the extra check and none changed the current whole-mask hole count after one deletion. This is a finite synthetic screen, not a proof or a real planner run.",
+    "All 21 archived S07 B U1 probe.complete events report a source-hole decrease, but their selected rasters are unavailable, so the candidate cannot be attributed as a remedy for S07."
+  ],
+  "unresolved": [
+    "Formal proof or counterexamples for the exact mixed 4-fill/8-label whole-hole definition.",
+    "Interaction with target guard, multiple interfaces, priorities, protected necks, ownership and the unchanged 14/27 percent tissue floors.",
+    "Whether the conservative rule removes too much legitimate editable area on independent patients.",
+    "Runtime cost and business receipt equivalence under a separately versioned mechanism."
+  ],
+  "review_gate": "Freeze patient-level development and independent evaluation membership before testing on real cases. Treat S07 as development only. Review candidate as a new business mechanism, not an Observer optimization. Preserve all old failures and run four-target mask review before any formal H&E.",
+  "execution_permitted": false,
+  "S07_rerun_authorized": false,
+  "qualification_updates_permitted": false
+}

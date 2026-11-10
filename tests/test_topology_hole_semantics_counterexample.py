@@ -4,7 +4,11 @@ import numpy as np
 from scipy import ndimage
 
 from phase3_mask_edit_refine.execution import _hole_count
-from phase3_mask_edit_refine.topology import _topology_rejection_reason
+from phase3_mask_edit_refine.topology import (
+    _cached_local_component_count,
+    _neighbor_pattern_at,
+    _topology_rejection_reason,
+)
 
 
 def test_local_guard_can_accept_while_whole_mask_hole_count_changes():
@@ -32,6 +36,10 @@ def test_local_guard_can_accept_while_whole_mask_hole_count_changes():
         target_state=target,
         unselected_target=unselected_target,
     ) is None
+    pattern = _neighbor_pattern_at(source, row, col, outside=False)
+    background = (~pattern) & 255
+    assert _cached_local_component_count(background, 4, True) == 1
+    assert _cached_local_component_count(background, 8, True) == 3
 
     source_after = source.copy()
     source_after[row, col] = False

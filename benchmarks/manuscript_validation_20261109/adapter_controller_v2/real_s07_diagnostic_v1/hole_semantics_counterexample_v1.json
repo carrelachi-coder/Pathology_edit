@@ -4,7 +4,7 @@
   "code_sha256": {
     "phase3_mask_edit_refine/topology.py": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
     "phase3_mask_edit_refine/execution.py": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e",
-    "tests/test_topology_hole_semantics_counterexample.py": "cad04890279e8d95bc8c44c81de675e8491affb7409078e6881ea77680d19195"
+    "tests/test_topology_hole_semantics_counterexample.py": "2ef77c027c05b83cdd691a83488a12abf88ea1b98114488049b5a7fe33dd9079"
   },
   "archived_probe_report_sha256": "f1cdc421916cb841c2f3a3fd31cd47e50c4d6a9fb38dd409aad4958b31950aac",
   "fixture": "7x7 binary source, one target pixel at (1,4), conversion of source pixel (2,3); exact fixture is in the cited test",
