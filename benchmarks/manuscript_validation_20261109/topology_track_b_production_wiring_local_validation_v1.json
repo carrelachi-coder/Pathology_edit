@@ -10,11 +10,13 @@
     "subdivision_candidate_version": "directional-single-anchor-geodesic-bisection-v1",
     "files": {
       "phase3_joint_edit_refine/candidate_feasibility.py": "2657ec9520d31d6ea42750546221ebe011e89fc3900dbb9d3e28ce7e7e7464d1",
+      "phase3_joint_edit_refine/g2_execution_qualification.py": "fff4388bec9eff95eab5d4fbd0fe8e0b3d4212e8b9b6e48ddec39c9a4a0c299e",
       "phase3_joint_edit_refine/topology_track_b.py": "ecfd90b528b9ad350824b702b195fc6356451220399335dfe8ce7cd465ca3938",
       "phase3_joint_edit_refine/tissue_planner.py": "bb792feb524c84644663d1cffd1f7ce06810d78c4bb6a4640f91e54799c05036",
       "phase3_joint_edit_refine/workflow.py": "de73536f4e363d00e8d734b0e91e9e0cb0eccfd9d4c623e92a68d49e1c39a073",
       "phase3_mask_edit_refine/research_anchor_subdivision_v1.py": "a3dd0a5349cd1f5bde39c9b6b979ad8ab419eb898f4781065c7eea6b9150b2bc",
-      "tests/test_topology_track_b.py": "5c94b3576a0feb7c6c59fe3c8eaee1d075b21ef64b81523842dec9f54bee86bf"
+      "tests/test_topology_track_b.py": "362a30b6c022ac01f6a773a9f026cc7cc32e96f9a1286cdb38945981370cff43",
+      "tests/test_topology_track_b_import_smoke.py": "b3ce3c5af4a8bb4259cd938dfe7523f514c739738e16d4988958a950e9266ca0"
     }
   },
   "implemented_contract": [
@@ -31,7 +33,8 @@
     "a failed Track B portfolio retains both the original and transformed audited failures",
     "the transformed scene identity and transformation record are embedded in the compiler authority binding",
     "all topology-passing underfill feedback from the bounded attempt history remains eligible to trigger Track B even when a later terminal error differs",
-    "a failed Track B audit is persisted in semantic-resolution rejection evidence"
+    "a failed Track B audit is persisted in semantic-resolution rejection evidence",
+    "the real G2 source-qualification entry invokes the same workflow-level Track A to Track B orchestration rather than bypassing it"
   ],
   "tests": [
     {
@@ -48,6 +51,11 @@
       "command": "python -m pytest -q tests/test_joint_edit_refine.py tests/test_joint_breast_workflow.py tests/test_topology_track_b.py tests/test_research_anchor_subdivision_v1.py",
       "result": "257 passed, 346 subtests passed",
       "scope": "final joint workflow, planner authority extension and historical Track A regression"
+    },
+    {
+      "command": "python -m pytest -q tests/test_joint_edit_refine.py tests/test_joint_breast_workflow.py tests/test_topology_track_b.py tests/test_research_anchor_subdivision_v1.py tests/test_topology_track_b_import_smoke.py",
+      "result": "261 passed, 346 subtests passed",
+      "scope": "final workflow plus real G2 qualification entry and import-only target tool"
     },
     {
       "command": "python -m pytest -q tests/test_joint_edit_refine.py tests/test_joint_breast_workflow.py tests/test_p1_authority_preflight.py tests/test_glas_authority_integration.py tests/test_panda_primitive_safety.py",

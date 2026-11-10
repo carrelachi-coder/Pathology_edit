@@ -7,6 +7,9 @@ import pytest
 from phase3_joint_edit_refine.candidate_feasibility import (
     TissuePortfolioCompilationError,
 )
+from phase3_joint_edit_refine.g2_execution_qualification import (
+    _compile_qualification_tissue_witness,
+)
 from phase3_joint_edit_refine.tissue_planner import (
     _expected_tissue_authority_binding_sha256,
 )
@@ -328,3 +331,44 @@ def test_planner_rejects_invalid_track_b_authority_extension(
             nuclei_preflight=object(),
             candidate_portfolio=portfolio,
         )
+
+
+def test_real_qualification_entry_uses_workflow_level_track_b(monkeypatch):
+    import phase3_joint_edit_refine.g2_execution_qualification as module
+
+    captured = {}
+    transformed_preflight = object()
+    audit = {"track_b_used": True, "rounds": 1}
+    survivor = SimpleNamespace(to_metadata=lambda: {"candidate_id": "fresh"})
+
+    def compile_track_b(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            portfolio=SimpleNamespace(survivors=(survivor,)),
+            nuclei_preflight=transformed_preflight,
+            audit=audit,
+        )
+
+    monkeypatch.setattr(
+        module, "compile_tissue_portfolio_with_track_b", compile_track_b
+    )
+    original_preflight = object()
+    witness, observed_preflight, observed_audit = (
+        _compile_qualification_tissue_witness(
+            case="case",
+            tissue_case="tissue-case",
+            source_tissue=np.zeros((2, 2), dtype=np.uint8),
+            schema="schema",
+            scene="scene",
+            tissue_bundle="tissue-bundle",
+            bundle="joint-bundle",
+            allocation="allocation",
+            preflight=original_preflight,
+        )
+    )
+    assert witness == {"candidate_id": "fresh"}
+    assert observed_preflight is transformed_preflight
+    assert observed_audit is audit
+    assert captured["joint_case"] == "case"
+    assert captured["nuclei_preflight"] is original_preflight
+    assert captured["maximum_candidates"] == 1
