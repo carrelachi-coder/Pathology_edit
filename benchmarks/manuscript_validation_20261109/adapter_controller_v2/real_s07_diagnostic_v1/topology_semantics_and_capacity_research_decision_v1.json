@@ -1,0 +1,30 @@
+{
+  "kind": "topology-semantics-and-capacity-research-decision-v1",
+  "status": "proposal_for_independent_review_execution_not_permitted",
+  "decision": "Treat whole-mask hole semantics and reachable-area saturation as two separate defects/hypotheses.",
+  "track_A_semantics": {
+    "finding": "The frozen whole-mask count mixes a 4-connected fill with an 8-connected component count, while the local guard specifies an 8-foreground/4-background digital-topology convention. The definitions differ on the exact S07 source and on a synthetic accepted-pixel counterexample.",
+    "recommended_candidate": "Version the whole-mask hole count and gate helper to count the filled-hole mask with 4-connectivity, matching the documented local background convention. Apply the same helper in execution and final gates.",
+    "why_not_the_extra_conservative_guard": "The extra local 8-background check excludes 64 of the 116 local source patterns accepted by the current source-side simple-point conditions. It may unnecessarily reduce editable capacity and does not address the remaining 51-pixel deficit.",
+    "contract_effect": "This changes the qualification implementation and requires new version identity and complete requalification. It must not retroactively alter old failures."
+  },
+  "track_B_capacity": {
+    "finding": "In six repeated saved floor probes, the selected three fronts realize 70,728 of 70,779 pixels. After one front adds 1,014 reallocated pixels, all three selected fronts return zero for the remaining 51 pixels across the bounded reallocation passes.",
+    "research_question": "Can a predeclared, patient-general interface selection, allocation or front scheduling mechanism find additional legal pixels without relaxing the topology contract or area floor?",
+    "excluded_shortcuts": [
+      "Do not lower or round the 70,779-pixel floor.",
+      "Do not label 70,728/70,729 as valid safe area.",
+      "Do not permit hole or component changes merely to make S07 pass.",
+      "Do not optimize or select a mechanism using reserved evaluation patients or generated H&E quality."
+    ]
+  },
+  "required_sequence": [
+    "Independently review and freeze the patient-level development/evaluation split; S07 is development-only.",
+    "Implement Track A as a separately versioned candidate with regression and counterexample tests, without changing budgets or old records.",
+    "Use only development patients to diagnose Track B and define one general mechanism before evaluation.",
+    "Run the frozen mechanism once on reserved patients, then perform four-target mask-only review before formal H&E."
+  ],
+  "patient_qualification_changed": false,
+  "execution_permitted": false,
+  "formal_generation_authorized": false
+}

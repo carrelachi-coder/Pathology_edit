@@ -1,0 +1,92 @@
+{
+  "kind": "S07-B-saved-floor-front-saturation-readout-v1",
+  "status": "read_only_incomplete_prefix_analysis",
+  "source_pending_index_sha256": "a1723901fa3cf6a8f20912ec87c87ab2e31962bf5a4b7db00abb4c9e4cf7b763",
+  "analysis_script": "scripts/analyze_s07_prefix_attempts_v1.py",
+  "scope": "Six completed attempt-label 2/3 floor probes in the incomplete S07 B U1 trace",
+  "hard_floor_pixels": 70779,
+  "realized_pixels": 70728,
+  "deficit_pixels": 51,
+  "complete_floor_probes": 6,
+  "unique_front_contribution_sequences": 1,
+  "initial_fronts": [
+    {
+      "work_index": 0,
+      "requested_pixels": 37897,
+      "realized_pixels": 37897
+    },
+    {
+      "work_index": 1,
+      "requested_pixels": 16846,
+      "realized_pixels": 16511
+    },
+    {
+      "work_index": 2,
+      "requested_pixels": 16036,
+      "realized_pixels": 15306
+    }
+  ],
+  "reallocation": [
+    {
+      "pass_index": 1,
+      "work_index": 0,
+      "requested_pixels": 1065,
+      "realized_pixels": 1014
+    },
+    {
+      "pass_index": 1,
+      "work_index": 2,
+      "requested_pixels": 51,
+      "realized_pixels": 0
+    },
+    {
+      "pass_index": 1,
+      "work_index": 1,
+      "requested_pixels": 51,
+      "realized_pixels": 0
+    },
+    {
+      "pass_index": 2,
+      "work_index": 2,
+      "requested_pixels": 51,
+      "realized_pixels": 0
+    },
+    {
+      "pass_index": 2,
+      "work_index": 1,
+      "requested_pixels": 51,
+      "realized_pixels": 0
+    },
+    {
+      "pass_index": 2,
+      "work_index": 0,
+      "requested_pixels": 51,
+      "realized_pixels": 0
+    }
+  ],
+  "last_zero_progress_rejection_counters_by_work": {
+    "0": {
+      "source_connectivity": 188,
+      "source_hole_change": 0,
+      "target_hole_change": 45
+    },
+    "1": {
+      "source_connectivity": 176,
+      "source_hole_change": 0,
+      "target_hole_change": 154
+    },
+    "2": {
+      "source_connectivity": 546,
+      "source_hole_change": 0,
+      "target_hole_change": 74
+    }
+  },
+  "interpretation": "Correcting only the final whole-mask hole-count semantics would not change the recorded local growth path. The saved solver still stops 51 pixels below the frozen floor after every selected work returns zero progress. Rejection counters are repeated guard events and cannot be summed as unique lost pixels.",
+  "limits": [
+    "The B business process is incomplete and has no receipt or completion marker.",
+    "This is a deterministic repetition within one development case, not evidence of cross-patient generality.",
+    "The trace does not prove a globally optimal allocation, interface set or pixel order."
+  ],
+  "qualification_updates_permitted": false,
+  "S07_rerun_authorized": false
+}

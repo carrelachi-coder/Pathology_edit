@@ -1,0 +1,23 @@
+{
+  "kind": "S07-frozen-source-hole-semantics-readout-v1",
+  "status": "read_only_source_input_analysis",
+  "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+  "patient_id": "TCGA-E2-A1LL",
+  "tissue_mask_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/local_evidence_v1/native_roi_scan_v1/new_sources/tissue_masks/BCSS_native_recovery_205cb2398525fe94.png",
+  "tissue_mask_sha256": "4465140a7f1c00581dc596782df91018c6f4715381fb96a5e346f20528b010b8",
+  "sha256_rechecked_on_target": true,
+  "label_counts": {
+    "1": 10932,
+    "2": 245259,
+    "4": 5953
+  },
+  "stroma_label": 2,
+  "stroma_components_8_connected": 2,
+  "stroma_enclosed_pixels": 12470,
+  "stroma_holes_after_4_connected_fill_counted_with_4_connectivity": 14,
+  "stroma_holes_after_4_connected_fill_counted_with_8_connectivity": 13,
+  "relationship_to_saved_probe": "The frozen implementation reports source_holes_before=13 in every saved S07 U1 probe, matching the mixed 4-fill/8-label count on this exact frozen source mask.",
+  "interpretation": "The local guard documents and applies an 8-connected source foreground / 4-connected source background convention. The whole-mask helper fills with the default 4-connected structure and then merges enclosed pixels using 8-connectivity. The two definitions are observably different on the real S07 source.",
+  "qualification_updates_permitted": false,
+  "production_change_authorized": false
+}

@@ -24,6 +24,10 @@ def mapping(value):
     return dict(value.get("mapping", []))
 
 
+def fields(value):
+    return dict(value.get("fields", value.get("mapping", [])))
+
+
 def fingerprint(value) -> str:
     return sha(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
 
@@ -97,6 +101,7 @@ def analyze(codec_dir: Path, expected_index_sha256: str) -> dict:
                     "probe_rng_sha256": [],
                     "planner_selection_values_sha256": [],
                     "probe_topology": [],
+                    "pending_front_contributions": [],
                 }
                 attempts.append(current)
             elif current is not None:
@@ -120,7 +125,9 @@ def analyze(codec_dir: Path, expected_index_sha256: str) -> dict:
                         "target_holes_before": topology["target_holes_before"],
                         "target_holes_after": topology["target_holes_after"],
                         "changed_component_area_passed": topology["changed_component_area_passed"],
+                        "front_contributions": current["pending_front_contributions"],
                     })
+                    current["pending_front_contributions"] = []
                     key = (
                         "max_topology_passing_realized_pixels"
                         if topology["passed"] is True
@@ -132,6 +139,20 @@ def analyze(codec_dir: Path, expected_index_sha256: str) -> dict:
                     current[key] = max(current[key] or 0, realized)
                 elif name == "grow.begin":
                     current["grow_begin_count"] += 1
+                elif name == "front.contribution":
+                    audit = fields(values["audit"])
+                    current["pending_front_contributions"].append({
+                        "work_index": values["index"],
+                        "pass_index": values["pass_index"],
+                        "requested_pixels": values["requested"],
+                        "realized_pixels": audit["realized_pixels"],
+                        "rejected_source_connectivity": audit["rejected_source_connectivity"],
+                        "rejected_source_hole_change": audit["rejected_source_hole_change"],
+                        "rejected_target_hole_change": audit["rejected_target_hole_change"],
+                        "rejected_target_island": audit["rejected_target_island"],
+                        "rejected_unselected_target_contact": audit["rejected_unselected_target_contact"],
+                        "rejected_source_retention": audit["rejected_source_retention"],
+                    })
                 elif name == "planner.selection":
                     current["planner_selection_values_sha256"].append(fingerprint(values))
                 elif name == "grow.end":
