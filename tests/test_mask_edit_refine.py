@@ -738,6 +738,45 @@ class CandidateAndSceneTests(unittest.TestCase):
         self.assertEqual(len(digests), len(candidates))
         self.assertGreaterEqual(len({item.tool_name for item in candidates}), 2)
 
+        observed = []
+
+        def accept_third(candidate):
+            observed.append(candidate.candidate_id)
+            return len(observed) == 3
+
+        stopped = generate_candidates(
+            mask,
+            schema=self.schema,
+            scene=scene,
+            plan=plan,
+            bundle=bundle,
+            seed=case.seed,
+            candidate_acceptor=accept_third,
+        )
+        self.assertEqual(observed, ["cand:001", "cand:002", "cand:003"])
+        self.assertEqual(len(stopped), 3)
+        for expected, actual in zip(candidates[:3], stopped):
+            self.assertEqual(expected.candidate_id, actual.candidate_id)
+            self.assertTrue(
+                np.array_equal(expected.change_region, actual.change_region)
+            )
+            self.assertTrue(np.array_equal(expected.target_mask, actual.target_mask))
+
+        exhausted = generate_candidates(
+            mask,
+            schema=self.schema,
+            scene=scene,
+            plan=plan,
+            bundle=bundle,
+            seed=case.seed,
+            candidate_acceptor=lambda _candidate: False,
+        )
+        self.assertEqual(len(exhausted), len(candidates))
+        for expected, actual in zip(candidates, exhausted):
+            self.assertTrue(
+                np.array_equal(expected.change_region, actual.change_region)
+            )
+
     def test_curved_equal_width_annulus_is_rejected_as_parallel_artifact(self):
         mask = _glas_circle_mask()
         scene = build_scene_analysis(mask, schema=self.schema, pixel_size_um=0.465)

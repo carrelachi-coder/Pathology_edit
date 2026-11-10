@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from scipy import ndimage
@@ -66,6 +66,7 @@ def generate_candidates(
     candidate_limit: int | None = None,
     compiled_replay_parts: tuple[Any, ...] | None = None,
     compiled_replay_audit: dict[str, Any] | None = None,
+    candidate_acceptor: Callable[[CandidateMask], bool] | None = None,
 ) -> tuple[CandidateMask, ...]:
     """Generate diverse candidates without accepting LLM-provided pixels.
 
@@ -233,6 +234,8 @@ def generate_candidates(
                 tool_trace=replay_trace,
             )
         )
+        if candidate_acceptor is not None and candidate_acceptor(candidates[-1]):
+            return tuple(candidates)
         seen_hashes.add(
             np.packbits(replay_change, axis=None).tobytes()
             + replay_target[replay_change].tobytes()
@@ -392,6 +395,8 @@ def generate_candidates(
                 tool_trace=trace,
             )
         )
+        if candidate_acceptor is not None and candidate_acceptor(candidates[-1]):
+            return tuple(candidates)
     if not candidates:
         raise RefineContractError(
             "deterministic generators could not realize the area budget on legal interfaces"

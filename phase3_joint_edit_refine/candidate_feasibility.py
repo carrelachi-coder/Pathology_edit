@@ -1130,20 +1130,9 @@ class CandidateFeasibilityCompiler:
                         compiled,
                         executor=executor,
                     )
-                    candidates = generate_joint_tissue_candidates(
-                        source_tissue,
-                        schema=schema,
-                        tissue_scene=tissue_scene,
-                        joint_scene=scene,
-                        plan=family_plan,
-                        bundle=tissue_bundle,
-                        seed=tissue_case.seed,
-                        candidate_limit=1,
-                        compiled_replay_parts=parts,
-                        compiled_replay_audit=replay,
-                    )
                     passing = []
-                    for candidate in candidates:
+
+                    def accept_candidate(candidate):
                         report = self.gates.run(
                             GateContext(
                                 case=tissue_case,
@@ -1157,6 +1146,7 @@ class CandidateFeasibilityCompiler:
                         )
                         if report.passed:
                             passing.append((candidate, report))
+                            return True
                         else:
                             failed_executor_check_ids.update(
                                 item.check_id
@@ -1168,50 +1158,25 @@ class CandidateFeasibilityCompiler:
                                     failed_executor_details.setdefault(
                                         item.check_id, item.detail
                                     )
-                    if not passing and family_plan.tool_program.candidate_count > 1:
-                        # The compiled replay is always candidate 001 and the
-                        # caller ultimately selects the first gate-passing
-                        # candidate.  Validate that authoritative replay before
-                        # materializing the expensive variation portfolio.  If
-                        # it fails, generate the unchanged full sequence and
-                        # continue from candidate 002, preserving selection and
-                        # all hard-gate semantics exactly.
-                        candidates = generate_joint_tissue_candidates(
-                            source_tissue,
-                            schema=schema,
-                            tissue_scene=tissue_scene,
-                            joint_scene=scene,
-                            plan=family_plan,
-                            bundle=tissue_bundle,
-                            seed=tissue_case.seed,
-                            compiled_replay_parts=parts,
-                            compiled_replay_audit=replay,
-                        )
-                        for candidate in candidates[1:]:
-                            report = self.gates.run(
-                                GateContext(
-                                    case=tissue_case,
-                                    source_mask=source_tissue,
-                                    schema=schema,
-                                    scene=tissue_scene,
-                                    bundle=tissue_bundle,
-                                    plan=family_plan,
-                                    candidate=candidate,
-                                )
-                            )
-                            if report.passed:
-                                passing.append((candidate, report))
-                                break
-                            failed_executor_check_ids.update(
-                                item.check_id
-                                for item in report.checks
-                                if not item.passed
-                            )
-                            for item in report.checks:
-                                if not item.passed:
-                                    failed_executor_details.setdefault(
-                                        item.check_id, item.detail
-                                    )
+                        return False
+
+                    # Generate in the historical deterministic order, but run
+                    # the hard gates as soon as each candidate exists.  Since
+                    # the compiler always selected passing[0], stopping after
+                    # the first accepted candidate preserves the exact choice;
+                    # if none passes, the full original sequence is exhausted.
+                    generate_joint_tissue_candidates(
+                        source_tissue,
+                        schema=schema,
+                        tissue_scene=tissue_scene,
+                        joint_scene=scene,
+                        plan=family_plan,
+                        bundle=tissue_bundle,
+                        seed=tissue_case.seed,
+                        compiled_replay_parts=parts,
+                        compiled_replay_audit=replay,
+                        candidate_acceptor=accept_candidate,
+                    )
                     if not passing:
                         continue
                     candidate, report = passing[0]

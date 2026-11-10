@@ -1,0 +1,20 @@
+{
+  "schema_version": "topology-track-b-s07-development-result-v3",
+  "status": "HOLD_timeout_no_business_result",
+  "authorization_consumed": true,
+  "controller_exit_code": 124,
+  "elapsed_seconds": 1200,
+  "automatic_retries": 0,
+  "saved_output": {
+    "screen_identity_present": true,
+    "capacity_screen_present": false,
+    "stdout_bytes": 0,
+    "remaining_probe_processes": 0
+  },
+  "interpretation": "Checking the compiled replay before eager fallback was insufficient. At least one replay failed, after which the implementation still materialized the entire deterministic fallback portfolio before running its gates.",
+  "next_change": "Move the unchanged hard-gate check into ordered candidate production so generation stops at the first accepted candidate and exhausts the full original sequence only when all candidates fail.",
+  "research_state_change": false,
+  "qualification_counts_unchanged": {"passed": 17, "upper_bound": 19, "four_target_approved": 0},
+  "formal_cohort_open": false,
+  "he_generation_open": false
+}

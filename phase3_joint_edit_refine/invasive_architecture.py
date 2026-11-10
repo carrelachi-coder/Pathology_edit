@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import replace
-from typing import Iterable
+from typing import Callable, Iterable
 
 import numpy as np
 from scipy import ndimage
@@ -118,11 +118,23 @@ def generate_joint_tissue_candidates(
     candidate_limit: int | None = None,
     compiled_replay_parts=None,
     compiled_replay_audit=None,
+    candidate_acceptor: Callable[[CandidateMask], bool] | None = None,
 ) -> tuple[CandidateMask, ...]:
     """Dispatch specialized architectures and preserve the generic backend."""
 
     if plan.primitive_id not in SPECIALIZED_ARCHITECTURE_PRIMITIVES:
         from phase3_mask_edit_refine.candidates import generate_candidates
+
+        def accept(candidate):
+            if candidate_acceptor is None:
+                return False
+            bound = _bind_explicit_target_fine_id(
+                (candidate,),
+                source_tissue=source_tissue,
+                schema=schema,
+                plan=plan,
+            )[0]
+            return bool(candidate_acceptor(bound))
 
         candidates = generate_candidates(
             source_tissue,
@@ -134,6 +146,7 @@ def generate_joint_tissue_candidates(
             candidate_limit=candidate_limit,
             compiled_replay_parts=compiled_replay_parts,
             compiled_replay_audit=compiled_replay_audit,
+            candidate_acceptor=accept if candidate_acceptor is not None else None,
         )
         return _bind_explicit_target_fine_id(
             candidates,
@@ -166,6 +179,8 @@ def generate_joint_tissue_candidates(
             )
         if candidate is not None:
             generated.append(candidate)
+        if candidate_acceptor is not None and candidate_acceptor(candidate):
+            break
     return tuple(generated)
 
 
