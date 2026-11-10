@@ -3,7 +3,7 @@
   "status": "review_requested_no_execution_authority",
   "date": "2026-11-10",
   "branch": "codex/topology-hole-semantics-v2",
-  "head_commit": "60aebb31",
+  "candidate_implementation_commit": "99f8fd10",
   "accepted_scope_record_sha256": "db49a925dc32031c6ff0ed930f10fcf50d21ee0b3970de3781f6b86ea3fc4ef6",
   "track_A": {
     "name": "whole-mask hole semantics alignment",
@@ -16,7 +16,7 @@
   "track_B": {
     "name": "bounded single-anchor subdivision after safe underfill",
     "evidence": "directional_anchor_subdivision_v1_local_validation.json",
-    "evidence_sha256": "fca57089c87a967867792bc8cf0edbddc6e9dc77ec5fcd49f63e4998e7ba647e",
+    "evidence_sha256": "4d54a075ffd82040223d4e52d092b4bf964f038d8741f321c067532af267ab15",
     "purpose": "Permit one selectable subanchor while retaining one unedited boundary witness when a cell-feasible single parent anchor was excluded solely by the existing directional limit.",
     "eligibility": [
       "area-underfill replan, never initial compile",
@@ -25,6 +25,7 @@
       "parent anchor was cell feasible",
       "parent had exactly one anchor and selection limit zero",
       "subdivision is deterministic, exhaustive, disjoint and 8-connected",
+      "both selected and retained subanchors contain at least one source-reference equivalent cell diameter of contact pixels",
       "new identities require fresh nuclei preflight"
     ],
     "unchanged_contract": {
@@ -35,14 +36,14 @@
   "separation_invariant": "Track B may not be invoked to rescue a topology-failing trial. Track A must first produce a topology-passing underfill under its own versioned semantics; only then may Track B eligibility be evaluated.",
   "local_validation": {
     "track_A": "228 tests plus 346 subtests, then 72 tests plus 85 subtests",
-    "track_B_latest": "88 tests plus 85 subtests",
+    "track_B_latest": "90 tests plus 85 subtests",
     "real_patient_runs": 0,
     "qualification_updates": 0
   },
   "review_questions": [
     "Does the 8-foreground/4-background convention correctly align whole-mask and local-guard hole semantics without changing component semantics?",
     "Is the topology-passing-underfill prerequisite sufficient to prevent the reachable-area mechanism from masking a topology failure?",
-    "Does deterministic geodesic bisection preserve the scientific meaning of an unedited boundary witness, or is a minimum physical arc length also required?",
+    "Is one source-reference equivalent cell diameter an appropriate case-calibrated minimum for both selected and retained subanchors when pixel_size_um is unavailable?",
     "Must the two tracks receive separate code identities and separate development executions before any combined candidate is tested?",
     "Are the negative cases sufficient before preparing a development-only manifest?"
   ],
