@@ -179,19 +179,31 @@
     "budget_v2_file_timing_audit": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_file_timing_audit_v1.json"
   },
   "observer_array_microprofile_review": {
-    "status": "design_review_accepted_final_launch_manifest_frozen_authorization_pending",
+    "status": "one_shot_synthetic_target_completed_authorization_consumed",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/12",
     "branch": "codex/observer-array-microprofile-review",
-    "commit": "ea27fd69",
+    "commit": "0e840227",
     "candidate_manifest_sha256": "4fd10df6a937c96da2b943fcd3a2f5c923f4827afb062925b8186e901aeded6e",
     "scope": "Synthetic direct Codec B/C array-path microprofile: 100000 events and 32 generated arrays per arm; no Adapter, S07, witness, H&E or outer acceptance.",
     "local_targeted_tests_passed": 3,
     "local_full_candidate_status": "strict_Codec_match_and_global_RNG_unchanged",
-    "target_deployed": false,
-    "target_executed": false,
-    "target_authorized": false,
+    "target_deployed": true,
+    "target_executed": true,
+    "target_authorized": true,
     "previous_large_synthetic_authorizations_consumed": true,
     "design_review_accepted": true,
-    "launch_manifest_sha256": "c3a89086029811cf0790b430aad8f8fcc8553a25700ea1e2244d43cb1c727189"
+    "launch_manifest_sha256": "c3a89086029811cf0790b430aad8f8fcc8553a25700ea1e2244d43cb1c727189",
+    "authorization_consumed": true,
+    "target_result": "adapter_controller_v1/observer_array_microprofile_v1/target_result_v1/closeout_report.json",
+    "target_elapsed_seconds": 70.44057081267238,
+    "target_hash_only_total_seconds": 38.65368580445647,
+    "target_full_capture_total_seconds": 30.029703326523304,
+    "target_events_each": 100000,
+    "target_arrays_each": 32,
+    "target_strict_codec_match": true,
+    "target_global_rng_unchanged": true,
+    "full_scale_C_hold_resolved": false,
+    "real_S07_authorized": false,
+    "formal_HE_authorized": false
   }
 }
