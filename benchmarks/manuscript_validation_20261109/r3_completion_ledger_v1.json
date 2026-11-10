@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Review a narrowly scoped synthetic target microprofile of Full Capture array publication before changing Codec or another large-trial deadline. Both previous large synthetic authorizations are consumed HOLDs. Real S07 and formal cohort remain closed.",
+  "current_next_deliverable": "Review the fixed 100k-event/683-array synthetic target scaling proposal to isolate target Full Capture array cost. No target run is authorized; the prior microprofile authorization was consumed. Real S07 and formal cohort remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -182,7 +182,7 @@
     "status": "one_shot_synthetic_target_completed_authorization_consumed",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/12",
     "branch": "codex/observer-array-microprofile-review",
-    "commit": "0e840227",
+    "commit": "a624c49e",
     "candidate_manifest_sha256": "4fd10df6a937c96da2b943fcd3a2f5c923f4827afb062925b8186e901aeded6e",
     "scope": "Synthetic direct Codec B/C array-path microprofile: 100000 events and 32 generated arrays per arm; no Adapter, S07, witness, H&E or outer acceptance.",
     "local_targeted_tests_passed": 3,
@@ -204,6 +204,19 @@
     "target_global_rng_unchanged": true,
     "full_scale_C_hold_resolved": false,
     "real_S07_authorized": false,
-    "formal_HE_authorized": false
+    "formal_HE_authorized": false,
+    "local_683_array_check": {
+      "status": "completed_local_only",
+      "events_each": 100000,
+      "arrays_each": 683,
+      "strict_match": true,
+      "global_rng_unchanged": true,
+      "evidence": "adapter_controller_v1/observer_array_microprofile_v1/local_scale_683_v1/summary.json"
+    },
+    "target_683_array_proposal": {
+      "status": "review_only_no_execution_authorized",
+      "candidate_manifest_sha256": "4d783f41c491141006326f933478dfc4c7bc1af8b8d31749e2b5a83e5e4f3c0c",
+      "evidence": "adapter_controller_v1/observer_array_microprofile_v1/array_scale_683_review_proposal_v1.json"
+    }
   }
 }
