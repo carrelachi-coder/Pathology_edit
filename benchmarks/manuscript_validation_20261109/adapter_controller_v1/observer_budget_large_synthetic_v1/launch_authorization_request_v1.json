@@ -1,0 +1,19 @@
+{
+  "kind": "observer-budget-large-synthetic-v1",
+  "status": "awaiting_new_one_shot_target_authorization",
+  "manifest_sha256": "91ffabf1ae6a45e7270328fde2ad746649e11884a8ad658b187768ccb44ff5c5",
+  "review_acceptance_sha256": "478aff9dd41c6a730143fb3882dabb4bd8190e4b1393aa014abc325942a12d87",
+  "scope": "One isolated target-server synthetic B/C trial using fixed 2.1M logical events and 683 generated arrays per arm. No real S07, pathology witness, H&E or experimental acceptance proof.",
+  "constraints": {
+    "setup_seconds": 60,
+    "encode_seal_seconds_per_arm": 180,
+    "capture_validator_hard_seconds_each": 30,
+    "strict_BC_compare_hard_seconds": 60,
+    "overall_OS_watchdog_seconds": 600,
+    "max_allocated_bytes_per_arm": 4294967296,
+    "free_bytes_required": 12884901888,
+    "automatic_retries": 0,
+    "failure_behavior": "HOLD and stop; no authorization reuse"
+  },
+  "execution_requires": "One new explicit approval bound to launch_manifest_v1.json SHA256; prior setup-only and S07 approvals are consumed."
+}
