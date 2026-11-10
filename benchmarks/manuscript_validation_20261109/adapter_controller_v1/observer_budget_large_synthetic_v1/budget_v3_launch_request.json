@@ -1,0 +1,34 @@
+{
+  "kind": "observer-budget-large-synthetic-v3-launch-request",
+  "status": "budget_review_accepted_target_authorization_not_granted",
+  "review_proposal": "budget_v3_review_proposal.json",
+  "review_acceptance": "User accepted v3 engineering budget in this conversation; this is not target execution authorization.",
+  "launch_manifest": "budget_v3_launch_manifest.json",
+  "launch_manifest_sha256": "df4bf74feb64e090d19d2e61205db8c140a412ea1e27cac1a320c63554fff328",
+  "fixed_workload": {
+    "events_per_arm": 2100000,
+    "generated_arrays_per_arm": 683,
+    "array_shape": [
+      512,
+      512
+    ],
+    "array_dtype": "float64"
+  },
+  "budgets": {
+    "setup_seconds": 60,
+    "encode_seal_each_arm_seconds": 900,
+    "single_stream_validation_seconds": 30,
+    "strict_BC_comparison_seconds": 60,
+    "overall_OS_watchdog_seconds": 2200,
+    "max_storage_bytes_per_arm": 4294967296,
+    "automatic_retries": 0
+  },
+  "forbidden_calls": {
+    "S07": 0,
+    "witness": 0,
+    "HE": 0,
+    "formal_cohort": 0
+  },
+  "failure_policy": "HOLD; no retry; no acceptance proof; prior HOLD records remain immutable.",
+  "old_authorizations_reusable": false
+}
