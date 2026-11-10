@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Obtain a separate one-shot approval bound to the frozen large synthetic launch manifest SHA; then run the isolated target B/C trial once and archive its terminal result. Real S07 and formal cohort remain separately gated.",
+  "current_next_deliverable": "Offline analyze target synthetic B throughput and the 180-second arm budget. Preserve consumed HOLD. Any new synthetic trial needs a versioned policy and new manifest-bound authorization; real S07 remains separately closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -134,16 +134,16 @@
     "independent_review": "user approved in current conversation; no GitHub reviewer signature claimed"
   },
   "observer_budget_large_synthetic_review": {
-    "status": "user_review_passed_launch_manifest_frozen_awaiting_new_one_shot_target_authorization",
+    "status": "one_shot_target_HOLD_B_generation_deadline_authorization_consumed",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/11",
     "branch": "codex/observer-budget-large-synthetic-review",
-    "commit": "c3982a37",
+    "commit": "da642d85",
     "candidate_manifest_sha256": "1b5dff6ee1cf4d725617a5cf08c26ae2b6473ad36842206ab87f42ac42747335",
     "logical_events_each": 2100000,
     "full_capture_arrays": 683,
     "local_targeted_tests_passed": 16,
-    "target_run_authorized": false,
-    "target_run_executed": false,
+    "target_run_authorized": true,
+    "target_run_executed": true,
     "real_S07_calls": 0,
     "formal_HE_calls": 0,
     "independent_review": "user approved in current conversation; no GitHub reviewer signature claimed",
@@ -160,6 +160,10 @@
       "target_server_acceptance": false
     },
     "review_acceptance_sha256": "478aff9dd41c6a730143fb3882dabb4bd8190e4b1393aa014abc325942a12d87",
-    "launch_manifest_sha256": "91ffabf1ae6a45e7270328fde2ad746649e11884a8ad658b187768ccb44ff5c5"
+    "launch_manifest_sha256": "91ffabf1ae6a45e7270328fde2ad746649e11884a8ad658b187768ccb44ff5c5",
+    "target_result": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_result_v1/closeout_report.json",
+    "target_hold_reason": "B arm generation exceeded frozen 180-second deadline; C and strict comparison not started",
+    "target_partial_block_files_sha_verified": 25,
+    "target_partial_last_sequence": 978493
   }
 }
