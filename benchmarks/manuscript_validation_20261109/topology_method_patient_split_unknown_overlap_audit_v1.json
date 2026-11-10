@@ -1,0 +1,55 @@
+{
+  "kind": "r3-topology-method-split-unknown-overlap-audit-v1",
+  "status": "read_only_no_qualification_change",
+  "source_topology_wave_sha256": [
+    "8952838a61744a3d3943b62be6ac9626061f05f10ce12e2bd63f019e52e428d7",
+    "5dca1e4d723afd49660a849e9bd6ad19f0dd44717dd48904ac8c617df2fc0c15",
+    "048c170a4804893ed73dda99b898879a2da2e11a6a0ab20652c200ab19b6b19c",
+    "f6c573c4d5d355c31dd79ca03fe9e406839e34dd0dc8a620ec95f39f0d1ef3b0",
+    "896ada6971b828305748d9a8ba5a49d2d1b01212f286b235f286b8827a0df032"
+  ],
+  "patient_reference_mapping_sha256": "2275ee67dd823c19fc1ccc3127b74540861d026bb37d8f16596109a1aa2859b1",
+  "split_proposal_sha256": "1f44bfd0598629f4ea48f8c8af73956c9c45ced58af5249b86c7b00520b65af3",
+  "unknown_source_rows": [
+    {
+      "wave": "supplemental_v1",
+      "reference_id": "BCSS_joint_supplement_783c6bc3e374",
+      "patient_alias": "TCGA-A7-A26F",
+      "timed_out": true,
+      "controller_exit_code": 124,
+      "already_has_a_passing_source": false,
+      "proposed_partition": "reserved_method_evaluation"
+    },
+    {
+      "wave": "supplemental_v1",
+      "reference_id": "BCSS_joint_supplement_233ba410a4e6",
+      "patient_alias": "TCGA-AR-A256",
+      "timed_out": true,
+      "controller_exit_code": 124,
+      "already_has_a_passing_source": false,
+      "proposed_partition": "reserved_method_evaluation"
+    },
+    {
+      "wave": "supplemental_v2_wave00",
+      "reference_id": "BCSS_joint_supplement_8252f5a84bcd",
+      "patient_alias": "TCGA-A2-A0T2",
+      "timed_out": true,
+      "controller_exit_code": 124,
+      "already_has_a_passing_source": true,
+      "proposed_partition": "reserved_method_evaluation"
+    }
+  ],
+  "patient_level_result": {
+    "old_confirmed_pass_patients_total": 17,
+    "old_confirmed_pass_patients_in_reserved_evaluation": 14,
+    "unknown_sources": 3,
+    "distinct_unknown_patients": 3,
+    "additional_patients_if_all_unknown_pass": 2,
+    "additional_unknown_patients_in_reserved_evaluation": 2,
+    "reserved_evaluation_old_method_upper_if_all_unknown_pass": 16,
+    "development_old_method_pass_patients": 3
+  },
+  "interpretation": "The proposed 68-patient reserved set has at most16 source-topology-qualified patients under the frozen old mechanism if all old unknowns pass. This is not an upper bound for a future approved method and does not make four targets approved. Keep the deterministic partition unchanged; do not reassign based on known old results.",
+  "qualification_updates_permitted": false,
+  "formal_cohort_permitted": false
+}

@@ -349,6 +349,9 @@
     "outcome_based_reassignment_permitted": false,
     "evaluator_reference_audit": "topology_method_patient_split_evaluator_overlap_audit_v1.json",
     "evaluator_reference_audit_sha256": "260f39489d541fb00434e32502d22b617e58e0735df5eb09d2cc1f7a50ab834b",
-    "reserved_evaluator_training_independence_proven": false
+    "reserved_evaluator_training_independence_proven": false,
+    "old_unknown_overlap_audit": "topology_method_patient_split_unknown_overlap_audit_v1.json",
+    "old_unknown_overlap_audit_sha256": "e498db7c00a91a9d121be5959a54a4edd1f9c1fde3bc34f477e45bf047a62f46",
+    "reserved_old_method_upper_if_unknown_pass": 16
   }
 }
