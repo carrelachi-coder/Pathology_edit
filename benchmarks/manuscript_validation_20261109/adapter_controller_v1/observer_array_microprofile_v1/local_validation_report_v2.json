@@ -1,0 +1,160 @@
+{
+  "kind": "observer-array-microprofile-local-validation-v2",
+  "status": "synthetic_codec_microprofile_complete",
+  "scope": "Local Mac run of the final candidate code and fixed 100k-event/32-array workload; no target server execution.",
+  "candidate_target_manifest_sha256": "4fd10df6a937c96da2b943fcd3a2f5c923f4827afb062925b8186e901aeded6e",
+  "local_manifest_sha256": "e4099efe7ee0d349def45ee12b9417f757a013ef33f33a7d327fb4e9633b8e3d",
+  "local_trial_result_sha256": "e652b9c171c73ced2b1dc86c90b027a330489cdc0a0ea19ae14291419f0da2e0",
+  "events_each": 100000,
+  "arrays_each": 32,
+  "strict_match": true,
+  "global_rng_unchanged": true,
+  "arms": [
+    {
+      "mode": "hash_only",
+      "events": 100000,
+      "arrays": 32,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0",
+      "loop_seconds": 9.228549499996006,
+      "total_seconds": 9.239528957754374,
+      "profile_sha256": "ae4401d495a791bf21152d3f83a56126c53ed2dfb8a131069528db98869f6e28",
+      "profile_rows": [
+        {
+          "function": "<built-in method posix.fsync>",
+          "file": "~",
+          "line": 0,
+          "calls": 34,
+          "self_seconds": 0.0039837530000000005,
+          "cumulative_seconds": 0.0039837530000000005
+        },
+        {
+          "function": "_append",
+          "file": "guard_blocks_v2.py",
+          "line": 268,
+          "calls": 33,
+          "self_seconds": 0.00018866300000000002,
+          "cumulative_seconds": 0.008250751
+        },
+        {
+          "function": "_copy_array",
+          "file": "guard_blocks_v2.py",
+          "line": 337,
+          "calls": 32,
+          "self_seconds": 7.666300000000001e-05,
+          "cumulative_seconds": 0.006472956
+        },
+        {
+          "function": "_flush",
+          "file": "guard_blocks_v2.py",
+          "line": 301,
+          "calls": 1,
+          "self_seconds": 0.000575041,
+          "cumulative_seconds": 0.013498625
+        },
+        {
+          "function": "_publish",
+          "file": "guard_blocks_v2.py",
+          "line": 277,
+          "calls": 1,
+          "self_seconds": 2.0958e-05,
+          "cumulative_seconds": 0.0014883750000000001
+        },
+        {
+          "function": "add_array",
+          "file": "guard_blocks_v2.py",
+          "line": 342,
+          "calls": 32,
+          "self_seconds": 0.0008590510000000001,
+          "cumulative_seconds": 0.051781378
+        },
+        {
+          "function": "write_event",
+          "file": "guard_blocks_v2.py",
+          "line": 396,
+          "calls": 100000,
+          "self_seconds": 0.580566734,
+          "cumulative_seconds": 8.542399957
+        }
+      ]
+    },
+    {
+      "mode": "full_capture",
+      "events": 100000,
+      "arrays": 32,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0",
+      "loop_seconds": 7.840642209164798,
+      "total_seconds": 7.854966584127396,
+      "profile_sha256": "619384a7b7bf08e372697a845c9adfd2c55ca0923f309755a3c1d91423fcfdce",
+      "profile_rows": [
+        {
+          "function": "<built-in method posix.fsync>",
+          "file": "~",
+          "line": 0,
+          "calls": 66,
+          "self_seconds": 0.009023962,
+          "cumulative_seconds": 0.009023962
+        },
+        {
+          "function": "_append",
+          "file": "guard_blocks_v2.py",
+          "line": 268,
+          "calls": 33,
+          "self_seconds": 0.000115989,
+          "cumulative_seconds": 0.003365041
+        },
+        {
+          "function": "_copy_array",
+          "file": "guard_blocks_v2.py",
+          "line": 337,
+          "calls": 32,
+          "self_seconds": 6.7171e-05,
+          "cumulative_seconds": 0.004761208
+        },
+        {
+          "function": "_flush",
+          "file": "guard_blocks_v2.py",
+          "line": 301,
+          "calls": 1,
+          "self_seconds": 0.00035870700000000005,
+          "cumulative_seconds": 0.012141208
+        },
+        {
+          "function": "_publish",
+          "file": "guard_blocks_v2.py",
+          "line": 277,
+          "calls": 33,
+          "self_seconds": 0.00044955900000000004,
+          "cumulative_seconds": 0.13742379300000002
+        },
+        {
+          "function": "add_array",
+          "file": "guard_blocks_v2.py",
+          "line": 342,
+          "calls": 32,
+          "self_seconds": 0.000732037,
+          "cumulative_seconds": 0.17624704500000002
+        },
+        {
+          "function": "write_event",
+          "file": "guard_blocks_v2.py",
+          "line": 396,
+          "calls": 100000,
+          "self_seconds": 0.47571384800000005,
+          "cumulative_seconds": 7.144890784
+        }
+      ]
+    }
+  ],
+  "elapsed_seconds": 18.63119558338076,
+  "observed_counters": {
+    "S07_calls": 0,
+    "witness_calls": 0,
+    "HE_calls": 0,
+    "outer_acceptance_published": false
+  },
+  "limits": [
+    "Local filesystem and cProfile overhead do not predict target duration.",
+    "Direct Codec profiling is not Adapter noninterference evidence.",
+    "No S07 or formal cohort evidence."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "kind": "observer-array-microprofile-v1",
+  "status": "review_only_no_execution_authorized",
+  "candidate_manifest_sha256": "4fd10df6a937c96da2b943fcd3a2f5c923f4827afb062925b8186e901aeded6e",
+  "scope": "One isolated synthetic Codec microprofile, 100k events and32 deterministic 512x512 float64 arrays per mode. Profiles hash-only and Full Capture separately, then strictly compares the complete logical streams. No Adapter, planner, S07, witness, H&E or outer experimental acceptance call.",
+  "evidence": [
+    "../observer_budget_large_synthetic_v1/target_hold_result_v2/closeout_report.json",
+    "../observer_budget_large_synthetic_v1/target_hold_full_capture_offline_analysis_v1.json",
+    "../observer_budget_large_synthetic_v1/target_hold_file_timing_audit_v1.json"
+  ],
+  "budgets": {
+    "setup_seconds": 60,
+    "each_arm_encode_seal_seconds": 120,
+    "overall_OS_watchdog_seconds": 360,
+    "events_each": 100000,
+    "generated_arrays_each": 32,
+    "free_bytes_required": 12884901888,
+    "automatic_retries": 0
+  },
+  "comparison": "Codec strict byte-equivalent logical stream and complete business process; separate cProfile outputs for B and C.",
+  "limitations": [
+    "cProfile affects absolute times.",
+    "Direct Codec microprofile isolates storage path but does not validate Adapter or real S07.",
+    "No server deployment or run is authorized by this proposal."
+  ]
+}

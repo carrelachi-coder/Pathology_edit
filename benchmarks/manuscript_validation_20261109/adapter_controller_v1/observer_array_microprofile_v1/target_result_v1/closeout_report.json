@@ -1,0 +1,117 @@
+{
+  "kind": "observer-array-microprofile-v1-closeout",
+  "status": "synthetic_target_completed_authorization_consumed",
+  "launch_manifest_sha256": "c3a89086029811cf0790b430aad8f8fcc8553a25700ea1e2244d43cb1c727189",
+  "approval": "User approved one isolated synthetic run in this conversation; the authorization is consumed and cannot be reused.",
+  "source": "benchmarks/manuscript_validation_20261109/adapter_controller_v1/observer_array_microprofile_v1/target_result_v1",
+  "copied_evidence_files": {
+    "authorization_consumed.json": {
+      "bytes": 106,
+      "sha256": "56de28acd5ebd5fb4fe42d4bb48f540af286c86b6ba931b36391251e92f43ea0"
+    },
+    "trial_result.json": {
+      "bytes": 5034,
+      "sha256": "d9cdb5688f3c7bec88cce1f947332f07c383ef75554e2aa588f6f4cb73894696"
+    },
+    "full_capture.pstats": {
+      "bytes": 11863,
+      "sha256": "8b8c3f3a6bab1b490570136e1a4ffd1684f647d67aaef98fcc966469336ef351"
+    },
+    "hash_only.pstats": {
+      "bytes": 11898,
+      "sha256": "4e93e66b2e6bd6296f4b5a6eef17d448b29876589f568e47e9efabd8cec3f60e"
+    }
+  },
+  "result": {
+    "elapsed_seconds": 70.44057081267238,
+    "hash_only": {
+      "events": 100000,
+      "arrays": 32,
+      "loop_seconds": 36.98835246823728,
+      "total_seconds": 38.65368580445647,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0"
+    },
+    "full_capture": {
+      "events": 100000,
+      "arrays": 32,
+      "loop_seconds": 29.894981276243925,
+      "total_seconds": 30.029703326523304,
+      "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0"
+    },
+    "strict_codec_comparison": {
+      "logical_events": 100000,
+      "strict_match": true,
+      "excluded_fields": [],
+      "left": {
+        "block_integrity_complete": true,
+        "business_process_complete": true,
+        "logical_events": 100000,
+        "physical_blocks": 2,
+        "array_occurrences": 32,
+        "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0"
+      },
+      "right": {
+        "block_integrity_complete": true,
+        "business_process_complete": true,
+        "logical_events": 100000,
+        "physical_blocks": 2,
+        "array_occurrences": 32,
+        "stream_sha256": "cd8597111c53e5022ece93f241c594de7ab27195afc356fa0138d665b1a89dc0"
+      }
+    },
+    "global_rng_unchanged": true,
+    "S07_calls": 0,
+    "witness_calls": 0,
+    "HE_calls": 0,
+    "outer_acceptance_published": false,
+    "profile_selected": {
+      "hash_only": {
+        "<built-in method posix.fsync>": {
+          "calls": 34,
+          "self_seconds": 19.322582603,
+          "cumulative_seconds": 19.322582603
+        },
+        "add_array": {
+          "calls": 32,
+          "self_seconds": 0.0016102310000000002,
+          "cumulative_seconds": 19.386530914
+        },
+        "write_event": {
+          "calls": 100000,
+          "self_seconds": 1.0296707790000001,
+          "cumulative_seconds": 16.406508560000002
+        }
+      },
+      "full_capture": {
+        "<built-in method posix.fsync>": {
+          "calls": 66,
+          "self_seconds": 12.025311462000001,
+          "cumulative_seconds": 12.025311462000001
+        },
+        "add_array": {
+          "calls": 32,
+          "self_seconds": 0.001959808,
+          "cumulative_seconds": 11.627477567000001
+        },
+        "write_event": {
+          "calls": 100000,
+          "self_seconds": 1.047563574,
+          "cumulative_seconds": 17.066630289000003
+        }
+      }
+    },
+    "target_file_allocation": {
+      "hash_only_bytes": 1458176,
+      "full_capture_bytes": 135946240,
+      "hash_only_files": 14,
+      "full_capture_files": 78
+    }
+  },
+  "interpretation": [
+    "This 100k-event/32-array target microprofile completed. It does not close the previous 2.1M-event/683-array C-arm HOLD or prove the full B/C validation deadline.",
+    "In this single run, Full Capture completed faster than Hash-only despite writing about 136 MB. Its fsync self time was about 12.0 s versus 19.3 s for Hash-only. The observed target slowdown is therefore not explained by a fixed per-array overhead in this small workload.",
+    "The previous C-arm slowdown may depend on larger workload size, storage variability, or another factor; this trial does not distinguish those causes.",
+    "No real S07, witness, H&E or formal cohort call was made. The R3 qualification record remains unchanged."
+  ],
+  "next_gate": "Any further target workload or real S07 diagnosis requires a new reviewed manifest and separate authorization."
+}
