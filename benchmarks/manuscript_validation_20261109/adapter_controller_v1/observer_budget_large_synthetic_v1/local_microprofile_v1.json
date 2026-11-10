@@ -1,0 +1,84 @@
+{
+  "kind": "observer-budget-local-microprofile-v1",
+  "scope": "Local Mac cProfile of unchanged synthetic B/C runner with 100k events and 32 generated arrays per arm; not target performance acceptance.",
+  "status": "synthetic_BC_strict_match",
+  "events_each": 100000,
+  "generated_arrays_each": 32,
+  "elapsed_seconds": 10.327944166958332,
+  "B_encode_seconds": 3.9086871659383178,
+  "C_encode_seconds": 3.8079871656373143,
+  "strict_BC_validation_ok": true,
+  "profile_rows": [
+    {
+      "function": "record",
+      "file": "records.py",
+      "calls": 1,
+      "self_seconds": 6.660000000000001e-07,
+      "cumulative_seconds": 6.660000000000001e-07
+    },
+    {
+      "function": "record",
+      "file": "observer_adapter_v2.py",
+      "calls": 200000,
+      "self_seconds": 0.055183881000000004,
+      "cumulative_seconds": 7.539979766
+    },
+    {
+      "function": "_copy_array",
+      "file": "guard_blocks_v2.py",
+      "calls": 68,
+      "self_seconds": 0.000142039,
+      "cumulative_seconds": 0.008279251000000001
+    },
+    {
+      "function": "_append",
+      "file": "guard_blocks_v2.py",
+      "calls": 74,
+      "self_seconds": 0.00022183600000000002,
+      "cumulative_seconds": 0.011057497000000001
+    },
+    {
+      "function": "_flush",
+      "file": "guard_blocks_v2.py",
+      "calls": 6,
+      "self_seconds": 0.0022510010000000003,
+      "cumulative_seconds": 0.041948248
+    },
+    {
+      "function": "record",
+      "file": "observer_adapter_v2.py",
+      "calls": 200000,
+      "self_seconds": 0.235459,
+      "cumulative_seconds": 7.4847958850000005
+    },
+    {
+      "function": "_publish",
+      "file": "guard_blocks_v2.py",
+      "calls": 40,
+      "self_seconds": 0.000411791,
+      "cumulative_seconds": 0.103930164
+    },
+    {
+      "function": "add_array",
+      "file": "guard_blocks_v2.py",
+      "calls": 68,
+      "self_seconds": 0.0011610330000000001,
+      "cumulative_seconds": 0.162887374
+    },
+    {
+      "function": "write_event",
+      "file": "guard_blocks_v2.py",
+      "calls": 200000,
+      "self_seconds": 0.6832757700000001,
+      "cumulative_seconds": 4.749909781
+    }
+  ],
+  "profile_sha256": "e6947e9b39ecbe630333c57f2d3658f469d130940b043835db5ce85db93e3c58",
+  "limitations": [
+    "cProfile adds overhead and this was on a different filesystem/CPU from the target server.",
+    "The aggregated fsync time here cannot explain the target C HOLD.",
+    "The two modes were run sequentially; functions are not arm-separated in this profile.",
+    "No real S07 or scientific qualification calls occurred."
+  ],
+  "next_evidence": "Target-isolated synthetic microprofile with arm-separated timing for array copy/hash, blob write+fsync, index append+fsync and event encoding, under new review and authorization."
+}

@@ -1,0 +1,14 @@
+{
+  "status": "HOLD",
+  "automatic_retries": 0,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "witness_calls": 0,
+  "outer_acceptance_published": false,
+  "arms": [],
+  "setup_seconds": 8.212432730942965,
+  "failure_type": "TimeoutError",
+  "failure_text": "arm generation deadline",
+  "stopped_arm": "B",
+  "elapsed_seconds": 193.67159596085548
+}

@@ -1,0 +1,15 @@
+{
+  "kind": "observer-budget-adapter-v2-review-acceptance-v1",
+  "decision": "user_review_passed",
+  "source": "Current Codex conversation user message: 审查通过请继续",
+  "scope": "Draft PRs #9, #10 and #11 at the exact heads below. This accepts code review; it is not a target execution authorization, a GitHub review signature, or formal S07 approval.",
+  "pr_heads": {
+    "9": "2c1b7b1d0a0bf21e6a16ce09e9d8752fabbed2ff",
+    "10": "173d3069e53cc4d49206551593df2b60b709bfc1",
+    "11": "814a60950db0237d8d8e1b7a61eda6cc7c98ac66"
+  },
+  "candidate_manifest_sha256": "1b5dff6ee1cf4d725617a5cf08c26ae2b6473ad36842206ab87f42ac42747335",
+  "target_synthetic_authorized": false,
+  "S07_authorized": false,
+  "formal_HE_authorized": false
+}

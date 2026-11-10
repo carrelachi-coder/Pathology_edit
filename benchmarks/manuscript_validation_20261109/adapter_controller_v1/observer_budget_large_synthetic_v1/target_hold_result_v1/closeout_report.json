@@ -1,0 +1,43 @@
+{
+  "kind": "observer-budget-large-synthetic-target-closeout-v1",
+  "status": "HOLD",
+  "authorization_consumed": true,
+  "launch_manifest_sha256": "91ffabf1ae6a45e7270328fde2ad746649e11884a8ad658b187768ccb44ff5c5",
+  "control_exit_code": 78,
+  "trial_result_sha256": "b8e7aa0206ae15a3a93f90d2f958578abeb646d4f382b6a6a4526b132d1f1b72",
+  "authorization_consumed_sha256": "1a40ebe3e3ecb20a834f91ae286efdc946a26ed99ca816092eb2ca2b80299c9d",
+  "setup_seconds": 8.212432730942965,
+  "elapsed_seconds": 193.67159596085548,
+  "failure_type": "TimeoutError",
+  "failure_text": "arm generation deadline",
+  "stopped_arm": "B",
+  "arms_complete": 0,
+  "B_full_capture_validated": false,
+  "C_started": false,
+  "strict_comparison_started": false,
+  "partial_B_evidence": {
+    "blocks_index_state": "pending_only",
+    "committed_complete_block_index_rows": 25,
+    "last_committed_sequence": 978493,
+    "committed_complete_block_events": 978494,
+    "arrays_index_state": "pending_only",
+    "array_index_rows": 319,
+    "last_array_event_sequence": 976260,
+    "codec_complete_marker": false,
+    "codec_summary": false,
+    "adapter_complete_marker": false,
+    "interpretation": "Partial physical evidence only; not a complete or accepted business process.",
+    "block_files_sha256_verified": 25,
+    "block_index_finalized": false
+  },
+  "observed_counters": {
+    "S07_calls": 0,
+    "witness_calls": 0,
+    "HE_calls": 0,
+    "automatic_retries": 0,
+    "outer_acceptance_published": false
+  },
+  "process_state": "Launcher exited 78; subsequent read-only process check found no matching trial or validator worker process.",
+  "retry_policy": "This one-shot authorization is consumed. No retry or timeout extension under the same manifest.",
+  "next_decision": "Analyze target throughput and budget policy offline; propose a new versioned manifest only if justified. No inference about real S07 topology or cohort qualification."
+}

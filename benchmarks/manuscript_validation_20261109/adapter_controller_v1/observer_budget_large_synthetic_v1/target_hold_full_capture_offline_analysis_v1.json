@@ -1,0 +1,43 @@
+{
+  "kind": "observer-budget-v2-full-capture-offline-analysis",
+  "status": "hypothesis_only_no_new_target_run",
+  "source_closeout": "target_hold_result_v2/closeout_report.json",
+  "frozen_target": {
+    "B_events": 2100000,
+    "B_encode_seal_seconds": 293.96584052219987,
+    "B_events_per_second": 7143.687158581309,
+    "B_single_stream_validation_seconds": 19.799002250656486,
+    "C_complete": false,
+    "C_deadline_seconds": 480,
+    "C_last_verified_complete_block_sequence": 1404893,
+    "C_verified_block_events": 1404894,
+    "C_verified_block_events_per_second_using_deadline": 2926.8625,
+    "C_pending_array_index_rows": 471,
+    "C_verified_block_files": 36,
+    "BC_compare_started": false
+  },
+  "static_write_path": {
+    "hash_only_B": "Each array occurrence is copied and hashed, then its descriptor is appended to the array index with flush/fsync. No raster blob is stored.",
+    "full_capture_C": "The same copy, hash and index append occur; each array additionally writes a raw blob, fsyncs it and publishes a hardlink before the index append.",
+    "full_capture_additional_operations_per_generated_array": [
+      "2 MiB raw blob write",
+      "blob fsync",
+      "no-replace hardlink"
+    ],
+    "note": "Static call-path difference only. It does not quantify time or establish root cause."
+  },
+  "workload": {
+    "generated_arrays_each": 683,
+    "generated_array_bytes_each": 2097152,
+    "generated_array_payload_bytes_total": 1432354816,
+    "C_indexed_arrays_at_HOLD": 471
+  },
+  "illustrative_C_linear_extrapolation_seconds": 717.4918534779135,
+  "limits": [
+    "Pending C index and blocks are incomplete; the verified block prefix is not the total executed event count.",
+    "A linear projection is not a safe deadline or proof of completion time.",
+    "Target CPU contention, filesystem latency, array write, hashing and fsync costs were not separately measured.",
+    "B validated alone does not establish B/C semantic match."
+  ],
+  "recommended_next_evidence": "A separately reviewed synthetic-only target microprofile that isolates event encoding from Full Capture array publication and measures write/fsync/hash time; no change to Codec, event content or formal science thresholds."
+}

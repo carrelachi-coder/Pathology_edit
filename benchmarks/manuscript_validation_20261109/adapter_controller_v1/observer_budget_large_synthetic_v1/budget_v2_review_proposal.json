@@ -1,0 +1,33 @@
+{
+  "kind": "observer-budget-large-synthetic-budget-v2-proposal",
+  "status": "awaiting_separate_budget_review",
+  "old_manifest_sha256": "91ffabf1ae6a45e7270328fde2ad746649e11884a8ad658b187768ccb44ff5c5",
+  "old_target_closeout": "target_hold_result_v1/closeout_report.json",
+  "analysis": "target_hold_throughput_analysis_v1.json",
+  "new_candidate_manifest_sha256": "6222ae6da05276b9a5f99ba5b566cb9846c44d52e4ff4bbacabfa60c8da00a01",
+  "scope": "Same fixed 2.1M synthetic events and 683 generated arrays per arm; no producer, codec, adapter, validator, comparison, storage, or scientific threshold change.",
+  "changed_only": {
+    "per_arm_cooperative_encode_seal_seconds": [
+      180,
+      480
+    ],
+    "overall_OS_watchdog_seconds": [
+      600,
+      1200
+    ],
+    "fresh_isolated_paths": true
+  },
+  "unchanged": {
+    "setup_seconds": 60,
+    "single_stream_validator_hard_seconds": 30,
+    "strict_BC_comparison_hard_seconds": 60,
+    "max_bytes_per_arm": 4294967296,
+    "free_bytes_required": 12884901888,
+    "automatic_retries": 0,
+    "real_S07_calls": 0,
+    "witness_calls": 0,
+    "HE_calls": 0
+  },
+  "rationale": "Old target B had only 978,494 events in SHA-verified committed blocks when its 180-second deadline stopped the run. At that committed-block pace, a simple 2.1M-event extrapolation is about 386 seconds. A 480-second arm ceiling adds a bounded margin, while preserving all logical events and strict validators. This extrapolation is illustrative, not proof that B or C will finish.",
+  "approval_boundary": "Review of this engineering policy is separate from a new one-shot target run authorization. The old authorization is consumed and its HOLD remains final."
+}

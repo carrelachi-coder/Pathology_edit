@@ -1,0 +1,56 @@
+{
+  "kind": "observer-budget-large-synthetic-local-development-v1",
+  "status": "synthetic_BC_strict_match",
+  "scope": "local Mac development test, not target-server acceptance or S07 authorization",
+  "trial_manifest_sha256": "bba9d3bf37eb2a785d7cfdfa46a38289bb851ad2d01f91a3f38c797623f52465",
+  "trial_result_sha256": "ec9cb65ed9b2c3e4214c65ad9e68674ee1abe6ccc02be1046f0b7332a09dab56",
+  "candidate_target_manifest_sha256": "147af56044386d46c95525a489707a637b6f0a3c5aba56ef33672c55356ae17f",
+  "workload": {
+    "events_each": 2100000,
+    "generated_float64_arrays_each": 683,
+    "total_array_occurrences_each": 685
+  },
+  "arms": [
+    {
+      "arm": "B",
+      "mode": "hash_only",
+      "encode_and_seal_seconds": 25.439734250307083,
+      "capture_validation_seconds": 7.82436104118824,
+      "capture_validation_ok": true,
+      "allocated_bytes": 15716352,
+      "logical_stream_sha256": "bc3cfc4af3fe02d017148d588d5e2669464904fb076198b7e7ace6fdbe2ca32a"
+    },
+    {
+      "arm": "C",
+      "mode": "full_capture",
+      "encode_and_seal_seconds": 24.41369404224679,
+      "capture_validation_seconds": 9.0612021246925,
+      "capture_validation_ok": true,
+      "allocated_bytes": 1450942464,
+      "logical_stream_sha256": "bc3cfc4af3fe02d017148d588d5e2669464904fb076198b7e7ace6fdbe2ca32a"
+    }
+  ],
+  "comparison": {
+    "validation_ok": true,
+    "elapsed_seconds": 16.656814499758184,
+    "semantic_match": true,
+    "excluded_semantic_fields": []
+  },
+  "independent_arrays": {
+    "array_occurrences": 683,
+    "raw_payload_bytes": 1432354816,
+    "every_original_payload_byte_equal": true,
+    "ordered_reference_hash": "845e0f25c34a52f70e69326027529a50e5ca27910a7536b35b7fba58e7802b9f"
+  },
+  "elapsed_seconds": 84.88738262513652,
+  "global_rng_unchanged": true,
+  "real_S07_calls": 0,
+  "witness_calls": 0,
+  "HE_calls": 0,
+  "outer_acceptance_published": false,
+  "limitations": [
+    "Local runtime and filesystem; target-server deadlines remain unverified.",
+    "Synthetic arrays and events do not establish real S07 raster count or non-interference.",
+    "No new source qualification or formal cohort evidence."
+  ]
+}

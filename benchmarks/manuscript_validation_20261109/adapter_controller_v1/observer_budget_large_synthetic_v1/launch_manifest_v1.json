@@ -1,0 +1,1170 @@
+{
+  "kind": "observer-budget-large-synthetic-v1",
+  "status": "awaiting_new_one_shot_target_authorization",
+  "scope": "One fixed, isolated synthetic B/C target trial; no pathology or real source calls, no outer acceptance publication.",
+  "snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/observer_budget_large_synthetic_v1_isolated",
+  "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/observer_budget_large_synthetic_v1_trial",
+  "controls": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/observer_budget_large_synthetic_v1_controls",
+  "setup_seconds": 60,
+  "seconds_per_arm": 180,
+  "overall_work_seconds": 600,
+  "events_per_arm": 2100000,
+  "arrays_per_arm": 683,
+  "max_bytes_per_arm": 4294967296,
+  "free_bytes_required": 12884901888,
+  "automatic_retries": 0,
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "witness_calls": 0,
+  "outer_acceptance_published": false,
+  "code_files_sha256": {
+    "diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/guard_budget_candidate_v1.py": "d4ac09d03509e9d149b96e184d0abdebab08462730b7e5a494af7432df03cf64",
+    "diagnostic_storage/observer_adapter_contract_v2.py": "76c2ef88254cbffece3cca947546ae67a0c6fbcb17530caef8b2525e41c54188",
+    "diagnostic_storage/observer_adapter_v2.py": "35cf0841325b51e809f803fa9fd3346ebd12ea5d6ae04fcaa03c5c3abc2104f7",
+    "diagnostic_storage/observer_adapter_validation_v2_budget.py": "4e513943a97bd07b022b7103457e936896a10315612d5353a55cf7745d1faac1",
+    "diagnostic_storage/validation_budget_policy_v3_budget.py": "ecb503aab14a74269c4ae119494bf6d6deecededaf91811a15f684a28f3eb9ea",
+    "diagnostic_storage/observer_adapter_validation_v3_budget.py": "5ff6f0ad6f586a54883f42db0ab8cbb73c3db73b7fdef2bb73e03be5e9c05564",
+    "diagnostic_storage/validator_process_gate_v3_budget.py": "23ac9dd0b6cf0730a73844b2daf8dba95d3cd6f0af9bf747760b1a392f3b238b",
+    "scripts/validator_readonly_worker_v3_budget.py": "7a055509ae8791729b9ea7318c0b89d61c58003c0c4a5d25c28971ef7a79df43",
+    "scripts/run_observer_budget_large_synthetic_v1.py": "b8c8bb3288b6b7fc9a35da16c3c780eb019af5796a211a0e6df2719cabdf508e"
+  },
+  "runtime": {
+    "executable": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "executable_sha256": "cad15d1b37740e48e83644b2a6148fc40c84727aabb703bf9ed4218afb0a6a52",
+    "python": "3.11.15 | packaged by conda-forge | (main, Mar  5 2026, 16:45:40) [GCC 14.3.0]",
+    "platform": "Linux-5.15.0-105-generic-x86_64-with-glibc2.31",
+    "packages": [
+      {
+        "name": "absl-py",
+        "version": "2.4.0",
+        "record_sha256": "c2b60492fa1e6b0e63822f45c45777861a1b6d92adc8bc1ffe0b8e0fa7cc2246"
+      },
+      {
+        "name": "accelerate",
+        "version": "1.14.0",
+        "record_sha256": "7783d616904dfae2ff86cd5124bef6e33444c7acf6c74e4e8b9efb071a88fb64"
+      },
+      {
+        "name": "addict",
+        "version": "2.4.0",
+        "record_sha256": "0210d96c9378cd5c7f7d2342f848be1699066d3560926931a5d3bd973ba4a393"
+      },
+      {
+        "name": "affine",
+        "version": "2.4.0",
+        "record_sha256": "b7d245397166cb3be5e01bf56b8c68b72a7e47f212e6b192fefa7ef506deed59"
+      },
+      {
+        "name": "aliyun-python-sdk-core",
+        "version": "2.16.0",
+        "record_sha256": "96066ae05b5581467237056f6793339718aad48330866de40c69ccbc5c006a92"
+      },
+      {
+        "name": "aliyun-python-sdk-kms",
+        "version": "2.16.5",
+        "record_sha256": "daa831755f5686037ca1c2a85214b949f7db98235a8b2fe749a6566573f449b5"
+      },
+      {
+        "name": "annotated-doc",
+        "version": "0.0.4",
+        "record_sha256": "1634d87ca9a8bb182e0c572f8c8b82bfedeee60e842cd7eb5bac7abd89505c2b"
+      },
+      {
+        "name": "annotated-types",
+        "version": "0.7.0",
+        "record_sha256": "39a664185d5772be7d995c026452b162ebee2780904b73274c5a572dd9551dd0"
+      },
+      {
+        "name": "anyio",
+        "version": "4.13.0",
+        "record_sha256": "910c6b85f3c6ac7604300161e32a23e9f0b457689b411eff5aeb8eed26740c44"
+      },
+      {
+        "name": "asciitree",
+        "version": "0.3.3",
+        "record_sha256": "59dd45f925f2fd13686a6af43d31eb7bf709f7ebec89ff8afe4f2e3624c73f57"
+      },
+      {
+        "name": "asttokens",
+        "version": "3.0.1",
+        "record_sha256": "8e7eeb249ffb3b8caff3156651fded2b84bf1669b72f47fff7ca82427e7d30ae"
+      },
+      {
+        "name": "attrs",
+        "version": "26.1.0",
+        "record_sha256": "8f04447f4570c82492a9e989da7bae92bb7242e3996cea3a21602ed09c73295b"
+      },
+      {
+        "name": "backports.zstd",
+        "version": "1.3.0",
+        "record_sha256": "b7f15f53caeab27cf4e1a143a0805b556d56d9b337bbb004425f8894ff88f0f8"
+      },
+      {
+        "name": "bitsandbytes",
+        "version": "0.45.5",
+        "record_sha256": "fe68f38f6c72b8f48bf147e607b4e0e208d67bf42d2d7129e5e49d568e5fa232"
+      },
+      {
+        "name": "Brotli",
+        "version": "1.2.0",
+        "record_sha256": "fd8a50d1321ad1ee5f9ba98482e9c0e0490e622be9c81c146a835b84e3b01200"
+      },
+      {
+        "name": "certifi",
+        "version": "2026.4.22",
+        "record_sha256": "d72fafb600d3169f7dc45f8c50f610d419d07ef8adc9fbc5d84d57573449cca1"
+      },
+      {
+        "name": "cffi",
+        "version": "2.0.0",
+        "record_sha256": "55b2ccdb9751a3faa093b354f11ac7e7fb148c519f2cd77edc7af8cab09821b4"
+      },
+      {
+        "name": "charset-normalizer",
+        "version": "3.4.7",
+        "record_sha256": "73283f57df65cde56eda9e0850fb9e9e2ef8a887ca87935e27770b08c9be8895"
+      },
+      {
+        "name": "click",
+        "version": "8.3.3",
+        "record_sha256": "974719448574a909aedc8ad8ec3581b3b80f394b0657ff27d534c8452f2a152d"
+      },
+      {
+        "name": "click-plugins",
+        "version": "1.1.1.2",
+        "record_sha256": "f054fff351554e29b3dc3a25bb3c65b452a04ac09d1ef19f399418fbf1a72d75"
+      },
+      {
+        "name": "cligj",
+        "version": "0.7.2",
+        "record_sha256": "8d6b1906129297e5f21b77452d441c4a64f2a4f9e3695c3f36de4cb855a456d0"
+      },
+      {
+        "name": "colorama",
+        "version": "0.4.6",
+        "record_sha256": "9233950164e1deb499bf8470c6546c30f52dfed6c54c04f2ac36bfaf6e5e8298"
+      },
+      {
+        "name": "contourpy",
+        "version": "1.3.3",
+        "record_sha256": "031a29cf132ef40af92f7cedc416dcbb0697cf901a27e3b7fe1bb62aa4c35ee6"
+      },
+      {
+        "name": "crcmod",
+        "version": "1.7",
+        "record_sha256": "f687feb3552885f31ac24af4c350b097626c1237526679b340c409806d20b335"
+      },
+      {
+        "name": "cryptography",
+        "version": "48.0.0",
+        "record_sha256": "c361ca6cf883558c8d6238214789b925f5e4d675f6021b40a759843cbbfca338"
+      },
+      {
+        "name": "cuda-bindings",
+        "version": "13.2.0",
+        "record_sha256": "ded5d13a36aed68ece9da39c22e69db250733f151727d4f77007f16f4996de87"
+      },
+      {
+        "name": "cuda-pathfinder",
+        "version": "1.5.3",
+        "record_sha256": "b990d43cb509511d5fa15eab4b90ec66eb7fcf2c4c34769fcd0e6883e0e1bc86"
+      },
+      {
+        "name": "cuda-toolkit",
+        "version": "13.0.2",
+        "record_sha256": "1fd9870666631860d0ecf50827f76f60e705005040c584d7d86697d5c63b992b"
+      },
+      {
+        "name": "cupy-cuda11x",
+        "version": "13.6.0",
+        "record_sha256": "5167a3a363f8c12967f820c15fafa73cf73edb98487630b1999e0acc54987d3f"
+      },
+      {
+        "name": "cycler",
+        "version": "0.12.1",
+        "record_sha256": "ebf24fc90f3cc6915a6629cd50fc70b0706e9c530dba9fa65d585c3821c714e4"
+      },
+      {
+        "name": "cypari",
+        "version": "2.5.6",
+        "record_sha256": "b46621af3d0d6a7c63579e10a70dd60afb762a0cb99280740cbe6ce27c69d4b7"
+      },
+      {
+        "name": "czifile",
+        "version": "2019.7.2.3",
+        "record_sha256": "d2837fb9f885ca1ab8a3f8d1f2cd4f2fe5cf8ef27a91ed017a05640f6f453141"
+      },
+      {
+        "name": "decorator",
+        "version": "5.2.1",
+        "record_sha256": "ed55be895de976bdb961000b017eaa10d72bc4989ff24671ea0f1be3a2cf7ac2"
+      },
+      {
+        "name": "defusedxml",
+        "version": "0.7.1",
+        "record_sha256": "416b0a102014f937e31192faa2ab1cda16becec3812699148a7a02397b97b10b"
+      },
+      {
+        "name": "Deprecated",
+        "version": "1.3.1",
+        "record_sha256": "d2568f91afd67844ce401f392b6d6b2f3de2f96a7c1cee7f140022732355d2bf"
+      },
+      {
+        "name": "dicomweb-client",
+        "version": "0.59.3",
+        "record_sha256": "039b114ee47a021ce146620fe691e4f511e4899f12d27432e0e476178087c720"
+      },
+      {
+        "name": "diffusers",
+        "version": "0.35.0",
+        "record_sha256": "55c51dc24bcfac00b0946f810f613f89978a47fd1acdf03fb216fd57aea7512b"
+      },
+      {
+        "name": "einops",
+        "version": "0.8.0",
+        "record_sha256": "a2a9a92d90b9e0ff4f2933e1b9aef554496a0329dfa8094dcdf4ab4b12ab372a"
+      },
+      {
+        "name": "executing",
+        "version": "2.2.1",
+        "record_sha256": "d2a3ca8310df973430d43b543fbb7b717e3aabae0892afa9d394521b0025b6e7"
+      },
+      {
+        "name": "fastapi",
+        "version": "0.136.1",
+        "record_sha256": "f14b4d2babc4340e39f2807ea1a9f8f6becd7bde2de287eb2fa31f0511dfcd1a"
+      },
+      {
+        "name": "fasteners",
+        "version": "0.20",
+        "record_sha256": "e5bb3cd1ff9ca82004a24ca8f71612c1c42f599c691503348c5242e62f9a7bb7"
+      },
+      {
+        "name": "fastrlock",
+        "version": "0.8.3",
+        "record_sha256": "9d089d58ff29f4b9383ef5b3c1b619d6b6e73c8e01d263d795289f80718dc018"
+      },
+      {
+        "name": "filelock",
+        "version": "3.14.0",
+        "record_sha256": "ab888658c37ea238e72568fe6f3eef2bd56129f5980d42d4754a270d1c663e38"
+      },
+      {
+        "name": "fire",
+        "version": "0.7.1",
+        "record_sha256": "e45a037cd052e01e387aa7876c697bdfd54cd55b7634ef902b2d7800e6d8136a"
+      },
+      {
+        "name": "fonttools",
+        "version": "4.62.1",
+        "record_sha256": "f8782a0529ebf0a2e41be1fd2c74cd42676b53d466b00c8c440ddee8da16a22f"
+      },
+      {
+        "name": "fsspec",
+        "version": "2024.12.0",
+        "record_sha256": "f60a72808cb744b5f4a35eb47299536ab642e06427e9a44e2c1a2c2a05baea96"
+      },
+      {
+        "name": "future",
+        "version": "1.0.0",
+        "record_sha256": "3a6d7ddf83a6b56c36c29c7e3893d9dab3a4c5fd7163f51d46486be002ba1793"
+      },
+      {
+        "name": "FXrays",
+        "version": "1.3.6",
+        "record_sha256": "e77c2a2419a4a5b50162962592ba4595be6c36544cb7b9332a5e005b482617cc"
+      },
+      {
+        "name": "geojson",
+        "version": "3.2.0",
+        "record_sha256": "41264e91920605c62b4629cc0bb5b9b747d5e9fa8bc3239239e4f7cf3bd0b8b9"
+      },
+      {
+        "name": "gmpy2",
+        "version": "2.3.0",
+        "record_sha256": "e4ddcf2e9b43c8bd88d90194928abf774f1d3c3fdbe6717050b6773cdde22b5c"
+      },
+      {
+        "name": "gradio",
+        "version": "6.14.0",
+        "record_sha256": "4eeb0fc9d878f73249e40d3ba0259f481a51a005e7666c0cc3b27b31c6267692"
+      },
+      {
+        "name": "gradio_client",
+        "version": "2.5.0",
+        "record_sha256": "193bc5936fcf9ac509f9b1f1368833137bf2f6d663a3dd3aab3312e040c37361"
+      },
+      {
+        "name": "groovy",
+        "version": "0.1.2",
+        "record_sha256": "c6ade512d8b8ff7db7b356f5345d39bf47dadd28daab1d3b5470080c2eb5e6dc"
+      },
+      {
+        "name": "grpcio",
+        "version": "1.80.0",
+        "record_sha256": "2b74bee1abd20ce0cb258587a0e6fd4e3c2dc8fe7c91a4c79dca87373dfcd760"
+      },
+      {
+        "name": "h11",
+        "version": "0.16.0",
+        "record_sha256": "8e391456f4e0da0be0a48c231c89bcdf4f4ac33237f03a9b247b3fc2458f1983"
+      },
+      {
+        "name": "h2",
+        "version": "4.3.0",
+        "record_sha256": "aeee579c92cab2b5193969905df8f2d5a10a330f96b163395229ff5068e1e85d"
+      },
+      {
+        "name": "hf-gradio",
+        "version": "0.4.1",
+        "record_sha256": "49575ee6ca4b3e196e3b422a99ed40aa265371e51eb12daa8d0ecafa6b682dec"
+      },
+      {
+        "name": "hf-xet",
+        "version": "1.5.0",
+        "record_sha256": "c12acc3e59bd35026ba2c1cf894757cb5b7f445a2c4d525a69dab6e5070848a7"
+      },
+      {
+        "name": "hpack",
+        "version": "4.1.0",
+        "record_sha256": "4ba18786f3f67a54504ea5e23067aab1885edc0bf515198075d7243ade13a56c"
+      },
+      {
+        "name": "httpcore",
+        "version": "1.0.9",
+        "record_sha256": "36bec67b7063830936845ab96e5ea8340673e25414860e865929e465f7d00175"
+      },
+      {
+        "name": "httpx",
+        "version": "0.28.1",
+        "record_sha256": "517dbdac112302e3c215eec52b98243ac4c4b297aae0790502dde4374de5aef6"
+      },
+      {
+        "name": "huggingface_hub",
+        "version": "0.36.2",
+        "record_sha256": "2a455273a207fdb8df284e6c24f97751e12221951caf8ced4f71530b08fba794"
+      },
+      {
+        "name": "hyperframe",
+        "version": "6.1.0",
+        "record_sha256": "304e21ef27f163bf915266d8215fb4b54c4a684b9350d0042c962a0bed5925e4"
+      },
+      {
+        "name": "idna",
+        "version": "3.15",
+        "record_sha256": "b924a6f3bb5dae2480825b4e2b1f872440776edebc2dbd28a0e2d32b912da110"
+      },
+      {
+        "name": "imagecodecs",
+        "version": "2026.1.14",
+        "record_sha256": "8ef70794aeb55556c9c55b54d45e00186a13986e99868c625bebf003d2852829"
+      },
+      {
+        "name": "ImageIO",
+        "version": "2.37.3",
+        "record_sha256": "be2bb1e2cd940aa91dd825b6d5c830db7ddb4f599ecc9a37486052f4c8bb314c"
+      },
+      {
+        "name": "importlib_metadata",
+        "version": "9.0.0",
+        "record_sha256": "8c9fbfc2a1cc343eb5c93ca3f150c202d5f1b3b9bd3f0d8381965f9a05a28d1e"
+      },
+      {
+        "name": "importlib_resources",
+        "version": "7.1.0",
+        "record_sha256": "8b7daf646a69ecfcefa7b735ab57ec771b850179b685639a4ca8e49f76ad340c"
+      },
+      {
+        "name": "invisible-watermark",
+        "version": "0.2.0",
+        "record_sha256": "635e7d85b77a81fbe586f0aa6d1aaa303bee9af59e20937028ffbdce5da7d2c1"
+      },
+      {
+        "name": "ipython",
+        "version": "9.13.0",
+        "record_sha256": "6929b5e5f237e8b5043a6e434d9a3186c7370491b0f81eeacbbe03307c344e62"
+      },
+      {
+        "name": "ipython_pygments_lexers",
+        "version": "1.1.1",
+        "record_sha256": "07830ace3c36688eaf0f19beafdb650114137bce8fe92acef30b2cc0742fbc27"
+      },
+      {
+        "name": "jedi",
+        "version": "0.20.0",
+        "record_sha256": "456b852b98a27fc90860819637c740b771881348381dd7ad05427f6ba212c7c2"
+      },
+      {
+        "name": "Jinja2",
+        "version": "3.1.6",
+        "record_sha256": "1cdb905163b71bcd3528f9d0f46aafd59670242cdbd0ed1a34de3e96dab0cf3b"
+      },
+      {
+        "name": "jmespath",
+        "version": "0.10.0",
+        "record_sha256": "d4d0fe63531d9fe708483f5e6f0c8d9a9501e1360d8014cb2fc1f6511c634be6"
+      },
+      {
+        "name": "jsonschema",
+        "version": "4.26.0",
+        "record_sha256": "3ee6598a5533228b5f5db3973d62abfc50f4ea9a5590014f0c3a7bb4bb40c07c"
+      },
+      {
+        "name": "jsonschema-specifications",
+        "version": "2025.9.1",
+        "record_sha256": "e88bc3e0b770b2666c2708d825f388a23763fd2075f55db0c6f22e611619a199"
+      },
+      {
+        "name": "kiwisolver",
+        "version": "1.5.0",
+        "record_sha256": "a19f9ef61c265e586923f72d5c1358a9fe25a2ae42a218f0e4a4818e9b8ced28"
+      },
+      {
+        "name": "knot_floer_homology",
+        "version": "1.2.2",
+        "record_sha256": "a1f678c67c4e742fe73b0f9648f2e63e1a51e3397e474ef06064fe9fb8fd629a"
+      },
+      {
+        "name": "lazy-loader",
+        "version": "0.5",
+        "record_sha256": "18899a3a76356ff9d2b15f57c89d8ac8755a03ef452cfd1f15a212da4b88bca9"
+      },
+      {
+        "name": "llvmlite",
+        "version": "0.47.0",
+        "record_sha256": "557aa930972ca7c512f547a036bbd0c1657f7846307a74827654123e7e819b6f"
+      },
+      {
+        "name": "low_index",
+        "version": "1.2.1",
+        "record_sha256": "70c065f387e6d2d57488a8edc5b5abc855e58b7cefe83a598dfd2bcea39ff942"
+      },
+      {
+        "name": "Markdown",
+        "version": "3.10.2",
+        "record_sha256": "9a200b05fbcfdf2cc8a58c2b49999b8b50fca3a3bb4622e1bc02ccb5ba88be24"
+      },
+      {
+        "name": "markdown-it-py",
+        "version": "4.0.0",
+        "record_sha256": "0145b615fa046c151f10b5e1efeb385de24b331288c1491a950dabcb7248047e"
+      },
+      {
+        "name": "MarkupSafe",
+        "version": "3.0.3",
+        "record_sha256": "f770addd910763da592dbcadd4702e10623c8d343e558af49365c4fde9c261ff"
+      },
+      {
+        "name": "marshmallow",
+        "version": "3.26.2",
+        "record_sha256": "e6a16a6e3a3254e67eb703e392e6b88e9801b2a8072ab46d2364dd3fa75a516c"
+      },
+      {
+        "name": "matplotlib",
+        "version": "3.10.9",
+        "record_sha256": "5e829b568c0380116b11867445d15db08fc6b04ee1bd0a6ce1be5939c422caf3"
+      },
+      {
+        "name": "matplotlib-inline",
+        "version": "0.2.2",
+        "record_sha256": "c2ca2b279d69c4fd8e56bb986ef660893a22f7e0ce51c561cc8221d09b83cb56"
+      },
+      {
+        "name": "mdurl",
+        "version": "0.1.2",
+        "record_sha256": "2652eae77e98c35e6b681d60e4f2a8f401530363156d426928a797f3b985916e"
+      },
+      {
+        "name": "mmengine",
+        "version": "0.10.7",
+        "record_sha256": "fd7512e86a163d246d0c4e2441372e2453040a858100ece75b01eaaed47d2c2b"
+      },
+      {
+        "name": "model-index",
+        "version": "0.1.11",
+        "record_sha256": "e5096f047b449e64ad64e22095a9e7044fd6759c7b88396a7fab19ff651e26b3"
+      },
+      {
+        "name": "mpmath",
+        "version": "1.3.0",
+        "record_sha256": "4d067ead8a648e6c16b46974f315c0e08132b51d1612b6a98ba36dcb4c334e53"
+      },
+      {
+        "name": "msgpack",
+        "version": "1.1.2",
+        "record_sha256": "7f8a94a428dedecb41604c1b12467b3f2810718d51ea34f17b92b95c194ebfb7"
+      },
+      {
+        "name": "natsort",
+        "version": "8.4.0",
+        "record_sha256": "a3af9683a01553ed794b97240c8e8014d461e4c55f269b235661d1d73ccbdfb6"
+      },
+      {
+        "name": "networkx",
+        "version": "3.6.1",
+        "record_sha256": "062a288dc1a4210734ee0c8b5f8d79794cfc46389311f2aa045bf53466d77f05"
+      },
+      {
+        "name": "numba",
+        "version": "0.65.1",
+        "record_sha256": "fad4d60dd52bb785c5a81e449f3142e99a1ab5ff3c34caaf496cc0c6fba7c523"
+      },
+      {
+        "name": "numcodecs",
+        "version": "0.15.1",
+        "record_sha256": "4530ae3d23e8eab78432387be35f676764a4dedb674261b6a3a71c7f71064c17"
+      },
+      {
+        "name": "numpy",
+        "version": "1.26.4",
+        "record_sha256": "6467aaa243a9582fcf73bce7b40dee65132ad460a520a5d75600813bd4aefebf"
+      },
+      {
+        "name": "nvidia-cublas",
+        "version": "13.1.0.3",
+        "record_sha256": "95cf3285c7a2a12775cb720024a445b1e81d7ca27aa769e5f1d0b885492f827f"
+      },
+      {
+        "name": "nvidia-cuda-cupti",
+        "version": "13.0.85",
+        "record_sha256": "cd0e5fd6b1482324c32a2f1bec026a7476b7fdd5945d74f7c38a5ffa481c071a"
+      },
+      {
+        "name": "nvidia-cuda-nvrtc",
+        "version": "13.0.88",
+        "record_sha256": "feb5e212257b3aac517943060c250545f535301d7fa3c191bcbb36ba04744b80"
+      },
+      {
+        "name": "nvidia-cuda-runtime",
+        "version": "13.0.96",
+        "record_sha256": "443de57800e9c58620fc37b70fc391bbd5ee3c9fb612d453fbbd5aa4635d7a79"
+      },
+      {
+        "name": "nvidia-cudnn-cu13",
+        "version": "9.19.0.56",
+        "record_sha256": "8c7821f9048c5af89b5422809de536c2347c984b705ec07034af1804050711d0"
+      },
+      {
+        "name": "nvidia-cufft",
+        "version": "12.0.0.61",
+        "record_sha256": "b6fdf1b8f8b6efe03c9751b9ab807d9d31c8929c481be08cddcc3a6c2a9cd5c1"
+      },
+      {
+        "name": "nvidia-cufile",
+        "version": "1.15.1.6",
+        "record_sha256": "169df085952dcba197c3f7893244b063cbd75f3cee5b9a2988d273f0eff87a54"
+      },
+      {
+        "name": "nvidia-curand",
+        "version": "10.4.0.35",
+        "record_sha256": "e43492a8980bf4ea0a405a5abc6eccad605630479441674de42dcf000fece5b1"
+      },
+      {
+        "name": "nvidia-cusolver",
+        "version": "12.0.4.66",
+        "record_sha256": "7b7c32d787a853ebbe2e854db340780cda70b01515dd584067c30d58f775c4c1"
+      },
+      {
+        "name": "nvidia-cusparse",
+        "version": "12.6.3.3",
+        "record_sha256": "905ef4711e5b313ab35c4c32d1611ac2296622ca891f943dabd995757080bb78"
+      },
+      {
+        "name": "nvidia-cusparselt-cu13",
+        "version": "0.8.0",
+        "record_sha256": "f85064d4f64da06482917bdffd09bf0fa91bbe21a05adb9573c66038ada38dcf"
+      },
+      {
+        "name": "nvidia-nccl-cu13",
+        "version": "2.28.9",
+        "record_sha256": "68cc0e0e0006cb71e679b7abdd196fd1fcd7e9a674a8054926d6d2d7baabb90b"
+      },
+      {
+        "name": "nvidia-nvjitlink",
+        "version": "13.0.88",
+        "record_sha256": "bff56acc7aa4e87a5606511b557c1c5005d61cf3ccbcb5d58d097317fc8c7217"
+      },
+      {
+        "name": "nvidia-nvshmem-cu13",
+        "version": "3.4.5",
+        "record_sha256": "b997d9bbc91176e3141888d0741dbf38ed9a821b85e934dc9078cd047966f378"
+      },
+      {
+        "name": "nvidia-nvtx",
+        "version": "13.0.85",
+        "record_sha256": "ff1c34d50e539649776e5a7a6711b833c998dc6022d8bb4d4e466f6eba995d70"
+      },
+      {
+        "name": "ome-types",
+        "version": "0.5.3",
+        "record_sha256": "5d84312044dac97845d65a5c791cab20a025a892c9d6876b83ea4bc8ef81d6fc"
+      },
+      {
+        "name": "opencv-python",
+        "version": "4.13.0.92",
+        "record_sha256": "392c35a6742c5430a4f65c2bbcdc98880358350aec1e82b94dc25225e7250891"
+      },
+      {
+        "name": "opencv-python-headless",
+        "version": "4.11.0.86",
+        "record_sha256": "975b4c7c75ceeba9e2886f782749ca78c0e4535276e753039c6a06fbc750a157"
+      },
+      {
+        "name": "opendatalab",
+        "version": "0.0.10",
+        "record_sha256": "eee7fa9275ea508773b7a05b1543734dec467aa67e29368b980d05e85bd73ba8"
+      },
+      {
+        "name": "openmim",
+        "version": "0.3.9",
+        "record_sha256": "4bdb3af52b58d8d140717c19ff7b22cc898c78c9df722d9633f673e675e70579"
+      },
+      {
+        "name": "openslide-python",
+        "version": "1.4.3",
+        "record_sha256": "323ab3ebd8a2e6885f90ae9d5d6c5ff1aafcc88e8ebdf0395984cb1deb34b234"
+      },
+      {
+        "name": "opentile",
+        "version": "0.13.4",
+        "record_sha256": "9a881e9dd9fb7297401fb8d0db8f6a35d3eece2fedbfdcc5dfe303f4a65a155e"
+      },
+      {
+        "name": "openxlab",
+        "version": "0.1.3",
+        "record_sha256": "7f52daf97f23c2b45c2a13722f15848d5c7c49486d92d345a8cdeb296f8cd702"
+      },
+      {
+        "name": "ordered-set",
+        "version": "4.1.0",
+        "record_sha256": "a7b985b22d2360ce2c3810272e63258f2e1d1c13e16e1495b119f70dd145bec5"
+      },
+      {
+        "name": "orjson",
+        "version": "3.11.9",
+        "record_sha256": "f289eede85a7de36e53840537031f8088829a3607b30fda633537ac96827c64b"
+      },
+      {
+        "name": "oss2",
+        "version": "2.17.0",
+        "record_sha256": "6b8c2e36e30ceb9dc4add1c9f7278ebf15ded53b1479e2de88a4cf00f20fbe1a"
+      },
+      {
+        "name": "packaging",
+        "version": "24.2",
+        "record_sha256": "a0397b1be6230c0edd68ba7c217f23c7c27e223f10b41dbf449f1dbcb0ce8157"
+      },
+      {
+        "name": "pandas",
+        "version": "3.0.3",
+        "record_sha256": "68c2bcd16b6c2b17b676977ccb8bfbd86d2324fdd4c8f046cef0886200f01d1b"
+      },
+      {
+        "name": "parso",
+        "version": "0.8.7",
+        "record_sha256": "b4705e1a052706baab76f21e829846fe64dbb994274d7deb35624ba42213e92c"
+      },
+      {
+        "name": "pathopatch",
+        "version": "1.0.10",
+        "record_sha256": "31e7a9b9c585e8871b55169d1132bd461c21c855b5b4ffcf6fd3105eed2a05df"
+      },
+      {
+        "name": "peft",
+        "version": "0.17.0",
+        "record_sha256": "1e73c5a3dcee1f868f8e2b16e393681d9f16b89eb21b8a5ad36a36c77a2e643f"
+      },
+      {
+        "name": "pexpect",
+        "version": "4.9.0",
+        "record_sha256": "e3ef01f39d19545b3f7a60e8f907b9466a06e203be8615db1a4d91a5f46a25f9"
+      },
+      {
+        "name": "pickleshare",
+        "version": "0.7.5",
+        "record_sha256": "7752c5217322944195aa46f766031c475742d68e0023188d72c9503e46ff4c12"
+      },
+      {
+        "name": "pillow",
+        "version": "10.4.0",
+        "record_sha256": "df63917dd73d87c1b289dd409a287ba8ed26bc886b934022c34dd6112bbc7cd8"
+      },
+      {
+        "name": "pip",
+        "version": "26.0.1",
+        "record_sha256": "f80e485ee9308963e4677fe2474ffa8220bc112014c859727caf9af7a4624753"
+      },
+      {
+        "name": "platformdirs",
+        "version": "4.10.0",
+        "record_sha256": "8202ffe9496a74634b799279c62d64f6860d6ef553c41d1871b07b8b8719fe0c"
+      },
+      {
+        "name": "plenoptic",
+        "version": "2.0.1",
+        "record_sha256": "e863758f277ab5f363b12577e17f64bba927d8988d41b87a1a297e5aa7a1de9b"
+      },
+      {
+        "name": "plink",
+        "version": "2.4.9",
+        "record_sha256": "9c6cc2ed7d76f478c40ad9e9bc1010950a672899e53c92acf3bb63a521f75840"
+      },
+      {
+        "name": "pooch",
+        "version": "1.9.0",
+        "record_sha256": "2cd9cda7bd4138e51bff41f684b633ce1f739390dcf46b0d3dd5c3c85a7ee3cc"
+      },
+      {
+        "name": "prompt_toolkit",
+        "version": "3.0.52",
+        "record_sha256": "2cb48b320c5000850f659f199bef2ac6e9a1fd51a02a236c20ca6a75829966d5"
+      },
+      {
+        "name": "protobuf",
+        "version": "6.33.5",
+        "record_sha256": "39479f26130d95de56ac8d5c925ffa59872f83f482129499eb707471b4cada03"
+      },
+      {
+        "name": "psutil",
+        "version": "7.2.2",
+        "record_sha256": "a7286fe860dbdfc2679e5184f0e49cad7d7bd9426dbc246bdeb959c34a97578a"
+      },
+      {
+        "name": "ptyprocess",
+        "version": "0.7.0",
+        "record_sha256": "ff1dafaf7193c594e4e6d097103cfc3173a986c5a4c78167ac85d965df8b92d8"
+      },
+      {
+        "name": "pure_eval",
+        "version": "0.2.3",
+        "record_sha256": "2570ee45f9fae0b728515d0cffa392c4f7aa0177656d8eee4d58dd58f6907fb2"
+      },
+      {
+        "name": "pycparser",
+        "version": "2.22",
+        "record_sha256": "12f83249f3b5cfde0a89042361142f474ebede4cf59a9813e34010d183244711"
+      },
+      {
+        "name": "pycryptodome",
+        "version": "3.23.0",
+        "record_sha256": "19015044d9c69038fb00bf7c8579a500de459c9ac1dd95d15b35aad237eb32e1"
+      },
+      {
+        "name": "pydantic",
+        "version": "2.13.4",
+        "record_sha256": "17ede917c5a22e23aa8d976f9b71175ca7da3ec17b379e4a484eac2c7e99b26c"
+      },
+      {
+        "name": "pydantic-compat",
+        "version": "0.1.2",
+        "record_sha256": "29567e15777dcf8b43b1c41411b30224072a3f906ff936eb415ad2218ad33fee"
+      },
+      {
+        "name": "pydantic_core",
+        "version": "2.46.4",
+        "record_sha256": "04360af2c7bae85ccf23f8d42817ebeecc592cfca8e7dba9a67adce6cdec61a7"
+      },
+      {
+        "name": "pydicom",
+        "version": "2.4.4",
+        "record_sha256": "15c6c4bab4d2b65f8dacf2b548304a9e4745e21631328ea62e2ec918752560a8"
+      },
+      {
+        "name": "pydub",
+        "version": "0.25.1",
+        "record_sha256": "46a44aeecbb01c9481ef38796a86cdb63917f54c629f34fea7bf57248f78500d"
+      },
+      {
+        "name": "Pygments",
+        "version": "2.20.0",
+        "record_sha256": "b0d411312eda815c36fc26155bb89810fa9b8be0c43d4d1f6171709d228acefa"
+      },
+      {
+        "name": "pyparsing",
+        "version": "3.3.2",
+        "record_sha256": "e327b00f97a59ac1464fce500dc66b739f3a3de0724f8e188717ef3d08c44edc"
+      },
+      {
+        "name": "pypng",
+        "version": "0.20220715.0",
+        "record_sha256": "fa3f99550f071129d8711c8bbe0d5eb2cdc0e2e41fc7976c096060fd3276c918"
+      },
+      {
+        "name": "pyrtools",
+        "version": "1.0.10",
+        "record_sha256": "071467675d297924729da831cfa3008f805d1259dffa103b8d18dece0c3590db"
+      },
+      {
+        "name": "PySocks",
+        "version": "1.7.1",
+        "record_sha256": "75f4c8b185eac6f2af0ef06703333414f4966e94e7fca3480fed521d8b002904"
+      },
+      {
+        "name": "python-dateutil",
+        "version": "2.9.0.post0",
+        "record_sha256": "2d07914d24c0e9ff27be7ab8be3924c0b036ccf24d7df1a50db22e10a8263e22"
+      },
+      {
+        "name": "python-multipart",
+        "version": "0.0.28",
+        "record_sha256": "b211ca3c2fae8771ef0df4806a4487946231c32e288f3fa82e5d6bc44bb8b90e"
+      },
+      {
+        "name": "PyTurboJPEG",
+        "version": "1.8.3",
+        "record_sha256": "1c129f62ed0a961d46ff768f3b88d21f1099a7d2fe86f3fb5d18adb67782d055"
+      },
+      {
+        "name": "pytz",
+        "version": "2023.4",
+        "record_sha256": "bee2eb335074b4084ad6f8899def306827b4d474611c3c78049b8718e934a0f0"
+      },
+      {
+        "name": "pyvips",
+        "version": "3.1.1",
+        "record_sha256": "6e0589774d15e42ea06ddeee0d51c7fccee839bbebf4005cb3c959d441773c92"
+      },
+      {
+        "name": "PyWavelets",
+        "version": "1.9.0",
+        "record_sha256": "ff3e9ac263639d64951d21bf731ebc57ba28c0a743d1224d26b3973eca20e731"
+      },
+      {
+        "name": "PyX",
+        "version": "0.17",
+        "record_sha256": "362d6729b22154fdf167bb256402fc65620917800430d9c783020045db311db4"
+      },
+      {
+        "name": "PyYAML",
+        "version": "6.0.3",
+        "record_sha256": "b0d9ca9f33f9fcf507b73cfa5abab9b157716d4b6ae38190f8eff0fe75f0a04f"
+      },
+      {
+        "name": "rasterio",
+        "version": "1.4.4",
+        "record_sha256": "665e9c7497cada9c0943e142c41d6370a44de44174cb1e69b2368db9dd9f7e03"
+      },
+      {
+        "name": "ray",
+        "version": "2.55.1",
+        "record_sha256": "c0a91d3ead198ec89b1e5a155a5e06e359650b6c2264cb7a224c76bcbf3f940c"
+      },
+      {
+        "name": "referencing",
+        "version": "0.37.0",
+        "record_sha256": "00a5ab6b92938790602eb3a65dcde1cfb8327e51c56620f33c0e4ea96dc3da56"
+      },
+      {
+        "name": "regex",
+        "version": "2026.4.4",
+        "record_sha256": "77032fcb472d90dd3ac5bb85306f1e74160e8e111300ad4c7dd6cf38abe8d368"
+      },
+      {
+        "name": "requests",
+        "version": "2.28.2",
+        "record_sha256": "b23d3009cd9e3be13b31bf4359af112f3e1cbfb4f12bf7b83f36a4edb8786765"
+      },
+      {
+        "name": "retrying",
+        "version": "1.4.2",
+        "record_sha256": "81d160d9763686d7b6c5865794fdd2270d44b3816731d03e03d172dfb4a65fdd"
+      },
+      {
+        "name": "RF-Solver-Editing",
+        "version": "0.0.0",
+        "record_sha256": "889b64cb55b5faf106f90b88541d4862ae7cb3ef9566825d27db1c4057967336"
+      },
+      {
+        "name": "RF-Solver-Editing",
+        "version": "0.0.0",
+        "record_sha256": null
+      },
+      {
+        "name": "rich",
+        "version": "13.4.2",
+        "record_sha256": "507b01945dc4fb1c39186605a58a55f39284e4ac6f48f9b1a381bd6cba240c89"
+      },
+      {
+        "name": "rpds-py",
+        "version": "0.30.0",
+        "record_sha256": "39407a6ac2ffb1aaee4ebbdb09686e70414be17be997fc58bec03bf7cc3289da"
+      },
+      {
+        "name": "safehttpx",
+        "version": "0.1.7",
+        "record_sha256": "fe662f99c0398343cb3adbbfcaca77307a9b458855c288933452db9f8ce3ba08"
+      },
+      {
+        "name": "safetensors",
+        "version": "0.8.0",
+        "record_sha256": "903cced1536f1f2a1011db1ca2f0283320504df31b790993837c1eeeb0b9d888"
+      },
+      {
+        "name": "scikit-image",
+        "version": "0.24.0",
+        "record_sha256": "ce48d6d691ee629ce807a1c0228160cfd2ad7aaa23efe0b356ef96bd9b34cd81"
+      },
+      {
+        "name": "scipy",
+        "version": "1.17.1",
+        "record_sha256": "f457ca5904d8418859405b802cb85a3bb25918ccc86be8ddbfddc11c5e6c4931"
+      },
+      {
+        "name": "semantic-version",
+        "version": "2.10.0",
+        "record_sha256": "f45aa235142dcd6ae52548f2fc556fe686fe6a78900481f97c819ad2197c4f7f"
+      },
+      {
+        "name": "sentencepiece",
+        "version": "0.2.1",
+        "record_sha256": "0c459824bb45a77808b6aa053de3e0f24bfa6b99242f9bbd7df8ac3d24481965"
+      },
+      {
+        "name": "setuptools",
+        "version": "60.2.0",
+        "record_sha256": "e28772c0042ebdaf36b828993610c6d89f91d37b39a411e626cba5616b644751"
+      },
+      {
+        "name": "shapely",
+        "version": "2.0.5",
+        "record_sha256": "7c21f7790bca4d42b456fc627b967e3314a8fef66e6704c77efebccf31c1c16e"
+      },
+      {
+        "name": "shellingham",
+        "version": "1.5.4",
+        "record_sha256": "86e2e3022824d0909aaf0aeeb5fda27355b5576c3cd689243198cc93c0dbce7f"
+      },
+      {
+        "name": "six",
+        "version": "1.17.0",
+        "record_sha256": "6eca8f3767a4e15a8317acec57d36e1248342e307b4a20bebbbfa713befaa539"
+      },
+      {
+        "name": "snappy",
+        "version": "3.3.2",
+        "record_sha256": "995fbcdb7cf7436ac5ba1eb08277ddfd284b9c33cbd488002a2efaf8234a5140"
+      },
+      {
+        "name": "snappy_manifolds",
+        "version": "1.4",
+        "record_sha256": "78e2b9f1b47fe7c3fbd65ad8317be55e0eba774bdd87332e1edab2bae3f89b39"
+      },
+      {
+        "name": "spherogram",
+        "version": "2.4.1",
+        "record_sha256": "b5fd7ed2f20a8c0dfd77113d8719832327dce116009b0de458c891aaa69c5092"
+      },
+      {
+        "name": "stack-data",
+        "version": "0.6.3",
+        "record_sha256": "a731031326b26d3785ebe8e1eb05b9220d738d0d6f05763a77fe5be39b757a78"
+      },
+      {
+        "name": "starlette",
+        "version": "1.0.0",
+        "record_sha256": "60aaddeb9b71623faa6a149a5fee4396558d6659fe865f9ea256aff0fc2d3b12"
+      },
+      {
+        "name": "sympy",
+        "version": "1.14.0",
+        "record_sha256": "edbe6f889c378f0189b70bdcd421517237ab693c8f99de762008440771496500"
+      },
+      {
+        "name": "tabulate",
+        "version": "0.10.0",
+        "record_sha256": "56b5dca859abcc82db561c7f4c39c1cb1dd1a36112fb734fba81b7e0bab1f2a2"
+      },
+      {
+        "name": "tensorboard",
+        "version": "2.20.0",
+        "record_sha256": "56af4919d976007e528435d1a1d8315fb313b42469332726a69c8164e8c2138f"
+      },
+      {
+        "name": "tensorboard_data_server",
+        "version": "0.7.0",
+        "record_sha256": "d10e33ed90ede20ec76ff92810b7b8781d625df54ce2ab3fe51f3bac4d08b52d"
+      },
+      {
+        "name": "termcolor",
+        "version": "3.3.0",
+        "record_sha256": "0af4894e834e0799ece84791f97914cb078f6dd7c6d76ee59c8adb30fcd431fb"
+      },
+      {
+        "name": "tifffile",
+        "version": "2025.5.10",
+        "record_sha256": "b5394ab6e6fd7b9549c1076adccc30125f6c3085c134b434664d2fb0760d03ed"
+      },
+      {
+        "name": "tiffslide",
+        "version": "2.5.1",
+        "record_sha256": "833b45dd8cde0f3ccd04fcfcda5aed30bd14800a23e7cc170e4a57ae3a0aaa2f"
+      },
+      {
+        "name": "timm",
+        "version": "1.0.26",
+        "record_sha256": "1bb0bb44dbf6dbf17564f670b5d53d6ac7040aa9b1642eb55cec7c5db5737f11"
+      },
+      {
+        "name": "tkinter-gl",
+        "version": "1.1",
+        "record_sha256": "d0b0c75499bbdcedd78ae7092d579f2f957046f47a95c3c8754528a88bb0b11a"
+      },
+      {
+        "name": "tokenizers",
+        "version": "0.19.1",
+        "record_sha256": "018b8e1ad1390c2073c247e22bb23335e3effe74f28eac27501470025143b75e"
+      },
+      {
+        "name": "tomlkit",
+        "version": "0.14.0",
+        "record_sha256": "ce0a104b8fa19ffb37ba785430d808f94e949b771b9dcca0173ffca499ae1a8d"
+      },
+      {
+        "name": "torch",
+        "version": "2.4.1",
+        "record_sha256": null
+      },
+      {
+        "name": "torchvision",
+        "version": "0.19.1",
+        "record_sha256": null
+      },
+      {
+        "name": "tqdm",
+        "version": "4.65.2",
+        "record_sha256": "1a8e83fd62335a725283a17bd518b9edb6f67440a67ea83d425335ddb032b252"
+      },
+      {
+        "name": "traitlets",
+        "version": "5.15.0",
+        "record_sha256": "a6507876f7f6f86dd252a068a5454715d1d341acf1741370a66aaf700e64e7f1"
+      },
+      {
+        "name": "transformers",
+        "version": "4.44.2",
+        "record_sha256": "7dea70f827285f1c4ebcb3f24a277746ab339189ed9d6e8481474c2a1b9e4209"
+      },
+      {
+        "name": "triton",
+        "version": "3.6.0",
+        "record_sha256": "4853455811bde8a2998c863e4291790ee0b79c972cf6c3c04b332d4b4ba552f5"
+      },
+      {
+        "name": "typer",
+        "version": "0.24.2",
+        "record_sha256": "0efdf5a846ecf8c962da21460a589a055907d6932d7b0912186d9091a56116ef"
+      },
+      {
+        "name": "typing-inspection",
+        "version": "0.4.2",
+        "record_sha256": "614f0cd1ed0c5e6c48d397579f0fb689538c7e66da93542a8da1661c55f33481"
+      },
+      {
+        "name": "typing_extensions",
+        "version": "4.15.0",
+        "record_sha256": "d09d67683e60ad06d78f768f653658c1e2834fcaf6f2ac69f294d7da9a358c28"
+      },
+      {
+        "name": "ujson",
+        "version": "5.12.1",
+        "record_sha256": "6aaf83fe2c4c8e079dae843c24e54ce8d761f132caba11831d151d82dbd5c3e5"
+      },
+      {
+        "name": "universal_pathlib",
+        "version": "0.2.6",
+        "record_sha256": "85123d8031df71d4234cab82b700fd39151a68cfef6289d2e418a236851a53f6"
+      },
+      {
+        "name": "urllib3",
+        "version": "1.26.20",
+        "record_sha256": "20b1a47ff4db235e38f9d15412be8d479411af6692e0647ba868f3cb6702502c"
+      },
+      {
+        "name": "uvicorn",
+        "version": "0.46.0",
+        "record_sha256": "80f1159da171036ab96f55093daad459f9af094593499119f9c11b9ddb0c87d4"
+      },
+      {
+        "name": "wcwidth",
+        "version": "0.7.0",
+        "record_sha256": "38f4c139867065b43613049ae9d6f7bc5dd2013b9a25857ed586eb462174a1d4"
+      },
+      {
+        "name": "Werkzeug",
+        "version": "3.1.8",
+        "record_sha256": "7329bd1105878322e823acefcd7a74fec5d6e0624f1eadbc173958a732d8394f"
+      },
+      {
+        "name": "wheel",
+        "version": "0.47.0",
+        "record_sha256": "2f377d007e8575dcbf5aeab3bfa316c17d581fc056f3bbab7c6eea406c1f605b"
+      },
+      {
+        "name": "wrapt",
+        "version": "2.1.2",
+        "record_sha256": "ccd21461e1810b1634f582ae6d406de804fc3b233610f75aef05cc0fd77eb5b6"
+      },
+      {
+        "name": "wsidicom",
+        "version": "0.20.6",
+        "record_sha256": "f1b53664a012a12e8d22d7ed9aebbb906b7cd352538f086d8f60a8aaa2c9ea6b"
+      },
+      {
+        "name": "wsidicomizer",
+        "version": "0.14.2",
+        "record_sha256": "a782f82ff7885f97379cf25e2f81777e81500dae25e50634d4547aa6356b667e"
+      },
+      {
+        "name": "xsdata",
+        "version": "24.3.1",
+        "record_sha256": "74cfc215f6fa9b61350fef011bc5f3c366a60723e18f95ee5c93fed6a7ec256d"
+      },
+      {
+        "name": "yapf",
+        "version": "0.43.0",
+        "record_sha256": "9a72d8e0db1dacbfcff4979db9a3673033b62da0b3f4325d1d4dc7a91ff06fc5"
+      },
+      {
+        "name": "zarr",
+        "version": "2.18.7",
+        "record_sha256": "c02917ebe31778a0a4810189ae17a98011dd6ea6f5179c22f59fbbaf459b3e52"
+      },
+      {
+        "name": "zipp",
+        "version": "3.23.1",
+        "record_sha256": "4f7f67260b63b77dc66bf6dcdfa39fc6ca55669c311d4c6ed028ea7353bf8824"
+      }
+    ],
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": "",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "PYTHONHASHSEED": null,
+      "PYTHONPATH": null,
+      "PYTHONHOME": null,
+      "LD_LIBRARY_PATH": null,
+      "CONDA_PREFIX": null,
+      "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+      "LANG": "en_US.UTF-8",
+      "LC_ALL": "C.UTF-8"
+    }
+  },
+  "launch_argv": [
+    "/usr/bin/timeout",
+    "--signal=INT",
+    "--kill-after=5s",
+    "600s",
+    "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/observer_budget_large_synthetic_v1_isolated/scripts/run_observer_budget_large_synthetic_v1.py",
+    "--manifest",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/observer_budget_large_synthetic_v1_controls/manifest.json",
+    "--approval",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/observer_budget_large_synthetic_v1_controls/approval.json"
+  ],
+  "failure": "Any identity mismatch, timeout, invalid evidence, or strict B/C mismatch causes HOLD; no retry or acceptance publication.",
+  "review_acceptance_sha256": "478aff9dd41c6a730143fb3882dabb4bd8190e4b1393aa014abc325942a12d87"
+}
