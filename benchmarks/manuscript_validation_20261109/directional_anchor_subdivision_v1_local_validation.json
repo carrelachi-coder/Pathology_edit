@@ -1,0 +1,40 @@
+{
+  "kind": "directional-anchor-subdivision-v1-local-validation",
+  "status": "local_synthetic_candidate_only",
+  "candidate_version": "directional-single-anchor-geodesic-bisection-v1",
+  "candidate_code_sha256": "8dba1e0ddc29d666612012800e68d954ff3df43ce0a5166338930e2bbbd3de4b",
+  "test_code_sha256": "a0d7dc262606ff360de7195139834f1f02362d7232953232eb008a88f3351754",
+  "production_integration": false,
+  "production_imports_candidate": false,
+  "real_patient_runs": 0,
+  "tests": {
+    "command": "python -m pytest -q tests/test_research_anchor_subdivision_v1.py tests/test_topology_hole_semantics_v2.py",
+    "passed": 6,
+    "failed": 0,
+    "seconds": 1.69
+  },
+  "validated_properties": [
+    "deterministic output for a fixed connected interface mask",
+    "exhaustive and disjoint two-way partition",
+    "each returned subanchor remains 8-connected",
+    "the existing 0.75 maximum-selected fraction and minimum-one-unselected rule admits exactly one of two subanchors",
+    "undersized and disconnected inputs fail closed"
+  ],
+  "required_before_any_integration": [
+    "rebuild SceneInterface and SceneAnchorSegment identities under a versioned policy",
+    "rerun nuclei preflight for every new subanchor rather than reusing parent-anchor feasibility",
+    "verify that at least one selected subanchor is cell feasible while at least one unedited boundary witness remains",
+    "run synthetic tissue and nuclei contract tests without changing the frozen 0.75 fraction or minimum-one-unselected rule",
+    "complete independent code review and freeze a new development-only execution manifest"
+  ],
+  "limits": [
+    "The candidate proves only partition mechanics, not additional legal tissue capacity.",
+    "It does not show that any S07 excluded interface supplies the missing 51 pixels.",
+    "It does not establish topology validity after tissue growth or complete-nucleus placement.",
+    "It must not be applied to reserved evaluation patients during method development."
+  ],
+  "qualification_updates_permitted": false,
+  "S07_rerun_authorized": false,
+  "reserved_evaluation_use_authorized": false,
+  "H_and_E_generation_authorized": false
+}
