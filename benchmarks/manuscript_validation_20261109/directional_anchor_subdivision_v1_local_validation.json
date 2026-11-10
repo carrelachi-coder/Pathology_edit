@@ -3,7 +3,7 @@
   "status": "local_synthetic_scene_and_nuclei_preflight_candidate",
   "candidate_version": "directional-single-anchor-geodesic-bisection-v1",
   "candidate_code_sha256": "b4583c822763c76d06878e9d4b7f6fb0237c45b7c28433235a13c3491a90b334",
-  "test_code_sha256": "8769a58ea94997cc37bccee5ca142dc674866572973b9100a48c42d38aee0ed9",
+  "test_code_sha256": "e2bb3eb2888f9f13ce91b8aa5a37fe317d1ef8b6280138470063bc03c66cad93",
   "production_integration": false,
   "production_imports_candidate": false,
   "real_patient_runs": 0,
@@ -12,7 +12,7 @@
     "passed": 84,
     "subtests_passed": 85,
     "failed": 0,
-    "seconds": 4.07
+    "seconds": 4.27
   },
   "validated_properties": [
     "deterministic output for a fixed connected interface mask",
@@ -25,10 +25,10 @@
     "at least one recomputed subanchor is cell feasible while the unchanged directional witness rule still limits selection to one",
     "the synthetic CandidateFeasibilityCompiler produces a hard-gate-passing survivor that references a new subanchor identity and never the retired parent anchor",
     "eligibility is limited to a topology-passing area-underfill replan where the parent interface remains feasible, the parent anchor is cell feasible, and the unchanged witness rule alone leaves zero selectable anchors",
-    "initial compile, topology failure, removed-interface and parent-cell-infeasible counterexamples all fail closed"
+    "initial compile, topology failure, removed-interface and parent-cell-infeasible counterexamples all fail closed",
+    "after removing all complete source nucleus references and rebuilding the joint scene, a fresh preflight rejects the interface and does not reuse the previously accepted parent-anchor result"
   ],
   "required_before_any_integration": [
-    "add a candidate-local negative case in which all regenerated subanchors fail nuclei continuity and confirm the compiler rejects the interface",
     "independently review whether the topology-passing-underfill prerequisite correctly separates the hole-semantics change from the reachable-area mechanism",
     "complete independent code review and freeze a new development-only execution manifest"
   ],

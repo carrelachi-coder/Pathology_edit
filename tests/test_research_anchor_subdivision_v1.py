@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from phase3_joint_edit_refine.feasibility import build_joint_nuclei_preflight
 from phase3_joint_edit_refine.models import JointAreaBudget, JointCaseContext
 from phase3_joint_edit_refine.scene import build_joint_scene_analysis
 from phase3_joint_edit_refine.tissue_planner import (
@@ -296,4 +297,45 @@ def test_rebuilt_subanchors_receive_fresh_nuclei_preflight(tmp_path):
     assert all(
         not anchor_id.endswith(":anchor:0001")
         for anchor_id in report.cell_feasible_anchor_segment_ids
+    )
+
+    no_target_nuclei = np.zeros_like(nuclei)
+    negative_joint_scene = build_joint_scene_analysis(
+        tissue,
+        no_target_nuclei,
+        schema=schema,
+        pixel_size_um=case.pixel_size_um,
+    )
+    negative_interface = next(
+        current
+        for current in negative_joint_scene.tissue.graph.interfaces
+        if current.interface_id == interface.interface_id
+    )
+    assert len(negative_interface.anchor_segment_ids) == 1
+    negative_scene = replace(
+        negative_joint_scene,
+        tissue=rebuild_scene_with_bisected_single_anchor(
+            negative_joint_scene.tissue,
+            interface_id=negative_interface.interface_id,
+        ),
+    )
+    negative_preflight = build_joint_nuclei_preflight(
+        case=item.case,
+        source_tissue=tissue,
+        schema=schema,
+        scene=negative_scene,
+        tissue_bundle=item.tissue_bundle,
+        joint_bundle=item.bundle,
+        allocation=item.allocation,
+    )
+    negative_report = negative_preflight.interface(interface.interface_id)
+    assert negative_report is not None
+    assert not negative_report.feasible
+    assert "no_complete_same_class_reference_shape" in negative_report.reasons
+    assert interface.interface_id not in negative_preflight.feasible_interface_ids
+    assert set(negative_report.cell_feasible_anchor_segment_ids).issubset(
+        set(new_ids)
+    )
+    assert interface.anchor_segment_ids[0] not in (
+        negative_report.cell_feasible_anchor_segment_ids
     )
