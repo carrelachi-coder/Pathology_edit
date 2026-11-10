@@ -1,0 +1,55 @@
+{
+  "kind": "capacity-patient-training-split-overlap-v1",
+  "source_audit_sha256": "2275ee67dd823c19fc1ccc3127b74540861d026bb37d8f16596109a1aa2859b1",
+  "audit_script_sha256": "967b80eb0ec2696404ba14d26978da30729cadc63d98394935d2f7ad5eec871f",
+  "patient_groups": 84,
+  "split_patient_intersections": [
+    {
+      "left": "cross_train",
+      "right": "cross_val",
+      "left_patients": 78,
+      "right_patients": 6,
+      "both_patients": 0,
+      "either_patients": 84
+    },
+    {
+      "left": "segmentator_coarse_train",
+      "right": "segmentator_coarse_val",
+      "left_patients": 84,
+      "right_patients": 84,
+      "both_patients": 84,
+      "either_patients": 84
+    },
+    {
+      "left": "segmentator_fine_train",
+      "right": "segmentator_fine_val",
+      "left_patients": 62,
+      "right_patients": 9,
+      "both_patients": 0,
+      "either_patients": 71
+    },
+    {
+      "left": "segmentator_fine_train",
+      "right": "segmentator_fine_test",
+      "left_patients": 62,
+      "right_patients": 13,
+      "both_patients": 0,
+      "either_patients": 75
+    },
+    {
+      "left": "segmentator_fine_val",
+      "right": "segmentator_fine_test",
+      "left_patients": 9,
+      "right_patients": 13,
+      "both_patients": 0,
+      "either_patients": 22
+    }
+  ],
+  "interpretation": [
+    "All 84 capacity-positive patients have a retained Cross train or val patient reference; those two lists do not overlap in this candidate universe. This is manifest exposure, not proof of use by the final checkpoint.",
+    "All 84 have patient-level references in both Segmentator coarse train and val manifests. The coarse split is not patient-independent for this universe; it does not support an independent clinical validation claim.",
+    "The Segmentator fine train/val/test patient references are disjoint across these 84 candidates, but exact checkpoint training lineage and external model exposures remain separate questions.",
+    "An exact candidate filename not found is not evidence that a model never saw another crop from that patient. FLUX and CellViT patient overlap, and final Pix2pix checkpoint training lineage, remain unknown.",
+    "The 84 patients are necessary-capacity-positive only, not topology or four-target qualified."
+  ]
+}

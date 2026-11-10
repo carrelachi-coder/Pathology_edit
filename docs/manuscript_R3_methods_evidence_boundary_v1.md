@@ -32,6 +32,8 @@ U1 主终点为冻结源有效组织区域内的预测肿瘤组织比例。U2 �
 
 源核条件属于历史 CellViT 衍生伪标签。现有 JSON 可以逐像素重建 151 份核 mask，且现存 AMP-001 权重的内容 SHA 与当前冻结评价器一致；这些事实仍不能证明当年生成 JSON 时使用了该权重，也不能将伪标签称为人工验证的真实核标注。原始执行凭据无法恢复时，Methods 与局限性均应明确这一来源限制。
 
+对必要容量通过的 84 个候选患者组，训练清单的患者级引用审计显示：Cross train／val 分别涉及 78／6 组；Segmentator coarse train 与 val 均涉及全部 84 组，不能据此称 coarse 的候选患者验证集在患者级独立。Segmentator fine train／val／test 分别涉及 62／9／13 组，三份清单在该候选集合中的患者引用互不重叠。上述数字描述的是清单引用，不证明最终 checkpoint 一定使用了相应样本；清单未命中也不证明模型未见过同一患者的其他裁块。FLUX、CellViT 的患者级重叠和 Pix2pix 最终权重训练谱系仍未知。正式入选患者应另存逐患者、逐 checkpoint 的审计，自动评价仍定位为计算证据。
+
 对增加型操作，分别计算 Moderate−sham、Significant−sham 及 Significant−Moderate 的连续配对差，并记录 sham／Moderate／Significant 的严格顺序、精确像素计数并列和逆序。统计以患者为独立单位。四个预设操作×强度的编辑减 sham 比较属于同一 Holm 家族，描述性区间和其他探索性比较明确标注。全请求、有效测量和完整配对分母同时报告。
 
 ## 当前不能写入 Results 的结论

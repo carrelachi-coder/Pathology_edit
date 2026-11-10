@@ -264,5 +264,27 @@
     "full_slide_barcode_matches_in_inspected_metadata": 0,
     "scope_limit": "Only mounted ROI/magnification/patch metadata and README; external TCGA registry and actual WSI metadata not checked.",
     "implication": "Use patient clustering; keep wsi_id alias limitation in Methods. No qualification change."
+  },
+  "capacity_patient_training_references": {
+    "status": "read_only_patient_level_manifest_audit_complete_checkpoint_lineage_still_unknown",
+    "audit": "capacity_patient_training_references_v1.json",
+    "split_overlap": "capacity_patient_training_split_overlap_v1.json",
+    "patient_groups": 84,
+    "cross_train_patient_references": 78,
+    "cross_val_patient_references": 6,
+    "cross_train_val_patient_overlap": 0,
+    "segmentator_coarse_train_patient_references": 84,
+    "segmentator_coarse_val_patient_references": 84,
+    "segmentator_coarse_train_val_patient_overlap": 84,
+    "segmentator_fine_patient_references": {
+      "train": 62,
+      "val": 9,
+      "test": 13
+    },
+    "flux_patient_overlap": "unknown",
+    "cellvit_patient_overlap": "unknown",
+    "pix2pix_final_checkpoint_lineage": "unknown",
+    "formal_30_patient_audit_complete": false,
+    "interpretation": "References and absent references are not proof of final-checkpoint use or independence; audit the selected source and checkpoint identities after cohort freeze."
   }
 }
