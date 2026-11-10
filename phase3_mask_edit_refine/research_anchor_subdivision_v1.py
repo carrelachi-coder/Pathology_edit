@@ -215,7 +215,27 @@ def bisect_connected_interface_anchor(
         raise RuntimeError("geodesic bisection is not an exact partition")
     for part in parts:
         _geodesic_distance(part, tuple(int(value) for value in np.argwhere(part)[0]))
+        if _geodesic_diameter_steps(part) < minimum_subanchor_pixels - 1:
+            raise ValueError(
+                "geodesic bisection produced a subanchor with insufficient span"
+            )
     return parts
+
+
+def _geodesic_diameter_steps(mask: np.ndarray) -> int:
+    """Return the exact 8-neighbour graph diameter for a small anchor mask."""
+
+    coordinates = np.argwhere(mask)
+    if coordinates.size == 0:
+        return 0
+    diameter = 0
+    for coordinate in coordinates:
+        distance = _geodesic_distance(
+            mask,
+            tuple(int(value) for value in coordinate),
+        )
+        diameter = max(diameter, int(np.max(distance[np.asarray(mask, dtype=bool)])))
+    return diameter
 
 
 def _geodesic_distance(mask: np.ndarray, seed: tuple[int, int]) -> np.ndarray:

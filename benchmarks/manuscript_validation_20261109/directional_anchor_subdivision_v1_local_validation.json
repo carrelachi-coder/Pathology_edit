@@ -2,8 +2,8 @@
   "kind": "directional-anchor-subdivision-v1-local-validation",
   "status": "local_synthetic_scene_and_nuclei_preflight_candidate",
   "candidate_version": "directional-single-anchor-geodesic-bisection-v1",
-  "candidate_code_sha256": "86a4c4e9574b41d7987f23429ff3fd9d5201241746c9f2ff7958c4b6eb491ee3",
-  "test_code_sha256": "c8d21033888bd35da67beac28abc1d590e66b3f116362cb86ffd79d3d9d3b46e",
+  "candidate_code_sha256": "dc020e707eb09f8c81d01d9a816e79f143310c5b823b8031e37db9b9c0c79dcb",
+  "test_code_sha256": "61c372f2eb5a468f3ff1549850d4734d1f0ae2de43df84bf0c0cfc007f7f1ca7",
   "production_integration": false,
   "production_imports_candidate": false,
   "real_patient_runs": 0,
@@ -12,7 +12,7 @@
     "passed": 90,
     "subtests_passed": 85,
     "failed": 0,
-    "seconds": 4.39
+    "seconds": 4.56
   },
   "validated_properties": [
     "deterministic output for a fixed connected interface mask",
@@ -28,7 +28,8 @@
     "initial compile, topology failure, removed-interface and parent-cell-infeasible counterexamples all fail closed",
     "after removing all complete source nucleus references and rebuilding the joint scene, a fresh preflight rejects the interface and does not reuse the previously accepted parent-anchor result",
     "invalid fractional contracts, negative witness counts and nonpositive subdivision sizes fail closed before candidate evaluation",
-    "the minimum size of both selected and retained subanchors is explicitly supplied as the ceiling of one source-reference equivalent cell diameter; it is never an implicit two-pixel constant"
+    "the minimum size of both selected and retained subanchors is explicitly supplied as the ceiling of one source-reference equivalent cell diameter; it is never an implicit two-pixel constant",
+    "each subanchor must satisfy both the contact-pixel minimum and an exact 8-neighbour geodesic-span minimum, preventing a thick or highly branched short region from masquerading as a long boundary witness"
   ],
   "required_before_any_integration": [
     "independently review whether the topology-passing-underfill prerequisite correctly separates the hole-semantics change from the reachable-area mechanism",

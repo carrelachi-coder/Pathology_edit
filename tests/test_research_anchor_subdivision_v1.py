@@ -50,6 +50,13 @@ def test_reference_scaled_minimum_rejects_short_arcs_before_bisection():
     )
     assert all(np.count_nonzero(part) >= minimum for part in parts)
 
+    thick_but_short = np.ones((20, 20), dtype=bool)
+    with pytest.raises(ValueError, match="insufficient span"):
+        bisect_connected_interface_anchor(
+            thick_but_short,
+            minimum_subanchor_pixels=minimum,
+        )
+
 
 def test_bisection_is_deterministic_exhaustive_and_disjoint():
     anchor = np.zeros((12, 20), dtype=bool)
