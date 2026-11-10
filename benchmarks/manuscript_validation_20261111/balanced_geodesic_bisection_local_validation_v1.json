@@ -18,5 +18,5 @@
     "combined": "263 passed, 346 subtests passed in 307.29 seconds"
   },
   "thresholds_unchanged": true,
-  "target_validation": "pending"
+  "target_validation": "Passed on the frozen S07 source mask: child pixels 42/43, child spans 36/28, default Python and NumPy RNG unchanged."
 }
