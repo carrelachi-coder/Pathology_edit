@@ -1,0 +1,36 @@
+{
+  "kind": "topology-track-b-target-import-validation-v2",
+  "date": "2026-11-10",
+  "status": "pass_real_qualification_module_imported_no_business_execution",
+  "manifest": "topology_track_b_target_import_manifest_v2.json",
+  "manifest_sha256": "0219d4e7eacaca5c8698f99d2c4330a796477dfab390640053ad0826ea41f57e",
+  "authorization": "topology_track_b_target_import_authorization_v2.json",
+  "accepted_method_commit": "3cb9a67c2ff40acf7ae2b7c69c44576517fcf58d",
+  "target": {
+    "host_alias": "amax2",
+    "isolated_repository_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_wiring_candidate_3cb9a67c/source",
+    "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_wiring_candidate_3cb9a67c/import_smoke_v2"
+  },
+  "server_evidence": {
+    "report_sha256": "676d2cbcbe839d2a5db7eb6f7299c63b737434de26f4889859aa0225f41c4801",
+    "child_report_sha256": "f15fe6c9d5b20ef2cfab3d37667f423285d96381f35b0d89f9cd931ad8393e6b"
+  },
+  "result": {
+    "outer_status": "pass",
+    "timed_out": false,
+    "child_exit_code": 0,
+    "child_status": "pass",
+    "source_module_entries": 96,
+    "default_rng_and_hash_unchanged": true,
+    "native_threads_after_import": 1,
+    "cuda_initialized_after_import": false,
+    "blocked_calls": 0,
+    "child_error": null,
+    "real_patient_calls": 0,
+    "witness_calls": 0,
+    "four_target_calls": 0,
+    "h_and_e_calls": 0,
+    "automatic_retries": 0
+  },
+  "interpretation": "The target environment imports the workflow, planner, Track B orchestrator and the real G2 qualification entry with unchanged default RNG/hash state, one native thread and no CUDA initialization or business call. A real development-only witness protocol may now be frozen; this result itself does not establish topology success or qualification."
+}
