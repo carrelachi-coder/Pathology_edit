@@ -1,0 +1,42 @@
+{
+  "kind": "observer-budget-large-synthetic-v3-review-proposal",
+  "status": "review_only_no_execution_authorized",
+  "candidate_manifest_sha256": "01cb5b9ccf2088ca5512717fcc267a3fb7f9a44ae502f92bf82c57466cf3dcaf",
+  "purpose": "Complete the unchanged synthetic 2.1M-event/683-array B/C path on the target server under a predeclared engineering time ceiling, while retaining strict content and completeness checks.",
+  "evidence": [
+    {
+      "file": "target_hold_result_v2/closeout_report.json",
+      "observation": "B 2.1M/683 completed and single-stream validated in293.97+19.80s; C incomplete at480s after471 indexed arrays."
+    },
+    {
+      "file": "../observer_array_microprofile_v1/target_scale_683_result_v1/closeout_report.json",
+      "observation": "Target direct Codec 100k/683 completed B178.25s, C308.34s; fsync self-time B149.17s, C269.83s, supporting storage-sync as a major cost."
+    }
+  ],
+  "unchanged": {
+    "events_each": 2100000,
+    "generated_arrays_each": 683,
+    "array_shape": [
+      512,
+      512
+    ],
+    "array_dtype": "float64",
+    "max_storage_bytes_per_arm": 4294967296,
+    "single_stream_validation_seconds": 30,
+    "strict_double_stream_validation_seconds": 60,
+    "logical_stream_and_raster_checks": "unchanged",
+    "automatic_retries": 0,
+    "S07_calls": 0,
+    "witness_calls": 0,
+    "HE_calls": 0
+  },
+  "engineering_budget_candidate": {
+    "setup_seconds": 60,
+    "encode_seal_each_arm_seconds": 900,
+    "overall_OS_watchdog_seconds": 2200
+  },
+  "budget_reasoning": "The previous C run indexed471/683 arrays by480s. An isolated target 683-array profile spent308.34s encoding/sealing C with only100k events; 269.83s was in fsync. The combined evidence makes the former480s ceiling insufficient for this target workload, without proving 900s will suffice. This is a predeclared one-shot engineering ceiling, not a change to nominal 19/32 percent or tissue 14/27 percent thresholds.",
+  "failure_policy": "Any setup/arm/validation/comparison timeout, invalid evidence, or mismatch is HOLD; no automatic retry. Old HOLDs and their consumed authorizations remain unchanged.",
+  "interpretation_limit": "A synthetic pass would establish only target B/C capture and read-only validation for this frozen workload. It would not authorize or prove real S07 noninterference, topology qualification, four-target approval, or formal H&E.",
+  "approval_boundary": "Independent proposal review first; then freeze final manifest; then request separate one-shot target authorization."
+}
