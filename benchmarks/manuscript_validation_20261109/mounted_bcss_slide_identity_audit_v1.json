@@ -1,0 +1,28 @@
+{
+  "kind": "mounted-bcss-slide-identity-audit-v1",
+  "status": "read_only_metadata_audit_no_full_slide_barcode_recovered",
+  "scope": "Mounted ROI bounds, magnification, patch metadata and README only; no WSI DICOM/SVS metadata or external TCGA registry was inspected.",
+  "source_root": "/Volumes/DATA/WQX/datasets/BCSS",
+  "source_sha256": {
+    "README.md": "0b07c64296ac54ad12d1daf5a17fc9103307d6c1fb1ffafaa2f9d6430edef27f",
+    "magnification.csv": "61db0ae5beafe7dc3ef51fb2be2188c0ca5232befdfba2c584228a4aeabde9cf",
+    "roiBounds_BaseMagnification.csv": "564bc31fdd5808e5d57de40cc65541aad2c1dbc9415e2e0448f25c00ed144d28",
+    "BCSS_PATCHES/metadata.jsonl": "880a54f3b04dedb06786d00905d4c38dae81c2fe42ff9514d7e1daabe14f9190"
+  },
+  "counts": {
+    "roi_bounds_rows": 151,
+    "magnification_rows": 151,
+    "patch_metadata_rows": 22870,
+    "roi_full_slide_barcode_matches": 0,
+    "magnification_full_slide_barcode_matches": 0,
+    "patch_full_slide_barcode_matches": 0,
+    "roi_patient_alias_parsable": 151,
+    "patch_patient_alias_parsable": 22870
+  },
+  "examples": {
+    "roi_id": "TCGA-A1-A0SK-DX1",
+    "magnification_name": "TCGA-A1-A0SK-DX1_xmin45749_ymin25055_MPP-0.2500",
+    "patch_name": "TCGA-A1-A0SK_x45749_y25055_py0_px0"
+  },
+  "interpretation": "The inspected mounted metadata identifies patient alias and DX slide type with ROI coordinates but does not contain a complete TCGA slide barcode. Continue using patient as independent unit and disclose that wsi_id is a retained patient/WSI group alias; do not claim verified complete slide identity. This does not alter the 17/19 topology record or authorise formal generation."
+}
