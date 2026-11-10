@@ -112,6 +112,25 @@ def _error(ids, *, topology_passed=True):
     )
 
 
+def _front_block_error():
+    message = (
+        "no directed interface satisfies both the tissue and preflight "
+        "nuclei contracts"
+    )
+    return TissuePortfolioCompilationError(
+        f"ordinary failure: RefineContractError: {message}",
+        vetoes=(),
+        structured_failures=(
+            {
+                "terminal_feedback": {},
+                "preferred_interface_ids": [],
+                "preferred_anchor_ids": [],
+                "errors": [f"RefineContractError: {message}"],
+            },
+        ),
+    )
+
+
 def _run(monkeypatch, compiler, scene, preflight, fresh_preflight=None):
     import phase3_joint_edit_refine.topology_track_b as module
 
@@ -217,6 +236,39 @@ def test_multiple_eligible_interfaces_are_rebuilt_once_with_fresh_identity(monke
             item["contact_pixels"] >= record["equivalent_diameter_pixels"]
             for item in record["new_subanchors"]
         )
+
+
+def test_directional_single_anchor_front_block_gets_one_fresh_subdivision_round(
+    monkeypatch,
+):
+    scene = _scene_with_two_single_anchor_interfaces()
+    preflight = _Preflight(scene)
+    compiler = _Compiler(_front_block_error())
+    result, bindings = _run(monkeypatch, compiler, scene, preflight)
+
+    assert result.track_b_used is True
+    assert result.audit["trigger_kind"] == "directional_single_anchor_front_block"
+    assert result.audit["trigger_feedback"] == []
+    assert len(result.audit["transformed_interfaces"]) == len(
+        preflight.feasible_interface_ids
+    )
+    assert len(compiler.calls) == 2
+    assert len(bindings) == 2
+
+
+def test_other_preplanner_failure_does_not_enter_track_b(monkeypatch):
+    scene = _scene_with_two_single_anchor_interfaces()
+    preflight = _Preflight(scene)
+    original = TissuePortfolioCompilationError(
+        "ordinary unrelated failure",
+        vetoes=(),
+        structured_failures=({"errors": ["unrelated"]},),
+    )
+    compiler = _Compiler(original)
+    with pytest.raises(TissuePortfolioCompilationError) as caught:
+        _run(monkeypatch, compiler, scene, preflight)
+    assert caught.value is original
+    assert len(compiler.calls) == 1
 
 
 def test_fresh_preflight_rejection_does_not_reuse_parent_feasibility(monkeypatch):

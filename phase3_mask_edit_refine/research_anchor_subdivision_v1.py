@@ -116,6 +116,74 @@ def subdivision_eligibility_for_underfill_replan(
     return not reasons, tuple(reasons)
 
 
+def subdivision_eligibility_for_directional_front_block(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    cell_feasible_anchor_ids: tuple[str, ...],
+    maximum_selected_anchor_fraction: float,
+    minimum_unselected_anchor_count: int,
+    minimum_subanchor_pixels: int,
+) -> tuple[bool, tuple[str, ...]]:
+    """Fail closed when a valid single anchor is blocked only by sector count.
+
+    This is the pre-planner counterpart of the underfill policy above.  It is
+    eligible only when nuclei preflight certified the sole parent anchor but
+    the unchanged directional-front count contract permits selecting zero of
+    one anchors.  The caller must rebuild the scene and rerun nuclei preflight.
+    """
+
+    reasons: list[str] = []
+    if minimum_subanchor_pixels < 1:
+        reasons.append("invalid_minimum_subanchor_pixels")
+    if (
+        not np.isfinite(maximum_selected_anchor_fraction)
+        or maximum_selected_anchor_fraction < 0.0
+        or maximum_selected_anchor_fraction > 1.0
+    ):
+        reasons.append("invalid_maximum_selected_anchor_fraction")
+    if minimum_unselected_anchor_count < 0:
+        reasons.append("invalid_minimum_unselected_anchor_count")
+    if reasons:
+        return False, tuple(reasons)
+    interface = next(
+        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
+        None,
+    )
+    if interface is None:
+        return False, ("unknown_interface",)
+    if len(interface.anchor_segment_ids) != 1:
+        return False, ("interface_not_single_anchor",)
+    anchor_id = interface.anchor_segment_ids[0]
+    if anchor_id not in scene.anchor_masks:
+        return False, ("parent_anchor_mask_missing",)
+    feasible = set(cell_feasible_anchor_ids)
+    if anchor_id not in feasible:
+        reasons.append("parent_anchor_not_cell_feasible")
+    selection_limit = max(
+        0,
+        min(
+            1 if anchor_id in feasible else 0,
+            int(np.floor(maximum_selected_anchor_fraction)),
+            1 - minimum_unselected_anchor_count,
+        ),
+    )
+    if selection_limit != 0:
+        reasons.append("parent_anchor_already_selectable")
+    anchor_mask = scene.anchor_masks[anchor_id]
+    if int(np.count_nonzero(anchor_mask)) < 2 * minimum_subanchor_pixels:
+        reasons.append("parent_anchor_too_small")
+    elif not reasons:
+        try:
+            bisect_connected_interface_anchor(
+                anchor_mask,
+                minimum_subanchor_pixels=minimum_subanchor_pixels,
+            )
+        except ValueError:
+            reasons.append("parent_anchor_not_bisectable")
+    return not reasons, tuple(reasons)
+
+
 def rebuild_scene_with_bisected_single_anchor(
     scene: SceneAnalysis,
     *,

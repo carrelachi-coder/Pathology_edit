@@ -20,6 +20,7 @@ from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     geodesic_span_steps,
     minimum_witness_contact_pixels,
     rebuild_scene_with_bisected_single_anchor,
+    subdivision_eligibility_for_directional_front_block,
     subdivision_eligibility_for_underfill_replan,
 )
 
@@ -36,7 +37,7 @@ from .portfolio_authority import (
 )
 from .scene import JointSceneAnalysis
 
-TRACK_B_WORKFLOW_VERSION = "directional-anchor-subdivision-workflow-v1"
+TRACK_B_WORKFLOW_VERSION = "directional-anchor-subdivision-workflow-v2"
 
 
 @dataclass(frozen=True)
@@ -170,22 +171,29 @@ def _compile_fresh_track_b_portfolio(
         )
         if _is_topology_passing_underfill(feedback)
     )
-    if not underfills:
+    directional_front_block = (
+        not underfills and _is_directional_single_anchor_front_block(original_error)
+    )
+    if not underfills and not directional_front_block:
         raise original_error
 
     front = joint_bundle.mechanism.tissue_program.front
     minimum_pixels = minimum_witness_contact_pixels(
         nuclei_preflight.reference_area_p95
     )
-    remaining_ids = tuple(
-        sorted(
-            {
-                str(interface_id)
-                for failure in underfills
-                for interface_id in failure["trigger_feedback"].get(
-                    "remaining_feasible_interface_ids", ()
-                )
-            }
+    remaining_ids = (
+        tuple(nuclei_preflight.feasible_interface_ids)
+        if directional_front_block
+        else tuple(
+            sorted(
+                {
+                    str(interface_id)
+                    for failure in underfills
+                    for interface_id in failure["trigger_feedback"].get(
+                        "remaining_feasible_interface_ids", ()
+                    )
+                }
+            )
         )
     )
     transformed_tissue = scene.tissue
@@ -198,21 +206,31 @@ def _compile_fresh_track_b_portfolio(
             if report is not None
             else ()
         )
-        eligible, reasons = subdivision_eligibility_for_underfill_replan(
-            transformed_tissue,
-            interface_id=interface_id,
-            cell_feasible_anchor_ids=feasible_anchor_ids,
-            remaining_feasible_interface_ids=remaining_ids,
-            prior_topology_passed=True,
-            area_underfill_replan=True,
-            maximum_selected_anchor_fraction=(
-                front.maximum_selected_anchor_fraction
-            ),
-            minimum_unselected_anchor_count=(
-                front.minimum_unselected_anchor_count
-            ),
-            minimum_subanchor_pixels=minimum_pixels,
-        )
+        if directional_front_block:
+            eligible, reasons = subdivision_eligibility_for_directional_front_block(
+                transformed_tissue,
+                interface_id=interface_id,
+                cell_feasible_anchor_ids=feasible_anchor_ids,
+                maximum_selected_anchor_fraction=front.maximum_selected_anchor_fraction,
+                minimum_unselected_anchor_count=front.minimum_unselected_anchor_count,
+                minimum_subanchor_pixels=minimum_pixels,
+            )
+        else:
+            eligible, reasons = subdivision_eligibility_for_underfill_replan(
+                transformed_tissue,
+                interface_id=interface_id,
+                cell_feasible_anchor_ids=feasible_anchor_ids,
+                remaining_feasible_interface_ids=remaining_ids,
+                prior_topology_passed=True,
+                area_underfill_replan=True,
+                maximum_selected_anchor_fraction=(
+                    front.maximum_selected_anchor_fraction
+                ),
+                minimum_unselected_anchor_count=(
+                    front.minimum_unselected_anchor_count
+                ),
+                minimum_subanchor_pixels=minimum_pixels,
+            )
         if not eligible:
             rejected_records.append(
                 {"interface_id": interface_id, "reasons": list(reasons)}
@@ -307,6 +325,11 @@ def _compile_fresh_track_b_portfolio(
         "track_b_used": True,
         "rounds": 1,
         "recursive_subdivision": False,
+        "trigger_kind": (
+            "directional_single_anchor_front_block"
+            if directional_front_block
+            else "topology_passing_area_underfill"
+        ),
         "original_failure": str(original_error),
         "trigger_feedback": list(underfills),
         "original_scene_sha256": original_scene_sha,
@@ -369,6 +392,22 @@ def _is_topology_passing_underfill(feedback: Any) -> bool:
         isinstance(feedback, dict)
         and feedback.get("stage") == "tissue_area_underfill"
         and feedback.get("topology_passed") is True
+    )
+
+
+def _is_directional_single_anchor_front_block(
+    error: TissuePortfolioCompilationError,
+) -> bool:
+    token = (
+        "no directed interface satisfies both the tissue and preflight "
+        "nuclei contracts"
+    )
+    if token not in str(error):
+        return False
+    return any(
+        token in str(message)
+        for failure in error.structured_failures
+        for message in failure.get("errors", ())
     )
 
 
