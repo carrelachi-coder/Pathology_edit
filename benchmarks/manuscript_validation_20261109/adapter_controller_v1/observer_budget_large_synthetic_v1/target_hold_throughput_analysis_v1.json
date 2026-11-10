@@ -1,0 +1,32 @@
+{
+  "kind": "observer-budget-large-synthetic-target-throughput-analysis-v1",
+  "source_closeout": "target_hold_result_v1/closeout_report.json",
+  "source_prior_profile": "../budget_cost_trial_v4/closeout_report.json",
+  "current_trial": {
+    "B_deadline_seconds": 180,
+    "B_committed_complete_block_events_at_hold": 978494,
+    "fraction_of_requested_events_in_verified_blocks": 0.4659495238095238,
+    "verified_block_event_rate_per_second_using_deadline": 5436.077777777778,
+    "minimum_uncommitted_requested_events_at_hold": 1121506,
+    "full_B_finished": false,
+    "C_started": false,
+    "read_only_validator_started": false
+  },
+  "prior_100k_candidate": {
+    "profiled_loop_seconds": 14.097865955904126,
+    "events": 100000,
+    "observed_profiled_loop_event_rate_per_second": 7093.272152876473,
+    "comparability": "Different event payload, array workload and profiler overhead; rate is context, not a completion-time bound."
+  },
+  "naive_rate_extrapolation": {
+    "seconds_for_2_1M_at_verified_block_rate": 386.3079385259389,
+    "interpretation": "Illustrative only. The numerator is committed block events; work after the last block and rate drift are unknown. Do not set a deadline solely from this value."
+  },
+  "conclusions": [
+    "The frozen 180-second B generation deadline was insufficient for this target environment and workload.",
+    "No completed B stream, C stream or strict comparison exists, so no B/C functional verdict follows.",
+    "Observed evidence does not isolate CPU, filesystem, serialization, array generation or shared-host contention as the cause of the slower target run.",
+    "A future version may propose a larger, bounded synthetic-only budget after separate review. Preserve the current HOLD and require a new manifest-bound one-shot authorization.",
+    "No inference about real S07 runtime, topology mechanism or patient qualification."
+  ]
+}
