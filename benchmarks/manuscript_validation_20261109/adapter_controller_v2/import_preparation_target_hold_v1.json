@@ -1,0 +1,36 @@
+{
+  "kind": "adapter-v2-import-preparation-target-hold-v1",
+  "status": "HOLD_pre_business_environment_drift",
+  "manifest_sha256": "fe7ba33381772fcef90add513d9b8b25bf5440f912ef43db290c4f4f4c815dcb",
+  "authorization": "User approved exactly one isolated import audit bound to this manifest; authorization consumed by the attempted launch.",
+  "staging": {
+    "fresh_isolated_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_candidate_0acdaf3e",
+    "code_files": 14,
+    "all_code_sha256_verified": true,
+    "manifest_sha256_verified": true,
+    "bundle_sha256": "fc7033c259881f13f5d774402f4ae38b37d2a6fa6f912578501bcb89c8b69af1"
+  },
+  "attempt": {
+    "outer_watchdog_seconds": 600,
+    "per_import_child_seconds": 90,
+    "automatic_retries": 0,
+    "exit_code": 1,
+    "failure_stage": "controller.identity_gate before business module import or output creation",
+    "exception": "ValueError: effective environment drift",
+    "missing_expected_environment_variables": [
+      "CUDA_VISIBLE_DEVICES",
+      "OMP_NUM_THREADS",
+      "MKL_NUM_THREADS",
+      "OPENBLAS_NUM_THREADS",
+      "NUMEXPR_NUM_THREADS"
+    ],
+    "import_children_started": 0,
+    "output_root_exists_after_attempt": false,
+    "witness_calls": 0,
+    "S07_business_calls": 0,
+    "H_E_calls": 0
+  },
+  "postmortem_scope": "Read-only environment key comparison after the failed attempt; no second import smoke was launched.",
+  "interpretation": "The frozen launch argv omitted five environment variables expected by the copied historical runtime identity. This is an invocation-envelope mismatch, not evidence of Adapter, Codec, business or import-order failure. Preserve this HOLD and create a versioned new manifest and separate authorization for any future target smoke.",
+  "formal_cohort_permitted": false
+}
