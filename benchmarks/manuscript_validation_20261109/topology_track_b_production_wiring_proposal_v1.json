@@ -1,0 +1,74 @@
+{
+  "kind": "topology-track-b-production-wiring-proposal-v1",
+  "status": "proposal_only_not_implemented_not_authorized",
+  "date": "2026-11-10",
+  "technical_review_acceptance": "topology_dual_track_local_review_acceptance_v1.json",
+  "technical_review_acceptance_sha256": "b15305f3779d339e3eec600206afa18faccdae9244870f1fadabd621c1d63067",
+  "inspected_code": {
+    "phase3_joint_edit_refine/candidate_feasibility.py": "4dbf11fa491c943c25e9139c4b26d24d577ffbc39d8cdf1e525fb6a197901993",
+    "phase3_joint_edit_refine/workflow.py": "1edd55972c782ff39bc0aebd0856f55b7cfe429e04ce1493cd163aca23f16e67",
+    "phase3_joint_edit_refine/feasibility.py": "434c330e8d17cc110b43fb2beea14dadcb8536723ffa4f48a86ee178d91cd9cd",
+    "phase3_mask_edit_refine/scene.py": "61a1af6108052a98ca68f88cbea27d967a4bf60367d4576bfc656bafcbcc48a2",
+    "phase3_mask_edit_refine/research_anchor_subdivision_v1.py": "dc020e707eb09f8c81d01d9a816e79f143310c5b823b8031e37db9b9c0c79dcb"
+  },
+  "architectural_finding": "CandidateFeasibilityCompiler owns the complete JointSceneAnalysis and bundles but not the JointCaseContext or JointBudgetAllocation needed to rebuild nuclei preflight and its authority binding. Subdivision must therefore be orchestrated by the workflow as a fresh portfolio identity, not injected into an existing _compile_one retry.",
+  "proposed_flow": [
+    "Compile the ordinary portfolio under Track A semantics with no anchor subdivision.",
+    "If ordinary compilation yields a structured topology-passing area-underfill disposition, surface immutable feedback instead of collapsing it into a generic string-only failure.",
+    "At workflow level, evaluate Track B eligibility for every remaining feasible single-anchor interface in sorted interface-id order.",
+    "If none are eligible, preserve the original failure unchanged.",
+    "In one bounded transformation round, subdivide every eligible interface; do not recursively subdivide newly created anchors.",
+    "Rebuild SceneInterface and SceneAnchorSegment identities and rerun build_joint_nuclei_preflight against the transformed JointSceneAnalysis.",
+    "Discard any transformed interface that fails fresh preflight; never reuse parent-anchor feasibility.",
+    "Recompute the complete tissue-portfolio authority binding from the transformed preflight and scene identity.",
+    "Invoke a fresh CandidateFeasibilityCompiler once with the transformed scene and binding. Do not mix witnesses from original and transformed portfolios.",
+    "Accept only an ordinary compiler-issued survivor whose tissue hard gates pass; otherwise retain the audited failure."
+  ],
+  "boundedness": {
+    "subdivision_rounds": 1,
+    "recursive_subdivision": false,
+    "eligible_interface_order": "lexicographic interface_id",
+    "interfaces_transformed": "all and only interfaces satisfying the reviewed eligibility policy",
+    "portfolio_attempt_budget": "existing frozen CandidateFeasibilityCompiler maximum attempts; no extra retries",
+    "automatic_retry_after_failure": false
+  },
+  "identity_and_audit_requirements": [
+    "Version the combined Track A plus Track B mechanism and compiler identities.",
+    "Hash the original scene, transformed scene, retired parent anchors and new subanchors.",
+    "Persist the structured topology-passing underfill evidence that triggered Track B.",
+    "Persist the reference_area_p95, derived equivalent diameter, contact count and exact geodesic span for every new subanchor.",
+    "Bind the transformed preflight metadata and authority binding SHA into every issued witness.",
+    "Record interfaces rejected during fresh preflight without converting them to zero-capacity successes."
+  ],
+  "required_tests_before_target_preparation": [
+    "ordinary success never invokes Track B",
+    "topology failure never invokes Track B",
+    "topology-passing underfill with no eligible interface preserves the original failure",
+    "multiple eligible interfaces are transformed deterministically in one round",
+    "fresh preflight removes a transformed interface when all complete nucleus references are unavailable",
+    "old and transformed portfolio identities cannot be mixed",
+    "new anchors cannot be recursively subdivided",
+    "invalid or undersized contact/geodesic spans fail closed",
+    "Track A-only, Track B-triggered and unchanged historical regression suites pass"
+  ],
+  "development_boundary": {
+    "method_development_patients": 16,
+    "reserved_method_evaluation_patients": 68,
+    "S07_role": "development_only",
+    "real_development_execution_requires_new_manifest": true,
+    "reserved_evaluation_opened": false
+  },
+  "explicitly_not_authorized": [
+    "code implementation from this proposal",
+    "production merge",
+    "target-server deployment",
+    "real development-patient execution",
+    "reserved-evaluation patient execution",
+    "qualification updates",
+    "four-target compilation",
+    "H&E generation",
+    "physician study"
+  ],
+  "qualification_updates_permitted": false,
+  "execution_authorized": false
+}
