@@ -137,7 +137,7 @@
     "status": "one_shot_target_HOLD_B_generation_deadline_authorization_consumed",
     "pr_url": "https://github.com/carrelachi-coder/Pathology_edit/pull/11",
     "branch": "codex/observer-budget-large-synthetic-review",
-    "commit": "171b4fd1",
+    "commit": "bb834478",
     "candidate_manifest_sha256": "1b5dff6ee1cf4d725617a5cf08c26ae2b6473ad36842206ab87f42ac42747335",
     "logical_events_each": 2100000,
     "full_capture_arrays": 683,
@@ -175,6 +175,7 @@
     "budget_v2_B_status": "2.1M complete; single-stream validation passed in 19.80s",
     "budget_v2_C_status": "partial at 480s deadline; 36 block files verified through sequence 1,404,893; no completion",
     "budget_v2_BC_comparison_started": false,
-    "budget_v2_offline_analysis": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_full_capture_offline_analysis_v1.json"
+    "budget_v2_offline_analysis": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_full_capture_offline_analysis_v1.json",
+    "budget_v2_file_timing_audit": "adapter_controller_v1/observer_budget_large_synthetic_v1/target_hold_file_timing_audit_v1.json"
   }
 }
