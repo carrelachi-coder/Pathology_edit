@@ -1,0 +1,62 @@
+{
+  "schema_version": "topology-method-development-15-result-v2",
+  "recorded_at": "2026-11-11",
+  "status": "completed_development_only",
+  "launch_manifest": "topology_method_development_15_launch_manifest_v2.json",
+  "implementation_commit": "3e47e39e",
+  "authorization_commit": "aa7bbf93",
+  "patient_qualification_sha256": "a10ae009d25e1bb4f5fa3e51aab0209ac57139e2dc6fb105bbdb14806d145abc",
+  "automatic_retries": 0,
+  "scope": {
+    "patients": 15,
+    "source_attempts": 49,
+    "reserved_evaluation_opened": false
+  },
+  "patient_terminal_states": {
+    "first_source_passed": 5,
+    "fixed_sources_exhausted": 10,
+    "indeterminate": 0
+  },
+  "both_operation_pass_patients": [
+    {"patient_id": "TCGA-A7-A26G", "source_rank": 0, "reference_id": "BCSS_joint_supplement_5245a09632b2"},
+    {"patient_id": "TCGA-AN-A0AT", "source_rank": 1, "reference_id": "BCSS_joint_supplement_4c87b60303e6"},
+    {"patient_id": "TCGA-E2-A14X", "source_rank": 3, "reference_id": "BCSS_joint_supplement_b22ef1895cb7"},
+    {"patient_id": "TCGA-E2-A158", "source_rank": 3, "reference_id": "BCSS_joint_supplement_19a0fd2142da"},
+    {"patient_id": "TCGA-E2-A1LI", "source_rank": 3, "reference_id": "BCSS_joint_supplement_01e4c52c0c82"}
+  ],
+  "source_result_counts": {
+    "u1_fail_u2_fail": 16,
+    "u1_pass_u2_pass": 5,
+    "u1_fail_u2_pass": 21,
+    "u1_pass_u2_fail": 7
+  },
+  "operation_counts": {
+    "u1": {"pass": 12, "fail": 37},
+    "u2": {"pass": 26, "fail": 23}
+  },
+  "comparison_to_v1": {
+    "old_pass_patients_retained": 4,
+    "new_pass_patients": ["TCGA-E2-A158"],
+    "regressed_pass_patients": [],
+    "patient_pass_delta": 1,
+    "source_attempt_delta": -2,
+    "TCGA-AN-A0AT_passed_one_source_earlier": true
+  },
+  "development_accounting": {
+    "s07_both_pass": 1,
+    "all_16_development_patients_both_pass": 6,
+    "all_16_development_patients_total": 16
+  },
+  "interpretation": {
+    "supported": [
+      "Selected multi-anchor refinement retained every prior passing development patient and added one patient without threshold changes.",
+      "The candidate improved development accounting from five of sixteen to six of sixteen patients, including S07.",
+      "Thirty of thirty-seven remaining U1 source failures entered the selected-anchor path, identifying one-anchor-per-interface refinement granularity as the next bounded development question."
+    ],
+    "not_supported": [
+      "The gain is measured only in the development partition and does not update formal qualification.",
+      "A six-of-sixteen development yield is not sufficient evidence to open the reserved partition before the predeclared granularity question is resolved.",
+      "No Moderate target, final joint mask, H&E output, or physician material is approved."
+    ]
+  }
+}

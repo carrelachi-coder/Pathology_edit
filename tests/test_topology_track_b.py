@@ -311,17 +311,17 @@ def test_selected_multi_anchor_underfill_refines_one_selected_anchor(monkeypatch
     assert result.track_b_used is True
     assert result.audit["trigger_kind"] == "topology_passing_area_underfill"
     assert result.audit["candidate_version"] == (
-        "selected-multi-anchor-balanced-geodesic-refinement-v1"
+        "selected-multi-anchor-balanced-geodesic-refinement-v2"
     )
-    record = result.audit["transformed_interfaces"][0]
-    assert record["retired_parent_anchor_id"] in selected
-    assert len(record["new_subanchors"]) == 2
+    records = result.audit["transformed_interfaces"]
+    assert {item["retired_parent_anchor_id"] for item in records} == set(selected)
+    assert all(len(item["new_subanchors"]) == 2 for item in records)
     rebuilt = next(
         item
         for item in result.scene.tissue.graph.interfaces
         if item.interface_id == interface_id
     )
-    assert len(rebuilt.anchor_segment_ids) == len(selected) + 1
+    assert len(rebuilt.anchor_segment_ids) == len(selected) * 2
     assert len(compiler.calls) == 2
     assert len(bindings) == 2
 

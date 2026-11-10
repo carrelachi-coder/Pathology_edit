@@ -22,7 +22,7 @@ DIRECTIONAL_SECTOR_CANDIDATE_VERSION = (
     "directional-single-anchor-maximal-legal-sector-v1"
 )
 SELECTED_MULTI_ANCHOR_CANDIDATE_VERSION = (
-    "selected-multi-anchor-balanced-geodesic-refinement-v1"
+    "selected-multi-anchor-balanced-geodesic-refinement-v2"
 )
 
 
@@ -262,14 +262,34 @@ def selected_multi_anchor_refinement_candidate(
     qualification outcome participates in the choice.
     """
 
+    candidates, reasons = selected_multi_anchor_refinement_candidates(
+        scene,
+        interface_id=interface_id,
+        selected_anchor_ids=selected_anchor_ids,
+        cell_feasible_anchor_ids=cell_feasible_anchor_ids,
+        minimum_subanchor_pixels=minimum_subanchor_pixels,
+    )
+    return (candidates[0] if candidates else None), reasons
+
+
+def selected_multi_anchor_refinement_candidates(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    selected_anchor_ids: tuple[str, ...],
+    cell_feasible_anchor_ids: tuple[str, ...],
+    minimum_subanchor_pixels: int,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return every original selected feasible anchor bisectable in one round."""
+
     interface = next(
         (item for item in scene.graph.interfaces if item.interface_id == interface_id),
         None,
     )
     if interface is None:
-        return None, ("unknown_interface",)
+        return (), ("unknown_interface",)
     if len(interface.anchor_segment_ids) < 2:
-        return None, ("interface_not_multi_anchor",)
+        return (), ("interface_not_multi_anchor",)
     selected = set(selected_anchor_ids)
     feasible = set(cell_feasible_anchor_ids)
     candidates: list[tuple[int, str]] = []
@@ -291,8 +311,8 @@ def selected_multi_anchor_refinement_candidate(
             continue
         candidates.append((-pixels, anchor_id))
     if not candidates:
-        return None, ("no_selected_feasible_bisectable_anchor",)
-    return min(candidates)[1], ()
+        return (), ("no_selected_feasible_bisectable_anchor",)
+    return tuple(anchor_id for _size, anchor_id in sorted(candidates)), ()
 
 
 def rebuild_scene_with_bisected_anchor(
