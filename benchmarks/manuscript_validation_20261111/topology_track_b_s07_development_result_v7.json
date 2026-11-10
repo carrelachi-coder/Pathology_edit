@@ -1,0 +1,74 @@
+{
+  "schema_version": "topology-track-b-s07-development-result-v7",
+  "recorded_at": "2026-11-11",
+  "status": "completed_both_significant_topology_witnesses_passed",
+  "launch_manifest": "topology_track_b_s07_development_launch_manifest_v7.json",
+  "implementation_commit": "40e57752",
+  "authorization_commit": "b7a1c370",
+  "automatic_retries": 0,
+  "execution": {
+    "target": "amax2",
+    "elapsed_seconds": 215.52,
+    "exit_code": 0,
+    "output_directory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v7",
+    "capacity_screen_sha256": "4b0a3aaa03eba1c32880bde47787ee40ff4d7c9a4322a1180225d0868c552fde",
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_only": true,
+    "target_mask_created": false
+  },
+  "results": {
+    "both_significant_capacity_pass": true,
+    "both_significant_topology_pass": true,
+    "u1": {
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "candidate_version": "directional-single-anchor-balanced-geodesic-bisection-v3",
+      "trigger_kind": "topology_passing_area_underfill",
+      "transformed_interface_count": 3,
+      "fresh_preflight_rejected_interface_count": 0,
+      "selected_interface_count": 6,
+      "selected_anchor_count": 7,
+      "realized_tissue_pixels": 78659,
+      "hard_gate_passed": true,
+      "candidate_id": "tissue-plan:a084cd6e7842b0dd054b",
+      "change_region_sha256": "19d54c527356f2870fc64ad2ab6db03cd496abf48829e98794184f2cb2d3c105",
+      "execution_raster_sha256": "3aa55dcb1b1041c998f56dfc996210c723d1f90fa3c944e26c4ad4386ac531de"
+    },
+    "u2": {
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "candidate_version": "directional-single-anchor-maximal-legal-sector-v1",
+      "trigger_kind": "directional_single_anchor_front_block",
+      "transformed_interface_count": 11,
+      "fresh_preflight_rejected_interface_count": 0,
+      "selected_interface_count": 11,
+      "selected_anchor_count": 11,
+      "realized_tissue_pixels": 82313,
+      "hard_gate_passed": true,
+      "candidate_id": "tissue-plan:6314ba6c61a94a185d2b",
+      "change_region_sha256": "d1b60366385ad3f74aa35d95e67fdb054b0e6b9818170c37c59e50109415cd5a",
+      "compiler_certificate_sha256": "6314ba6c61a94a185d2be0125697f6463b10af446ce59a0aade44e858882131b",
+      "execution_raster_sha256": "97703ceb781a4662978cb153d90c385d727bd606e851a37e961dfe911ece18c2",
+      "tissue_gate_report_sha256": "7dc867ed83edc591a551eea4aa7f82b142c1637ac177e79f0e6e18ac897c06c5"
+    }
+  },
+  "interpretation": {
+    "supported": [
+      "Both Significant-operation topology witnesses pass on the frozen S07 development source with unchanged scientific thresholds.",
+      "The U1 balanced and U2 maximal-legal-sector representations coexist without changing their respective frozen front contracts.",
+      "The U2 fresh nuclei preflight retained all eleven transformed interfaces and the final whole-mask topology gate passed at the frozen tissue target."
+    ],
+    "not_supported": [
+      "S07 remains a development case and is not an independent evaluation result.",
+      "This source-only witness does not approve Moderate targets, final joint masks, H&E outputs, formal patients, or physician-study material.",
+      "The frozen 17/19 patient accounting is unchanged until the predeclared reserved evaluation is completed."
+    ]
+  },
+  "next_gate": {
+    "name": "patient_level_reserved_topology_evaluation",
+    "development_patients": 16,
+    "reserved_evaluation_patients": 68,
+    "selection_rule": "Use the previously frozen patient split and fixed source ordering; do not select by H&E or downstream outcome.",
+    "qualification_update_permitted": false,
+    "he_calls": 0
+  }
+}
