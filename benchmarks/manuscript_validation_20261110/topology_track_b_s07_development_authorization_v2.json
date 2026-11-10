@@ -1,0 +1,17 @@
+{
+  "schema_version": "topology-track-b-s07-development-authorization-v2",
+  "decision": "authorized_once",
+  "authorized_by": "Codex under the user's standing self-authorization instruction",
+  "launch_manifest_path": "benchmarks/manuscript_validation_20261110/topology_track_b_s07_development_launch_manifest_v2.json",
+  "launch_manifest_sha256": "5132b24934d5557a0d0409b90cb841631e9570da95eb989af7c4e6cdb715a136",
+  "basis": [
+    "The first authorization is closed and is not reused.",
+    "The real S07 failure isolated a mismatch between eligibility and physical bisection rather than a topology result.",
+    "The corrected two-sweep endpoint method satisfies the unchanged size and span constraints on the frozen failing anchor.",
+    "The full selected regression passed with 262 tests and 346 subtests.",
+    "The isolated target snapshot reproduced the corrected deterministic partition."
+  ],
+  "scope": "One development-only S07 source run, at most two real topology witnesses, 1200 seconds, zero retry.",
+  "explicit_exclusions": "No reserved evaluation, qualification-count mutation, four-target approval, H&E, formal cohort, or physician study.",
+  "failure_policy": "HOLD and preserve evidence; do not retry or reinterpret partial output."
+}
