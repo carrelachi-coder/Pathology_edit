@@ -21,6 +21,14 @@ from phase3_mask_edit_refine.scene import SceneAnalysis
 CANDIDATE_VERSION = "directional-single-anchor-geodesic-bisection-v1"
 
 
+def minimum_witness_contact_pixels(reference_area_p95: float) -> int:
+    """Return one source-reference equivalent diameter in raster pixels."""
+
+    if not np.isfinite(reference_area_p95) or reference_area_p95 <= 0.0:
+        raise ValueError("reference area p95 must be positive and finite")
+    return int(np.ceil(np.sqrt(4.0 * float(reference_area_p95) / np.pi)))
+
+
 def subdivision_eligibility_for_underfill_replan(
     scene: SceneAnalysis,
     *,
@@ -31,7 +39,7 @@ def subdivision_eligibility_for_underfill_replan(
     area_underfill_replan: bool,
     maximum_selected_anchor_fraction: float,
     minimum_unselected_anchor_count: int,
-    minimum_subanchor_pixels: int = 2,
+    minimum_subanchor_pixels: int,
 ) -> tuple[bool, tuple[str, ...]]:
     """Fail-closed eligibility for proposing subdivision after safe underfill.
 
@@ -98,7 +106,7 @@ def rebuild_scene_with_bisected_single_anchor(
     scene: SceneAnalysis,
     *,
     interface_id: str,
-    minimum_subanchor_pixels: int = 2,
+    minimum_subanchor_pixels: int,
 ) -> SceneAnalysis:
     """Return a new scene whose named single-anchor interface has two anchors.
 
@@ -172,7 +180,7 @@ def rebuild_scene_with_bisected_single_anchor(
 def bisect_connected_interface_anchor(
     anchor_mask: np.ndarray,
     *,
-    minimum_subanchor_pixels: int = 2,
+    minimum_subanchor_pixels: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return a deterministic, exhaustive 8-connected geodesic bisection.
 

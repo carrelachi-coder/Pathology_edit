@@ -16,10 +16,39 @@ from phase3_joint_edit_refine.workflow import JointPathologyEditWorkflow
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     bisect_connected_interface_anchor,
+    minimum_witness_contact_pixels,
     rebuild_scene_with_bisected_single_anchor,
     subdivision_eligibility_for_underfill_replan,
 )
 from phase3_mask_edit_refine.scene import build_scene_analysis
+
+
+def test_minimum_witness_uses_one_reference_equivalent_diameter():
+    assert minimum_witness_contact_pixels(9.0) == 4
+    assert minimum_witness_contact_pixels(641.6) == 29
+    with pytest.raises(ValueError, match="positive and finite"):
+        minimum_witness_contact_pixels(0.0)
+    with pytest.raises(ValueError, match="positive and finite"):
+        minimum_witness_contact_pixels(float("nan"))
+
+
+def test_reference_scaled_minimum_rejects_short_arcs_before_bisection():
+    minimum = minimum_witness_contact_pixels(641.6)
+    short = np.zeros((3, 52), dtype=bool)
+    short[1, 1:51] = True
+    with pytest.raises(ValueError, match="too small"):
+        bisect_connected_interface_anchor(
+            short,
+            minimum_subanchor_pixels=minimum,
+        )
+
+    long = np.zeros((3, 87), dtype=bool)
+    long[1, 1:86] = True
+    parts = bisect_connected_interface_anchor(
+        long,
+        minimum_subanchor_pixels=minimum,
+    )
+    assert all(np.count_nonzero(part) >= minimum for part in parts)
 
 
 def test_bisection_is_deterministic_exhaustive_and_disjoint():
@@ -27,8 +56,8 @@ def test_bisection_is_deterministic_exhaustive_and_disjoint():
     anchor[3, 2:17] = True
     anchor[3:10, 16] = True
 
-    first = bisect_connected_interface_anchor(anchor)
-    second = bisect_connected_interface_anchor(anchor)
+    first = bisect_connected_interface_anchor(anchor, minimum_subanchor_pixels=2)
+    second = bisect_connected_interface_anchor(anchor, minimum_subanchor_pixels=2)
 
     assert all(np.array_equal(left, right) for left, right in zip(first, second))
     assert np.array_equal(first[0] | first[1], anchor)
@@ -39,7 +68,7 @@ def test_bisection_is_deterministic_exhaustive_and_disjoint():
 def test_two_subanchors_retain_one_unedited_witness_without_changing_rule():
     anchor = np.zeros((5, 12), dtype=bool)
     anchor[2, 1:11] = True
-    parts = bisect_connected_interface_anchor(anchor)
+    parts = bisect_connected_interface_anchor(anchor, minimum_subanchor_pixels=2)
     ids = tuple(f"subanchor:{index}" for index in range(len(parts)))
 
     assert _directional_sector_selection_limit(
@@ -54,7 +83,7 @@ def test_small_or_disconnected_anchor_fails_closed():
     too_small = np.zeros((3, 3), dtype=bool)
     too_small[1, 1:3] = True
     with pytest.raises(ValueError, match="too small"):
-        bisect_connected_interface_anchor(too_small)
+        bisect_connected_interface_anchor(too_small, minimum_subanchor_pixels=2)
     with pytest.raises(ValueError, match="must be positive"):
         bisect_connected_interface_anchor(too_small, minimum_subanchor_pixels=0)
 
@@ -62,7 +91,7 @@ def test_small_or_disconnected_anchor_fails_closed():
     disconnected[1, 1:4] = True
     disconnected[3, 4:7] = True
     with pytest.raises(ValueError, match="8-connected"):
-        bisect_connected_interface_anchor(disconnected)
+        bisect_connected_interface_anchor(disconnected, minimum_subanchor_pixels=2)
 
 
 def test_scene_rebuild_gives_subanchors_new_identities_without_mutating_source():
@@ -83,6 +112,7 @@ def test_scene_rebuild_gives_subanchors_new_identities_without_mutating_source()
     rebuilt = rebuild_scene_with_bisected_single_anchor(
         source,
         interface_id=interface.interface_id,
+        minimum_subanchor_pixels=2,
     )
     rebuilt_interface = next(
         item
@@ -113,6 +143,7 @@ def test_scene_rebuild_gives_subanchors_new_identities_without_mutating_source()
         area_underfill_replan=True,
         maximum_selected_anchor_fraction=0.75,
         minimum_unselected_anchor_count=1,
+        minimum_subanchor_pixels=2,
     )
     assert eligible
     assert reasons == ()
@@ -152,6 +183,7 @@ def test_subdivision_eligibility_fails_closed(overrides, expected_reason):
         "area_underfill_replan": True,
         "maximum_selected_anchor_fraction": 0.75,
         "minimum_unselected_anchor_count": 1,
+        "minimum_subanchor_pixels": 2,
     }
     arguments.update(overrides or {})
     eligible, reasons = subdivision_eligibility_for_underfill_replan(
@@ -253,6 +285,7 @@ def test_rebuilt_subanchors_receive_fresh_nuclei_preflight(tmp_path):
     rebuilt_tissue = rebuild_scene_with_bisected_single_anchor(
         joint_scene.tissue,
         interface_id=interface.interface_id,
+        minimum_subanchor_pixels=minimum_witness_contact_pixels(9.0),
     )
     rebuilt_scene = replace(joint_scene, tissue=rebuilt_tissue)
 
@@ -323,6 +356,7 @@ def test_rebuilt_subanchors_receive_fresh_nuclei_preflight(tmp_path):
         tissue=rebuild_scene_with_bisected_single_anchor(
             negative_joint_scene.tissue,
             interface_id=negative_interface.interface_id,
+            minimum_subanchor_pixels=minimum_witness_contact_pixels(9.0),
         ),
     )
     negative_preflight = build_joint_nuclei_preflight(

@@ -2,17 +2,17 @@
   "kind": "directional-anchor-subdivision-v1-local-validation",
   "status": "local_synthetic_scene_and_nuclei_preflight_candidate",
   "candidate_version": "directional-single-anchor-geodesic-bisection-v1",
-  "candidate_code_sha256": "b5e5febb8f53d2cddf7ddee696f1395515b1b388b28f266bdf9dd4d14dbc94eb",
-  "test_code_sha256": "a4d2e80102a7048875a80e025ba7c6760238fb00b0453e56eb75394cdfadb488",
+  "candidate_code_sha256": "86a4c4e9574b41d7987f23429ff3fd9d5201241746c9f2ff7958c4b6eb491ee3",
+  "test_code_sha256": "c8d21033888bd35da67beac28abc1d590e66b3f116362cb86ffd79d3d9d3b46e",
   "production_integration": false,
   "production_imports_candidate": false,
   "real_patient_runs": 0,
   "tests": {
     "command": "python -m pytest -q tests/test_research_anchor_subdivision_v1.py tests/test_topology_hole_semantics_v2.py tests/test_mask_edit_refine.py tests/test_native_topology_diagnosis.py",
-    "passed": 88,
+    "passed": 90,
     "subtests_passed": 85,
     "failed": 0,
-    "seconds": 4.33
+    "seconds": 4.39
   },
   "validated_properties": [
     "deterministic output for a fixed connected interface mask",
@@ -27,7 +27,8 @@
     "eligibility is limited to a topology-passing area-underfill replan where the parent interface remains feasible, the parent anchor is cell feasible, and the unchanged witness rule alone leaves zero selectable anchors",
     "initial compile, topology failure, removed-interface and parent-cell-infeasible counterexamples all fail closed",
     "after removing all complete source nucleus references and rebuilding the joint scene, a fresh preflight rejects the interface and does not reuse the previously accepted parent-anchor result",
-    "invalid fractional contracts, negative witness counts and nonpositive subdivision sizes fail closed before candidate evaluation"
+    "invalid fractional contracts, negative witness counts and nonpositive subdivision sizes fail closed before candidate evaluation",
+    "the minimum size of both selected and retained subanchors is explicitly supplied as the ceiling of one source-reference equivalent cell diameter; it is never an implicit two-pixel constant"
   ],
   "required_before_any_integration": [
     "independently review whether the topology-passing-underfill prerequisite correctly separates the hole-semantics change from the reachable-area mechanism",
