@@ -1,0 +1,54 @@
+{
+  "kind": "s07-B-partial-prefix-repetition-review-v1",
+  "evidence_status": "read_only_partial_prefix_business_process_incomplete",
+  "source_report": "B_attempts_report.json",
+  "source_report_sha256": "38f7f866639724213978ad2a5ee585df2de21aeaa37d0e156ca60dd74c80cf8f",
+  "committed_blocks": 270,
+  "committed_events": 8864998,
+  "completed_u1_compiler_attempts": 10,
+  "incomplete_attempts": 1,
+  "completed_exception_types": {
+    "phase3_mask_edit_refine.execution.TopologySafeAreaUnderfillError": 10
+  },
+  "unique_attempt_rng_digests": 1,
+  "by_attempt_label": {
+    "label_1": {
+      "completed_attempts": 4,
+      "unique_attempt_values": 4,
+      "unique_planner_selection_value_sequences": 1,
+      "unique_probe_value_sequences": 1,
+      "unique_probe_rng_sequences": 1,
+      "topology_passing_probes": 0
+    },
+    "label_2": {
+      "completed_attempts": 3,
+      "unique_attempt_values": 3,
+      "unique_planner_selection_value_sequences": 1,
+      "unique_probe_value_sequences": 1,
+      "unique_probe_rng_sequences": 1,
+      "topology_passing_probes": 0
+    },
+    "label_3": {
+      "completed_attempts": 3,
+      "unique_attempt_values": 3,
+      "unique_planner_selection_value_sequences": 1,
+      "unique_probe_value_sequences": 1,
+      "unique_probe_rng_sequences": 1,
+      "topology_passing_probes": 0
+    }
+  },
+  "interpretation": [
+    "All 10 completed attempts ended in TopologySafeAreaUnderfillError; no saved probe.complete has topology.passed=true.",
+    "Within each attempt label, recorded planner.selection values and the two probe.complete value sequences repeat, while compiler.attempt values differ across cycles.",
+    "A repeated recorded output is not proof that planning can be cached or that skipped computation has no unobserved effect. The B process has no business receipt or completion marker.",
+    "A topology-failing realized area near the hard floor is invalid and must not be called a safe-area near miss."
+  ],
+  "decisions": {
+    "qualification_updates_permitted": false,
+    "production_observer_change_authorized": false,
+    "topology_algorithm_change_authorized": false,
+    "S07_rerun_authorized": false,
+    "formal_H_and_E_authorized": false
+  },
+  "research_next_step": "Use the repeated-plan evidence to define and independently review a bounded mechanism hypothesis on a patient-level development set; keep S07 outside independent validation. Do not infer qualification from this partial trace."
+}
