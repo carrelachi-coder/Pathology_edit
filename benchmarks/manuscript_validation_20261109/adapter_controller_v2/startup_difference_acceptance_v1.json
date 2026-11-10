@@ -1,0 +1,36 @@
+{
+  "kind": "adapter-v2-startup-difference-acceptance-v1",
+  "status": "user_accepted_disclosed_difference_no_execution_authority",
+  "review_proposal_sha256": "0ab3519717497339e9baebdf7dd65bc3f05eb06c767d5912dd6205860001610e",
+  "target_import_report_sha256": "439168fb397324337e8895b68a5241e6acc71b92cf2622a217133b6690596975",
+  "target_manifest_sha256": "ac7d7fbec769bb9ebe2089f6e6136aa7484e583bd8caf4530446b390244eb7d7",
+  "decision": "Accept the observed A vs B/C import-order difference as a disclosed instrumentation startup condition. B/C exact order equality and strict comparisons remain required.",
+  "decision_source": "User reply in current Codex chat to the versioned startup-difference review question; this record is not an external signature.",
+  "accepted_module_paths": [
+    "diagnostic_storage/__init__.py",
+    "diagnostic_storage/guard_blocks_v2.py",
+    "diagnostic_storage/guard_budget_candidate_v1.py",
+    "diagnostic_storage/observer_adapter_contract_v2.py",
+    "diagnostic_storage/observer_adapter_v2.py",
+    "diagnostic_storage/observer_invocation_bridge_v1.py",
+    "phase3_mask_edit_refine/passive_observer.py"
+  ],
+  "accepted_shared_early_imports": [
+    "phase3_mask_edit_refine/__init__.py",
+    "phase3_mask_edit_refine/models.py"
+  ],
+  "comparison_policy": {
+    "A_vs_historical": "full business receipt strict equality",
+    "A_vs_B": "full business receipt strict equality",
+    "B_vs_C": "complete semantic stream and raster integrity strict comparison",
+    "posthoc_field_exclusions": [],
+    "path_normalization": false
+  },
+  "limitations": [
+    "Static direct module-level call inspection does not prove that all transitive import side effects are absent.",
+    "Import-only smoke does not prove runtime noninterference during a real witness, resource fit, or successful S07 diagnosis.",
+    "This proposal is a technical review item, not an external reviewer signature or real execution authorization."
+  ],
+  "real_S07_authorized": false,
+  "formal_cohort_permitted": false
+}
