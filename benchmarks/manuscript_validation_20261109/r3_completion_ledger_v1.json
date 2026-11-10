@@ -241,5 +241,17 @@
     "target_deployed": false,
     "target_executed": false,
     "target_authorized": false
+  },
+  "capacity_universe_patient_identity_audit": {
+    "status": "read_only_audit_complete_no_qualification_change",
+    "evidence": "capacity_universe_patient_identity_audit_v1.json",
+    "source_subsets_sha_verified": 6,
+    "total_capacity_source_refs": 538,
+    "technical_source_refs_under_v2_exclusion": 11,
+    "nontechnical_source_refs_under_v2_exclusion": 527,
+    "nontechnical_patient_group_aliases": 84,
+    "s07_patient_id": "TCGA-E2-A1LL",
+    "s07_in_old_technical_exclusion_v2": false,
+    "development_validation_boundary": "If S07 informs new method design, exclude this patient from independent validation; version any formal-cohort exclusion before selection. Full slide barcode identity remains unresolved."
   }
 }
