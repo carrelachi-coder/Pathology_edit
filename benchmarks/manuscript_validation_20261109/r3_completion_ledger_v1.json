@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "The reviewed Track B workflow wiring is implemented locally on draft PR #14 at commit 7664a9b3. Complete independent code review and freeze a separate target-preparation identity before any deployment. Any real development-patient run still requires its own SHA-bound manifest and authorization; the 68 reserved evaluation patients remain unopened. Historical 17/19 qualification counts stay immutable and formal R3 gates remain closed.",
+  "current_next_deliverable": "The reviewed Track B workflow wiring is implemented locally on draft PR #14. Post-implementation audit corrections at 0ed780cb bind the transformed scene identity into compiler authority and persist failed Track B evidence. The independent review request is frozen at c9ddb642. Complete that review before any target preparation; real development-patient execution still requires its own SHA-bound manifest and authorization, and the 68 reserved evaluation patients remain unopened.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -124,7 +124,10 @@
     "sha256": "d403dd9049d6773ae669f0624f50800e593f7fb39d6d4ec77c4c1416e65f9d32",
     "architecture": "workflow-level one-round transformed scene, fresh nuclei preflight, fresh authority binding and fresh portfolio; no mixing with original underfill portfolio",
     "implementation_authorized": true,
-    "implementation_commit": "7664a9b3",
+    "implementation_commit": "0ed780cb",
+    "review_request_commit": "c9ddb642",
+    "review_request": "topology_track_b_production_wiring_review_request_v1.json",
+    "independent_review_status": "requested_not_completed",
     "implementation_validation": "topology_track_b_production_wiring_local_validation_v1.json",
     "implementation_validation_status": "253 workflow/regression tests and 346 subtests passed; 21 focused tests passed; five broader P1 fixture tests stop before the changed path because the checked-in selection is not the required 22-evaluation asset",
     "production_integrated": false,
