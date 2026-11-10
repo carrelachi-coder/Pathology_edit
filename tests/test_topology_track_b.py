@@ -60,9 +60,10 @@ class _Preflight:
 
 
 class _Compiler:
-    def __init__(self, first_error=None, second_error=None):
+    def __init__(self, first_error=None, second_error=None, third_error=None):
         self.first_error = first_error
         self.second_error = second_error
+        self.third_error = third_error
         self.calls = []
 
     def compile_tissue_portfolio(self, **kwargs):
@@ -71,6 +72,8 @@ class _Compiler:
             raise self.first_error
         if len(self.calls) == 2 and self.second_error is not None:
             raise self.second_error
+        if len(self.calls) == 3 and self.third_error is not None:
+            raise self.third_error
         return SimpleNamespace(name=f"portfolio-{len(self.calls)}")
 
 
@@ -392,18 +395,69 @@ def test_fresh_preflight_rejection_does_not_reuse_parent_feasibility(monkeypatch
 
 
 def test_fresh_track_b_failure_retains_both_audited_failures(monkeypatch):
-    scene = _scene_with_two_single_anchor_interfaces()
+    original_scene = _scene_with_two_single_anchor_interfaces()
+    interface_id = original_scene.tissue.graph.interfaces[0].interface_id
+    scene = _JointScene(
+        rebuild_scene_with_bisected_single_anchor(
+            original_scene.tissue,
+            interface_id=interface_id,
+            minimum_subanchor_pixels=3,
+        )
+    )
     preflight = _Preflight(scene)
-    interface_id = preflight.feasible_interface_ids[0]
-    original = _error((interface_id,))
-    transformed = _error((interface_id,))
-    compiler = _Compiler(original, transformed)
+    selected = scene.tissue.graph.interfaces[0].anchor_segment_ids
+    original = _selected_multi_anchor_error(interface_id, selected)
+    balanced = _error((interface_id,))
+    maximal = _error((interface_id,))
+    compiler = _Compiler(original, balanced, maximal)
     with pytest.raises(TrackBPortfolioCompilationError) as caught:
         _run(monkeypatch, compiler, scene, preflight)
     assert caught.value.original_error is original
-    assert caught.value.track_b_error is transformed
+    assert caught.value.track_b_error is maximal
     assert caught.value.audit["rounds"] == 1
-    assert caught.value.audit["track_b_failure"]["message"] == str(transformed)
+    assert caught.value.audit["track_b_failure"]["message"] == str(maximal)
+    prior = caught.value.audit["prior_balanced_track_b"]
+    assert prior["selected_refinement_mode"] == "balanced_single"
+    assert prior["track_b_failure"]["message"] == str(balanced)
+
+
+def test_maximal_fallback_is_not_run_after_balanced_success(monkeypatch):
+    original_scene = _scene_with_two_single_anchor_interfaces()
+    interface_id = original_scene.tissue.graph.interfaces[0].interface_id
+    scene = _JointScene(
+        rebuild_scene_with_bisected_single_anchor(
+            original_scene.tissue,
+            interface_id=interface_id,
+            minimum_subanchor_pixels=3,
+        )
+    )
+    preflight = _Preflight(scene)
+    selected = scene.tissue.graph.interfaces[0].anchor_segment_ids
+    compiler = _Compiler(_selected_multi_anchor_error(interface_id, selected))
+    result, _bindings = _run(monkeypatch, compiler, scene, preflight)
+    assert result.audit["selected_refinement_mode"] == "balanced_single"
+    assert len(compiler.calls) == 2
+
+
+def test_maximal_fallback_runs_only_after_balanced_failure(monkeypatch):
+    original_scene = _scene_with_two_single_anchor_interfaces()
+    interface_id = original_scene.tissue.graph.interfaces[0].interface_id
+    scene = _JointScene(
+        rebuild_scene_with_bisected_single_anchor(
+            original_scene.tissue,
+            interface_id=interface_id,
+            minimum_subanchor_pixels=3,
+        )
+    )
+    preflight = _Preflight(scene)
+    selected = scene.tissue.graph.interfaces[0].anchor_segment_ids
+    compiler = _Compiler(
+        _selected_multi_anchor_error(interface_id, selected),
+        _error((interface_id,)),
+    )
+    result, _bindings = _run(monkeypatch, compiler, scene, preflight)
+    assert result.audit["selected_refinement_mode"] == "maximal_selected"
+    assert len(compiler.calls) == 3
 
 
 def test_planner_preserves_valid_track_b_authority_extension(monkeypatch):

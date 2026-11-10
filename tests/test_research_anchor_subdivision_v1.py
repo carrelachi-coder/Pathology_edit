@@ -19,8 +19,11 @@ from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     geodesic_span_steps,
     minimum_witness_contact_pixels,
     partition_connected_interface_anchor_for_directional_sector,
+    rebuild_scene_with_directional_sector_anchor,
     rebuild_scene_with_directional_sector_partition,
+    rebuild_scene_with_bisected_anchor,
     rebuild_scene_with_bisected_single_anchor,
+    selected_multi_anchor_maximal_sector_candidates,
     subdivision_eligibility_for_underfill_replan,
 )
 from phase3_mask_edit_refine.scene import build_scene_analysis
@@ -206,6 +209,68 @@ def test_scene_rebuild_gives_subanchors_new_identities_without_mutating_source()
     )
     assert eligible
     assert reasons == ()
+
+
+def test_maximal_selected_fallback_is_deterministic_and_preserves_siblings():
+    tissue = np.full((48, 48), 2, dtype=np.uint8)
+    tissue[12:36, 12:36] = 1
+    source = build_scene_analysis(
+        tissue,
+        schema=MaskProfileSchema.from_reference_profile("BCSS"),
+    )
+    interface = next(
+        item
+        for item in source.graph.interfaces
+        if item.source_label == "Stroma" and item.target_label == "Tumor"
+    )
+    split = rebuild_scene_with_bisected_anchor(
+        source,
+        interface_id=interface.interface_id,
+        anchor_id=interface.anchor_segment_ids[0],
+        minimum_subanchor_pixels=3,
+    )
+    split_interface = next(
+        item
+        for item in split.graph.interfaces
+        if item.interface_id == interface.interface_id
+    )
+    selected = split_interface.anchor_segment_ids
+    candidates, reasons = selected_multi_anchor_maximal_sector_candidates(
+        split,
+        interface_id=interface.interface_id,
+        selected_anchor_ids=selected,
+        cell_feasible_anchor_ids=selected,
+        minimum_subanchor_pixels=3,
+        maximum_selected_anchor_fraction=0.75,
+    )
+    assert reasons == ()
+    assert candidates == tuple(
+        sorted(
+            candidates,
+            key=lambda anchor_id: (
+                -int(np.count_nonzero(split.anchor_masks[anchor_id])),
+                anchor_id,
+            ),
+        )
+    )
+
+    parent = candidates[0]
+    sibling = next(anchor_id for anchor_id in selected if anchor_id != parent)
+    rebuilt = rebuild_scene_with_directional_sector_anchor(
+        split,
+        interface_id=interface.interface_id,
+        anchor_id=parent,
+        minimum_subanchor_pixels=3,
+        maximum_selected_anchor_fraction=0.75,
+    )
+    rebuilt_interface = next(
+        item
+        for item in rebuilt.graph.interfaces
+        if item.interface_id == interface.interface_id
+    )
+    assert sibling in rebuilt_interface.anchor_segment_ids
+    assert parent not in rebuilt_interface.anchor_segment_ids
+    assert np.array_equal(split.anchor_masks[sibling], rebuilt.anchor_masks[sibling])
 
 
 def test_two_sweep_endpoints_avoid_mid_branch_undersized_partition():

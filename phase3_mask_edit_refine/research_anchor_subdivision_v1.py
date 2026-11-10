@@ -24,6 +24,9 @@ DIRECTIONAL_SECTOR_CANDIDATE_VERSION = (
 SELECTED_MULTI_ANCHOR_CANDIDATE_VERSION = (
     "selected-multi-anchor-balanced-geodesic-refinement-v1"
 )
+SELECTED_MAXIMAL_SECTOR_CANDIDATE_VERSION = (
+    "selected-multi-anchor-maximal-legal-sector-fallback-v1"
+)
 
 
 def minimum_witness_contact_pixels(reference_area_p95: float) -> int:
@@ -295,6 +298,56 @@ def selected_multi_anchor_refinement_candidate(
     return min(candidates)[1], ()
 
 
+def selected_multi_anchor_maximal_sector_candidates(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    selected_anchor_ids: tuple[str, ...],
+    cell_feasible_anchor_ids: tuple[str, ...],
+    minimum_subanchor_pixels: int,
+    maximum_selected_anchor_fraction: float,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return selected feasible anchors admitting a maximal legal sector.
+
+    This is a deterministic second-line representation.  It is evaluated only
+    after the balanced single-anchor Track B representation has failed, so it
+    cannot replace a successful balanced result.
+    """
+
+    interface = next(
+        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
+        None,
+    )
+    if interface is None:
+        return (), ("unknown_interface",)
+    if len(interface.anchor_segment_ids) < 2:
+        return (), ("interface_not_multi_anchor",)
+    selected = set(selected_anchor_ids)
+    feasible = set(cell_feasible_anchor_ids)
+    candidates: list[tuple[int, str]] = []
+    for anchor_id in interface.anchor_segment_ids:
+        if anchor_id not in selected or anchor_id not in feasible:
+            continue
+        mask = scene.anchor_masks.get(anchor_id)
+        if mask is None:
+            continue
+        pixels = int(np.count_nonzero(mask))
+        if pixels < 2 * minimum_subanchor_pixels:
+            continue
+        try:
+            partition_connected_interface_anchor_for_directional_sector(
+                mask,
+                minimum_subanchor_pixels=minimum_subanchor_pixels,
+                maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
+            )
+        except ValueError:
+            continue
+        candidates.append((-pixels, anchor_id))
+    if not candidates:
+        return (), ("no_selected_feasible_maximal_sector_anchor",)
+    return tuple(anchor_id for _size, anchor_id in sorted(candidates)), ()
+
+
 def rebuild_scene_with_bisected_anchor(
     scene: SceneAnalysis,
     *,
@@ -315,6 +368,32 @@ def rebuild_scene_with_bisected_anchor(
     parts = bisect_connected_interface_anchor(
         scene.anchor_masks[anchor_id],
         minimum_subanchor_pixels=minimum_subanchor_pixels,
+    )
+    return _replace_anchor(scene, interface_id, anchor_id, parts)
+
+
+def rebuild_scene_with_directional_sector_anchor(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    anchor_id: str,
+    minimum_subanchor_pixels: int,
+    maximum_selected_anchor_fraction: float,
+) -> SceneAnalysis:
+    """Replace one named anchor by its maximal legal sector and witness."""
+
+    interface = next(
+        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
+        None,
+    )
+    if interface is None:
+        raise ValueError(f"unknown interface: {interface_id}")
+    if anchor_id not in interface.anchor_segment_ids:
+        raise ValueError("anchor does not belong to the named interface")
+    parts = partition_connected_interface_anchor_for_directional_sector(
+        scene.anchor_masks[anchor_id],
+        minimum_subanchor_pixels=minimum_subanchor_pixels,
+        maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
     )
     return _replace_anchor(scene, interface_id, anchor_id, parts)
 
