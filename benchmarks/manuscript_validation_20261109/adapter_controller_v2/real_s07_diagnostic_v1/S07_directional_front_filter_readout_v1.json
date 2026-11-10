@@ -3,6 +3,7 @@
   "status": "read_only_incomplete_prefix_analysis",
   "source_pending_index_sha256": "a1723901fa3cf6a8f20912ec87c87ab2e31962bf5a4b7db00abb4c9e4cf7b763",
   "source_floor_saturation_readout_sha256": "4c6bf0f96a7a632ea64f4f1cc95816ee4a2157c20b030198906a1eda434be76d",
+  "source_capacity_screen_sha256": "fc60c71cc2e3d7e8449dfe0f057846ad93a5f3f840b78eec0bc6cb5034a80a76",
   "source_code": {
     "phase3_joint_edit_refine/tissue_planner.py": "1f992413da188490e2a66f06a0bc3d661602b3eb736f0e48c0fdd01c10f5954a",
     "phase3_mask_edit_refine/scene.py": "61a1af6108052a98ca68f88cbea27d967a4bf60367d4576bfc656bafcbcc48a2"
@@ -17,15 +18,25 @@
   "directional_front_filter_retained_interfaces": 3,
   "directional_front_filter_excluded_interfaces": 5,
   "interfaces": [
-    {"interface_index": 1, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
-    {"interface_index": 2, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
-    {"interface_index": 3, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
-    {"interface_index": 4, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
-    {"interface_index": 5, "anchor_count": 2, "allowed_anchor_count": 2, "selection_limit": 1, "retained": true},
-    {"interface_index": 6, "anchor_count": 3, "allowed_anchor_count": 3, "selection_limit": 2, "retained": true},
-    {"interface_index": 7, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
-    {"interface_index": 8, "anchor_count": 2, "allowed_anchor_count": 2, "selection_limit": 1, "retained": true}
+    {"interface_index": 1, "interface_id": "if:stroma:p01:0001->tumor:p01:0001:seg:0001", "contact_pixels": 115, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
+    {"interface_index": 2, "interface_id": "if:stroma:p01:0001->tumor:p01:0002:seg:0001", "contact_pixels": 50, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
+    {"interface_index": 3, "interface_id": "if:stroma:p01:0001->tumor:p01:0003:seg:0001", "contact_pixels": 150, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
+    {"interface_index": 4, "interface_id": "if:stroma:p01:0001->tumor:p01:0004:seg:0001", "contact_pixels": 44, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
+    {"interface_index": 5, "interface_id": "if:stroma:p01:0001->tumor:p01:0005:seg:0001", "contact_pixels": 250, "anchor_count": 2, "allowed_anchor_count": 2, "selection_limit": 1, "retained": true},
+    {"interface_index": 6, "interface_id": "if:stroma:p01:0001->tumor:p01:0006:seg:0001", "contact_pixels": 388, "anchor_count": 3, "allowed_anchor_count": 3, "selection_limit": 2, "retained": true},
+    {"interface_index": 7, "interface_id": "if:stroma:p01:0001->tumor:p01:0007:seg:0001", "contact_pixels": 85, "anchor_count": 1, "allowed_anchor_count": 1, "selection_limit": 0, "retained": false},
+    {"interface_index": 8, "interface_id": "if:stroma:p01:0001->tumor:p01:0008:seg:0001", "contact_pixels": 185, "anchor_count": 2, "allowed_anchor_count": 2, "selection_limit": 1, "retained": true}
   ],
+  "reference_scaled_witness_readout": {
+    "reference_area_p95_pixels": 641.5999999999999,
+    "equivalent_diameter_pixels_ceiling": 29,
+    "pixel_size_um": null,
+    "reason_for_raster_scale": "The frozen case does not bind a reliable pixel_size_um, so a micron threshold cannot be asserted. One source-reference equivalent cell diameter supplies a case-calibrated raster minimum.",
+    "two_subanchor_total_contact_necessary_minimum_pixels": 58,
+    "excluded_single_anchor_interfaces_meeting_total_contact_necessary_condition": [1, 3, 7],
+    "excluded_single_anchor_interfaces_failing_total_contact_necessary_condition": [2, 4],
+    "limit": "Total contact >=58 is necessary but not sufficient; actual deterministic bisection, fresh nuclei preflight and topology execution were not run on S07."
+  },
   "retained_execution_order": [6, 5, 8],
   "retained_front_floor_result": {
     "hard_floor_pixels": 70779,
