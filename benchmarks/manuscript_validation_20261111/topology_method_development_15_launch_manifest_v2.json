@@ -1,0 +1,35 @@
+{
+  "schema_version": "topology-method-development-15-launch-v2",
+  "status": "self_authorized_once",
+  "purpose": "Measure patient-level generality of the selected-multi-anchor refinement after the frozen counterexample passed U1.",
+  "code": {
+    "commit": "3e47e39e",
+    "git_tree": "63187bb2160574e0312bf6f2b16274f73fbc0775",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_selected_anchor_3e47e39e",
+    "topology_track_b_sha256": "210b5cdcd3ca6bcbcea7dd140a39ebd8f8976f0e551d20fbdf65995321d3f10a",
+    "anchor_subdivision_sha256": "33ecbe4a3226631be65663018ea1601302a8bb5d8cbd323e68fada6ce8bf532e"
+  },
+  "input": {
+    "source_freeze": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_development_source_freeze_v1.json",
+    "source_freeze_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "partition": "development",
+    "partition_patients": 16,
+    "excluded_development_patient": "TCGA-E2-A1LL",
+    "requested_patients": 15,
+    "available_sources": 62,
+    "reserved_evaluation_access": false
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_development_15_v2",
+    "workers": 4,
+    "seconds_per_source": 1200,
+    "overall_watchdog_seconds": 21600,
+    "automatic_retries": 0,
+    "selection_rule": "For each patient, use the first dual-operation topology pass in frozen source order; stop on the first indeterminate source instead of skipping it.",
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any source timeout, nonzero exit, missing receipt, or identity mismatch makes that patient indeterminate and stops later sources for that patient.",
+  "authorization_basis": "Codex self-authorized a development-only rerun after 41 focused tests passed and the predeclared counterexample improved from 69,300 to 80,326 pixels with fresh preflight and whole-mask topology passage."
+}

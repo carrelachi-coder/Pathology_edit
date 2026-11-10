@@ -1,0 +1,56 @@
+{
+  "schema_version": "topology-selected-multi-anchor-development-probe-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_u1_counterexample_resolved_u2_still_failed",
+  "launch_manifest": "topology_selected_multi_anchor_development_probe_v1.json",
+  "implementation_commit": "3e47e39e",
+  "authorization_commit": "f9374501",
+  "automatic_retries": 0,
+  "execution": {
+    "target": "amax2",
+    "output_directory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_selected_anchor_probe_v1",
+    "capacity_screen_sha256": "e960248604f24d08870566189af48b1a34f9fffde4e56737539bfe11bf2c565a",
+    "source_only": true,
+    "target_mask_created": false
+  },
+  "case": {
+    "patient_id": "TCGA-E2-A158",
+    "reference_id": "BCSS_joint_supplement_9af9c69a00f4",
+    "partition": "development",
+    "patient_source_rank": 2
+  },
+  "results": {
+    "both_significant_capacity_pass": true,
+    "both_significant_topology_pass": false,
+    "u1": {
+      "passed": true,
+      "prior_topology_passing_area_pixels": 69300,
+      "new_realized_tissue_pixels": 80326,
+      "hard_floor_pixels": 70779,
+      "candidate_version": "selected-multi-anchor-balanced-geodesic-refinement-v1",
+      "transformed_interface_count": 1,
+      "fresh_preflight_rejected_interface_count": 0,
+      "candidate_id": "tissue-plan:0f8ffff9be7b4311a993",
+      "change_region_sha256": "d8466fb01c13c175b370da36c6e0cb1b585c2ecf67089668ff47c91a1fdee769",
+      "execution_raster_sha256": "ec5ffba422af0cb7727951d7819b738694a5716e1c3807eeadcc4a79f44830c4"
+    },
+    "u2": {
+      "passed": false,
+      "terminal_topology_passed": true,
+      "terminal_topology_safe_area_pixels": 42917,
+      "hard_floor_pixels": 70779,
+      "track_b_used": true,
+      "transformed_interface_count": 4
+    }
+  },
+  "interpretation": {
+    "supported": [
+      "One round of deterministic selected-anchor refinement resolved the frozen U1 counterexample without changing any scientific threshold.",
+      "The refined anchor children both passed fresh nuclei preflight and the complete U1 witness passed the whole-mask topology gate at 80,326 pixels."
+    ],
+    "not_supported": [
+      "The source remains dual-operation ineligible because U2 failed.",
+      "This development probe does not update formal patient accounting or authorize reserved evaluation, four-target compilation, H&E, or physician review."
+    ]
+  }
+}
