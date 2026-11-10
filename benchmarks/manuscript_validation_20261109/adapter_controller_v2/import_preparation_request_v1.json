@@ -1,0 +1,43 @@
+{
+  "kind": "limited-topology-adapter-v2-target-import-request-v1",
+  "status": "review_candidate_not_authorized_not_deployed",
+  "manifest_file": "benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_manifest_v1.json",
+  "manifest_sha256": "fe7ba33381772fcef90add513d9b8b25bf5440f912ef43db290c4f4f4c815dcb",
+  "source_code_commit": "0acdaf3e2811c91def2b4904ee7adb42637dbe31",
+  "scope": "Copy exactly 14 SHA-pinned candidate files into a fresh isolated target directory, then run one guarded Linux import-only smoke. No business main, probe, witness, S07 or H&E calls.",
+  "bounds": {
+    "outer_watchdog_seconds": 600,
+    "per_import_child_seconds": 90,
+    "automatic_retries": 0,
+    "witness_calls": 0,
+    "S07_calls": 0,
+    "H_E_calls": 0
+  },
+  "gates": [
+    "Verify target code file hashes before import",
+    "Verify all three immutable business snapshots and seven pinned source/contract files",
+    "Verify frozen Python runtime and physical reservation",
+    "Require same initial controlled RNG/hash state and B/C import order",
+    "Require one native thread, CUDA uninitialized and no forbidden business calls",
+    "Any timeout, mismatch or incomplete report is HOLD"
+  ],
+  "old_authorizations_consumed": true,
+  "new_real_S07_authorization": false,
+  "formal_cohort_permitted": false,
+  "capture_identity_note": "Import-only manifest carries reference, patient and operation mapping. Run/startup identity SHA fields are zero sentinels; preparation_only=true blocks any business execution. A later real launch requires a separate fully bound manifest and approval.",
+  "known_limits": [
+    "This request is not target performance evidence.",
+    "Historical full business snapshot and package identities are copied from an earlier frozen manifest; the smoke must verify current target bytes before accepting them.",
+    "A successful import-only smoke cannot prove real S07 runtime noninterference, storage fit or patient qualification."
+  ],
+  "staging": "Fresh isolated target directory /data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_candidate_0acdaf3e; copy 14 pinned code files and the immutable manifest; reject if the directory exists. The 14 code files are checked by identity_gate; manifest is bound by this SHA and report.",
+  "launch_argv": [
+    "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_candidate_0acdaf3e/scripts/smoke_adapter_controlled_topology_imports_v2.py",
+    "--manifest",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_candidate_0acdaf3e/import_preparation_manifest_v1.json",
+    "--output",
+    "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_v2_import_audit_0acdaf3e"
+  ],
+  "external_watchdog": "timeout --signal=TERM --kill-after=5s 600s; one invocation, zero retries"
+}
