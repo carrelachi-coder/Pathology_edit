@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "The local dual-track technical review passed. Freeze a separate production-wiring proposal for Track B and a combined Track A plus Track B runtime identity without deploying or executing it. Only after that proposal is separately accepted may local integration begin; any real development-patient run still requires its own SHA-bound manifest and authorization. Historical 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
+  "current_next_deliverable": "The local dual-track technical review passed and the separate Track B workflow-wiring proposal is frozen. Review the proposal's fresh-portfolio architecture, one-round deterministic transformation and authority rebinding. Only after separate acceptance may local integration begin; any real development-patient run still requires its own SHA-bound manifest and authorization. Historical 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -114,6 +114,16 @@
     "acceptance_record_sha256": "b15305f3779d339e3eec600206afa18faccdae9244870f1fadabd621c1d63067",
     "decision_source": "user decision in current Codex conversation; no GitHub review signature claimed",
     "separation_invariant": "Track B cannot rescue topology failure; it is evaluated only after Track A independently yields topology-passing underfill.",
+    "execution_authorized": false
+  },
+  "topology_track_b_wiring_proposal": {
+    "status": "proposal_frozen_not_implemented_not_authorized",
+    "branch": "codex/topology-hole-semantics-v2",
+    "commit": "b9f19d7f",
+    "file": "topology_track_b_production_wiring_proposal_v1.json",
+    "sha256": "d403dd9049d6773ae669f0624f50800e593f7fb39d6d4ec77c4c1416e65f9d32",
+    "architecture": "workflow-level one-round transformed scene, fresh nuclei preflight, fresh authority binding and fresh portfolio; no mixing with original underfill portfolio",
+    "implementation_authorized": false,
     "execution_authorized": false
   },
   "execution_permissions": "Specific consumed authorizations remain closed. New target runs follow existing separate manifest-bound approval requirements.",
