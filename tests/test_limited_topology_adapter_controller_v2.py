@@ -41,11 +41,16 @@ def test_actual_codec_bridge_and_full_comparison(tmp_path):
 
 def test_old_controller_authorization_cannot_open_adapter_controller():
     with pytest.raises(PermissionError, match="new Adapter"):
-        controller.approval_gate({}, "a", {"approved": True, "manifest_sha256": "a"})
+        controller.approval_gate(
+            {"preparation_only": False},
+            "a",
+            {"approved": True, "manifest_sha256": "a"},
+        )
 
 
 def test_previous_adapter_authorization_cannot_open_v2():
     plan = {
+        "preparation_only": False,
         "controller_kind": "limited-topology-adapter-v2-budget",
         "execution_permitted": True,
         "rng_decision_approved": True,
@@ -71,6 +76,8 @@ def test_previous_adapter_authorization_cannot_open_v2():
     controller.approval_gate(plan, "m" * 64, current)
     with pytest.raises(PermissionError, match="authorization absent"):
         controller.approval_gate(plan, "n" * 64, current)
+    with pytest.raises(PermissionError, match="preparation-only"):
+        controller.approval_gate({**plan, "preparation_only": True}, "m" * 64, current)
 
 
 def test_legacy_sequence_stops_before_C_when_B_invalid():

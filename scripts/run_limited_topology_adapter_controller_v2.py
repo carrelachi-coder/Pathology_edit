@@ -126,6 +126,8 @@ def sequence(execute, assess, *, emit, timeout=1200):
 
 
 def approval_gate(plan, manifest_sha, approval):
+    if plan.get("preparation_only") is not False:
+        raise PermissionError("preparation-only manifest cannot execute")
     if (
         plan.get("controller_kind") != "limited-topology-adapter-v2-budget"
         or approval.get("kind") != "limited-topology-adapter-v2-budget"
