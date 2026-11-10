@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Pending separate approval for the frozen Adapter v2 target import-only preparation request. No S07 or witness work is authorized; formal cohort remains closed.",
+  "current_next_deliverable": "Await separate approval for corrected import-only v2 target preparation; v1 authorization consumed by environment-drift HOLD. No S07 or witness work authorized.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -327,7 +327,12 @@
     "import_smoke_candidate": "scripts/smoke_adapter_controlled_topology_imports_v2.py; import-only, not yet run on target Linux",
     "target_import_preparation_request": "https://github.com/carrelachi-coder/Pathology_edit/blob/a6178492/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_request_v1.json",
     "target_import_preparation_manifest_sha256": "fe7ba33381772fcef90add513d9b8b25bf5440f912ef43db290c4f4f4c815dcb",
-    "target_import_authorized": false
+    "target_import_authorized": false,
+    "target_import_preparation_v1_status": "HOLD_environment_drift_pre_business",
+    "target_import_preparation_v1_hold_report": "adapter_controller_v2/import_preparation_target_hold_v1.json",
+    "target_import_preparation_v1_authorization_consumed": true,
+    "target_import_preparation_v2_manifest_sha256": "ac7d7fbec769bb9ebe2089f6e6136aa7484e583bd8caf4530446b390244eb7d7",
+    "target_import_preparation_v2_request": "https://github.com/carrelachi-coder/Pathology_edit/blob/4f687ff6/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_request_v2.json"
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
