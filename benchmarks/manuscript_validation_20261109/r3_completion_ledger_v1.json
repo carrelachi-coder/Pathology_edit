@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Build and test a standalone lossless fast-path candidate to remove duplicate per-event parsing, using the existing target profiling as a bounded hypothesis. S07 authorization consumed; no real replay or formal H&E.",
+  "current_next_deliverable": "Evidence-based synthetic target profiling of standalone lossless event-path candidates, then independent review before any Observer integration. The completed S07 HOLD stays immutable; formal R3 gates remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -368,10 +368,13 @@
     "B_prefix_analysis_sha256": "366fc38d1dc6f46ef4711fad9b9a204a457d5a7f7bbbd2328b5d777eb206d358",
     "B_prefix_observed_case": "U1 Significant; 11 compiler attempts, 10 recorded topology-safe area underfill exceptions, last attempt unfinished at B timeout",
     "B_prefix_guard_event_fraction": 0.9999173152661738,
-    "next_engineering_question": "Independent default-off pre-parsed event fast-path prototype and differential benchmark; preserve byte-exact stream, completion, fault isolation and storage policy before any production integration.",
+    "next_engineering_question": "Measure target-path costs with a reviewed synthetic benchmark and evaluate lossless batching/reservation changes; the local 1.208x candidate alone does not justify S07 re-execution.",
     "B_event_cost_diagnosis": "https://github.com/carrelachi-coder/Pathology_edit/blob/1cc41250/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/B_event_cost_diagnosis_v1.json",
     "B_event_cost_diagnosis_sha256": "4b385945f0a0a6bcdefd677a0b73d7a1ba9f6b5d36203fae9ffcc09a88494d38",
-    "cost_conclusion_boundary": "Real B committed at least 7387 events/s before timeout. Earlier target synthetic v4 profile identifies Writer.write_event/JSON reparse/reference traversal/reservation as likely cost centers, but is not a causal real-run profile. Do not extrapolate a required new deadline from this alone."
+    "cost_conclusion_boundary": "Real B committed at least 7387 events/s before timeout. Earlier target synthetic v4 profile identifies Writer.write_event/JSON reparse/reference traversal/reservation as likely cost centers, but is not a causal real-run profile. Do not extrapolate a required new deadline from this alone.",
+    "preparsed_writer_prototype": "https://github.com/carrelachi-coder/Pathology_edit/blob/30ebf177/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/preparsed_writer_local_prototype_v1.json",
+    "preparsed_writer_prototype_sha256": "e69b94caed7861b3869612484e7c4813b25676bd0b1007e7b0ff8942e024ef60",
+    "preparsed_writer_status": "standalone_default_off_57_related_local_tests_pass_byte_exact_100k_single_run_1.208x_observed_no_production_integration"
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
