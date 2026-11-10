@@ -1,0 +1,31 @@
+{
+  "schema_version": "topology-track-b-s07-grow-profile-v1",
+  "status": "self_authorized_once",
+  "purpose": "Count and time unchanged topology-safe growth calls after the stack profile localized the runtime bottleneck.",
+  "code": {
+    "archive_commit": "f6cb8409",
+    "git_tree": "801f01171d7ad7644cb40f59221fa3fd3f38cb2b",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_grow_profile_candidate_f6cb8409",
+    "profile_wrapper_sha256": "67c1b27cdc0e863d012e188309771f43e28592d5da724632eefc6420fc706799",
+    "business_code_change_from_closed_v2": false
+  },
+  "input": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_index": 7,
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "hard_timeout_seconds": 360,
+    "automatic_retries": 0,
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_grow_profile_v1",
+    "telemetry": "One flushed begin/end line per topology_safe_priority_grow call; no per-pixel instrumentation is added.",
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "he_calls": 0
+  },
+  "noninterference_boundary": "The wrapper replaces imported references with a delegating timer that passes all arguments unchanged and returns the original result unchanged. I/O occurs only before and after each full grow call. This run is not valid for qualification or exact runtime comparison.",
+  "failure_policy": "Terminate at 360 seconds, preserve complete telemetry lines, zero retry.",
+  "authorization_basis": "Codex accepted this bounded development-only measurement after the prior stack profile established that topology-safe growth was the active bottleneck."
+}
