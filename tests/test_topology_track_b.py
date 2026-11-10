@@ -248,6 +248,9 @@ def test_directional_single_anchor_front_block_gets_one_fresh_subdivision_round(
 
     assert result.track_b_used is True
     assert result.audit["trigger_kind"] == "directional_single_anchor_front_block"
+    assert result.audit["candidate_version"] == (
+        "directional-single-anchor-maximal-legal-sector-v1"
+    )
     assert result.audit["trigger_feedback"] == []
     assert len(result.audit["transformed_interfaces"]) == len(
         preflight.feasible_interface_ids

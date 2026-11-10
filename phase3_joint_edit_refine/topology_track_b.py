@@ -17,8 +17,10 @@ import numpy as np
 
 from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     CANDIDATE_VERSION,
+    DIRECTIONAL_SECTOR_CANDIDATE_VERSION,
     geodesic_span_steps,
     minimum_witness_contact_pixels,
+    rebuild_scene_with_directional_sector_partition,
     rebuild_scene_with_bisected_single_anchor,
     subdivision_eligibility_for_directional_front_block,
     subdivision_eligibility_for_underfill_replan,
@@ -242,11 +244,21 @@ def _compile_fresh_track_b_portfolio(
             if item.interface_id == interface_id
         ).anchor_segment_ids[0]
         parent_sha = _array_sha256(transformed_tissue.anchor_masks[parent])
-        transformed_tissue = rebuild_scene_with_bisected_single_anchor(
-            transformed_tissue,
-            interface_id=interface_id,
-            minimum_subanchor_pixels=minimum_pixels,
-        )
+        if directional_front_block:
+            transformed_tissue = rebuild_scene_with_directional_sector_partition(
+                transformed_tissue,
+                interface_id=interface_id,
+                minimum_subanchor_pixels=minimum_pixels,
+                maximum_selected_anchor_fraction=(
+                    front.maximum_selected_anchor_fraction
+                ),
+            )
+        else:
+            transformed_tissue = rebuild_scene_with_bisected_single_anchor(
+                transformed_tissue,
+                interface_id=interface_id,
+                minimum_subanchor_pixels=minimum_pixels,
+            )
         rebuilt = next(
             item
             for item in transformed_tissue.graph.interfaces
@@ -311,7 +323,11 @@ def _compile_fresh_track_b_portfolio(
         **fresh_binding,
         "track_b_transformation_authority": {
             "workflow_version": TRACK_B_WORKFLOW_VERSION,
-            "candidate_version": CANDIDATE_VERSION,
+            "candidate_version": (
+                DIRECTIONAL_SECTOR_CANDIDATE_VERSION
+                if directional_front_block
+                else CANDIDATE_VERSION
+            ),
             "original_scene_sha256": original_scene_sha,
             "transformed_scene_sha256": transformed_scene_sha,
             "transformed_interfaces_sha256": canonical_metadata_sha256(
@@ -321,7 +337,11 @@ def _compile_fresh_track_b_portfolio(
     }
     audit = {
         "workflow_version": TRACK_B_WORKFLOW_VERSION,
-        "candidate_version": CANDIDATE_VERSION,
+        "candidate_version": (
+            DIRECTIONAL_SECTOR_CANDIDATE_VERSION
+            if directional_front_block
+            else CANDIDATE_VERSION
+        ),
         "track_b_used": True,
         "rounds": 1,
         "recursive_subdivision": False,

@@ -18,6 +18,8 @@ from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     bisect_connected_interface_anchor,
     geodesic_span_steps,
     minimum_witness_contact_pixels,
+    partition_connected_interface_anchor_for_directional_sector,
+    rebuild_scene_with_directional_sector_partition,
     rebuild_scene_with_bisected_single_anchor,
     subdivision_eligibility_for_underfill_replan,
 )
@@ -87,6 +89,33 @@ def test_two_subanchors_retain_one_unedited_witness_without_changing_rule():
     ) == 1
 
 
+def test_directional_partition_maximizes_sector_under_unchanged_fraction():
+    anchor = np.zeros((3, 42), dtype=bool)
+    anchor[1, 1:41] = True
+    selected, witness = partition_connected_interface_anchor_for_directional_sector(
+        anchor,
+        minimum_subanchor_pixels=8,
+        maximum_selected_anchor_fraction=0.75,
+    )
+    assert np.array_equal(selected | witness, anchor)
+    assert not np.any(selected & witness)
+    assert np.count_nonzero(selected) == 30
+    assert np.count_nonzero(witness) == 10
+    assert geodesic_span_steps(selected) >= 7
+    assert geodesic_span_steps(witness) >= 7
+
+
+def test_directional_partition_fails_closed_when_witness_cannot_fit():
+    anchor = np.zeros((3, 32), dtype=bool)
+    anchor[1, 1:31] = True
+    with pytest.raises(ValueError, match="no connected legal partition"):
+        partition_connected_interface_anchor_for_directional_sector(
+            anchor,
+            minimum_subanchor_pixels=8,
+            maximum_selected_anchor_fraction=0.4,
+        )
+
+
 def test_small_or_disconnected_anchor_fails_closed():
     too_small = np.zeros((3, 3), dtype=bool)
     too_small[1, 1:3] = True
@@ -140,6 +169,28 @@ def test_scene_rebuild_gives_subanchors_new_identities_without_mutating_source()
             [rebuilt.anchor_masks[item] for item in rebuilt_interface.anchor_segment_ids]
         ),
         source.anchor_masks[old_anchor_id],
+    )
+
+    directional = rebuild_scene_with_directional_sector_partition(
+        source,
+        interface_id=interface.interface_id,
+        minimum_subanchor_pixels=2,
+        maximum_selected_anchor_fraction=0.75,
+    )
+    directional_interface = next(
+        item
+        for item in directional.graph.interfaces
+        if item.interface_id == interface.interface_id
+    )
+    directional_sizes = sorted(
+        (
+            int(np.count_nonzero(directional.anchor_masks[anchor_id]))
+            for anchor_id in directional_interface.anchor_segment_ids
+        ),
+        reverse=True,
+    )
+    assert directional_sizes[0] <= int(
+        np.floor(np.count_nonzero(source.anchor_masks[old_anchor_id]) * 0.75)
     )
 
     eligible, reasons = subdivision_eligibility_for_underfill_replan(

@@ -18,6 +18,9 @@ from phase3_mask_edit_refine.models import SceneAnchorSegment
 from phase3_mask_edit_refine.scene import SceneAnalysis
 
 CANDIDATE_VERSION = "directional-single-anchor-balanced-geodesic-bisection-v3"
+DIRECTIONAL_SECTOR_CANDIDATE_VERSION = (
+    "directional-single-anchor-maximal-legal-sector-v1"
+)
 
 
 def minimum_witness_contact_pixels(reference_area_p95: float) -> int:
@@ -175,13 +178,40 @@ def subdivision_eligibility_for_directional_front_block(
         reasons.append("parent_anchor_too_small")
     elif not reasons:
         try:
-            bisect_connected_interface_anchor(
+            partition_connected_interface_anchor_for_directional_sector(
                 anchor_mask,
                 minimum_subanchor_pixels=minimum_subanchor_pixels,
+                maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
             )
         except ValueError:
             reasons.append("parent_anchor_not_bisectable")
     return not reasons, tuple(reasons)
+
+
+def rebuild_scene_with_directional_sector_partition(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    minimum_subanchor_pixels: int,
+    maximum_selected_anchor_fraction: float,
+) -> SceneAnalysis:
+    """Rebuild one single-anchor interface as a maximal sector plus witness."""
+
+    interface = next(
+        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
+        None,
+    )
+    if interface is None:
+        raise ValueError(f"unknown interface: {interface_id}")
+    if len(interface.anchor_segment_ids) != 1:
+        raise ValueError("candidate applies only to a single-anchor interface")
+    old_anchor_id = interface.anchor_segment_ids[0]
+    parts = partition_connected_interface_anchor_for_directional_sector(
+        scene.anchor_masks[old_anchor_id],
+        minimum_subanchor_pixels=minimum_subanchor_pixels,
+        maximum_selected_anchor_fraction=maximum_selected_anchor_fraction,
+    )
+    return _replace_single_anchor(scene, interface_id, old_anchor_id, parts)
 
 
 def rebuild_scene_with_bisected_single_anchor(
@@ -210,6 +240,15 @@ def rebuild_scene_with_bisected_single_anchor(
         scene.anchor_masks[old_anchor_id],
         minimum_subanchor_pixels=minimum_subanchor_pixels,
     )
+    return _replace_single_anchor(scene, interface_id, old_anchor_id, parts)
+
+
+def _replace_single_anchor(
+    scene: SceneAnalysis,
+    interface_id: str,
+    old_anchor_id: str,
+    parts: tuple[np.ndarray, np.ndarray],
+) -> SceneAnalysis:
     new_ids = tuple(
         f"{old_anchor_id}:sub:{index:04d}" for index in range(1, 3)
     )
@@ -259,6 +298,72 @@ def rebuild_scene_with_bisected_single_anchor(
     )
 
 
+def partition_connected_interface_anchor_for_directional_sector(
+    anchor_mask: np.ndarray,
+    *,
+    minimum_subanchor_pixels: int,
+    maximum_selected_anchor_fraction: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the largest legal connected sector and a complete witness.
+
+    The partition is mask-only and exhaustive over the same deterministic
+    signed geodesic field as the balanced bisection.  It maximizes the larger
+    child's size subject to the unchanged selected-fraction ceiling and to
+    both children meeting the source-reference size and span requirements.
+    """
+
+    mask = np.asarray(anchor_mask, dtype=bool)
+    if mask.ndim != 2:
+        raise ValueError("anchor mask must be two-dimensional")
+    if minimum_subanchor_pixels < 1:
+        raise ValueError("minimum subanchor pixels must be positive")
+    if (
+        not np.isfinite(maximum_selected_anchor_fraction)
+        or maximum_selected_anchor_fraction <= 0.0
+        or maximum_selected_anchor_fraction > 1.0
+    ):
+        raise ValueError("maximum selected anchor fraction must be in (0, 1]")
+    coordinates = np.argwhere(mask)
+    total = int(coordinates.shape[0])
+    if total < 2 * minimum_subanchor_pixels:
+        raise ValueError("anchor is too small for the requested partition")
+    first_distance, second_distance = _endpoint_distances(mask, coordinates)
+    signed_distance = first_distance.astype(np.int64) - second_distance.astype(
+        np.int64
+    )
+    maximum_selected_pixels = int(
+        np.floor(total * maximum_selected_anchor_fraction)
+    )
+    candidates: list[tuple[tuple[int, int, int], np.ndarray, np.ndarray]] = []
+    thresholds = sorted({int(value) for value in signed_distance[mask].tolist()})
+    for threshold in thresholds:
+        first = mask & (signed_distance <= threshold)
+        second = mask & ~first
+        sizes = (int(np.count_nonzero(first)), int(np.count_nonzero(second)))
+        if min(sizes) < minimum_subanchor_pixels:
+            continue
+        selected_size = max(sizes)
+        if selected_size > maximum_selected_pixels:
+            continue
+        try:
+            spans = tuple(_geodesic_diameter_steps(part) for part in (first, second))
+        except ValueError:
+            continue
+        if min(spans) < minimum_subanchor_pixels - 1:
+            continue
+        candidates.append(
+            ((-selected_size, abs(sizes[0] - sizes[1]), threshold), first, second)
+        )
+    if not candidates:
+        raise ValueError(
+            "directional sector partition has no connected legal partition"
+        )
+    _rank, first, second = min(candidates, key=lambda item: item[0])
+    if np.count_nonzero(second) > np.count_nonzero(first):
+        first, second = second, first
+    return first, second
+
+
 def bisect_connected_interface_anchor(
     anchor_mask: np.ndarray,
     *,
@@ -286,16 +391,7 @@ def bisect_connected_interface_anchor(
     if coordinates.shape[0] < 2 * int(minimum_subanchor_pixels):
         raise ValueError("anchor is too small for the requested bisection")
 
-    lexical_seed = tuple(int(value) for value in coordinates[0])
-    lexical_distance = _geodesic_distance(mask, lexical_seed)
-    first_value = int(np.max(lexical_distance[mask]))
-    first_coordinates = np.argwhere(mask & (lexical_distance == first_value))
-    first_seed = tuple(int(value) for value in first_coordinates[0])
-    first_distance = _geodesic_distance(mask, first_seed)
-    second_value = int(np.max(first_distance[mask]))
-    second_coordinates = np.argwhere(mask & (first_distance == second_value))
-    second_seed = tuple(int(value) for value in second_coordinates[0])
-    second_distance = _geodesic_distance(mask, second_seed)
+    first_distance, second_distance = _endpoint_distances(mask, coordinates)
 
     signed_distance = first_distance.astype(np.int64) - second_distance.astype(
         np.int64
@@ -327,6 +423,23 @@ def bisect_connected_interface_anchor(
     if not np.array_equal(first | second, mask) or np.any(first & second):
         raise RuntimeError("geodesic bisection is not an exact partition")
     return first, second
+
+
+def _endpoint_distances(
+    mask: np.ndarray,
+    coordinates: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    lexical_seed = tuple(int(value) for value in coordinates[0])
+    lexical_distance = _geodesic_distance(mask, lexical_seed)
+    first_value = int(np.max(lexical_distance[mask]))
+    first_coordinates = np.argwhere(mask & (lexical_distance == first_value))
+    first_seed = tuple(int(value) for value in first_coordinates[0])
+    first_distance = _geodesic_distance(mask, first_seed)
+    second_value = int(np.max(first_distance[mask]))
+    second_coordinates = np.argwhere(mask & (first_distance == second_value))
+    second_seed = tuple(int(value) for value in second_coordinates[0])
+    second_distance = _geodesic_distance(mask, second_seed)
+    return first_distance, second_distance
 
 
 def _geodesic_diameter_steps(mask: np.ndarray) -> int:
