@@ -18,10 +18,13 @@ import numpy as np
 from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
     CANDIDATE_VERSION,
     DIRECTIONAL_SECTOR_CANDIDATE_VERSION,
+    SELECTED_MULTI_ANCHOR_CANDIDATE_VERSION,
     geodesic_span_steps,
     minimum_witness_contact_pixels,
     rebuild_scene_with_directional_sector_partition,
     rebuild_scene_with_bisected_single_anchor,
+    rebuild_scene_with_bisected_anchor,
+    selected_multi_anchor_refinement_candidate,
     subdivision_eligibility_for_directional_front_block,
     subdivision_eligibility_for_underfill_replan,
 )
@@ -39,7 +42,7 @@ from .portfolio_authority import (
 )
 from .scene import JointSceneAnalysis
 
-TRACK_B_WORKFLOW_VERSION = "directional-anchor-subdivision-workflow-v2"
+TRACK_B_WORKFLOW_VERSION = "directional-anchor-subdivision-workflow-v3"
 
 
 @dataclass(frozen=True)
@@ -198,17 +201,83 @@ def _compile_fresh_track_b_portfolio(
             )
         )
     )
+    selected_anchor_ids_by_interface: dict[str, tuple[str, ...]] = {}
+    if not directional_front_block:
+        for failure in underfills:
+            feedback = failure["trigger_feedback"]
+            selected_ids = tuple(
+                str(value) for value in feedback.get("selected_anchor_ids", ())
+            )
+            for contribution in feedback.get("interface_contributions", ()):
+                if not isinstance(contribution, dict):
+                    continue
+                interface_id = str(contribution.get("interface_id", ""))
+                if not interface_id:
+                    continue
+                anchors = tuple(
+                    str(value)
+                    for value in contribution.get("anchor_segment_ids", ())
+                )
+                selected_anchor_ids_by_interface[interface_id] = tuple(
+                    dict.fromkeys(
+                        selected_anchor_ids_by_interface.get(interface_id, ())
+                        + anchors
+                    )
+                )
+            # Some pre-plan receipts expose only a flat selected-anchor list.
+            if selected_ids:
+                for interface in scene.tissue.graph.interfaces:
+                    owned = tuple(
+                        anchor_id
+                        for anchor_id in interface.anchor_segment_ids
+                        if anchor_id in set(selected_ids)
+                    )
+                    if owned:
+                        selected_anchor_ids_by_interface[interface.interface_id] = tuple(
+                            dict.fromkeys(
+                                selected_anchor_ids_by_interface.get(
+                                    interface.interface_id, ()
+                                )
+                                + owned
+                            )
+                        )
+    candidate_ids = tuple(
+        sorted(set(remaining_ids).union(selected_anchor_ids_by_interface))
+    )
     transformed_tissue = scene.tissue
     transformed_records: list[dict[str, Any]] = []
     rejected_records: list[dict[str, Any]] = []
-    for interface_id in remaining_ids:
+    used_candidate_versions: set[str] = set()
+    for interface_id in candidate_ids:
         report = nuclei_preflight.interface(interface_id)
         feasible_anchor_ids = (
             tuple(report.cell_feasible_anchor_segment_ids)
             if report is not None
             else ()
         )
-        if directional_front_block:
+        selected_refinement_anchor = None
+        if (
+            not directional_front_block
+            and interface_id in selected_anchor_ids_by_interface
+            and len(
+                next(
+                    item
+                    for item in transformed_tissue.graph.interfaces
+                    if item.interface_id == interface_id
+                ).anchor_segment_ids
+            ) > 1
+        ):
+            selected_refinement_anchor, reasons = (
+                selected_multi_anchor_refinement_candidate(
+                    transformed_tissue,
+                    interface_id=interface_id,
+                    selected_anchor_ids=selected_anchor_ids_by_interface[interface_id],
+                    cell_feasible_anchor_ids=feasible_anchor_ids,
+                    minimum_subanchor_pixels=minimum_pixels,
+                )
+            )
+            eligible = selected_refinement_anchor is not None
+        elif directional_front_block:
             eligible, reasons = subdivision_eligibility_for_directional_front_block(
                 transformed_tissue,
                 interface_id=interface_id,
@@ -238,13 +307,21 @@ def _compile_fresh_track_b_portfolio(
                 {"interface_id": interface_id, "reasons": list(reasons)}
             )
             continue
-        parent = next(
+        parent = selected_refinement_anchor or next(
             item
             for item in transformed_tissue.graph.interfaces
             if item.interface_id == interface_id
         ).anchor_segment_ids[0]
         parent_sha = _array_sha256(transformed_tissue.anchor_masks[parent])
-        if directional_front_block:
+        if selected_refinement_anchor is not None:
+            transformed_tissue = rebuild_scene_with_bisected_anchor(
+                transformed_tissue,
+                interface_id=interface_id,
+                anchor_id=selected_refinement_anchor,
+                minimum_subanchor_pixels=minimum_pixels,
+            )
+            used_candidate_versions.add(SELECTED_MULTI_ANCHOR_CANDIDATE_VERSION)
+        elif directional_front_block:
             transformed_tissue = rebuild_scene_with_directional_sector_partition(
                 transformed_tissue,
                 interface_id=interface_id,
@@ -253,19 +330,26 @@ def _compile_fresh_track_b_portfolio(
                     front.maximum_selected_anchor_fraction
                 ),
             )
+            used_candidate_versions.add(DIRECTIONAL_SECTOR_CANDIDATE_VERSION)
         else:
             transformed_tissue = rebuild_scene_with_bisected_single_anchor(
                 transformed_tissue,
                 interface_id=interface_id,
                 minimum_subanchor_pixels=minimum_pixels,
             )
+            used_candidate_versions.add(CANDIDATE_VERSION)
         rebuilt = next(
             item
             for item in transformed_tissue.graph.interfaces
             if item.interface_id == interface_id
         )
         children = []
-        for child_id in rebuilt.anchor_segment_ids:
+        child_ids = tuple(
+            anchor_id
+            for anchor_id in rebuilt.anchor_segment_ids
+            if anchor_id.startswith(f"{parent}:sub:")
+        )
+        for child_id in child_ids:
             child = transformed_tissue.anchor_masks[child_id]
             children.append(
                 {
@@ -323,11 +407,7 @@ def _compile_fresh_track_b_portfolio(
         **fresh_binding,
         "track_b_transformation_authority": {
             "workflow_version": TRACK_B_WORKFLOW_VERSION,
-            "candidate_version": (
-                DIRECTIONAL_SECTOR_CANDIDATE_VERSION
-                if directional_front_block
-                else CANDIDATE_VERSION
-            ),
+            "candidate_version": "+".join(sorted(used_candidate_versions)),
             "original_scene_sha256": original_scene_sha,
             "transformed_scene_sha256": transformed_scene_sha,
             "transformed_interfaces_sha256": canonical_metadata_sha256(
@@ -337,11 +417,7 @@ def _compile_fresh_track_b_portfolio(
     }
     audit = {
         "workflow_version": TRACK_B_WORKFLOW_VERSION,
-        "candidate_version": (
-            DIRECTIONAL_SECTOR_CANDIDATE_VERSION
-            if directional_front_block
-            else CANDIDATE_VERSION
-        ),
+        "candidate_version": "+".join(sorted(used_candidate_versions)),
         "track_b_used": True,
         "rounds": 1,
         "recursive_subdivision": False,

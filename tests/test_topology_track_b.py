@@ -21,6 +21,9 @@ from phase3_joint_edit_refine.topology_track_b import (
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.execution import TopologySafeAreaUnderfillError
 from phase3_mask_edit_refine.models import RefineContractError
+from phase3_mask_edit_refine.research_anchor_subdivision_v1 import (
+    rebuild_scene_with_bisected_single_anchor,
+)
 from phase3_mask_edit_refine.scene import build_scene_analysis
 
 
@@ -108,6 +111,33 @@ def _error(ids, *, topology_passed=True):
                 "terminal_feedback": feedback,
                 "preferred_interface_ids": list(ids),
                 "preferred_anchor_ids": [],
+                "errors": ["underfill"],
+            },
+        ),
+    )
+
+
+def _selected_multi_anchor_error(interface_id, anchor_ids):
+    feedback = {
+        "stage": "tissue_area_underfill",
+        "topology_passed": True,
+        "remaining_feasible_interface_ids": [],
+        "selected_anchor_ids": list(anchor_ids),
+        "interface_contributions": [
+            {
+                "interface_id": interface_id,
+                "anchor_segment_ids": list(anchor_ids),
+            }
+        ],
+    }
+    return TissuePortfolioCompilationError(
+        "selected interface underfill",
+        vetoes=(),
+        structured_failures=(
+            {
+                "terminal_feedback": feedback,
+                "preferred_interface_ids": [interface_id],
+                "preferred_anchor_ids": list(anchor_ids),
                 "errors": ["underfill"],
             },
         ),
@@ -257,6 +287,41 @@ def test_directional_single_anchor_front_block_gets_one_fresh_subdivision_round(
     assert len(result.audit["transformed_interfaces"]) == len(
         preflight.feasible_interface_ids
     )
+    assert len(compiler.calls) == 2
+    assert len(bindings) == 2
+
+
+def test_selected_multi_anchor_underfill_refines_one_selected_anchor(monkeypatch):
+    original = _scene_with_two_single_anchor_interfaces()
+    interface_id = original.tissue.graph.interfaces[0].interface_id
+    split_tissue = rebuild_scene_with_bisected_single_anchor(
+        original.tissue,
+        interface_id=interface_id,
+        minimum_subanchor_pixels=3,
+    )
+    scene = _JointScene(split_tissue)
+    preflight = _Preflight(scene)
+    selected = tuple(
+        split_tissue.graph.interfaces[0].anchor_segment_ids
+    )
+    compiler = _Compiler(_selected_multi_anchor_error(interface_id, selected))
+
+    result, bindings = _run(monkeypatch, compiler, scene, preflight)
+
+    assert result.track_b_used is True
+    assert result.audit["trigger_kind"] == "topology_passing_area_underfill"
+    assert result.audit["candidate_version"] == (
+        "selected-multi-anchor-balanced-geodesic-refinement-v1"
+    )
+    record = result.audit["transformed_interfaces"][0]
+    assert record["retired_parent_anchor_id"] in selected
+    assert len(record["new_subanchors"]) == 2
+    rebuilt = next(
+        item
+        for item in result.scene.tissue.graph.interfaces
+        if item.interface_id == interface_id
+    )
+    assert len(rebuilt.anchor_segment_ids) == len(selected) + 1
     assert len(compiler.calls) == 2
     assert len(bindings) == 2
 

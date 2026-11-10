@@ -21,6 +21,9 @@ CANDIDATE_VERSION = "directional-single-anchor-balanced-geodesic-bisection-v3"
 DIRECTIONAL_SECTOR_CANDIDATE_VERSION = (
     "directional-single-anchor-maximal-legal-sector-v1"
 )
+SELECTED_MULTI_ANCHOR_CANDIDATE_VERSION = (
+    "selected-multi-anchor-balanced-geodesic-refinement-v1"
+)
 
 
 def minimum_witness_contact_pixels(reference_area_p95: float) -> int:
@@ -243,7 +246,89 @@ def rebuild_scene_with_bisected_single_anchor(
     return _replace_single_anchor(scene, interface_id, old_anchor_id, parts)
 
 
+def selected_multi_anchor_refinement_candidate(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    selected_anchor_ids: tuple[str, ...],
+    cell_feasible_anchor_ids: tuple[str, ...],
+    minimum_subanchor_pixels: int,
+) -> tuple[str | None, tuple[str, ...]]:
+    """Choose one already-selected feasible anchor for a single refinement.
+
+    This is deliberately restricted to a topology-passing area-underfill
+    replay.  Ranking is mask-only: the largest bisectable selected anchor is
+    chosen, with the stable anchor id as the tie breaker.  No downstream
+    qualification outcome participates in the choice.
+    """
+
+    interface = next(
+        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
+        None,
+    )
+    if interface is None:
+        return None, ("unknown_interface",)
+    if len(interface.anchor_segment_ids) < 2:
+        return None, ("interface_not_multi_anchor",)
+    selected = set(selected_anchor_ids)
+    feasible = set(cell_feasible_anchor_ids)
+    candidates: list[tuple[int, str]] = []
+    for anchor_id in interface.anchor_segment_ids:
+        if anchor_id not in selected or anchor_id not in feasible:
+            continue
+        mask = scene.anchor_masks.get(anchor_id)
+        if mask is None:
+            continue
+        pixels = int(np.count_nonzero(mask))
+        if pixels < 2 * minimum_subanchor_pixels:
+            continue
+        try:
+            bisect_connected_interface_anchor(
+                mask,
+                minimum_subanchor_pixels=minimum_subanchor_pixels,
+            )
+        except ValueError:
+            continue
+        candidates.append((-pixels, anchor_id))
+    if not candidates:
+        return None, ("no_selected_feasible_bisectable_anchor",)
+    return min(candidates)[1], ()
+
+
+def rebuild_scene_with_bisected_anchor(
+    scene: SceneAnalysis,
+    *,
+    interface_id: str,
+    anchor_id: str,
+    minimum_subanchor_pixels: int,
+) -> SceneAnalysis:
+    """Bisect one named anchor while retaining its interface siblings."""
+
+    interface = next(
+        (item for item in scene.graph.interfaces if item.interface_id == interface_id),
+        None,
+    )
+    if interface is None:
+        raise ValueError(f"unknown interface: {interface_id}")
+    if anchor_id not in interface.anchor_segment_ids:
+        raise ValueError("anchor does not belong to the named interface")
+    parts = bisect_connected_interface_anchor(
+        scene.anchor_masks[anchor_id],
+        minimum_subanchor_pixels=minimum_subanchor_pixels,
+    )
+    return _replace_anchor(scene, interface_id, anchor_id, parts)
+
+
 def _replace_single_anchor(
+    scene: SceneAnalysis,
+    interface_id: str,
+    old_anchor_id: str,
+    parts: tuple[np.ndarray, np.ndarray],
+) -> SceneAnalysis:
+    return _replace_anchor(scene, interface_id, old_anchor_id, parts)
+
+
+def _replace_anchor(
     scene: SceneAnalysis,
     interface_id: str,
     old_anchor_id: str,
@@ -282,7 +367,14 @@ def _replace_single_anchor(
         for index, item in enumerate(new_segments, start=1)
     ]
     interfaces = tuple(
-        replace(item, anchor_segment_ids=new_ids)
+        replace(
+            item,
+            anchor_segment_ids=tuple(
+                child
+                for anchor_id in item.anchor_segment_ids
+                for child in (new_ids if anchor_id == old_anchor_id else (anchor_id,))
+            ),
+        )
         if item.interface_id == interface_id
         else item
         for item in scene.graph.interfaces
