@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Obtain a separate one-shot decision on the frozen 100k-event/683-array synthetic target manifest; no target run under prior authorizations. Real S07 and formal cohort remain closed.",
+  "current_next_deliverable": "Review the evidence-based v3 engineering deadline proposal for the unchanged 2.1M-event/683-array synthetic B/C workload. No new full-workload target run is authorized; real S07 and formal cohort remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -214,13 +214,32 @@
       "evidence": "adapter_controller_v1/observer_array_microprofile_v1/local_scale_683_v1/summary.json"
     },
     "target_683_array_proposal": {
-      "status": "design_budget_review_accepted_final_manifest_frozen_authorization_pending",
+      "status": "one_shot_target_completed_authorization_consumed",
       "candidate_manifest_sha256": "4d783f41c491141006326f933478dfc4c7bc1af8b8d31749e2b5a83e5e4f3c0c",
       "evidence": "adapter_controller_v1/observer_array_microprofile_v1/array_scale_683_review_proposal_v1.json",
       "launch_manifest_sha256": "c21bab61f25fed0e4aeb8399ccb385fe3194466c109b341552e3afdb44f82138",
-      "target_deployed": false,
-      "target_executed": false,
-      "target_authorized": false
+      "target_deployed": true,
+      "target_executed": true,
+      "target_authorized": true,
+      "authorization_consumed": true,
+      "result": "adapter_controller_v1/observer_array_microprofile_v1/target_scale_683_result_v1/closeout_report.json",
+      "target_elapsed_seconds": 491.16052562370896,
+      "target_hash_only_total_seconds": 178.25082771107554,
+      "target_full_capture_total_seconds": 308.3405415266752,
+      "fsync_self_seconds": {
+        "hash_only": 149.17,
+        "full_capture": 269.832
+      },
+      "strict_codec_match": true,
+      "full_large_BC_validation_complete": false
     }
+  },
+  "large_synthetic_budget_v3_proposal": {
+    "status": "review_only_no_execution_authorized",
+    "candidate_manifest_sha256": "01cb5b9ccf2088ca5512717fcc267a3fb7f9a44ae502f92bf82c57466cf3dcaf",
+    "proposal": "adapter_controller_v1/observer_budget_large_synthetic_v1/budget_v3_review_proposal.json",
+    "target_deployed": false,
+    "target_executed": false,
+    "target_authorized": false
   }
 }
