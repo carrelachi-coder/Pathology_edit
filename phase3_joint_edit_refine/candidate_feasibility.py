@@ -68,10 +68,12 @@ class TissueWitnessCompilationError(JointContractError):
         *,
         errors: tuple[str, ...],
         terminal_feedback: Mapping[str, Any],
+        feedback_history: tuple[Mapping[str, Any], ...],
     ) -> None:
         super().__init__(message)
         self.errors = tuple(errors)
         self.terminal_feedback = dict(terminal_feedback)
+        self.feedback_history = tuple(dict(item) for item in feedback_history)
 
 
 class TissuePortfolioCompilationError(JointContractError):
@@ -924,6 +926,9 @@ class CandidateFeasibilityCompiler:
                             ],
                             "preferred_anchor_ids": list(preferred_anchor_ids),
                             "terminal_feedback": dict(exc.terminal_feedback),
+                            "feedback_history": [
+                                dict(item) for item in exc.feedback_history
+                            ],
                             "errors": list(exc.errors),
                         }
                     )
@@ -1031,6 +1036,7 @@ class CandidateFeasibilityCompiler:
             "preferred_anchor_ids": list(preferred_anchor_ids),
         }
         errors: list[str] = []
+        feedback_history: list[dict[str, Any]] = []
         attempt_limit = (
             1
             if tissue_case.primitive_id
@@ -1327,6 +1333,7 @@ class CandidateFeasibilityCompiler:
                         error_message=error,
                         preferred_anchor_ids=preferred_anchor_ids,
                     )
+                feedback_history.append(dict(feedback))
             except Exception as exc:  # noqa: BLE001 - fail closed and audit any compiler failure
                 error = f"{type(exc).__name__}: {exc}"
                 observe("compiler.exception", exception=exc, rendered_error=error, raw_plan=raw_plan, attempt=attempt)
@@ -1353,6 +1360,7 @@ class CandidateFeasibilityCompiler:
             + "; ".join(errors),
             errors=tuple(errors),
             terminal_feedback=feedback,
+            feedback_history=tuple(feedback_history),
         )
 
 

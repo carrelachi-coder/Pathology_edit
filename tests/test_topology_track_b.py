@@ -190,7 +190,16 @@ def test_multiple_eligible_interfaces_are_rebuilt_once_with_fresh_identity(monke
     assert compiler.calls[0]["scene"] is scene
     assert compiler.calls[1]["scene"] is result.scene
     assert compiler.calls[1]["nuclei_preflight"] is result.nuclei_preflight
-    assert compiler.calls[1]["authority_binding"] == bindings[1]
+    assert compiler.calls[1]["authority_binding"]["binding_index"] == bindings[1][
+        "binding_index"
+    ]
+    transformation_authority = compiler.calls[1]["authority_binding"][
+        "track_b_transformation_authority"
+    ]
+    assert transformation_authority["original_scene_sha256"] != (
+        transformation_authority["transformed_scene_sha256"]
+    )
+    assert result.authority_binding == compiler.calls[1]["authority_binding"]
     records = result.audit["transformed_interfaces"]
     assert [item["interface_id"] for item in records] == sorted(ids)
     assert result.audit["rounds"] == 1

@@ -9,11 +9,11 @@
     "workflow_version": "directional-anchor-subdivision-workflow-v1",
     "subdivision_candidate_version": "directional-single-anchor-geodesic-bisection-v1",
     "files": {
-      "phase3_joint_edit_refine/candidate_feasibility.py": "672b3920789fb0860bf6a94dea7847e19519aa200fda37a3221bf5d6208eb70f",
-      "phase3_joint_edit_refine/topology_track_b.py": "06cd9d6df3b8f19e7513fc922e5970818c2c4ac883c91ff7ff5f9bb421d13550",
-      "phase3_joint_edit_refine/workflow.py": "dcbba65f6ae9411e392db1797588666e6f93ac884e9b5eb1b16f4fcca7f1db03",
+      "phase3_joint_edit_refine/candidate_feasibility.py": "2657ec9520d31d6ea42750546221ebe011e89fc3900dbb9d3e28ce7e7e7464d1",
+      "phase3_joint_edit_refine/topology_track_b.py": "ecfd90b528b9ad350824b702b195fc6356451220399335dfe8ce7cd465ca3938",
+      "phase3_joint_edit_refine/workflow.py": "6640c79895623670469a8654f63601b9f7bae2e583c11bad977021fc701956cd",
       "phase3_mask_edit_refine/research_anchor_subdivision_v1.py": "a3dd0a5349cd1f5bde39c9b6b979ad8ab419eb898f4781065c7eea6b9150b2bc",
-      "tests/test_topology_track_b.py": "d21a08b7393ef25ceb6d843e17837725b06f854149928c1985f2c7bf071b08cd"
+      "tests/test_topology_track_b.py": "cccdee56501461d04f7318e065dc502298dcd36261c9cb569bc77b4f1e0025ae"
     }
   },
   "implemented_contract": [
@@ -27,13 +27,21 @@
     "the transformed portfolio is compiled by a fresh compiler invocation",
     "original and transformed scene, preflight, authority, parent anchors and subanchors are hashed in the audit",
     "only an ordinary hard-gate-passing compiler survivor is accepted",
-    "a failed Track B portfolio retains both the original and transformed audited failures"
+    "a failed Track B portfolio retains both the original and transformed audited failures",
+    "the transformed scene identity and transformation record are embedded in the compiler authority binding",
+    "all topology-passing underfill feedback from the bounded attempt history remains eligible to trigger Track B even when a later terminal error differs",
+    "a failed Track B audit is persisted in semantic-resolution rejection evidence"
   ],
   "tests": [
     {
       "command": "python -m pytest -q tests/test_topology_track_b.py tests/test_research_anchor_subdivision_v1.py",
       "result": "21 passed",
       "scope": "Track B orchestration, fail-closed eligibility, deterministic bisection, fresh preflight and identity separation"
+    },
+    {
+      "command": "python -m pytest -q tests/test_topology_track_b.py tests/test_research_anchor_subdivision_v1.py tests/test_joint_breast_workflow.py",
+      "result": "29 passed",
+      "scope": "post-review authority-binding and failure-persistence corrections plus breast workflow regression"
     },
     {
       "command": "python -m pytest -q tests/test_joint_edit_refine.py tests/test_joint_breast_workflow.py tests/test_topology_track_b.py tests/test_research_anchor_subdivision_v1.py",

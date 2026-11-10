@@ -120,7 +120,10 @@ from .tissue_tools import (
     bind_tissue_plan_tool_program,
     compile_tissue_tool_program,
 )
-from .topology_track_b import compile_tissue_portfolio_with_track_b
+from .topology_track_b import (
+    TrackBPortfolioCompilationError,
+    compile_tissue_portfolio_with_track_b,
+)
 
 INFILTRATION_BUDGET_PRIMITIVES = frozenset(
     {
@@ -2081,7 +2084,7 @@ class JointPathologyEditWorkflow:
         source_tissue: np.ndarray,
         schema,
         scene,
-    ) -> tuple[dict[str, _PreparedInterpretation], dict[str, str]]:
+    ) -> tuple[dict[str, _PreparedInterpretation], dict[str, Any]]:
         """Compile every semantic hypothesis before mask-graph disambiguation.
 
         The mask-graph Planner only sees primitive--mechanism pairs that already
@@ -2600,7 +2603,13 @@ class JointPathologyEditWorkflow:
                         ),
                     )
                 except (JointContractError, RefineContractError, ValueError) as exc:
-                    rejected[option_id] = str(exc)
+                    if isinstance(exc, TrackBPortfolioCompilationError):
+                        rejected[option_id] = {
+                            "message": str(exc),
+                            "track_b_audit": exc.audit,
+                        }
+                    else:
+                        rejected[option_id] = str(exc)
         return prepared, rejected
 
     def _build_and_gate_joint_candidates(

@@ -159,9 +159,16 @@ def _compile_fresh_track_b_portfolio(
     original_binding: dict[str, Any],
 ) -> TrackBPortfolioResult:
     underfills = tuple(
-        item
+        {
+            **item,
+            "trigger_feedback": feedback,
+        }
         for item in original_error.structured_failures
-        if _is_topology_passing_underfill(item.get("terminal_feedback", {}))
+        for feedback in item.get(
+            "feedback_history",
+            (item.get("terminal_feedback", {}),),
+        )
+        if _is_topology_passing_underfill(feedback)
     )
     if not underfills:
         raise original_error
@@ -175,7 +182,7 @@ def _compile_fresh_track_b_portfolio(
             {
                 str(interface_id)
                 for failure in underfills
-                for interface_id in failure["terminal_feedback"].get(
+                for interface_id in failure["trigger_feedback"].get(
                     "remaining_feasible_interface_ids", ()
                 )
             }
@@ -280,6 +287,20 @@ def _compile_fresh_track_b_portfolio(
         allocation=allocation,
         nuclei_preflight=fresh_preflight,
     )
+    original_scene_sha = _scene_sha256(scene)
+    transformed_scene_sha = _scene_sha256(transformed_scene)
+    fresh_binding = {
+        **fresh_binding,
+        "track_b_transformation_authority": {
+            "workflow_version": TRACK_B_WORKFLOW_VERSION,
+            "candidate_version": CANDIDATE_VERSION,
+            "original_scene_sha256": original_scene_sha,
+            "transformed_scene_sha256": transformed_scene_sha,
+            "transformed_interfaces_sha256": canonical_metadata_sha256(
+                transformed_records
+            ),
+        },
+    }
     audit = {
         "workflow_version": TRACK_B_WORKFLOW_VERSION,
         "candidate_version": CANDIDATE_VERSION,
@@ -288,8 +309,8 @@ def _compile_fresh_track_b_portfolio(
         "recursive_subdivision": False,
         "original_failure": str(original_error),
         "trigger_feedback": list(underfills),
-        "original_scene_sha256": _scene_sha256(scene),
-        "transformed_scene_sha256": _scene_sha256(transformed_scene),
+        "original_scene_sha256": original_scene_sha,
+        "transformed_scene_sha256": transformed_scene_sha,
         "original_authority_binding_sha256": canonical_metadata_sha256(
             original_binding
         ),
