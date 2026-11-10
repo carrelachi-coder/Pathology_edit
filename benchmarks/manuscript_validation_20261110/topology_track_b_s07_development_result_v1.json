@@ -1,0 +1,54 @@
+{
+  "schema_version": "topology-track-b-s07-development-result-v1",
+  "status": "closed_not_qualified_followup_fix_required",
+  "authorization_consumed": true,
+  "automatic_retries": 0,
+  "controller_exit_code": 0,
+  "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+  "patient_id": "TCGA-E2-A1LL",
+  "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v1",
+  "evidence": {
+    "capacity_screen_sha256": "fe96cf19109da5c90da23c652580733161341ed0c36da07e7e693524736f6ef3",
+    "screen_identity_sha256": "d5c7c89101906e852544228ee33b3ccd5897b4ad098aebc605195cc46eb470d1",
+    "stdout_sha256": "5a60ccae0db4476a1ac489c788726f0913dd8ce643e0adb82efe6f1e574f5eab",
+    "output_tree_bytes": 583545
+  },
+  "results": {
+    "U1": {
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "terminal_error": "ValueError: geodesic bisection produced an undersized subanchor",
+      "track_b_audit": null,
+      "interpretation": "Track B was reached, but eligibility and the physical bisection implementation disagreed for an 85-pixel parent anchor at a 29-pixel minimum. The exception occurred before an audit-bearing Track B result could be returned. This is an implementation defect, not a qualification success or a scientifically interpretable topology failure."
+    },
+    "U2": {
+      "necessary_capacity_passed": true,
+      "topology_witness_passed": false,
+      "terminal_error_class": "TissuePortfolioCompilationError",
+      "track_b_audit": null,
+      "interpretation": "The ordinary portfolio failed through directed-interface/refine-contract rejection rather than the topology-passing area-underfill trigger. Track B was correctly not applied."
+    }
+  },
+  "read_only_geometry_followup": {
+    "minimum_subanchor_pixels": 29,
+    "problem_interface": "if:stroma:p01:0001->tumor:p01:0007:seg:0001",
+    "parent_anchor_pixels": 85,
+    "parent_geodesic_span_steps": 65,
+    "old_partition": "undersized",
+    "deterministic_two_sweep_partition_pixels": [37, 48],
+    "deterministic_two_sweep_partition_spans": [32, 32],
+    "conclusion": "Using deterministic geodesic endpoints instead of the lexical pixel and one farthest pixel produces two connected children satisfying the unchanged 29-pixel size and 28-step span requirements."
+  },
+  "corrective_commit": "81525e35",
+  "research_state_change": false,
+  "qualification_counts_unchanged": {
+    "source_topology_passed_patients": 17,
+    "upper_bound_including_old_unknown": 19,
+    "new_four_target_approved_patients": 0
+  },
+  "prohibited_inferences": [
+    "This result does not qualify S07.",
+    "This result does not authorize a retry under the consumed manifest.",
+    "This result does not open reserved evaluation, H&E generation, the formal cohort, or physician study."
+  ]
+}
