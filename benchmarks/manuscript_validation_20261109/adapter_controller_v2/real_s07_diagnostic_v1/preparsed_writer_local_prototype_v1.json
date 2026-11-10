@@ -1,0 +1,33 @@
+{
+  "kind": "standalone-preparsed-Writer-local-prototype-result-v1",
+  "status": "local_differential_pass_performance_insufficient_for_real_S07_conclusion",
+  "code_file": "diagnostic_storage/preparsed_guard_writer_candidate_v1.py",
+  "code_sha256": "593eaccbd0595789c72aa9e877fc3f83c0479b93dd0f495417e8c1378e54949f",
+  "production_Observer_or_Controller_modified": false,
+  "local_environment": {
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "python": "3.11.4"
+  },
+  "test_command": "python -m pytest -q tests/test_guard_blocks_v2.py tests/test_preparsed_guard_writer_candidate_v1.py",
+  "test_result": "57 passed; includes five candidate differential/error scenarios",
+  "differential_checks": [
+    "Identical per-event bytes and stream SHA in both hash-only and full-capture complete streams.",
+    "Reader strict comparison passed for complete two-operation streams with array occurrence.",
+    "Wrong sequence, nonfinite number and invalid array token fault the candidate writer without completion."
+  ],
+  "single_local_synthetic_benchmark": {
+    "events": 100000,
+    "event_shape": "guard.stage with stage, row and col scalar fields; 4 MiB block target; CandidateBudget attached in both arms",
+    "existing_loop_seconds": 0.8013518340885639,
+    "candidate_loop_seconds": 0.6631625420413911,
+    "observed_ratio_existing_over_candidate": 1.2083792181955713,
+    "stream_sha256": "66146bccff5ac2494ed28e3562ef594265708e3d04529c52a5f3247c99a1bbb6",
+    "byte_stream_sha_equal": true,
+    "chain_sha_equal": true,
+    "repetitions": 1
+  },
+  "interpretation": "The candidate removes duplicate JSON parsing for a trusted constructed event object, while keeping exact encoded bytes. This one local synthetic result shows only a modest gain and does not justify production integration or a new S07 run. It does not measure target-server filesystem, real guard computation or full U1/U2 completion.",
+  "next_decision": "Keep default-off prototype. Profile the target event path and compare broader lossless batching/reservation options under a separately reviewed synthetic target plan before changing Observer.",
+  "S07_authorization_reuse_permitted": false,
+  "qualification_updates_permitted": false
+}
