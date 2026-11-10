@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independently review a bounded topology mechanism hypothesis focused on the U1 global source-hole discrepancy and a frozen patient-level development/evaluation split. The archived B process is incomplete and S07 authorization consumed; no qualification update or production edit is justified yet.",
+  "current_next_deliverable": "Independently review a versioned topology mechanism hypothesis and freeze patient-level development/evaluation membership before any real-case method experiment. The consumed S07 HOLD and 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -380,7 +380,14 @@
     "B_attempt_repetition_boundary": "Ten completed U1 attempts: zero topology-passing probes; per-label planner selection and probe values repeat while compiler.attempt values differ. No evidence that bypassing repeated work would preserve business semantics; no qualification update.",
     "B_saved_probe_topology_readout": "https://github.com/carrelachi-coder/Pathology_edit/blob/cd94be8c/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/B_probe_topology_readout_v1.json",
     "B_saved_probe_topology_readout_sha256": "f1cdc421916cb841c2f3a3fd31cd47e50c4d6a9fb38dd409aad4958b31950aac",
-    "B_saved_probe_topology_conclusion": "21 saved U1 probes yield 4 distinct reported states; all fail whole-mask topology with source holes 13->12 or 13->10, while source/target component counts and target hole counts are unchanged. All realized areas remain below 70779. Proximate failure is source-hole change in these probes, not an established cross-patient root cause."
+    "B_saved_probe_topology_conclusion": "21 saved U1 probes yield 4 distinct reported states; all fail whole-mask topology with source holes 13->12 or 13->10, while source/target component counts and target hole counts are unchanged. All realized areas remain below 70779. Proximate failure is source-hole change in these probes, not an established cross-patient root cause.",
+    "hole_semantics_counterexample": "https://github.com/carrelachi-coder/Pathology_edit/blob/4d413204/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/hole_semantics_counterexample_v1.json",
+    "hole_semantics_counterexample_sha256": "fd66db5653a4bd2bad949b1015dc94089fff3d50fd9328a332d85a03d8baa4c2",
+    "hole_guard_hypothesis_review": "https://github.com/carrelachi-coder/Pathology_edit/blob/4d413204/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/hole_guard_hypothesis_review_v1.json",
+    "hole_guard_hypothesis_review_sha256": "8508cf6f45bc18b12260df01811125aa213f5663dc4b29c483247886f3f24179",
+    "hole_guard_synthetic_screen": "https://github.com/carrelachi-coder/Pathology_edit/blob/4d413204/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/hole_guard_synthetic_screen_v1.json",
+    "hole_guard_synthetic_screen_sha256": "f997fa82ea267e52ddee10b03aecfca6979e9e35c842acb9da68b7019cb21526",
+    "hole_guard_candidate_status": "synthetic counterexample establishes local guard/whole-hole count disagreement; fixed-seed 20k 9x9 source-only screen found zero current whole-hole changes among 304969 candidates meeting an extra local 8-background check. This is not proof or real-patient qualification; candidate changes business mechanism and is not approved."
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
