@@ -1,0 +1,44 @@
+{
+  "kind": "local-guard-versus-whole-mask-hole-semantics-counterexample-v1",
+  "status": "independent_synthetic_counterexample_no_production_change",
+  "code_sha256": {
+    "phase3_mask_edit_refine/topology.py": "399011bab594f85c02c7735bcce415336c5d3e62a372bb9c90dff7280d66fdc1",
+    "phase3_mask_edit_refine/execution.py": "6272dca638a3070d992180f871745e8011968222591b1651313cf02b0298204e",
+    "tests/test_topology_hole_semantics_counterexample.py": "cad04890279e8d95bc8c44c81de675e8491affb7409078e6881ea77680d19195"
+  },
+  "archived_probe_report_sha256": "f1cdc421916cb841c2f3a3fd31cd47e50c4d6a9fb38dd409aad4958b31950aac",
+  "fixture": "7x7 binary source, one target pixel at (1,4), conversion of source pixel (2,3); exact fixture is in the cited test",
+  "observed": {
+    "local_guard_rejection_reason": null,
+    "source_components_8_before_after": [
+      1,
+      1
+    ],
+    "source_holes_current_before_after": [
+      2,
+      1
+    ],
+    "source_holes_4_connected_before_after": [
+      3,
+      3
+    ],
+    "target_holes_current_before_after": [
+      0,
+      0
+    ]
+  },
+  "mechanism": "The local guard checks 4-connected source-background neighbors. _hole_count first fills holes with default 4-connectivity and then labels the enclosed-pixel mask with 8-connectivity. This can merge diagonally adjacent enclosed regions in the whole-mask count after a locally accepted conversion even though the 4-connected hole count is unchanged.",
+  "relationship_to_s07": "The archived S07 B U1 probes all report source-hole count decreases, but their selected masks were not saved in Hash-only B. This synthetic example proves that such a discrepancy is possible in the current code; it does not establish that it caused the S07 events or explain all historic failures.",
+  "candidate_research_paths": [
+    "Preserve the frozen whole-mask definition and test a prospective guard that prevents changes to that exact count. This changes the planner mechanism and requires a new reviewed version.",
+    "Consider a separately versioned whole-mask 4-connected hole definition aligned with the local guard; this changes the qualification contract and cannot be applied retroactively."
+  ],
+  "required_before_qualification_change": [
+    "Recover or independently capture complete selected masks and step identity for a development case.",
+    "Freeze patient-level development and independent evaluation sets; S07 remains development only.",
+    "Independently review any new mechanism/contract and run all four targets with mask-only approval before formal generation."
+  ],
+  "qualification_updates_permitted": false,
+  "S07_rerun_authorized": false,
+  "formal_generation_authorized": false
+}
