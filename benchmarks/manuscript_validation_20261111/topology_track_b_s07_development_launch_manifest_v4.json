@@ -1,0 +1,42 @@
+{
+  "schema_version": "topology-track-b-s07-development-launch-v4",
+  "status": "self_authorized_once",
+  "purpose": "Validate deterministic streaming hard gates for Track B on development-only S07 through the real G2 qualification entry.",
+  "code": {
+    "archive_commit": "9ee778c0",
+    "git_tree": "1a4e8604edebc177782a848da5f1b917f0532384",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_stream_gate_9ee778c0",
+    "candidate_feasibility_sha256": "3453d8f49bbb6e725dd312d30dc1bab41b8579990bea916bfb40d1b8c75d57a7",
+    "candidate_generator_sha256": "31931c0c6a395c8fa961ad885187b421a7ccac7b0019df81a53c4643f8ab6d6d",
+    "architecture_dispatch_sha256": "66801d71ce3da2dd0d43f66bcb6d504a0a949a1df464d1d44157c36023b63831"
+  },
+  "validation": {
+    "combined_local": "263 passed, 346 subtests passed in 237.37 seconds",
+    "sequence_equivalence": "First three stopped candidates byte-match full sequence; always-false acceptor exhausts byte-identical full sequence.",
+    "target_import": "passed",
+    "target_default_rng_unchanged": true
+  },
+  "input": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_index": 7,
+    "source_freeze_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v4",
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "selection_invariant": "Candidates and gates retain historical order; production stops only at the candidate that historical passing[0] would select, or exhausts the complete sequence if none pass.",
+  "failure_policy": "Any mismatch, timeout, exception, or incomplete receipt is HOLD with no retry.",
+  "authorization_basis": "Codex approved after regression, explicit sequence equivalence, target identity/import validation, and prior bounded performance evidence."
+}
