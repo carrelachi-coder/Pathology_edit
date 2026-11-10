@@ -1,0 +1,25 @@
+{
+  "kind": "observer-array-microprofile-v1-launch-request",
+  "status": "review_accepted_launch_authorization_not_granted",
+  "review_pr": "https://github.com/carrelachi-coder/Pathology_edit/pull/12",
+  "review_acceptance": "User accepted the isolated synthetic microprofile design in this conversation; this does not authorize the target run.",
+  "launch_manifest": "launch_manifest_v1.json",
+  "launch_manifest_sha256": "c3a89086029811cf0790b430aad8f8fcc8553a25700ea1e2244d43cb1c727189",
+  "scope": "One isolated synthetic direct-Codec array-path microprofile; no Adapter, planner, S07, witness, H&E, formal cohort, or experimental acceptance.",
+  "limits": {
+    "setup_seconds": 60,
+    "each_arm_encode_seal_seconds": 120,
+    "overall_os_watchdog_seconds": 360,
+    "events_per_arm": 100000,
+    "generated_arrays_per_arm": 32,
+    "automatic_retries": 0
+  },
+  "failure_policy": "HOLD; no retry; no experimental acceptance proof.",
+  "forbidden_calls": {
+    "S07": 0,
+    "witness": 0,
+    "HE": 0,
+    "formal_cohort": 0
+  },
+  "old_authorizations_reusable": false
+}
