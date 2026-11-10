@@ -55,6 +55,8 @@ def test_small_or_disconnected_anchor_fails_closed():
     too_small[1, 1:3] = True
     with pytest.raises(ValueError, match="too small"):
         bisect_connected_interface_anchor(too_small)
+    with pytest.raises(ValueError, match="must be positive"):
+        bisect_connected_interface_anchor(too_small, minimum_subanchor_pixels=0)
 
     disconnected = np.zeros((5, 8), dtype=bool)
     disconnected[1, 1:4] = True
@@ -123,6 +125,10 @@ def test_scene_rebuild_gives_subanchors_new_identities_without_mutating_source()
         ({"prior_topology_passed": False}, "prior_topology_not_passed"),
         ({"remaining_feasible_interface_ids": ()}, "interface_not_remaining_feasible"),
         ({"cell_feasible_anchor_ids": ()}, "parent_anchor_not_cell_feasible"),
+        ({"maximum_selected_anchor_fraction": float("nan")}, "invalid_maximum_selected_anchor_fraction"),
+        ({"maximum_selected_anchor_fraction": 1.1}, "invalid_maximum_selected_anchor_fraction"),
+        ({"minimum_unselected_anchor_count": -1}, "invalid_minimum_unselected_anchor_count"),
+        ({"minimum_subanchor_pixels": 0}, "invalid_minimum_subanchor_pixels"),
     ],
 )
 def test_subdivision_eligibility_fails_closed(overrides, expected_reason):

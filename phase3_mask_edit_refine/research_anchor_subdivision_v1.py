@@ -42,6 +42,18 @@ def subdivision_eligibility_for_underfill_replan(
     """
 
     reasons: list[str] = []
+    if minimum_subanchor_pixels < 1:
+        reasons.append("invalid_minimum_subanchor_pixels")
+    if (
+        not np.isfinite(maximum_selected_anchor_fraction)
+        or maximum_selected_anchor_fraction < 0.0
+        or maximum_selected_anchor_fraction > 1.0
+    ):
+        reasons.append("invalid_maximum_selected_anchor_fraction")
+    if minimum_unselected_anchor_count < 0:
+        reasons.append("invalid_minimum_unselected_anchor_count")
+    if reasons:
+        return False, tuple(reasons)
     interface = next(
         (item for item in scene.graph.interfaces if item.interface_id == interface_id),
         None,
@@ -58,6 +70,9 @@ def subdivision_eligibility_for_underfill_replan(
         reasons.append("interface_not_single_anchor")
         return False, tuple(reasons)
     anchor_id = interface.anchor_segment_ids[0]
+    if anchor_id not in scene.anchor_masks:
+        reasons.append("parent_anchor_mask_missing")
+        return False, tuple(reasons)
     feasible = set(cell_feasible_anchor_ids)
     if anchor_id not in feasible:
         reasons.append("parent_anchor_not_cell_feasible")
@@ -170,6 +185,8 @@ def bisect_connected_interface_anchor(
     mask = np.asarray(anchor_mask, dtype=bool)
     if mask.ndim != 2:
         raise ValueError("anchor mask must be two-dimensional")
+    if minimum_subanchor_pixels < 1:
+        raise ValueError("minimum subanchor pixels must be positive")
     coordinates = np.argwhere(mask)
     if coordinates.shape[0] < 2 * int(minimum_subanchor_pixels):
         raise ValueError("anchor is too small for the requested bisection")
