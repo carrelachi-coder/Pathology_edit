@@ -101,9 +101,12 @@
     "qualification_updates_permitted": false
   },
   "topology_dual_track_local_review": {
-    "status": "frozen_for_independent_review_no_execution_authority",
+    "status": "draft_PR_open_for_independent_review_no_execution_authority",
     "branch": "codex/topology-hole-semantics-v2",
     "commit": "d43f9325",
+    "draft_pr": "https://github.com/carrelachi-coder/Pathology_edit/pull/14",
+    "pr_base": "codex/manuscript-validation-20261102@a038282a",
+    "pr_changed_files": 9,
     "request": "topology_dual_track_local_review_request_v1.json",
     "request_sha256": "e7d5612066e4edab4651c8c6c05f014f5a8d4146aa04cffc0422c0428f7da76d",
     "separation_invariant": "Track B cannot rescue topology failure; it is evaluated only after Track A independently yields topology-passing underfill.",
