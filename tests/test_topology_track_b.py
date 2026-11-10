@@ -6,6 +6,7 @@ import pytest
 
 from phase3_joint_edit_refine.candidate_feasibility import (
     TissuePortfolioCompilationError,
+    _plan_covers_all_feasible_interfaces,
     _preplan_tissue_area_underfill_feedback,
 )
 from phase3_joint_edit_refine.g2_execution_qualification import (
@@ -360,6 +361,21 @@ def test_preplan_underfill_preserves_authoritative_topology_receipt():
     assert feedback["remaining_feasible_interface_ids"] == ["if:1"]
     assert feedback["retry_index"] == 2
     assert feedback["preferred_anchor_ids"] == ["anchor:1"]
+
+
+def test_selected_plan_skips_expansion_only_after_covering_all_fresh_interfaces():
+    plan = SimpleNamespace(
+        candidate_interfaces=(SimpleNamespace(interface_id="if:1"),)
+    )
+    assert _plan_covers_all_feasible_interfaces(
+        plan, SimpleNamespace(feasible_interface_ids=("if:1",))
+    )
+    assert not _plan_covers_all_feasible_interfaces(
+        plan, SimpleNamespace(feasible_interface_ids=("if:1", "if:2"))
+    )
+    assert not _plan_covers_all_feasible_interfaces(
+        plan, SimpleNamespace(feasible_interface_ids=())
+    )
 
 
 def test_fresh_preflight_rejection_does_not_reuse_parent_feasibility(monkeypatch):

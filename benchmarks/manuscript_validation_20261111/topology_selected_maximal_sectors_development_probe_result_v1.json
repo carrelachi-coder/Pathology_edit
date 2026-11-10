@@ -1,0 +1,35 @@
+{
+  "schema_version": "topology-selected-maximal-sectors-development-probe-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_hidden_above_floor_candidate_not_accepted",
+  "launch_manifest": "topology_selected_maximal_sectors_development_probe_v1.json",
+  "implementation_commit": "bac89300",
+  "authorization_commit": "ed579d7a",
+  "capacity_screen_sha256": "e2441f09c7ce0d48a88b31788451fb955453f68164ef9995509439753a3c4d8d",
+  "automatic_retries": 0,
+  "case": {
+    "patient_id": "TCGA-AN-A0AR",
+    "reference_id": "BCSS_joint_supplement_b546a330a49d",
+    "partition": "development",
+    "source_index": 6
+  },
+  "results": {
+    "both_significant_topology_pass": false,
+    "u1_largest_saved_topology_passing_area_pixels": 49194,
+    "u2_terminal_topology_passing_area_pixels": 67795,
+    "u2_hidden_selected_set_topology_passing_area_pixels": 73591,
+    "hard_floor_pixels": 70779,
+    "hidden_candidate_checker_id": "selected_interface_set_capacity_exhausted",
+    "hidden_candidate_selected_all_fresh_feasible_interfaces": true
+  },
+  "interpretation": {
+    "supported": [
+      "The maximal-sector representation produced a topology-passing U2 selected-set candidate at 73,591 pixels, above the unchanged hard floor.",
+      "The candidate was not accepted because the compiler unconditionally forced an expanded-interface replan even though no fresh-preflight feasible interface remained to add; the later replan fell to 67,795 pixels."
+    ],
+    "not_supported": [
+      "The source did not pass in this run and remains ineligible.",
+      "The result does not justify lowering thresholds or accepting a candidate before the normal executor and gate checks complete."
+    ]
+  }
+}

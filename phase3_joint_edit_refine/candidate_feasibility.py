@@ -411,6 +411,19 @@ def _selected_interface_set_underfill_error(
     )
 
 
+def _plan_covers_all_feasible_interfaces(
+    raw_plan: EditPlan,
+    nuclei_preflight: JointNucleiPreflight,
+) -> bool:
+    """Return whether no fresh-preflight interface remains to be added."""
+
+    feasible = {str(value) for value in nuclei_preflight.feasible_interface_ids}
+    selected = {
+        str(item.interface_id) for item in raw_plan.candidate_interfaces
+    }
+    return bool(feasible) and feasible.issubset(selected)
+
+
 def _is_subcomponent_raster_tail(compiled_plan: EditPlan) -> bool:
     """Return whether fallback is smaller than one legal change component."""
 
@@ -1110,6 +1123,9 @@ class CandidateFeasibilityCompiler:
                     )
                     and tissue_case.primitive_id
                     != "infiltrative-nest-cord-extension-v1"
+                    and not _plan_covers_all_feasible_interfaces(
+                        raw_plan, nuclei_preflight
+                    )
                 ):
                     # A maximum over one selected interface set is not yet a
                     # global maximum over the frozen preflight portfolio.
