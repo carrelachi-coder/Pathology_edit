@@ -1,0 +1,25 @@
+{
+  "kind": "topology-track-b-target-import-authorization-v1",
+  "date": "2026-11-10",
+  "status": "authorized_once_not_consumed",
+  "authorization_basis": "User directed Codex to stop requiring external review and to authorize work when Codex judges the evidence sufficient.",
+  "codex_readiness_decision": "The reviewed implementation is locally frozen; 257 workflow/regression tests plus 346 subtests pass; the import-only tool has three passing fail-closed tests; this authorization is limited to an isolated target import smoke with zero business calls.",
+  "manifest": "topology_track_b_target_import_manifest_v1.json",
+  "manifest_sha256": "e13c56236354f03e10e4cc9f4c22c6ad681e45540dce03114b595cb12642cab4",
+  "allowed_once": {
+    "isolated_snapshot_deployment": true,
+    "import_only_smoke": true,
+    "attempts": 1,
+    "outer_watchdog_seconds": 180
+  },
+  "forbidden": {
+    "real_patient_calls": 0,
+    "witness_calls": 0,
+    "four_target_calls": 0,
+    "h_and_e_calls": 0,
+    "reserved_evaluation_access": false,
+    "qualification_updates": false
+  },
+  "automatic_retries": 0,
+  "failure_action": "HOLD"
+}

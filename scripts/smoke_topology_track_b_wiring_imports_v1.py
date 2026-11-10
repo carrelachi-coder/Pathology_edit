@@ -80,6 +80,9 @@ def _identity_gate(manifest: dict, manifest_path: Path) -> Path:
         )
     ):
         raise RuntimeError("import smoke manifest permits a forbidden call")
+    for name, expected in sorted(manifest.get("required_environment", {}).items()):
+        if os.environ.get(name) != str(expected):
+            raise RuntimeError(f"required environment mismatch: {name}")
     declared_manifest_sha = manifest.get("manifest_sha256")
     observed_manifest_sha = _sha256(manifest_path)
     # A self-hash is intentionally omitted from the canonical manifest bytes.
