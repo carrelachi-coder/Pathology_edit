@@ -1,0 +1,23 @@
+{
+  "schema_version": "topology-track-b-s07-gate-metrics-v1",
+  "status": "self_authorized_once",
+  "purpose": "Capture the full structured metrics of the first S07 compiled-replay fidelity rejection.",
+  "code": {
+    "archive_commit": "52917596",
+    "git_tree": "835ec079ff6ab3b7bebbbece69d300b19d74a968",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_gate_metrics_52917596",
+    "profile_wrapper_sha256": "5a36bf9186e47f102ed8537ae51f63b081fb58b8cdef26df8e306da4f0d72a84"
+  },
+  "input": {"reference_id": "BCSS_native_recovery_205cb2398525fe94", "patient_id": "TCGA-E2-A1LL", "source_index": 7},
+  "execution": {
+    "hard_timeout_seconds": 150,
+    "automatic_retries": 0,
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_gate_metrics_v1",
+    "expected_complete_gate_records_max": 1,
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "he_calls": 0
+  },
+  "failure_policy": "Stop at 150 seconds after preserving any complete gate record; zero retry.",
+  "authorization_basis": "Codex approved the smallest bounded diagnostic needed to resolve the repeated execution_contract_fidelity rejection."
+}
