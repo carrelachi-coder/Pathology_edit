@@ -13,7 +13,7 @@
       "id": "diagnostic_preparation",
       "required": "Reviewed preparation worker, whole-process supervisor and manifest-bound result verifier",
       "status": "real_controller_v2_candidate_local_tests_passed",
-      "current_evidence": "Target 2.1M-event/683-array synthetic Adapter v2 B/C validation passed. Versioned real Controller v2 candidate c9b1ef20 is in draft PR #13; local 24-test scoped suite passed, including parent import-state equality. Target Linux startup/import, pinned execution identity and real S07 noninterference remain unverified."
+      "current_evidence": "Target synthetic Adapter v2 B/C validation and versioned Linux import-only smoke passed. B/C import order and controlled initial RNG/hash match; A has disclosed import difference. Real S07 Controller noninterference and fully bound execution identity remain unverified."
     },
     {
       "id": "topology_diagnosis",
@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Await separate approval for corrected import-only v2 target preparation; v1 authorization consumed by environment-drift HOLD. No S07 or witness work authorized.",
+  "current_next_deliverable": "Review and disposition of the versioned Adapter v2 startup difference, then freeze a real execution manifest and obtain separate one-shot S07 authorization. Import-only target smoke passed; no real diagnostic or formal cohort authorized.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -332,7 +332,11 @@
     "target_import_preparation_v1_hold_report": "adapter_controller_v2/import_preparation_target_hold_v1.json",
     "target_import_preparation_v1_authorization_consumed": true,
     "target_import_preparation_v2_manifest_sha256": "ac7d7fbec769bb9ebe2089f6e6136aa7484e583bd8caf4530446b390244eb7d7",
-    "target_import_preparation_v2_request": "https://github.com/carrelachi-coder/Pathology_edit/blob/4f687ff6/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_request_v2.json"
+    "target_import_preparation_v2_request": "https://github.com/carrelachi-coder/Pathology_edit/blob/4f687ff6/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_request_v2.json",
+    "target_import_preparation_v2_status": "import_only_smoke_passed_with_disclosed_A_vs_BC_difference",
+    "target_import_preparation_v2_closeout": "https://github.com/carrelachi-coder/Pathology_edit/blob/13777219/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_target_result_v2/closeout_report.json",
+    "target_import_preparation_v2_closeout_sha256": "94569d21e3b3f0de1313ed90a295a478dc67a60c5b878587c040894a248419c0",
+    "target_import_preparation_v2_authorization_consumed": true
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
