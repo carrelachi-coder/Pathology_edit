@@ -1,0 +1,8 @@
+{
+  "kind": "observer-budget-large-synthetic-budget-v2-acceptance",
+  "decision": "user_accepted_budget_revision",
+  "source": "Current Codex conversation: 接受预算修订",
+  "reviewed_proposal_sha256": "976b94b5681045d13bb0105eaf1d56d1fd4710ab76e125654627dc7d113fa903",
+  "reviewed_candidate_manifest_sha256": "6222ae6da05276b9a5f99ba5b566cb9846c44d52e4ff4bbacabfa60c8da00a01",
+  "scope": "Synthetic engineering budget review only: 480-second cooperative encode/seal per arm, 1200-second overall OS watchdog, new isolated paths. No target execution authorization, S07, witness, H&E or formal study authorization."
+}
