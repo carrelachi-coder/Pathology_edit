@@ -1,0 +1,22 @@
+{
+  "schema_version": "balanced-geodesic-bisection-local-validation-v1",
+  "status": "passed_local_pending_target",
+  "candidate_version": "directional-single-anchor-balanced-geodesic-bisection-v3",
+  "rule": "Enumerate integer thresholds of the signed distance to deterministic two-sweep endpoints and choose the most balanced exact partition among those whose two children are connected and satisfy the unchanged size and geodesic-span requirements.",
+  "selection_inputs": "Source anchor mask and frozen minimum witness size only; no H&E, generated target, gate result, patient qualification, or downstream score is consulted.",
+  "s07_read_only_geometry": {
+    "parent_pixels": 85,
+    "minimum_child_pixels": 29,
+    "minimum_child_span_steps": 28,
+    "old_child_pixels": [37, 48],
+    "old_child_spans": [32, 32],
+    "balanced_child_pixels": [42, 43],
+    "balanced_child_spans": [36, 28]
+  },
+  "tests": {
+    "focused": "26 passed in 14.73 seconds",
+    "combined": "263 passed, 346 subtests passed in 307.29 seconds"
+  },
+  "thresholds_unchanged": true,
+  "target_validation": "pending"
+}

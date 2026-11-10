@@ -17,7 +17,7 @@ import numpy as np
 from phase3_mask_edit_refine.models import SceneAnchorSegment
 from phase3_mask_edit_refine.scene import SceneAnalysis
 
-CANDIDATE_VERSION = "directional-single-anchor-geodesic-bisection-v2"
+CANDIDATE_VERSION = "directional-single-anchor-balanced-geodesic-bisection-v3"
 
 
 def minimum_witness_contact_pixels(reference_area_p95: float) -> int:
@@ -202,9 +202,11 @@ def bisect_connected_interface_anchor(
     the pixel farthest from the lexicographically first mask pixel, then take
     the pixel farthest from that endpoint.  Starting from an endpoint avoids
     the severe imbalance produced when the lexicographically first pixel lies
-    near the middle of a branched or folded interface.  Equal-distance pixels
-    are assigned to the first endpoint.  The function fails closed if either
-    result is too small or disconnected.
+    near the middle of a branched or folded interface.  Among every integer
+    threshold of the signed endpoint-distance field, the function selects the
+    most balanced exact partition whose two children are connected and both
+    satisfy the frozen size and span requirements.  This criterion is mask-only
+    and does not inspect generated H&E or downstream qualification outcomes.
     """
 
     mask = np.asarray(anchor_mask, dtype=bool)
@@ -227,20 +229,36 @@ def bisect_connected_interface_anchor(
     second_seed = tuple(int(value) for value in second_coordinates[0])
     second_distance = _geodesic_distance(mask, second_seed)
 
-    first = mask & (first_distance <= second_distance)
-    second = mask & ~first
-    parts = (first, second)
-    if any(np.count_nonzero(part) < minimum_subanchor_pixels for part in parts):
-        raise ValueError("geodesic bisection produced an undersized subanchor")
+    signed_distance = first_distance.astype(np.int64) - second_distance.astype(
+        np.int64
+    )
+    candidates: list[tuple[tuple[int, int], np.ndarray, np.ndarray]] = []
+    thresholds = sorted({int(value) for value in signed_distance[mask].tolist()})
+    for threshold in thresholds:
+        first = mask & (signed_distance <= threshold)
+        second = mask & ~first
+        sizes = (int(np.count_nonzero(first)), int(np.count_nonzero(second)))
+        if min(sizes) < minimum_subanchor_pixels:
+            continue
+        try:
+            spans = tuple(
+                _geodesic_diameter_steps(part) for part in (first, second)
+            )
+        except ValueError:
+            continue
+        if min(spans) < minimum_subanchor_pixels - 1:
+            continue
+        candidates.append(
+            ((abs(sizes[0] - sizes[1]), threshold), first, second)
+        )
+    if not candidates:
+        raise ValueError(
+            "geodesic bisection has no connected size-and-span-valid partition"
+        )
+    _rank, first, second = min(candidates, key=lambda item: item[0])
     if not np.array_equal(first | second, mask) or np.any(first & second):
         raise RuntimeError("geodesic bisection is not an exact partition")
-    for part in parts:
-        _geodesic_distance(part, tuple(int(value) for value in np.argwhere(part)[0]))
-        if _geodesic_diameter_steps(part) < minimum_subanchor_pixels - 1:
-            raise ValueError(
-                "geodesic bisection produced a subanchor with insufficient span"
-            )
-    return parts
+    return first, second
 
 
 def _geodesic_diameter_steps(mask: np.ndarray) -> int:

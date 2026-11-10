@@ -52,7 +52,7 @@ def test_reference_scaled_minimum_rejects_short_arcs_before_bisection():
     assert all(np.count_nonzero(part) >= minimum for part in parts)
 
     thick_but_short = np.ones((20, 20), dtype=bool)
-    with pytest.raises(ValueError, match="insufficient span"):
+    with pytest.raises(ValueError, match="size-and-span-valid"):
         bisect_connected_interface_anchor(
             thick_but_short,
             minimum_subanchor_pixels=minimum,
@@ -167,7 +167,7 @@ def test_two_sweep_endpoints_avoid_mid_branch_undersized_partition():
         minimum_subanchor_pixels=20,
     )
 
-    assert (int(np.count_nonzero(first)), int(np.count_nonzero(second))) == (40, 20)
+    assert sorted((int(np.count_nonzero(first)), int(np.count_nonzero(second)))) == [20, 40]
     assert geodesic_span_steps(first) >= 19
     assert geodesic_span_steps(second) >= 19
     assert np.array_equal(first | second, anchor)
