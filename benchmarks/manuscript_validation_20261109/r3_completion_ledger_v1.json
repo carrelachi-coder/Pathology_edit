@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Review the evidence-based v3 engineering deadline proposal for the unchanged 2.1M-event/683-array synthetic B/C workload. No new full-workload target run is authorized; real S07 and formal cohort remain closed.",
+  "current_next_deliverable": "Obtain separate one-shot authorization bound to the frozen v3 full synthetic B/C launch manifest; prior authorizations consumed. Real S07 and formal cohort remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -235,12 +235,13 @@
     }
   },
   "large_synthetic_budget_v3_proposal": {
-    "status": "review_only_no_execution_authorized",
+    "status": "budget_review_accepted_final_manifest_frozen_target_authorization_pending",
     "candidate_manifest_sha256": "01cb5b9ccf2088ca5512717fcc267a3fb7f9a44ae502f92bf82c57466cf3dcaf",
     "proposal": "adapter_controller_v1/observer_budget_large_synthetic_v1/budget_v3_review_proposal.json",
     "target_deployed": false,
     "target_executed": false,
-    "target_authorized": false
+    "target_authorized": false,
+    "launch_manifest_sha256": "df4bf74feb64e090d19d2e61205db8c140a412ea1e27cac1a320c63554fff328"
   },
   "capacity_universe_patient_identity_audit": {
     "status": "read_only_audit_complete_no_qualification_change",
