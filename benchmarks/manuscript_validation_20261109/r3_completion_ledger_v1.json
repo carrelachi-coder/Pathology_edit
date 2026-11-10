@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "Independent decision on the sealed Adapter v2 finite S07 manifest. Preflight passed without witness; real S07 still requires separate exact-SHA one-shot authorization. Formal 30-patient cohort and H&E remain closed.",
+  "current_next_deliverable": "Read-only analysis of the 8,864,998-event B prefix and timeout cost. The finite S07 authorization is consumed; no replay or formal 30-patient H&E launch. R3 qualification and four-target gates remain open.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -316,13 +316,13 @@
     "final_selected_30_audit_complete": false
   },
   "real_controller_v2_candidate": {
-    "status": "final_manifest_sealed_target_staged_preflight_passed_pending_separate_S07_authorization",
+    "status": "one_shot_real_S07_completed_mismatch_hold_B_1200s_timeout_authorization_consumed",
     "commit": "0acdaf3e",
     "pull_request": "https://github.com/carrelachi-coder/Pathology_edit/pull/13",
     "local_test_command": "python -m pytest -q tests/test_limited_topology_adapter_controller_v1.py tests/test_limited_topology_adapter_controller_v2.py tests/test_observer_budget_readonly_consumer_v3.py",
     "local_tests_passed": 24,
     "target_deployed": "isolated_import_only_snapshot",
-    "real_S07_authorized": false,
+    "real_S07_authorized": true,
     "startup_review_finding": "Target import-only smoke passed under frozen effective environment. B/C import order matched exactly; A/B/C shared modules differ by two earlier refine imports in B/C, and B/C additionally import seven observer modules. Difference accepted and disclosed; no claim of all side effects absent.",
     "import_smoke_candidate": "scripts/smoke_adapter_controlled_topology_imports_v2.py; target import-only smoke passed; no witness executed",
     "target_import_preparation_request": "https://github.com/carrelachi-coder/Pathology_edit/blob/a6178492/benchmarks/manuscript_validation_20261109/adapter_controller_v2/import_preparation_request_v1.json",
@@ -342,7 +342,7 @@
     "real_run_identity_candidate": "https://github.com/carrelachi-coder/Pathology_edit/blob/539b9e2d/benchmarks/manuscript_validation_20261109/adapter_controller_v2/run_identity_candidate_v2.json",
     "real_run_identity_candidate_sha256": "9fa6074884298227ce2348ddc71e00540a3a56680c2523f77428957290525fdd",
     "real_run_identity_candidate_execution_permitted": false,
-    "remaining_gate": "Separate exact-SHA one-shot user authorization, then repeat live Controller gates and run at most the authorized finite S07 diagnostic. Formal R3 cohort remains closed regardless of diagnostic outcome.",
+    "remaining_gate": "Do not reuse consumed S07 authorization. Analyze archived B partial trace and recording cost offline; decide a new versioned method only from evidence. Formal R3 patient qualification remains 17 passed, upper19 with unknown, four-target approvals zero.",
     "contract_identity_candidate": "https://github.com/carrelachi-coder/Pathology_edit/blob/539b9e2d/benchmarks/manuscript_validation_20261109/adapter_controller_v2/contract_identity_candidate_v2.json",
     "contract_identity_candidate_sha256": "4998189b7396ab84320022bc5097d4efa5efa43c510baef45b55cfa263937f7d",
     "contract_inventory_local_hash_audit": "521/521 local resource hashes match the frozen inventory; source/template/mapping/budget/floor/limit fields match prior launch manifest. Target live assets must be rechecked before launch.",
@@ -357,7 +357,13 @@
     "final_technical_review": "https://github.com/carrelachi-coder/Pathology_edit/blob/6dee873a/benchmarks/manuscript_validation_20261109/adapter_controller_v2/adapter_v2_final_launch_review_v1.json",
     "final_launch_request": "https://github.com/carrelachi-coder/Pathology_edit/blob/6dee873a/benchmarks/manuscript_validation_20261109/adapter_controller_v2/adapter_v2_finite_launch_request_v1.json",
     "final_manifest_target_staged_sha_match": true,
-    "real_S07_witness_calls_v2": 0
+    "real_S07_witness_calls_v2": "4 logical calls reserved for A+B; exact B executed count not independently established from incomplete process",
+    "real_S07_authorization_consumed": true,
+    "real_S07_execution_result": "https://github.com/carrelachi-coder/Pathology_edit/blob/06744a8f/benchmarks/manuscript_validation_20261109/adapter_controller_v2/real_s07_diagnostic_v1/closeout_report.json",
+    "real_S07_execution_result_sha256": "79ff4603ef14c932e30dbd51c77a446b7f769922db5f8913b4d70acf52eee1e1",
+    "real_S07_A": "exit 0 in 126.884s; full business receipt exactly matches historical S07, two operation checks",
+    "real_S07_B": "timed out at 1200.035s, no business receipt or observer completion; 270 SHA/chain-valid committed blocks contain 8,864,998 contiguous partial events",
+    "real_S07_C": "not started"
   },
   "topology_method_patient_split_proposal": {
     "status": "proposal_pending_review_not_frozen",
