@@ -1,0 +1,44 @@
+{
+  "schema_version": "topology-cascade-reserved-launch-v1",
+  "recorded_at": "2026-11-11",
+  "status": "self_authorized_once",
+  "authorization_record": "topology_cascade_method_freeze_v1.json",
+  "code": {
+    "commit": "0ac9bdda",
+    "git_tree": "872d19be5ec1e70630008ce0727a5217485c5c4b",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_0ac9bdda",
+    "probe_sha256": "ef824365ce0b541be9ec4159798c7f1d33689fe3d8c5480e218a06ce3d5aebca",
+    "controller_sha256": "2ab85dc39add55484098df7a77731ba96d75f4b5efe33556d459328d04a8b0d0",
+    "candidate_feasibility_sha256": "cb3567040b5ed5640ac6276e5f27aacd4f5a487e6f0542f815c995b9faa56b24",
+    "topology_track_b_sha256": "298e58dc1d34ccffca692a55cdb51a186e8a63cfc8423f50e5b1dee4cec001a5",
+    "anchor_subdivision_sha256": "dab3ded60a07763828274a42cefa45e5987d273957847280dbd96389d27e5fa4"
+  },
+  "input": {
+    "source_freeze": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_reserved_source_freeze_v1.json",
+    "source_freeze_sha256": "d9c4e4f8cd4eb9c98c4635574c810de40aec26253a8cac6c4c8209d9b9cfa31c",
+    "partition": "reserved_evaluation",
+    "patients": 68,
+    "available_sources": 418,
+    "case_templates": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_v1",
+    "workers": 8,
+    "seconds_per_source": 1200,
+    "overall_watchdog_seconds": 86400,
+    "automatic_retries": 0,
+    "stdout_policy": "controller stdout and stderr redirected to one bounded run log; detailed evidence remains in per-source files",
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "acceptance": {
+    "all_68_patients_terminal": true,
+    "indeterminate_patients": 0,
+    "threshold_changes": 0,
+    "patient_yield_report_required": true,
+    "formal_accounting_review_required_after_completion": true
+  },
+  "failure_policy": "Any timeout, nonzero exit, missing receipt, identity mismatch, or controller failure is HOLD with no automatic retry."
+}

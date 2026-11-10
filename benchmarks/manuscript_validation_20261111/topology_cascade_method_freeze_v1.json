@@ -1,0 +1,46 @@
+{
+  "schema_version": "topology-cascade-method-freeze-v1",
+  "recorded_at": "2026-11-11",
+  "status": "method_frozen_reserved_evaluation_authorized_once",
+  "frozen_implementation_commit": "0ac9bdda",
+  "frozen_git_tree": "872d19be5ec1e70630008ce0727a5217485c5c4b",
+  "development_result": {
+    "record": "topology_cascade_development_result_v1.json",
+    "patient_qualification_sha256": "0844f1befad5df2eff5081184a4e7854fa527979117e5515f88106eb6c8e8a72",
+    "patients": 16,
+    "both_operation_pass_patients": 6,
+    "source_attempts": 50,
+    "timeouts": 0,
+    "nonzero_exit_codes": 0
+  },
+  "freeze_rationale": [
+    "The predeclared selected-anchor granularity question has been resolved on the complete development partition: balanced refinement retained the prior gains, and a deterministic maximal-sector fallback added three U2 source-level passes without adding or regressing any patient-level dual-operation pass.",
+    "The closest complementary failure cannot use its third interface because the sole directional anchor cannot preserve the frozen unedited-boundary witness. The two executable interfaces realize 65,934 pixels against the unchanged 70,779-pixel floor. Further case-specific tuning would risk changing the frozen 75% directional-front contract.",
+    "Six of sixteen development patients pass both operations. The reserved partition is needed to measure generalization and determine whether the full 84-patient capacity-qualified pool can supply the 30-patient target."
+  ],
+  "frozen_constraints": {
+    "nominal_joint_budgets": {
+      "moderate_fraction": 0.19,
+      "significant_fraction": 0.32
+    },
+    "significant_tissue_hard_floor_fraction": 0.27,
+    "moderate_tissue_hard_floor_fraction": 0.14,
+    "directional_front_thresholds_unchanged": true,
+    "topology_gates_unchanged": true,
+    "operation_semantics_unchanged": true,
+    "source_order_frozen": true,
+    "h_e_selection_prohibited": true
+  },
+  "reserved_evaluation": {
+    "authorized": true,
+    "authorization_count": 1,
+    "patients": 68,
+    "sources": 418,
+    "selection_rule": "Use the first dual-operation topology pass in each patient's frozen source order; stop on the first indeterminate source instead of skipping it.",
+    "automatic_retries": 0,
+    "qualification_update_permitted_during_run": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "supersession_note": "The development result correctly kept the reserved partition closed at result capture time. This later freeze decision opens the predeclared next gate only after the full development comparison and the remaining granularity question were reviewed together; it does not rewrite the earlier result."
+}
