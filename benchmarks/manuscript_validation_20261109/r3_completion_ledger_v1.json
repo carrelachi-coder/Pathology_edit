@@ -58,7 +58,7 @@
     "scripts/plot_two_primitive_trajectory.py": "9ee15c3b4eebdc0d914e91334169298806fff2ae7930334da221e7cda2870964",
     "benchmarks/manuscript_validation_20261104/setup_v3_review_preparation/target_preparation_identity_v3.json": "8870dc60d68d2d3658cb4f7e447bd04012ddd167fb65f695e75b051d43badbc8"
   },
-  "current_next_deliverable": "The local dual-track technical review passed and the separate Track B workflow-wiring proposal is frozen. Review the proposal's fresh-portfolio architecture, one-round deterministic transformation and authority rebinding. Only after separate acceptance may local integration begin; any real development-patient run still requires its own SHA-bound manifest and authorization. Historical 17/19 qualification counts stay immutable; formal R3 gates remain closed.",
+  "current_next_deliverable": "The reviewed Track B workflow wiring is implemented locally on draft PR #14 at commit 7664a9b3. Complete independent code review and freeze a separate target-preparation identity before any deployment. Any real development-patient run still requires its own SHA-bound manifest and authorization; the 68 reserved evaluation patients remain unopened. Historical 17/19 qualification counts stay immutable and formal R3 gates remain closed.",
   "scientific_rules": {
     "patient_target": 30,
     "nominal_joint": [
@@ -117,13 +117,19 @@
     "execution_authorized": false
   },
   "topology_track_b_wiring_proposal": {
-    "status": "proposal_frozen_not_implemented_not_authorized",
+    "status": "proposal_accepted_local_implementation_complete_not_deployed",
     "branch": "codex/topology-hole-semantics-v2",
     "commit": "b9f19d7f",
     "file": "topology_track_b_production_wiring_proposal_v1.json",
     "sha256": "d403dd9049d6773ae669f0624f50800e593f7fb39d6d4ec77c4c1416e65f9d32",
     "architecture": "workflow-level one-round transformed scene, fresh nuclei preflight, fresh authority binding and fresh portfolio; no mixing with original underfill portfolio",
-    "implementation_authorized": false,
+    "implementation_authorized": true,
+    "implementation_commit": "7664a9b3",
+    "implementation_validation": "topology_track_b_production_wiring_local_validation_v1.json",
+    "implementation_validation_status": "253 workflow/regression tests and 346 subtests passed; 21 focused tests passed; five broader P1 fixture tests stop before the changed path because the checked-in selection is not the required 22-evaluation asset",
+    "production_integrated": false,
+    "target_server_deployed": false,
+    "real_patient_runs": 0,
     "execution_authorized": false
   },
   "execution_permissions": "Specific consumed authorizations remain closed. New target runs follow existing separate manifest-bound approval requirements.",
