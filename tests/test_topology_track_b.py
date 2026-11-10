@@ -6,6 +6,7 @@ import pytest
 
 from phase3_joint_edit_refine.candidate_feasibility import (
     TissuePortfolioCompilationError,
+    _preplan_tissue_area_underfill_feedback,
 )
 from phase3_joint_edit_refine.g2_execution_qualification import (
     _compile_qualification_tissue_witness,
@@ -18,6 +19,7 @@ from phase3_joint_edit_refine.topology_track_b import (
     compile_tissue_portfolio_with_track_b,
 )
 from phase3_mask_edit.core.labels import MaskProfileSchema
+from phase3_mask_edit_refine.execution import TopologySafeAreaUnderfillError
 from phase3_mask_edit_refine.models import RefineContractError
 from phase3_mask_edit_refine.scene import build_scene_analysis
 
@@ -272,6 +274,27 @@ def test_other_preplanner_failure_does_not_enter_track_b(monkeypatch):
         _run(monkeypatch, compiler, scene, preflight)
     assert caught.value is original
     assert len(compiler.calls) == 1
+
+
+def test_preplan_underfill_preserves_authoritative_topology_receipt():
+    original = {
+        "topology_passed": True,
+        "topology_safe_realized_pixels": 69300,
+        "policy_floor_pixels": 70779,
+        "remaining_feasible_interface_ids": ["if:1"],
+    }
+    error = TopologySafeAreaUnderfillError("underfill", feedback=original)
+    feedback = _preplan_tissue_area_underfill_feedback(
+        error=error,
+        retry_index=2,
+        error_message="TopologySafeAreaUnderfillError: underfill",
+        preferred_anchor_ids=("anchor:1",),
+    )
+    assert feedback["topology_passed"] is True
+    assert feedback["topology_safe_realized_pixels"] == 69300
+    assert feedback["remaining_feasible_interface_ids"] == ["if:1"]
+    assert feedback["retry_index"] == 2
+    assert feedback["preferred_anchor_ids"] == ["anchor:1"]
 
 
 def test_fresh_preflight_rejection_does_not_reuse_parent_feasibility(monkeypatch):

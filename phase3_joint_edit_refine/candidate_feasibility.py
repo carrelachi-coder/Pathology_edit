@@ -314,6 +314,30 @@ def _tissue_area_underfill_feedback(
     return feedback
 
 
+def _preplan_tissue_area_underfill_feedback(
+    *,
+    error: TopologySafeAreaUnderfillError,
+    retry_index: int,
+    error_message: str,
+    preferred_anchor_ids: tuple[str, ...],
+) -> dict[str, Any]:
+    """Preserve planner-owned topology evidence when no plan was returned."""
+
+    feedback = dict(error.feedback)
+    feedback.update(
+        {
+            "retry_index": retry_index,
+            "stage": "tissue_area_underfill",
+            "errors": [error_message],
+            "failed_interface_ids": list(
+                feedback.get("failed_interface_ids", ())
+            ),
+            "preferred_anchor_ids": list(preferred_anchor_ids),
+        }
+    )
+    return feedback
+
+
 def _selected_interface_set_underfill_error(
     *,
     compiled_plan: EditPlan,
@@ -1327,13 +1351,12 @@ class CandidateFeasibilityCompiler:
                 observe("compiler.exception", exception=exc, rendered_error=error, raw_plan=raw_plan, attempt=attempt)
                 errors.append(error)
                 if raw_plan is None:
-                    feedback = {
-                        "retry_index": attempt,
-                        "stage": "tissue_area_underfill",
-                        "errors": [error],
-                        "failed_interface_ids": [],
-                        "preferred_anchor_ids": list(preferred_anchor_ids),
-                    }
+                    feedback = _preplan_tissue_area_underfill_feedback(
+                        error=exc,
+                        retry_index=attempt,
+                        error_message=error,
+                        preferred_anchor_ids=preferred_anchor_ids,
+                    )
                 else:
                     feedback = _tissue_area_underfill_feedback(
                         error=exc,
