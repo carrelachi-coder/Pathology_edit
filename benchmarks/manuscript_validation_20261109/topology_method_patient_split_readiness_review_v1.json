@@ -1,0 +1,35 @@
+{
+  "kind": "r3-topology-method-patient-split-readiness-review-v1",
+  "status": "read_only_review_ready_not_frozen",
+  "proposal": "benchmarks/manuscript_validation_20261109/topology_method_patient_split_proposal_v1.json",
+  "proposal_sha256": "1f44bfd0598629f4ea48f8c8af73956c9c45ced58af5249b86c7b00520b65af3",
+  "input_audit": "benchmarks/manuscript_validation_20261109/capacity_universe_patient_identity_audit_v1.json",
+  "input_audit_sha256": "7036f1523002dbe48ca71fa35095e704fdaa64a34bab8b988977bbaff4fa7436",
+  "verified": {
+    "development_patient_count": 16,
+    "development_unique_patient_count": 16,
+    "reserved_evaluation_patient_count": 68,
+    "reserved_evaluation_unique_patient_count": 68,
+    "patient_overlap_count": 0,
+    "patient_union_count": 84,
+    "S07_patient_TCGA_E2_A1LL_is_development_only": true,
+    "hash_rank_rule_reproduces_all_15_additional_development_patients": true,
+    "assignment_uses_generated_HE": false,
+    "assignment_uses_historical_topology_outcome": false
+  },
+  "freeze_effect": [
+    "Future topology mechanism design and parameter choices may use only the 16 development patients.",
+    "The 68 reserved patients remain hidden from method tuning until one mechanism and its thresholds are frozen.",
+    "Reserved evaluation remains method-independent only; it does not establish evaluator-training independence or external clinical validation.",
+    "S07 can never be counted as independent evaluation evidence for a method informed by the current diagnosis."
+  ],
+  "not_authorized_by_freeze": [
+    "No topology algorithm implementation or target-server execution.",
+    "No change to the historical 17 passed / upper 19 qualification record.",
+    "No selection of the formal 30-patient cohort.",
+    "No four-target compilation, H&E generation or physician study."
+  ],
+  "remaining_identity_limit": "Patient/WSI values are retained aliases; complete TCGA slide barcode identity is not established.",
+  "ready_for_independent_freeze_decision": true,
+  "frozen": false
+}
