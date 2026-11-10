@@ -5,7 +5,7 @@
   "authorization_basis": "User directed Codex to stop requiring external review and to authorize work when Codex judges the evidence sufficient.",
   "codex_readiness_decision": "The reviewed implementation is locally frozen; 257 workflow/regression tests plus 346 subtests pass; the import-only tool has three passing fail-closed tests; this authorization is limited to an isolated target import smoke with zero business calls.",
   "manifest": "topology_track_b_target_import_manifest_v1.json",
-  "manifest_sha256": "e13c56236354f03e10e4cc9f4c22c6ad681e45540dce03114b595cb12642cab4",
+  "manifest_sha256": "69ed036a7b08be2378b2e83336d7f5717f681552193a1797818251bd242f8c83",
   "allowed_once": {
     "isolated_snapshot_deployment": true,
     "import_only_smoke": true,

@@ -6,7 +6,7 @@
   "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_wiring_candidate_9a2a78d1/import_smoke_v1",
   "python_executable": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
   "accepted_implementation_commit": "fd599230f9117a8ba2015e234b0698329f088d6e",
-  "preparation_tool_commit": "9a2a78d1b78c5abce10f3099600b2b15307f926a",
+  "preparation_tool_source_commit": "953ad7a28ddac2906732d7646b648316bb68463d",
   "locked_files": {
     "phase3_joint_edit_refine/candidate_feasibility.py": "2657ec9520d31d6ea42750546221ebe011e89fc3900dbb9d3e28ce7e7e7464d1",
     "phase3_joint_edit_refine/tissue_planner.py": "bb792feb524c84644663d1cffd1f7ce06810d78c4bb6a4640f91e54799c05036",
