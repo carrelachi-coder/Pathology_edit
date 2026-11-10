@@ -1,0 +1,61 @@
+{
+  "kind": "topology-dual-track-local-review-request-v1",
+  "status": "review_requested_no_execution_authority",
+  "date": "2026-11-10",
+  "branch": "codex/topology-hole-semantics-v2",
+  "head_commit": "60aebb31",
+  "accepted_scope_record_sha256": "db49a925dc32031c6ff0ed930f10fcf50d21ee0b3970de3781f6b86ea3fc4ef6",
+  "track_A": {
+    "name": "whole-mask hole semantics alignment",
+    "evidence": "topology_hole_semantics_v2_local_validation.json",
+    "evidence_sha256": "3fee0fa1fd4a00e7c8b47e9af30b6c2ffa87385fc93fcef0f8032b1567b8110e",
+    "candidate_semantics": "8-connected tissue foreground with 4-connected enclosed background",
+    "purpose": "Make whole-mask hole counting use the same digital-topology convention as the accepted local guard.",
+    "does_not_address": "reachable-area underfill"
+  },
+  "track_B": {
+    "name": "bounded single-anchor subdivision after safe underfill",
+    "evidence": "directional_anchor_subdivision_v1_local_validation.json",
+    "evidence_sha256": "fca57089c87a967867792bc8cf0edbddc6e9dc77ec5fcd49f63e4998e7ba647e",
+    "purpose": "Permit one selectable subanchor while retaining one unedited boundary witness when a cell-feasible single parent anchor was excluded solely by the existing directional limit.",
+    "eligibility": [
+      "area-underfill replan, never initial compile",
+      "prior trial topology passed",
+      "interface remains feasible in underfill feedback",
+      "parent anchor was cell feasible",
+      "parent had exactly one anchor and selection limit zero",
+      "subdivision is deterministic, exhaustive, disjoint and 8-connected",
+      "new identities require fresh nuclei preflight"
+    ],
+    "unchanged_contract": {
+      "maximum_selected_anchor_fraction": 0.75,
+      "minimum_unselected_anchor_count": 1
+    }
+  },
+  "separation_invariant": "Track B may not be invoked to rescue a topology-failing trial. Track A must first produce a topology-passing underfill under its own versioned semantics; only then may Track B eligibility be evaluated.",
+  "local_validation": {
+    "track_A": "228 tests plus 346 subtests, then 72 tests plus 85 subtests",
+    "track_B_latest": "88 tests plus 85 subtests",
+    "real_patient_runs": 0,
+    "qualification_updates": 0
+  },
+  "review_questions": [
+    "Does the 8-foreground/4-background convention correctly align whole-mask and local-guard hole semantics without changing component semantics?",
+    "Is the topology-passing-underfill prerequisite sufficient to prevent the reachable-area mechanism from masking a topology failure?",
+    "Does deterministic geodesic bisection preserve the scientific meaning of an unedited boundary witness, or is a minimum physical arc length also required?",
+    "Must the two tracks receive separate code identities and separate development executions before any combined candidate is tested?",
+    "Are the negative cases sufficient before preparing a development-only manifest?"
+  ],
+  "explicitly_not_requested": [
+    "production integration",
+    "target-server deployment",
+    "S07 rerun",
+    "reserved evaluation patient use",
+    "qualification count changes",
+    "four-target compilation",
+    "H&E generation",
+    "physician study"
+  ],
+  "qualification_updates_permitted": false,
+  "execution_authorized": false
+}
