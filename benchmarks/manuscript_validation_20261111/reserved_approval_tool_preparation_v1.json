@@ -1,0 +1,23 @@
+{
+  "schema_version": "reserved-four-target-approval-tool-preparation-v1",
+  "created_utc": "2026-11-11T16:43:09Z",
+  "source_commit": "befb8474",
+  "tool": {
+    "repository_path": "scripts/freeze_reserved_four_target_approvals.py",
+    "sha256": "57ccebdf0534c70fe3316eaeb6a6f5899517380ee938b1918e051db791e55019"
+  },
+  "server": {
+    "host": "amax2",
+    "isolated_directory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_approval_tool_befb8474",
+    "deployed_sha256": "57ccebdf0534c70fe3316eaeb6a6f5899517380ee938b1918e051db791e55019",
+    "python": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "direct_cli_help_status": "passed"
+  },
+  "verification": {
+    "focused_chain_tests": "17 passed",
+    "compiler_snapshot_modified": false,
+    "approval_freeze_created": false,
+    "automatic_mask_approval_permitted": false
+  },
+  "scope": "Preparation only. Explicit candidate decisions and unchanged review-artifact hashes are required; four targets must each have exactly one approved candidate before patient-level approval."
+}
