@@ -1,0 +1,49 @@
+{
+  "schema_version": "topology-cascade-reserved-recovery-v3-hold-result",
+  "recorded_at": "2026-11-11",
+  "status": "hold_after_source_timeout",
+  "launch_manifest": "topology_cascade_reserved_recovery_launch_v3.json",
+  "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_recovery_v3",
+  "terminal_receipts_at_final_stop": {
+    "total": 18,
+    "valid_pass": 6,
+    "valid_exhausted": 11,
+    "indeterminate_execution": 1
+  },
+  "valid_terminal_patients": [
+    "TCGA-A1-A0SP",
+    "TCGA-A2-A04P",
+    "TCGA-A2-A0D0",
+    "TCGA-A2-A0SX",
+    "TCGA-A7-A0CE",
+    "TCGA-A7-A26F",
+    "TCGA-A7-A6VV",
+    "TCGA-A7-A6VW",
+    "TCGA-A8-A09X",
+    "TCGA-AC-A2BK",
+    "TCGA-AC-A6IW",
+    "TCGA-AO-A1KR",
+    "TCGA-AQ-A04J",
+    "TCGA-AR-A0TS",
+    "TCGA-AR-A0U1",
+    "TCGA-AR-A2LH",
+    "TCGA-BH-A0BL"
+  ],
+  "hold_trigger": {
+    "patient_id": "TCGA-AR-A256",
+    "reference_id": "BCSS_joint_supplement_233ba410a4e6",
+    "patient_source_rank": 0,
+    "elapsed_seconds": 2400.080980854109,
+    "timed_out": true,
+    "controller_exit_code": 124,
+    "receipt_sha256": "bfc49c5cc4ad4a5085ec587533906ab230c5d4f3bc162d100556183eadd7edf5",
+    "interpretation": "technical unknown; not a biological or topology failure"
+  },
+  "termination": {
+    "controller_stopped": true,
+    "active_source_process_groups_stopped": true,
+    "remaining_matching_processes": 0,
+    "automatic_retries": 0
+  },
+  "disposition": "The v3 authorization is consumed. Seventeen valid terminal receipts are retained. The indeterminate patient and all patients without a valid terminal receipt require a new versioned recovery run."
+}
