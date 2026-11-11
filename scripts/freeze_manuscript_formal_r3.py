@@ -67,6 +67,25 @@ def validate_overlap_record(overlap: dict, *, patient_id: str, source_sha256: st
     return overlap
 
 
+def validate_exclusion_audit(exclusion: dict, *, candidate_sha256: str) -> dict:
+    if exclusion.get("schema_version") != "formal-r3-exclusion-audit-v1":
+        raise ValueError("formal freeze requires the combined technical/development exclusion audit")
+    candidate = exclusion.get("inputs", {}).get("candidate_manifest", {})
+    if candidate.get("sha256") != candidate_sha256:
+        raise ValueError("exclusion audit was not produced from this candidate freeze")
+    if (
+        exclusion.get("formal_candidates_all_in_reserved_partition") is not True
+        or exclusion.get("selected_patient_overlap") != []
+        or exclusion.get("selected_reference_overlap") != []
+    ):
+        raise ValueError("exclusion audit does not prove a disjoint reserved formal cohort")
+    for field in ("excluded_patient_ids", "excluded_reference_ids"):
+        values = exclusion.get(field)
+        if not isinstance(values, list) or not values or any(not isinstance(value, str) or not value for value in values):
+            raise ValueError("exclusion audit lacks frozen patient/reference identities")
+    return exclusion
+
+
 def load_selected(candidate_manifest: dict, materialization: dict) -> list[tuple[dict, dict]]:
     if candidate_manifest.get("schema_version") != "reserved-four-target-candidate-freeze-v1":
         raise ValueError("unsupported reserved candidate manifest")
@@ -121,7 +140,10 @@ def main() -> int:
     if audited_freeze.get("sha256") != sha256_file(args.candidate_manifest):
         raise ValueError("training-overlap audit was not produced from this candidate freeze")
     overlaps = overlap_payload["cases"]
-    exclusion = json.loads(args.exclusion_audit.read_text())
+    exclusion = validate_exclusion_audit(
+        json.loads(args.exclusion_audit.read_text()),
+        candidate_sha256=sha256_file(args.candidate_manifest),
+    )
     args.output.mkdir(parents=True, exist_ok=False)
 
     rows = []

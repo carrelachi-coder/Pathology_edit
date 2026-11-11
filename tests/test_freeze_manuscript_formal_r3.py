@@ -3,6 +3,7 @@ import pytest
 from scripts.freeze_manuscript_formal_r3 import (
     load_selected,
     realized_target_record,
+    validate_exclusion_audit,
     validate_overlap_record,
 )
 
@@ -112,3 +113,29 @@ def test_incomplete_overlap_record_is_rejected():
     record.pop("cellvit")
     with pytest.raises(ValueError, match="incomplete"):
         validate_overlap_record(record, patient_id="P0", source_sha256="a" * 64)
+
+
+def exclusion(candidate_sha="a" * 64):
+    return {
+        "schema_version": "formal-r3-exclusion-audit-v1",
+        "inputs": {"candidate_manifest": {"sha256": candidate_sha}},
+        "formal_candidates_all_in_reserved_partition": True,
+        "selected_patient_overlap": [],
+        "selected_reference_overlap": [],
+        "excluded_patient_ids": ["D"],
+        "excluded_reference_ids": ["TREF"],
+    }
+
+
+def test_formal_exclusion_audit_is_bound_to_candidate_freeze():
+    record = exclusion()
+    assert validate_exclusion_audit(record, candidate_sha256="a" * 64) is record
+    with pytest.raises(ValueError, match="not produced from this candidate"):
+        validate_exclusion_audit(record, candidate_sha256="b" * 64)
+
+
+def test_formal_exclusion_audit_must_prove_disjoint_reserved_cohort():
+    record = exclusion()
+    record["selected_patient_overlap"] = ["D"]
+    with pytest.raises(ValueError, match="disjoint reserved"):
+        validate_exclusion_audit(record, candidate_sha256="a" * 64)
