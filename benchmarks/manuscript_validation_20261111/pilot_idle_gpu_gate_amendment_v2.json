@@ -1,0 +1,28 @@
+{
+  "schema_version": "reserved-four-target-pilot-idle-gpu-gate-amendment-v2",
+  "created_utc": "2026-11-11T15:28:00Z",
+  "reason": "The original 5000 MiB used-memory gate could remain false indefinitely because small long-lived foreign processes retain CUDA allocations even when a GPU is computationally idle.",
+  "superseded_watcher": {
+    "pid": 1318420,
+    "stopped_before_pilot_output_existed": true,
+    "used_memory_max_mib": 5000,
+    "utilization_max_percent": 10,
+    "consecutive_observations": 2,
+    "observation_spacing_seconds": 60
+  },
+  "replacement_watcher": {
+    "pid_at_registration": 1821727,
+    "used_memory_max_mib": 30000,
+    "minimum_free_memory_mib_on_81920_mib_gpu": 51920,
+    "utilization_max_percent": 10,
+    "consecutive_observations": 2,
+    "observation_spacing_seconds": 60,
+    "output": "reserved_four_target_compile_pilot_final_v2",
+    "candidate_case_index": 0,
+    "seconds_per_case": 7200,
+    "automatic_retries": 0
+  },
+  "unchanged_scope": "one condition-compilation pilot only; no mask approval, H&E generation, formal cohort admission, or physician study",
+  "scientific_thresholds_changed": false,
+  "qualification_updated": false
+}
