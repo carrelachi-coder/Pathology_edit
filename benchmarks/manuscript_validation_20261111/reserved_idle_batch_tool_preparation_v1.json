@@ -1,0 +1,25 @@
+{
+  "schema_version": "reserved-idle-batch-tool-preparation-v1",
+  "repository_commit": "60cfde3b",
+  "repository_path": "scripts/run_reserved_four_target_idle_batch.py",
+  "server_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_idle_batch_tool_60cfde3b/run_reserved_four_target_idle_batch.py",
+  "sha256": "13aa200b559efd84cca318f4f52e51416b6e6073f6312af1e011b009f7e8a011",
+  "server_cli_help_passed": true,
+  "local_targeted_tests": {
+    "passed": 20,
+    "failed": 0,
+    "scope": "idle gate, compilation controller, receipt merge, review queue, and approval freeze"
+  },
+  "purpose": "Prepare the remaining append-only compilation batch without using a GPU until the same physical devices pass two idle observations.",
+  "execution_status": "prepared_not_started",
+  "activation_condition": "the single-case pilot must first complete and pass identity and artifact validation",
+  "invariants": {
+    "idle_observations_required": 2,
+    "default_maximum_utilization_percent": 10,
+    "default_maximum_memory_mib": 50000,
+    "automatic_retries": 0,
+    "other_users_gpu_processes_modified": false,
+    "h_and_e_generation_performed": false,
+    "qualification_updated": false
+  }
+}
