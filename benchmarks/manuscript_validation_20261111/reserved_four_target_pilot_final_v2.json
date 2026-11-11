@@ -1,0 +1,34 @@
+{
+  "schema_version": "reserved-four-target-pilot-final-v2-record-v1",
+  "recorded_local_date": "2026-11-12",
+  "run_directory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_compile_pilot_final_v2",
+  "physical_gpu_index": 3,
+  "launch_time_local": "2026-11-12T04:26:18+08:00",
+  "case_index": 0,
+  "case_id": "BCSS_joint_supplement_d8fa8cc70d1c__u1_moderate",
+  "patient_id": "TCGA-A2-A0D0",
+  "partition": "reserved_evaluation",
+  "controller_exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 130.89897607080638,
+  "terminal_status": "abstained",
+  "abstain_reasons": [
+    "JointContractError: deterministic_replan_stalled: the same executable failure repeated without a new interface, anchor, tool program or capacity witness"
+  ],
+  "automatic_retries": 0,
+  "run_identity": {
+    "bytes": 1692,
+    "sha256": "2cabb5f47efb80107414578c16ce8d48cb4ab684b67ceee5f9b8fc86bf97e568"
+  },
+  "compilation_receipts": {
+    "bytes": 1625,
+    "sha256": "d33051a43a097506e27f0296aeb8ac0b11d5d2921b4e5b5789939e004f5b5084"
+  },
+  "summary": {
+    "bytes": 10617,
+    "sha256": "6b848ca13c8baac75a165ea5540c3ddc2339e0762ca348c7e318ddb8fdb84661"
+  },
+  "interpretation": "The compiler/controller identity and terminal-record path completed correctly. This target produced no reviewable candidate and must not be retried without new evidence. The result does not disqualify the other frozen targets.",
+  "formal_qualification_updated": false,
+  "h_and_e_generation_performed": false
+}
