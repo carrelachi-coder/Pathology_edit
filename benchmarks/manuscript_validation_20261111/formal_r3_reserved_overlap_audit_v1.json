@@ -1,0 +1,37 @@
+{
+  "schema_version": "formal-r3-reserved-overlap-audit-record-v1",
+  "created_local_date": "2026-11-12",
+  "scope": "29 reserved formal R3 topology-pass candidates",
+  "implementation_commit": "02b3cbf07e48ab6c02b52da05e10459a0606bcc1",
+  "execution_environment": "amax2:/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+  "runtime_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_overlap_audit_02b3cbf0",
+  "candidate_manifest": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_candidates_final_v2/candidate_freeze_manifest.json",
+    "bytes": 96636,
+    "sha256": "6b2855b0d69c6f98c101b91bb508fff3ec068ed196403b4a6ab890449c7ba610"
+  },
+  "output": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_overlap_audit_02b3cbf0/reserved_formal_training_overlap_audit.json",
+    "bytes": 75034,
+    "sha256": "4d3ef70635cef28706cb4d7a54dd721abbe672421d7461ab971db86b04c6d516"
+  },
+  "audited_sources": 29,
+  "completed_sources": 29,
+  "overlap_counts": {
+    "cross_train": {"exact_filename": 26, "patient_group": 26},
+    "cross_val": {"exact_filename": 3, "patient_group": 3},
+    "segmentator_coarse_train": {"exact_filename": 25, "patient_group": 29},
+    "segmentator_coarse_val": {"exact_filename": 4, "patient_group": 29},
+    "segmentator_fine_train": {"exact_filename": 22, "patient_group": 22},
+    "segmentator_fine_val": {"exact_filename": 3, "patient_group": 3},
+    "segmentator_fine_test": {"exact_filename": 4, "patient_group": 4}
+  },
+  "unknown_or_limited_lineage": {
+    "generator_base_model_patient_overlap": "unknown",
+    "cellvit_patient_overlap": "unknown",
+    "pix2pix": "archived config is not a complete checkpoint-training lineage proof"
+  },
+  "interpretation": "The audit records observed or potential training exposure. Absence from a supplied manifest is not proof of independence. Automated measurements remain coupled computational evidence and are not independent clinical validation.",
+  "formal_generation_launched": false,
+  "qualification_updated": false
+}
