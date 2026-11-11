@@ -3,6 +3,9 @@
   "frozen_before_formal_generation": true,
   "implementation_commit": "514c502e",
   "implementation_path": "scripts/analyze_manuscript_formal_r3.py",
+  "implementation_sha256": "2074056e5d04556cc00308ff6d5e72f17371954601cc1cbff6c601b06a9b9f00",
+  "server_isolated_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_analysis_tool_514c502e/analyze_manuscript_formal_r3.py",
+  "server_cli_help_passed": true,
   "input_gate": {
     "scope": "formal_r3",
     "formal_launch_permitted": true,
