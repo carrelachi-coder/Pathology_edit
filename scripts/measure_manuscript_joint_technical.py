@@ -70,18 +70,29 @@ def verified_generation(row, root, protocol, code_identity):
     return endpoint,verify_postprocess(info,row,expected_config=protocol['postprocess']['configuration'])
 
 
-def main():
+def scope_contract(formal: bool) -> dict:
+    return {
+        'technical_validation': not formal,
+        'generation_scope': 'formal_manuscript_cohort' if formal else 'joint_gpu_technical_acceptance',
+        'report_scope': 'formal_r3' if formal else 'joint_gpu_technical_acceptance',
+        'formal_launch_permitted': formal,
+    }
+
+
+def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     for flag in ('protocol','cohort-manifest','generation-output','output'):p.add_argument('--'+flag,type=Path,required=True)
-    p.add_argument('--device',default='cuda:0');args=p.parse_args();repo=Path(__file__).resolve().parents[1]
-    protocol=json.loads(args.protocol.read_text());validate_launch_scope(protocol,technical_validation=True)
-    assets=preflight(protocol,args.cohort_manifest,repo,technical_validation=True)
+    p.add_argument('--device',default='cuda:0')
+    p.add_argument('--formal',action='store_true',help='Require the frozen formal cohort and emit a formal R3 report.')
+    args=p.parse_args(argv);repo=Path(__file__).resolve().parents[1];mode=scope_contract(args.formal)
+    protocol=json.loads(args.protocol.read_text());validate_launch_scope(protocol,technical_validation=mode['technical_validation'])
+    assets=preflight(protocol,args.cohort_manifest,repo,technical_validation=mode['technical_validation'])
     rows=[json.loads(line) for line in args.cohort_manifest.read_text().splitlines() if line.strip()]
     cohort=validate_cohort(rows,source_count=protocol['source_count'],handoff_validator=build_frozen_generator_inputs,
-        protocol=protocol,assets=assets,technical_validation=True)
+        protocol=protocol,assets=assets,technical_validation=mode['technical_validation'])
     if protocol['measurement']['cell_point_policy']!=CELL_POINT_POLICY:raise ValueError('unfrozen cell point rule')
     scope=json.loads((args.generation_output/'cohort_scope_validation.json').read_text())
-    if (scope.get('scope')!='joint_gpu_technical_acceptance' or scope.get('formal_launch_permitted') is not False
+    if (scope.get('scope')!=mode['generation_scope'] or scope.get('formal_launch_permitted') is not mode['formal_launch_permitted']
             or scope.get('protocol_sha256')!=sha256_file(args.protocol)
             or scope.get('generation_manifest_sha256')!=sha256_file(args.cohort_manifest)):
         raise ValueError('generation scope/protocol identity differs')
@@ -90,12 +101,13 @@ def main():
             or summary.get('completed_count')!=len(rows) or summary.get('failure_count')!=0):
         raise ValueError('generation has no complete terminal record')
     args.output.mkdir(parents=True,exist_ok=False);records=[];controller=[]
-    report={'scope':'joint_gpu_technical_acceptance','formal_launch_permitted':False,
+    report={'scope':mode['report_scope'],'formal_launch_permitted':mode['formal_launch_permitted'],
         'requested_generated':len(rows),'requested_measurements':len(cohort)*6,
         'chain_integrity_accepted':False,'status':'started','records':records,
         'protocol':asset_identity(args.protocol),'generation_scope':asset_identity(args.generation_output/'cohort_scope_validation.json'),
         'code_commit':protocol['implementation_commit'],'controllers':controller,
-        'interpretation':'technical identity/completeness only; order, ties and reversals are observations, not acceptance gates'}
+        'interpretation':('formal R3 paired measurement; order, ties and reversals are observations, not acceptance gates'
+            if args.formal else 'technical identity/completeness only; order, ties and reversals are observations, not acceptance gates')}
     path=args.output/'joint_technical_report.json'
     def save():path.write_text(json.dumps(report,indent=2,allow_nan=False))
     def execute(command,name,*,allow_failure=False):
