@@ -194,7 +194,12 @@ def summarize_order(
 
 
 def summarize_sham_drift(
-    patients: list[str], grouped: dict[str, dict[str, dict]], endpoint: str
+    patients: list[str],
+    grouped: dict[str, dict[str, dict]],
+    endpoint: str,
+    *,
+    seed: int,
+    bootstrap_draws: int,
 ) -> dict:
     values = []
     for patient in patients:
@@ -209,6 +214,13 @@ def summarize_sham_drift(
         "valid_pairs": len(array),
         "mean_sham_minus_original": float(array.mean()) if len(array) else None,
         "median_sham_minus_original": float(np.median(array)) if len(array) else None,
+        "patient_bootstrap_95_interval": (
+            percentile_interval(
+                array, stable_seed(seed, "sham_drift__" + endpoint), bootstrap_draws
+            )
+            if len(array)
+            else None
+        ),
     }
 
 
@@ -251,7 +263,16 @@ def analyze(report: dict, *, seed: int, bootstrap_draws: int, permutation_draws:
         "patient_ids": patients,
         "primary_holm_family": primary,
         "order_outcomes": [summarize_order(patients, grouped, endpoint) for endpoint in ("u1", "u2")],
-        "sham_drift": [summarize_sham_drift(patients, grouped, endpoint) for endpoint in ("u1", "u2")],
+        "sham_drift": [
+            summarize_sham_drift(
+                patients,
+                grouped,
+                endpoint,
+                seed=seed,
+                bootstrap_draws=bootstrap_draws,
+            )
+            for endpoint in ("u1", "u2")
+        ],
         "secondary_inflammatory_density": secondary,
         "qualification_updated": False,
         "physician_claim_created": False,
