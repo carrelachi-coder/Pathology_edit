@@ -35,6 +35,17 @@
       "identical": true
     }
   },
+  "frozen_model_assets": {
+    "probnet_checkpoint": {
+      "path": "/data1/zhao/wqx/probnet_density/frozen/epoch29_C3_shape_group_total_count/best_epoch29_c29607f1b609accb.pt",
+      "bytes": 115019174,
+      "sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211"
+    },
+    "instance_library": {
+      "path": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/nuclei_library/BCSS",
+      "tree_sha256": "f00d5c4b9afb3cae7ca2e22f41f698d51e36af4f3ad216599d47bb7b058433e4"
+    }
+  },
   "new_accounting_and_control_files": [
     "scripts/freeze_reserved_four_target_candidates.py",
     "scripts/run_reserved_four_target_compilation.py"
