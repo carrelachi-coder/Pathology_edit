@@ -1,0 +1,19 @@
+{
+  "schema_version": "formal-r3-exclusion-audit-execution-v1",
+  "created_local_date": "2026-11-12",
+  "implementation_commit": "8bea0aee",
+  "output": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_exclusion_audit_8bea0aee/formal_r3_exclusion_audit.json",
+    "bytes": 2190,
+    "sha256": "90ff3d6fba3c4b3e122a4d9f1689fd34fac8ef0cc694990a363a0bc0b4d7f98c"
+  },
+  "technical_patient_count": 5,
+  "development_patient_count": 16,
+  "reserved_candidate_patient_count": 29,
+  "reserved_candidate_reference_count": 29,
+  "selected_patient_overlap": [],
+  "selected_reference_overlap": [],
+  "formal_candidates_all_in_reserved_partition": true,
+  "formal_generation_launched": false,
+  "qualification_updated": false
+}
