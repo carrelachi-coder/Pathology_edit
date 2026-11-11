@@ -23,6 +23,11 @@
     "development_patients": 0,
     "four_target_approved_patients": 0
   },
+  "server_contract_validation": {
+    "joint_case_contexts_parsed": 92,
+    "local_input_paths_validated": 92,
+    "status": "passed"
+  },
   "patient_order_span": {
     "first": "TCGA-A2-A0D0",
     "last": "TCGA-E2-A1LS"
