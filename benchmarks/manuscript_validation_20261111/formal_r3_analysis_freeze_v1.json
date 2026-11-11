@@ -1,0 +1,64 @@
+{
+  "schema_version": "formal-r3-analysis-freeze-v1",
+  "frozen_before_formal_generation": true,
+  "implementation_commit": "514c502e",
+  "implementation_path": "scripts/analyze_manuscript_formal_r3.py",
+  "input_gate": {
+    "scope": "formal_r3",
+    "formal_launch_permitted": true,
+    "status": "complete",
+    "chain_integrity_accepted": true,
+    "states_per_patient": [
+      "original",
+      "sham",
+      "u1_moderate",
+      "u1_significant",
+      "u2_moderate",
+      "u2_significant"
+    ],
+    "one_source_per_patient": true
+  },
+  "primary_endpoints": {
+    "u1": "predicted tumor tissue proportion in the frozen source-valid-tissue ROI",
+    "u2": "predicted immune-infiltrate tissue proportion in the frozen source Stroma-union-Immune ROI"
+  },
+  "primary_family": [
+    "u1_moderate_minus_sham",
+    "u1_significant_minus_sham",
+    "u2_moderate_minus_sham",
+    "u2_significant_minus_sham"
+  ],
+  "analysis": {
+    "independent_unit": "patient_id",
+    "estimand": "equal-patient mean paired edit-minus-sham difference",
+    "bootstrap_draws": 5000,
+    "bootstrap_interval": "percentile 95%",
+    "paired_test": "two-sided patient-level sign-flip Monte Carlo permutation",
+    "permutation_draws": 20000,
+    "multiplicity": "Holm adjustment over the four primary comparisons",
+    "alpha": 0.05,
+    "seed": 20261102
+  },
+  "ordinal_reporting": {
+    "states": ["sham", "moderate", "significant"],
+    "categories": ["strict_order", "adjacent_tie", "reversal", "incomplete"],
+    "report_valid_triplet_rate": true,
+    "report_all_requested_bounds": true
+  },
+  "missingness": {
+    "valid_statuses": ["valid_nonzero", "valid_zero_with_completion"],
+    "zero_imputation": false,
+    "uncertain_failure_missing_or_not_applicable_excluded_from_complete_pairs": true,
+    "requested_and_valid_denominators_reported": true
+  },
+  "secondary_endpoint": "CellViT inflammatory cell density for U2, reported outside the primary Holm family",
+  "sham_drift": "sham-minus-original reported separately for U1 and U2",
+  "tests": {
+    "passed": 5,
+    "failed": 0,
+    "scope": "formal input gating, patient/source identity, valid-zero handling, missingness, ordinal outcomes, Holm-family output"
+  },
+  "current_formal_results_created": false,
+  "qualification_updated": false,
+  "physician_claim_created": false
+}
