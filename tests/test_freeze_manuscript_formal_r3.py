@@ -1,6 +1,10 @@
 import pytest
 
-from scripts.freeze_manuscript_formal_r3 import load_selected, realized_target_record
+from scripts.freeze_manuscript_formal_r3 import (
+    load_selected,
+    realized_target_record,
+    validate_overlap_record,
+)
 
 
 def manifests():
@@ -81,3 +85,30 @@ def test_incomplete_realized_ledger_is_rejected_instead_of_writing_null():
         realized_target_record(
             {"joint_fraction": 0.19, "tissue_fraction": 0.17, "joint_pixels": 100}
         )
+
+
+def overlap(patient="P0", source_sha="a" * 64):
+    return {
+        "status": "completed",
+        "patient_id": patient,
+        "source_image_sha256": source_sha,
+        "generator": {},
+        "segmentator": {},
+        "cellvit": {},
+    }
+
+
+def test_overlap_record_is_bound_to_patient_and_source_image():
+    record = overlap()
+    assert validate_overlap_record(record, patient_id="P0", source_sha256="a" * 64) is record
+    with pytest.raises(ValueError, match="different patient or source"):
+        validate_overlap_record(record, patient_id="P1", source_sha256="a" * 64)
+    with pytest.raises(ValueError, match="different patient or source"):
+        validate_overlap_record(record, patient_id="P0", source_sha256="b" * 64)
+
+
+def test_incomplete_overlap_record_is_rejected():
+    record = overlap()
+    record.pop("cellvit")
+    with pytest.raises(ValueError, match="incomplete"):
+        validate_overlap_record(record, patient_id="P0", source_sha256="a" * 64)

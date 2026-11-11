@@ -55,6 +55,18 @@ def realized_target_record(ledger: dict) -> dict:
     return {key: ledger[key] for key in required}
 
 
+def validate_overlap_record(overlap: dict, *, patient_id: str, source_sha256: str) -> dict:
+    if (
+        not isinstance(overlap, dict)
+        or overlap.get("status") != "completed"
+        or not all(name in overlap for name in ("generator", "segmentator", "cellvit"))
+    ):
+        raise ValueError("formal source training-overlap audit is incomplete")
+    if overlap.get("patient_id") != patient_id or overlap.get("source_image_sha256") != source_sha256:
+        raise ValueError("training-overlap audit is bound to a different patient or source image")
+    return overlap
+
+
 def load_selected(candidate_manifest: dict, materialization: dict) -> list[tuple[dict, dict]]:
     if candidate_manifest.get("schema_version") != "reserved-four-target-candidate-freeze-v1":
         raise ValueError("unsupported reserved candidate manifest")
@@ -104,7 +116,11 @@ def main() -> int:
     candidate_manifest = json.loads(args.candidate_manifest.read_text())
     materialization = json.loads(args.handoff_materialization.read_text())
     selected = load_selected(candidate_manifest, materialization)
-    overlaps = json.loads(args.overlap_audit.read_text())["cases"]
+    overlap_payload = json.loads(args.overlap_audit.read_text())
+    audited_freeze = overlap_payload.get("source_freeze", {})
+    if audited_freeze.get("sha256") != sha256_file(args.candidate_manifest):
+        raise ValueError("training-overlap audit was not produced from this candidate freeze")
+    overlaps = overlap_payload["cases"]
     exclusion = json.loads(args.exclusion_audit.read_text())
     args.output.mkdir(parents=True, exist_ok=False)
 
@@ -123,13 +139,11 @@ def main() -> int:
         source_paths = {name: str(verify_identity(source_inputs[name])) for name in (
             "reference_image", "reference_tissue_mask", "reference_nuclei_mask"
         )}
-        overlap = overlaps.get(reference)
-        if (
-            not isinstance(overlap, dict)
-            or overlap.get("status") != "completed"
-            or not all(name in overlap for name in ("generator", "segmentator", "cellvit"))
-        ):
-            raise ValueError("formal source training-overlap audit is incomplete")
+        overlap = validate_overlap_record(
+            overlaps.get(reference),
+            patient_id=patient_id,
+            source_sha256=source_inputs["reference_image"]["sha256"],
+        )
         selected_overlaps[reference] = overlap
         mappings[reference] = {"patient_id": patient_id, "wsi_id": candidate["wsi_id"]}
         source_coarse = coarse_tissue(source_paths["reference_tissue_mask"])
