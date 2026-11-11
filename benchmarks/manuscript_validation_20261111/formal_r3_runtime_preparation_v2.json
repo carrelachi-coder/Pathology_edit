@@ -1,0 +1,21 @@
+{
+  "schema_version": "formal-r3-runtime-preparation-v2",
+  "runtime_commit": "396ab07f70d2e0f6ecb7620803aee994af0873f4",
+  "branch": "codex/topology-hole-semantics-v2",
+  "server_checkout": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_runtime_396ab07f",
+  "checkout_clean": true,
+  "checkout_size": "40M",
+  "server_cli_checks": {
+    "freeze_manuscript_formal_r3": true,
+    "measure_manuscript_formal_r3": true
+  },
+  "supersedes": "formal_r3_runtime_preparation_v1.json",
+  "supersession_reason": "the v1 freezer read a nonexistent tissue_change_pixels ledger field; v2 requires the real tissue_pixels field and rejects incomplete realized-area records",
+  "targeted_tests": {
+    "passed": 6,
+    "failed": 0
+  },
+  "initial_verification_note": "the first exact-HEAD shell check used an incorrectly transcribed full hash and exited before CLI checks; the existing checkout HEAD was then read directly and all checks passed without recreating or changing the checkout",
+  "formal_execution_started": false,
+  "qualification_updated": false
+}
