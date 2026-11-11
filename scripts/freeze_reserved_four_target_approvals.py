@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
+import math
 
 
 TARGET_LABELS = (
@@ -16,6 +17,15 @@ TARGET_LABELS = (
     "u1_significant",
     "u2_moderate",
     "u2_significant",
+)
+
+REVIEW_TEXT_FIELDS = (
+    "tissue_geometry",
+    "nucleus_layout",
+    "coupling",
+    "preserved_conditions",
+    "limitations",
+    "verdict",
 )
 
 
@@ -65,6 +75,17 @@ def freeze_approvals(queue: dict, decisions: dict) -> list[dict]:
             raise ValueError("decision must be approved or rejected")
         if not str(row.get("reviewer", "")).strip() or not str(row.get("reason", "")).strip():
             raise ValueError("every decision needs a reviewer and reason")
+        if row["decision"] == "approved":
+            if row["reviewer"] != "codex_current_chat":
+                raise ValueError("approved research masks require the frozen Codex reviewer identity")
+            confidence = row.get("confidence")
+            if type(confidence) not in (int, float) or not math.isfinite(confidence) or not .7 <= confidence <= 1.:
+                raise ValueError("approved decisions require confidence between 0.7 and 1.0")
+            if not str(row.get("reviewed_utc", "")).strip():
+                raise ValueError("approved decisions require a review timestamp")
+            for field in REVIEW_TEXT_FIELDS:
+                if not str(row.get(field, "")).strip():
+                    raise ValueError(f"approved decisions require {field}")
         by_key[key] = row
 
     consumed: set[tuple[str, str]] = set()
@@ -96,6 +117,9 @@ def freeze_approvals(queue: dict, decisions: dict) -> list[dict]:
                             "evidence": candidate["evidence"],
                             "reviewer": decision["reviewer"],
                             "reason": decision["reason"],
+                            "confidence": decision["confidence"],
+                            "reviewed_utc": decision["reviewed_utc"],
+                            **{field: decision[field] for field in REVIEW_TEXT_FIELDS},
                         }
                     )
             if len(approved) > 1:
@@ -109,6 +133,8 @@ def freeze_approvals(queue: dict, decisions: dict) -> list[dict]:
                     "target": case["target"],
                     "status": "approved" if len(approved) == 1 else "not_approved",
                     "approved_candidate": approved[0] if approved else None,
+                    "audit_case_dir": case.get("audit_case_dir"),
+                    "review_board": case.get("review_board"),
                 }
             )
         frozen_patients.append(

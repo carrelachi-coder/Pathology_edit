@@ -30,6 +30,7 @@ def inputs(tmp_path: Path):
                 "case_id": case_id,
                 "target": target,
                 "status": "review_required",
+                "audit_case_dir": str(tmp_path),
                 "review_board": artifact(tmp_path / f"board{index}.png", "board"),
                 "candidates": [
                     {
@@ -46,6 +47,14 @@ def inputs(tmp_path: Path):
                 "decision": "approved",
                 "reviewer": "codex_current_chat",
                 "reason": "mask-only contract accepted",
+                "confidence": 0.9,
+                "reviewed_utc": "2026-11-12T00:00:00Z",
+                "tissue_geometry": "target geometry follows the approved interface",
+                "nucleus_layout": "nuclei remain inside compatible tissue",
+                "coupling": "tissue and nuclei changes are coupled",
+                "preserved_conditions": "unrequested regions remain unchanged",
+                "limitations": "mask-only review without generated H&E",
+                "verdict": "acceptable research condition",
             }
         )
     queue = {
@@ -86,6 +95,13 @@ def test_missing_candidate_decision_is_rejected(tmp_path: Path):
     queue, decisions = inputs(tmp_path)
     decisions["decisions"].pop()
     with pytest.raises(ValueError, match="missing explicit"):
+        freeze_approvals(queue, decisions)
+
+
+def test_approval_without_detailed_mask_observations_is_rejected(tmp_path: Path):
+    queue, decisions = inputs(tmp_path)
+    decisions["decisions"][0].pop("tissue_geometry")
+    with pytest.raises(ValueError, match="tissue_geometry"):
         freeze_approvals(queue, decisions)
 
 
