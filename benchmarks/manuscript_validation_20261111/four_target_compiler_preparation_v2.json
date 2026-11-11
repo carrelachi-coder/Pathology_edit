@@ -16,6 +16,13 @@
     "all_identical": true
   },
   "controller_change_from_v1": "For review_required outcomes, bind every uniquely identified candidate passing all hard gate reports; do not rely on the normally empty selected_candidate_id field.",
+  "historical_real_output_regression": {
+    "input": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_compile_v5",
+    "review_required_cases_checked": 4,
+    "summary_selected_candidate_ids_present": 0,
+    "hard_gate_passing_portfolio_sizes": [1, 2, 1, 1],
+    "all_review_portfolios_recovered": true
+  },
   "focused_tests_passed": 9,
   "frozen_model_assets": {
     "probnet_checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
