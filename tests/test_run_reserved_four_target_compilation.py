@@ -64,8 +64,10 @@ def test_controller_writes_one_terminal_receipt_per_case(tmp_path: Path):
         "p.add_argument('--device');a=p.parse_args();"
         "c=json.loads(a.cases.read_text())[a.case_index];"
         "(a.output/c['case_id']).mkdir(parents=True);"
+        "g=[{'candidate_id':'candidate','passed':True,'checks':[]}];"
+        "(a.output/c['case_id']/ 'joint_gate_reports.json').write_text(json.dumps(g));"
         "s={'case_id':c['case_id'],'status':'review_required','reasons':[],"
-        "'selected_candidate_id':'candidate'};"
+        "'selected_candidate_id':None,'artifacts':{'case_dir':str(a.output/c['case_id'])}};"
         "(a.output/(c['case_id']+'_summary.json')).write_text(json.dumps(s))\n"
     )
     output = tmp_path / "output"
@@ -98,4 +100,5 @@ def test_controller_writes_one_terminal_receipt_per_case(tmp_path: Path):
     assert len(receipts) == 8
     assert {row["terminal_status"] for row in receipts} == {"review_required"}
     assert {row["device"] for row in receipts} == {"cpu:0", "cpu:1"}
+    assert {tuple(row["passing_candidate_ids"]) for row in receipts} == {("candidate",)}
     assert len(list((output / "receipts").glob("case_*.json"))) == 8

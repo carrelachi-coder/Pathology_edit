@@ -193,6 +193,33 @@ def main() -> int:
                     receipt["summary"] = identity(summary_path)
                     receipt["selected_candidate_id"] = summary.get("selected_candidate_id")
                     receipt["abstain_reasons"] = summary.get("reasons")
+                    artifacts = summary.get("artifacts") or {}
+                    case_dir_value = artifacts.get("case_dir")
+                    if receipt["terminal_status"] == "review_required":
+                        case_dir = Path(str(case_dir_value)) if case_dir_value else None
+                        gate_path = case_dir / "joint_gate_reports.json" if case_dir else None
+                        if gate_path is None or not gate_path.is_file():
+                            receipt["terminal_status"] = "indeterminate_review_portfolio"
+                        else:
+                            reports = json.loads(gate_path.read_text())
+                            passing = [
+                                str(row["candidate_id"])
+                                for row in reports
+                                if isinstance(row, dict)
+                                and row.get("passed") is True
+                                and not any(
+                                    isinstance(check, dict)
+                                    and check.get("severity") == "hard"
+                                    and check.get("passed") is not True
+                                    for check in row.get("checks", [])
+                                )
+                            ]
+                            if not passing or len(set(passing)) != len(passing):
+                                receipt["terminal_status"] = "indeterminate_review_portfolio"
+                            else:
+                                receipt["audit_case_dir"] = str(case_dir.resolve())
+                                receipt["joint_gate_reports"] = identity(gate_path)
+                                receipt["passing_candidate_ids"] = passing
             elif receipt["timed_out"]:
                 receipt["terminal_status"] = "timeout"
             else:
@@ -219,7 +246,12 @@ def main() -> int:
     (args.output / "compilation_receipts.json").write_text(
         json.dumps(final, indent=2) + "\n"
     )
-    indeterminate = {"timeout", "execution_error", "indeterminate_identity"}
+    indeterminate = {
+        "timeout",
+        "execution_error",
+        "indeterminate_identity",
+        "indeterminate_review_portfolio",
+    }
     return 78 if any(row["terminal_status"] in indeterminate for row in final) else 0
 
 
