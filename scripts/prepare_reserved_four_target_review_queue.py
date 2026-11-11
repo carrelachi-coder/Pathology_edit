@@ -42,6 +42,17 @@ def identity(path: Path) -> dict[str, Any]:
     }
 
 
+def verified_identity(record: dict, *, label: str) -> Path:
+    path = Path(str(record.get("path", "")))
+    if (
+        not path.is_file()
+        or path.stat().st_size != int(record.get("bytes", -1))
+        or sha256_file(path) != record.get("sha256")
+    ):
+        raise ValueError(f"frozen {label} content drift: {path}")
+    return path
+
+
 def load_inputs(
     cases_path: Path, candidate_manifest_path: Path, receipts_path: Path
 ) -> tuple[list[dict], dict, dict[int, dict]]:
@@ -117,6 +128,26 @@ def prepare_queue(
                     or not board.is_file()
                 ):
                     raise ValueError(f"review-required receipt is incomplete: {case_id}")
+                gate_path = verified_identity(
+                    receipt.get("joint_gate_reports", {}), label="joint gate report"
+                )
+                if gate_path.resolve() != (audit_dir / "joint_gate_reports.json").resolve():
+                    raise ValueError(f"joint gate report path differs from the audit case: {case_id}")
+                reports = json.loads(gate_path.read_text())
+                current_passing = [
+                    str(row["candidate_id"])
+                    for row in reports
+                    if isinstance(row, dict)
+                    and row.get("passed") is True
+                    and not any(
+                        isinstance(check, dict)
+                        and check.get("severity") == "hard"
+                        and check.get("passed") is not True
+                        for check in row.get("checks", [])
+                    )
+                ]
+                if current_passing != candidate_ids:
+                    raise ValueError(f"passing candidate portfolio drifted after compilation: {case_id}")
                 candidate_rows = []
                 case_output = evidence_root / f"case_{index:04d}"
                 case_output.mkdir()
