@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.freeze_manuscript_formal_r3 import load_selected
+from scripts.freeze_manuscript_formal_r3 import load_selected, realized_target_record
 
 
 def manifests():
@@ -58,3 +58,26 @@ def test_empty_approval_set_cannot_freeze_formal_cohort():
     materialized["patients"] = []
     with pytest.raises(ValueError, match="no patient"):
         load_selected(candidate, materialized)
+
+
+def test_realized_target_uses_actual_ledger_tissue_pixels_field():
+    ledger = {
+        "joint_fraction": 0.19,
+        "tissue_fraction": 0.17,
+        "joint_pixels": 100,
+        "tissue_pixels": 90,
+        "tissue_change_pixels": 999,
+    }
+    assert realized_target_record(ledger) == {
+        "joint_fraction": 0.19,
+        "tissue_fraction": 0.17,
+        "joint_pixels": 100,
+        "tissue_pixels": 90,
+    }
+
+
+def test_incomplete_realized_ledger_is_rejected_instead_of_writing_null():
+    with pytest.raises(ValueError, match="lacks realized"):
+        realized_target_record(
+            {"joint_fraction": 0.19, "tissue_fraction": 0.17, "joint_pixels": 100}
+        )

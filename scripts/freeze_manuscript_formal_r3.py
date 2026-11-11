@@ -48,6 +48,13 @@ def verify_identity(record: dict) -> Path:
     return path
 
 
+def realized_target_record(ledger: dict) -> dict:
+    required = ("joint_fraction", "tissue_fraction", "joint_pixels", "tissue_pixels")
+    if any(ledger.get(key) is None for key in required):
+        raise ValueError("approved handoff ledger lacks realized joint or tissue area")
+    return {key: ledger[key] for key in required}
+
+
 def load_selected(candidate_manifest: dict, materialization: dict) -> list[tuple[dict, dict]]:
     if candidate_manifest.get("schema_version") != "reserved-four-target-candidate-freeze-v1":
         raise ValueError("unsupported reserved candidate manifest")
@@ -192,12 +199,7 @@ def main() -> int:
                 ],
             }
             ledger = handoff["ledger"]
-            realized[reference][state] = {
-                "joint_fraction": ledger.get("joint_fraction"),
-                "tissue_fraction": ledger.get("tissue_fraction"),
-                "joint_pixels": ledger.get("joint_pixels"),
-                "tissue_change_pixels": ledger.get("tissue_change_pixels"),
-            }
+            realized[reference][state] = realized_target_record(ledger)
         regions = {
             "u1_roi": source_coarse > 0,
             "u2_roi": np.isin(source_coarse, (2, 4)),
