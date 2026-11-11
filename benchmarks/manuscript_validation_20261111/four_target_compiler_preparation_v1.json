@@ -5,7 +5,18 @@
   "archive_sha256": "e18d9c53ca4020b78c573f31366011a6d52a80a90de662b274e490599a14bdfe",
   "archive_bytes": 28805120,
   "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/four_target_compiler_b8b9abb0",
-  "server_import_compile_check": "passed",
+  "server_import_compile_check": {
+    "status": "passed",
+    "python_environment": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "torch_version": "2.4.1",
+    "cuda_initialized_after_imports": false,
+    "modules": [
+      "phase3_joint_edit_refine.models",
+      "phase3_joint_edit_refine.workflow",
+      "phase3_joint_edit_refine.mature_probnet_adapter",
+      "inpaint_cells.generate"
+    ]
+  },
   "scientific_code_equivalence": {
     "comparison_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_0ac9bdda",
     "phase3_mask_edit_refine": {
