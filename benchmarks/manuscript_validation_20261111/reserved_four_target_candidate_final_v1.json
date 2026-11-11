@@ -1,0 +1,33 @@
+{
+  "schema_version": "reserved-four-target-candidate-final-record-v1",
+  "created_utc": "2026-11-11T12:42:39Z",
+  "scope": "All currently proven reserved topology-pass patients; candidate compilation input only, not four-target approval or formal cohort admission.",
+  "producer_commit": "17225219f56dea8b5cf5bc38175d15e7322edaad",
+  "producer_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/four_target_compiler_17225219",
+  "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_candidates_final_v1",
+  "source_freeze_sha256": "d9c4e4f8cd4eb9c98c4635574c810de40aec26253a8cac6c4c8209d9b9cfa31c",
+  "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+  "candidate_freeze_manifest": {
+    "bytes": 95796,
+    "sha256": "a8ca60d7cc575386ee7c8d448bad3bc1874e4f77173f5292472c8e8293c1630b"
+  },
+  "four_target_candidate_cases": {
+    "bytes": 315065,
+    "sha256": "3f8676931fd63bcdba9f4d7e31a0ba2226ef60004b8dea52e0b9f393caf03f48"
+  },
+  "counts": {
+    "independent_reserved_patients": 29,
+    "targets_per_patient": 4,
+    "candidate_cases": 116,
+    "source_assets_content_verified": 87,
+    "joint_case_contexts_parsed": 116,
+    "local_input_paths_validated": 116,
+    "development_patients": 0,
+    "four_target_approved_patients": 0
+  },
+  "selection_rule": "Reserved patient order; first topology-passing source in frozen patient-local order; no generated RGB or embedding selection.",
+  "unknown_patient_not_admitted": "TCGA-AR-A256",
+  "formal_qualification_updated": false,
+  "gpu_compilation_calls": 0,
+  "h_and_e_calls": 0
+}
