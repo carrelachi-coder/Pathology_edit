@@ -1,0 +1,13 @@
+{
+  "schema_version": "reserved-review-tool-preparation-v2",
+  "created_local_date": "2026-11-12",
+  "implementation_commit": "f7656302",
+  "runtime": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_review_tool_f7656302",
+  "cli_import_check": true,
+  "gate_report_content_reverified_before_review": true,
+  "passing_candidate_portfolio_recomputed_before_review": true,
+  "supersedes": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_review_tool_96553125",
+  "compilation_started": false,
+  "review_decisions_created": 0,
+  "qualification_updated": false
+}
