@@ -9,7 +9,11 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import sys
 from typing import Any, Callable
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from phase3_joint_edit_refine.independent_review import review_evidence
 

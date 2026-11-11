@@ -1,8 +1,23 @@
 from pathlib import Path
+import subprocess
+import sys
 
 from PIL import Image
 
 from scripts.prepare_reserved_four_target_review_queue import prepare_queue
+
+
+def test_direct_cli_help_imports_repository_modules():
+    repository = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, str(repository / "scripts" / "prepare_reserved_four_target_review_queue.py"), "--help"],
+        cwd=repository,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "usage:" in result.stdout
 
 
 def test_only_complete_four_target_patient_is_ready(tmp_path: Path):
