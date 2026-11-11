@@ -1,0 +1,28 @@
+{
+  "schema_version": "formal-r3-runtime-preparation-v1",
+  "runtime_commit": "a0439caab813a574f5707e3edc050e652ce80b11",
+  "branch": "codex/topology-hole-semantics-v2",
+  "server_checkout": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_runtime_a0439caa",
+  "checkout_clean": true,
+  "checkout_size": "40M",
+  "python": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+  "server_import_checks": {
+    "freeze_manuscript_formal_r3": true,
+    "measure_manuscript_formal_r3": true,
+    "analyze_manuscript_formal_r3": true
+  },
+  "local_chain_tests": {
+    "passed": 20,
+    "failed": 0
+  },
+  "scope": "clean execution checkout preparation only; no formal assets, H&E, measurements, statistics, or physician data created",
+  "activation_requirements": [
+    "four-target compilation complete",
+    "independent mask decisions complete",
+    "four handoffs materialized for every included patient",
+    "formal overlap and exclusion audits present",
+    "protocol template identities rechecked"
+  ],
+  "formal_execution_started": false,
+  "qualification_updated": false
+}
