@@ -197,6 +197,26 @@ def build_candidates(
     return selected_rows, cases
 
 
+def verify_selected_source_assets(
+    *, freeze: dict[str, Any], selected_rows: list[dict[str, Any]]
+) -> None:
+    by_reference = {
+        str(source["reference_id"]): source for source in freeze["candidate_sources"]
+    }
+    for row in selected_rows:
+        source = by_reference[row["reference_id"]]
+        verified = {}
+        for label, asset in source["inputs"].items():
+            path = Path(str(asset["path"]))
+            if not path.is_file():
+                raise ValueError(f"selected source asset does not exist: {path}")
+            actual = file_identity(path)
+            if actual["sha256"] != str(asset["sha256"]):
+                raise ValueError(f"selected source asset hash mismatch: {path}")
+            verified[label] = actual
+        row["verified_source_inputs"] = verified
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-freeze", type=Path, required=True)
@@ -214,6 +234,7 @@ def main() -> int:
         templates=templates,
         pass_rows=passes,
     )
+    verify_selected_source_assets(freeze=freeze, selected_rows=selected)
     args.output.mkdir(parents=True)
     cases_path = args.output / "four_target_candidate_cases.json"
     cases_path.write_text(json.dumps(cases, indent=2) + "\n")

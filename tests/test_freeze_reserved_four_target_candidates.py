@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from scripts.freeze_reserved_four_target_candidates import (
     build_candidates,
     collect_receipts,
     load_templates,
+    verify_selected_source_assets,
 )
 
 
@@ -164,3 +166,28 @@ def test_collect_receipts_keeps_history_but_only_returns_passes(tmp_path: Path):
     history, passes = collect_receipts([root])
     assert len(history) == 2
     assert [row["patient_id"] for row in passes] == ["P1"]
+
+
+def test_selected_source_assets_are_content_verified(tmp_path: Path):
+    template_path = tmp_path / "templates.json"
+    template_path.write_text(json.dumps(templates_payload()))
+    freeze = freeze_payload()
+    for label, asset in freeze["candidate_sources"][0]["inputs"].items():
+        path = tmp_path / f"{label}.bin"
+        path.write_bytes(label.encode())
+        asset["path"] = str(path)
+        asset["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    selected, _cases = build_candidates(
+        freeze=freeze,
+        templates=load_templates(template_path),
+        pass_rows=[receipt_row("P0", "R0")],
+    )
+    verify_selected_source_assets(freeze=freeze, selected_rows=selected)
+    assert set(selected[0]["verified_source_inputs"]) == {
+        "reference_image",
+        "reference_tissue_mask",
+        "reference_nuclei_mask",
+    }
+    freeze["candidate_sources"][0]["inputs"]["reference_image"]["sha256"] = "bad"
+    with pytest.raises(ValueError, match="hash mismatch"):
+        verify_selected_source_assets(freeze=freeze, selected_rows=selected)
