@@ -1,0 +1,39 @@
+{
+  "kind": "adapter-v2-finite-S07-final-launch-technical-review-v1",
+  "status": "technical_preparation_passed_user_execution_authorization_absent",
+  "final_manifest_sha256": "7b050e49885a456a2430899a58b27bb1e54b9d82a90fe26b0f8a68781f4b9756",
+  "candidate_preflight_manifest_sha256": "07152a3752b102c7d6de31b2e1a565645601d681534d7e21152a04e07961cb5a",
+  "candidate_preflight_result_sha256": "33dbef203f41adeda0aed111beccb98adb3d8714179ddadc9d553bae42ed3caf",
+  "startup_difference_acceptance_sha256": "7f9b57c2622cddb6fb1ec123d326a1f32d9e8161948c59d7f9127c5427d4aa73",
+  "contract_identity_sha256": "4998189b7396ab84320022bc5097d4efa5efa43c510baef45b55cfa263937f7d",
+  "identity_crosswalk": "Final manifest differs from the preflighted closed candidate only in execution and authorization/preparation metadata; controller/code, 4080 snapshot file hashes, 12 pinned file hashes, source, templates, mappings, limits, runtime, output, reservation, all three arm specifications and comparison rules are bytewise equal as parsed JSON.",
+  "target_preflight": {
+    "status": "pass",
+    "snapshot_files_checked": 4080,
+    "pinned_files_checked": 12,
+    "business_imports": 0,
+    "witness_calls": 0,
+    "hardlink_at_output_parent": "pass",
+    "diagnostic_output_absent_after": true,
+    "execution_authorization_absent_after": true
+  },
+  "controller_checks": [
+    "separate exact manifest SHA and RNG decision SHA approval before business import",
+    "S07 source index7, one source, two operations per arm",
+    "three arms A then B then C, reserve two witness calls before each, max6",
+    "1200 seconds per source pair, no automatic retry",
+    "A versus historical and A versus B exact full business receipt equality",
+    "B capture hard30s; B/C full semantic and raster strict compare hard60s",
+    "mismatch/timeout/invalid evidence stops later arms",
+    "live pinned/snapshot/runtime/reservation/free space checks before each arm"
+  ],
+  "known_limits": [
+    "Target preflight is a point-in-time check; live gates must run again at launch.",
+    "Accepted import difference is disclosed; absence of all side effects is not proven.",
+    "A controlled RNG condition is not a reconstruction of the historical random trajectory.",
+    "A successful diagnostic would supply process evidence, not S07 qualification or four-target approval.",
+    "30-patient formal cohort remains unqualified and closed."
+  ],
+  "execution_authorized": false,
+  "S07_witness_calls_after_preflight": 0
+}

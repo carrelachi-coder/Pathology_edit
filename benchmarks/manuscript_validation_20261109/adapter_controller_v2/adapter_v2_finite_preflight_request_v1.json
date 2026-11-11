@@ -1,0 +1,32 @@
+{
+  "kind": "adapter-v2-finite-S07-preflight-request-v1",
+  "status": "proposed_not_authorized",
+  "manifest": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_launch_controls_candidate_539b9e2d/adapter_v2_finite_launch_candidate_v1.json",
+    "sha256": "07152a3752b102c7d6de31b2e1a565645601d681534d7e21152a04e07961cb5a"
+  },
+  "preflight_script": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_launch_controls_candidate_539b9e2d/check_adapter_v2_finite_preflight_v1.py",
+    "sha256": "88d27922bd1688fb2e68f869298a0fc8026c5b6005c33594d1007993decb7d7c"
+  },
+  "target_code_snapshot": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/adapter_controller_v2_candidate_0acdaf3e",
+    "controller_sha256": "f37a759fdddbc897a1f9f47d201e90922450f5ea2c061cbb24118e689fe96f83"
+  },
+  "one_shot_scope": "One target-environment identity/scope/storage/filesystem preflight of the closed candidate; no pathology business import or witness execution.",
+  "timeout_seconds": 90,
+  "retries": 0,
+  "on_failure": "HOLD; record actual result; no automatic retry or promotion to executable manifest.",
+  "expected_checks": {
+    "snapshot_files": 4080,
+    "pinned_files": 12,
+    "runtime_distributions": 220,
+    "hardlink_at_output_parent": true,
+    "output_directory_must_be_absent": true
+  },
+  "execution_permitted": false,
+  "S07_witness_calls": 0,
+  "formal_cohort_calls": 0,
+  "HE_calls": 0,
+  "authorization_required": "New SHA-bound one-shot user decision for this target preflight; prior import-only approvals are consumed and do not cover it."
+}

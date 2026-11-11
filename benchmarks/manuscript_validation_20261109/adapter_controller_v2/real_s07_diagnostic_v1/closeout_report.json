@@ -1,0 +1,52 @@
+{
+  "kind": "adapter-v2-authorized-finite-S07-diagnostic-closeout-v1",
+  "status": "mismatch_hold_B_timeout_incomplete_evidence",
+  "authorization_consumed": true,
+  "manifest_sha256": "7b050e49885a456a2430899a58b27bb1e54b9d82a90fe26b0f8a68781f4b9756",
+  "approval_sha256": "e16c9f1be05910c94c8d9cbe5505317372aa11f4be30da0b9e2a2027e6c74af4",
+  "controller_exit_code": 78,
+  "arms_launched": [
+    "A",
+    "B"
+  ],
+  "C_launched": false,
+  "reserved_logical_witness_calls": 4,
+  "actual_B_witness_calls": "not independently reconstructed from incomplete B process; do not equate reservation with execution",
+  "A": {
+    "elapsed_seconds": 126.88421448878944,
+    "exit_code": 0,
+    "timed_out": false,
+    "historical_full_business_receipt_exact_match": true,
+    "source_rows": 1,
+    "operation_checks": 2,
+    "business_receipt_sha256": "fc60c71cc2e3d7e8449dfe0f057846ad93a5f3f840b78eec0bc6cb5034a80a76"
+  },
+  "B": {
+    "elapsed_seconds": 1200.0345457103103,
+    "timed_out": true,
+    "business_receipt_present": false,
+    "observer_completion_present": false,
+    "final_block_index_present": false,
+    "committed_blocks": 270,
+    "contiguous_committed_events": 8864998,
+    "committed_block_sha_and_chain_checks": "270/270 passed in separate read-only audit",
+    "last_committed_event_name": "guard.stage",
+    "last_committed_sequence": 8864997,
+    "storage_observed_approx_MiB": 84,
+    "physical_limit_GiB": 4,
+    "interpretation": "Valid committed prefix only; missing tail and business receipt make full B evidence invalid. Prefix integrity does not establish business-process completion."
+  },
+  "C": {
+    "directory_present": false,
+    "witness_calls": 0
+  },
+  "controller_result_sha256": "611a6450e8f6060a59891cd66ecc830f84959c7dfe9ad82b6238f2cbea5a2971",
+  "controller_events_sha256": "a9489765dbb12ac1934f81145a9ab3aeeea09a998a441ca83a0a7100640686c6",
+  "B_pending_index_sha256": "a1723901fa3cf6a8f20912ec87c87ab2e31962bf5a4b7db00abb4c9e4cf7b763",
+  "launch_transport_sha256": "07060049aa7fd31648ed534fdfdb7d956b963b935759f75f531b4d224dff59ab",
+  "no_retry": true,
+  "qualification_updates_permitted": false,
+  "formal_30_patient_cohort_authorized": false,
+  "HE_generation_authorized": false,
+  "next_analysis": "Offline diagnosis of high-frequency event cost and partial guard trace using archived data; no S07 replay under consumed authorization."
+}

@@ -1,0 +1,26 @@
+{
+  "kind": "adapter-v2-controlled-startup-identity-v1",
+  "rng_policy": "common_parent_explicit_postfork_restore_v1",
+  "rng_decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "preload_torch_cpu": true,
+  "startup_difference_acceptance_sha256": "7f9b57c2622cddb6fb1ec123d326a1f32d9e8161948c59d7f9127c5427d4aa73",
+  "target_import_report_sha256": "439168fb397324337e8895b68a5241e6acc71b92cf2622a217133b6690596975",
+  "frozen_environment": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "PYTHONHASHSEED": null,
+    "PYTHONPATH": null,
+    "PYTHONHOME": null,
+    "LD_LIBRARY_PATH": null,
+    "CONDA_PREFIX": null,
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+    "LANG": "en_US.UTF-8",
+    "LC_ALL": "C.UTF-8"
+  },
+  "historical_rng_state_recovered": false,
+  "comparison_policy": "A vs historical full receipt; A vs B full receipt; B vs C full semantic stream and raster integrity. No exclusions or path normalization.",
+  "scope": "Identifier of the approved controlled startup condition; not an actual per-arm RNG state or execution authorization."
+}

@@ -1,0 +1,81 @@
+{
+  "kind": "adapter-finite-S07-run-identity-v2-budget-candidate",
+  "code_commit": "0acdaf3e2811c91def2b4904ee7adb42637dbe31",
+  "controller_sha256": "f37a759fdddbc897a1f9f47d201e90922450f5ea2c061cbb24118e689fe96f83",
+  "source": {
+    "source_reference": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "operations": [
+      {
+        "case_id": "BCSS_native_recovery_205cb2398525fe94__cohesive-boundary-expansion-v1__capacity",
+        "primitive_id": "cohesive-boundary-expansion-v1"
+      },
+      {
+        "case_id": "BCSS_native_recovery_205cb2398525fe94__generic-immune-infiltrate-increase-v1__capacity",
+        "primitive_id": "generic-immune-infiltrate-increase-v1"
+      }
+    ],
+    "source_asset_sha256": {
+      "reference_image": "c64dcc8dd0ecb73e1d823bc4d699033d52ba362bfb60f3d58685866aaac876a8",
+      "reference_tissue_mask": "4465140a7f1c00581dc596782df91018c6f4715381fb96a5e346f20528b010b8",
+      "reference_nuclei_mask": "9080a157d64fa476a27ff4708821ae0939426690bc463b1901eb68ab667aebb0"
+    },
+    "frozen_subset_and_templates_match": true
+  },
+  "source_subset": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "bytes": 16682
+  },
+  "case_templates": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+    "bytes": 9444
+  },
+  "case_mappings": [
+    {
+      "operation": "U1",
+      "template_index": 1,
+      "case_id": "BCSS_native_recovery_205cb2398525fe94__cohesive-boundary-expansion-v1__capacity",
+      "canonical_mapping_sha256": "f148617ecba6a928cf94d3b70ab4f1699a35912749bb418577b011ef4ed9edc2"
+    },
+    {
+      "operation": "U2",
+      "template_index": 3,
+      "case_id": "BCSS_native_recovery_205cb2398525fe94__generic-immune-infiltrate-increase-v1__capacity",
+      "canonical_mapping_sha256": "55df328b4a82b00308c69e61403a9e8fe81495708f2ed51642cdc0ae2b1256a7"
+    }
+  ],
+  "rng_policy": "common_parent_explicit_postfork_restore_v1",
+  "rng_decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "code_files": {
+    "diagnostic_storage/__init__.py": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+    "diagnostic_storage/guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "diagnostic_storage/guard_budget_candidate_v1.py": "d4ac09d03509e9d149b96e184d0abdebab08462730b7e5a494af7432df03cf64",
+    "diagnostic_storage/observer_adapter_contract_v2.py": "76c2ef88254cbffece3cca947546ae67a0c6fbcb17530caef8b2525e41c54188",
+    "diagnostic_storage/observer_adapter_v2.py": "35cf0841325b51e809f803fa9fd3346ebd12ea5d6ae04fcaa03c5c3abc2104f7",
+    "diagnostic_storage/observer_adapter_validation_v2_budget.py": "4e513943a97bd07b022b7103457e936896a10315612d5353a55cf7745d1faac1",
+    "diagnostic_storage/observer_adapter_validation_v3_budget.py": "5ff6f0ad6f586a54883f42db0ab8cbb73c3db73b7fdef2bb73e03be5e9c05564",
+    "diagnostic_storage/validation_budget_policy_v3_budget.py": "ecb503aab14a74269c4ae119494bf6d6deecededaf91811a15f684a28f3eb9ea",
+    "diagnostic_storage/validator_process_gate_v3_budget.py": "23ac9dd0b6cf0730a73844b2daf8dba95d3cd6f0af9bf747760b1a392f3b238b",
+    "diagnostic_storage/observer_invocation_bridge_v1.py": "2c0427c3e11ddacea33b300bfeaf2ce7bd48aeba230c1f2e793f5498fc0e29f4",
+    "scripts/validator_readonly_worker_v3_budget.py": "7a055509ae8791729b9ea7318c0b89d61c58003c0c4a5d25c28971ef7a79df43",
+    "scripts/run_limited_topology_adapter_controller_v2.py": "f37a759fdddbc897a1f9f47d201e90922450f5ea2c061cbb24118e689fe96f83",
+    "scripts/smoke_adapter_controlled_topology_imports_v2.py": "ec42b9261747ebf880fdb64583588c7c9f55afa14d58b16516b13f28ba78e970",
+    "scripts/limited_topology_startup.py": "468276457111d91d0192fca4afae9b348f174fe080289e804687b23efa4bafac"
+  },
+  "limits": {
+    "source_processes": 3,
+    "witness_calls": 6,
+    "seconds_per_source_pair": 1200,
+    "retries": 0
+  },
+  "identity_field_semantics": "Source and case mappings match the prior frozen descriptor. The new contract identity binds the 521-file inventory and unchanged source/templates/budgets/floors/limits; the old opaque contract SHA is historical reference only. Startup SHA binds the explicit v2 descriptor. Run SHA binds this candidate descriptor, not a launch manifest or recovered historical RNG state.",
+  "startup_identity_descriptor_sha256": "c879c5ac7c935c2370ea0c6f994a1935b7e430cd9a2c172df6b0d1c88bb400a4",
+  "startup_difference_acceptance_sha256": "7f9b57c2622cddb6fb1ec123d326a1f32d9e8161948c59d7f9127c5427d4aa73",
+  "target_import_closeout_sha256": "94569d21e3b3f0de1313ed90a295a478dc67a60c5b878587c040894a248419c0",
+  "validator_policy_sha256": "ecb503aab14a74269c4ae119494bf6d6deecededaf91811a15f684a28f3eb9ea",
+  "execution_permitted": false,
+  "contract_identity_descriptor_sha256": "4998189b7396ab84320022bc5097d4efa5efa43c510baef45b55cfa263937f7d",
+  "legacy_contract_sha256_unverified_derivation": "b65eb80539e905a3a26d7a723006c9ec77c17d250d271c7f751ef95ed3cbc24d"
+}

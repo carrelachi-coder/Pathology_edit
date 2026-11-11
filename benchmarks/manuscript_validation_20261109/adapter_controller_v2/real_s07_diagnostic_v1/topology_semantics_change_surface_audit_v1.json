@@ -1,0 +1,61 @@
+{
+  "kind": "topology-semantics-change-surface-audit-v1",
+  "status": "read_only_implementation_impact_review",
+  "candidate": "Align whole-mask hole counting with the documented 8-connected foreground / 4-connected background digital-topology convention.",
+  "current_implementation_origin": {
+    "commit": "d17317ad4",
+    "summary": "The duplicated mixed-connectivity helpers in execution.py and gates.py originated together in the initial evidence-gated workflow implementation. Later commits added hole-intersection helpers with the same 8-connected labeling pattern. No separate frozen rationale for mixed 4-fill/8-label counting was found."
+  },
+  "production_change_surface": [
+    {
+      "file": "phase3_mask_edit_refine/execution.py",
+      "helpers": [
+        "_hole_count",
+        "_hole_intersection_count"
+      ],
+      "consumers": [
+        "_whole_mask_topology_audit source/target before-after counts",
+        "fragmentation residual target-hole binding",
+        "fragmentation bridge-reclaim safety check"
+      ]
+    },
+    {
+      "file": "phase3_mask_edit_refine/gates.py",
+      "helpers": [
+        "_hole_count",
+        "_hole_intersection_count"
+      ],
+      "consumers": [
+        "final source/target topology gate",
+        "fragmentation residual target-hole gate"
+      ]
+    }
+  ],
+  "must_remain_unchanged": [
+    "8-connected tissue foreground component counting",
+    "local source foreground and 4-connected background guard semantics",
+    "target-island and target-contact checks",
+    "19/32 percent nominal budgets",
+    "14/27 percent tissue hard floors",
+    "minimum five-percentage-point strength gap",
+    "old qualification reports and receipts"
+  ],
+  "required_tests_before_real_case_use": [
+    "The fixed accepted-pixel counterexample has equal source-hole counts under the candidate 4-connected definition.",
+    "Execution and final-gate helpers produce identical counts for source, target and residual-hole fixtures.",
+    "No generated target may create or resolve a 4-connected background hole unless the primitive explicitly permits it.",
+    "Component, spacing, retained-area and changed-component-area gates remain unchanged.",
+    "Existing targeted topology and joint-refine regression suites pass under the new version.",
+    "The exact S07 source readout is 14 under both candidate execution and gate helpers, while the old frozen implementation remains recorded as 13."
+  ],
+  "identity_and_requalification_effect": [
+    "The candidate requires a new algorithm/contract version and new code hashes.",
+    "A new run is not expected to match historical business receipts byte-for-byte because a qualification field intentionally changes.",
+    "All patient/source qualifications used under the candidate must be recomputed and stored separately; old 17/19 results remain historical results.",
+    "The correction does not authorize Track B scheduling changes or formal H&E generation."
+  ],
+  "risk": "A 4-connected hole definition may change pass/fail status wherever enclosed regions touch only diagonally. It is semantically aligned with the local guard but still requires independent scientific review and full requalification.",
+  "implementation_authorized": false,
+  "real_case_execution_authorized": false,
+  "qualification_updates_permitted": false
+}

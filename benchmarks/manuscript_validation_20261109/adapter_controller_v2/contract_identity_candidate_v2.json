@@ -1,0 +1,61 @@
+{
+  "kind": "limited-topology-S07-contract-identity-v2-candidate",
+  "identity_scope": "Immutable content identity for finite diagnostic input and contract; this descriptor does not authorize execution or establish scientific qualification.",
+  "frozen_contract_inventory": {
+    "path": "benchmarks/manuscript_validation_20261103/limited_topology_execution_contracts_v1.json",
+    "sha256": "132420199211b1b22f1849bb73c8e733b64b5600e9c5e4090e725365e06863ee",
+    "file_count": 521,
+    "legacy_and_observer_resource_hashes_match": true
+  },
+  "source_subset": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "bytes": 16682
+  },
+  "case_templates": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+    "bytes": 9444
+  },
+  "case_mappings": [
+    {
+      "operation": "U1",
+      "template_index": 1,
+      "case_id": "BCSS_native_recovery_205cb2398525fe94__cohesive-boundary-expansion-v1__capacity",
+      "canonical_mapping_sha256": "f148617ecba6a928cf94d3b70ab4f1699a35912749bb418577b011ef4ed9edc2"
+    },
+    {
+      "operation": "U2",
+      "template_index": 3,
+      "case_id": "BCSS_native_recovery_205cb2398525fe94__generic-immune-infiltrate-increase-v1__capacity",
+      "canonical_mapping_sha256": "55df328b4a82b00308c69e61403a9e8fe81495708f2ed51642cdc0ae2b1256a7"
+    }
+  ],
+  "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+  "operations": [
+    {
+      "case_id": "BCSS_native_recovery_205cb2398525fe94__cohesive-boundary-expansion-v1__capacity",
+      "primitive_id": "cohesive-boundary-expansion-v1"
+    },
+    {
+      "case_id": "BCSS_native_recovery_205cb2398525fe94__generic-immune-infiltrate-increase-v1__capacity",
+      "primitive_id": "generic-immune-infiltrate-increase-v1"
+    }
+  ],
+  "nominal_joint_budgets": [
+    0.19,
+    0.32
+  ],
+  "hard_tissue_floors": [
+    0.14,
+    0.27
+  ],
+  "limits": {
+    "source_processes": 3,
+    "witness_calls": 6,
+    "seconds_per_source_pair": 1200,
+    "retries": 0
+  },
+  "legacy_contract_sha256_unverified_derivation": "b65eb80539e905a3a26d7a723006c9ec77c17d250d271c7f751ef95ed3cbc24d",
+  "execution_permitted": false
+}

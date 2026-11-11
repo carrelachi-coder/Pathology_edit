@@ -1,0 +1,119 @@
+{
+  "kind": "adapter-v2-startup-difference-review-proposal-v1",
+  "status": "review_proposal_not_independently_accepted",
+  "target_import_report_sha256": "439168fb397324337e8895b68a5241e6acc71b92cf2622a217133b6690596975",
+  "target_closeout_sha256": "94569d21e3b3f0de1313ed90a295a478dc67a60c5b878587c040894a248419c0",
+  "target_manifest_sha256": "ac7d7fbec769bb9ebe2089f6e6136aa7484e583bd8caf4530446b390244eb7d7",
+  "controller_code_commit": "0acdaf3e2811c91def2b4904ee7adb42637dbe31",
+  "observed": {
+    "A_module_entries": 96,
+    "B_module_entries": 103,
+    "C_module_entries": 103,
+    "BC_exact_import_order_equal": true,
+    "AB_exact_import_order_equal": false,
+    "B_C_only_module_paths": [
+      "diagnostic_storage/__init__.py",
+      "diagnostic_storage/guard_blocks_v2.py",
+      "diagnostic_storage/guard_budget_candidate_v1.py",
+      "diagnostic_storage/observer_adapter_contract_v2.py",
+      "diagnostic_storage/observer_adapter_v2.py",
+      "diagnostic_storage/observer_invocation_bridge_v1.py",
+      "phase3_mask_edit_refine/passive_observer.py"
+    ],
+    "shared_module_paths_moved_earlier_in_B_C": [
+      "phase3_mask_edit_refine/__init__.py",
+      "phase3_mask_edit_refine/models.py"
+    ],
+    "shared_module_multiset_equal": true,
+    "initial_rng_and_hash_equal": true,
+    "default_rng_unchanged_by_import": true,
+    "native_threads_each": 1,
+    "CUDA_initialized": false,
+    "parent_business_modules": [],
+    "forbidden_calls": 0
+  },
+  "source_review": [
+    {
+      "path": "diagnostic_storage/__init__.py",
+      "local_sha256": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba",
+      "direct_module_level_calls": [],
+      "target_frozen_sha256": "16dc4be979d2c4f4d47ed815f796ea0fdf7d2356f067da3abcd6e0db2fd890ba"
+    },
+    {
+      "path": "diagnostic_storage/guard_blocks_v2.py",
+      "local_sha256": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+      "direct_module_level_calls": [],
+      "target_frozen_sha256": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4"
+    },
+    {
+      "path": "diagnostic_storage/guard_budget_candidate_v1.py",
+      "local_sha256": "d4ac09d03509e9d149b96e184d0abdebab08462730b7e5a494af7432df03cf64",
+      "direct_module_level_calls": [],
+      "target_frozen_sha256": "d4ac09d03509e9d149b96e184d0abdebab08462730b7e5a494af7432df03cf64"
+    },
+    {
+      "path": "diagnostic_storage/observer_adapter_contract_v2.py",
+      "local_sha256": "76c2ef88254cbffece3cca947546ae67a0c6fbcb17530caef8b2525e41c54188",
+      "direct_module_level_calls": [],
+      "target_frozen_sha256": "76c2ef88254cbffece3cca947546ae67a0c6fbcb17530caef8b2525e41c54188"
+    },
+    {
+      "path": "diagnostic_storage/observer_adapter_v2.py",
+      "local_sha256": "35cf0841325b51e809f803fa9fd3346ebd12ea5d6ae04fcaa03c5c3abc2104f7",
+      "direct_module_level_calls": [
+        {
+          "line": 32,
+          "expression": "frozenset({'qualification.begin', 'compiler.attempt', 'planner.ready', 'execution.begin', 'probe.complete', 'grow.begin', 'grow.end', 'compiler.exception', 'qua"
+        }
+      ],
+      "target_frozen_sha256": "35cf0841325b51e809f803fa9fd3346ebd12ea5d6ae04fcaa03c5c3abc2104f7"
+    },
+    {
+      "path": "diagnostic_storage/observer_invocation_bridge_v1.py",
+      "local_sha256": "2c0427c3e11ddacea33b300bfeaf2ce7bd48aeba230c1f2e793f5498fc0e29f4",
+      "direct_module_level_calls": [],
+      "target_frozen_sha256": "2c0427c3e11ddacea33b300bfeaf2ce7bd48aeba230c1f2e793f5498fc0e29f4"
+    },
+    {
+      "path": "phase3_mask_edit_refine/passive_observer.py",
+      "local_sha256": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2",
+      "direct_module_level_calls": [
+        {
+          "line": 22,
+          "expression": "ContextVar('passive_topology_observer', default=None)"
+        },
+        {
+          "line": 23,
+          "expression": "frozenset({'qualification.begin', 'compiler.attempt', 'planner.ready', 'execution.begin', 'probe.complete', 'grow.begin', 'grow.end', 'compiler.exception', 'qua"
+        }
+      ],
+      "target_frozen_sha256": "20fe7d33107f02322a242e7a9e31c274f56ec3a7135a1cc5a6994e68a9c958e2"
+    },
+    {
+      "path": "phase3_mask_edit_refine/__init__.py",
+      "local_sha256": "10d9e47d15057b94f4d08e5fde01f7a5bb61eafe55e22263f4d003da731b12a5",
+      "direct_module_level_calls": [],
+      "target_frozen_sha256": "10d9e47d15057b94f4d08e5fde01f7a5bb61eafe55e22263f4d003da731b12a5"
+    },
+    {
+      "path": "phase3_mask_edit_refine/models.py",
+      "local_sha256": "ab13e2515c881b10e2206ce2697ced70f1d514a29adc8ff040b9949beaa6cdc2",
+      "direct_module_level_calls": [],
+      "target_frozen_sha256": "ab13e2515c881b10e2206ce2697ced70f1d514a29adc8ff040b9949beaa6cdc2"
+    }
+  ],
+  "technical_reasoning": [
+    "The six diagnostic_storage imports define the reviewed Codec, budget candidate, Adapter contract, Adapter and bridge; the bridge imports passive_observer, whose module creates a ContextVar and checkpoint name set. Direct module-level calls in these nine inspected files are limited to ContextVar and frozenset construction.",
+    "The two shared refine modules are the previously disclosed early imports. The target import-only probe found no default RNG/hash, thread or CUDA state change.",
+    "The comparison rules for historical A, A/B receipts and B/C full semantic events remain strict; this proposal does not add excluded fields or path normalization."
+  ],
+  "limitations": [
+    "Static direct module-level call inspection does not prove that all transitive import side effects are absent.",
+    "Import-only smoke does not prove runtime noninterference during a real witness, resource fit, or successful S07 diagnosis.",
+    "This proposal is a technical review item, not an external reviewer signature or real execution authorization."
+  ],
+  "decision_requested": "Accept or reject the listed v2 startup difference as a disclosed diagnostic condition while retaining strict A vs historical, A vs B and B vs C comparisons.",
+  "real_S07_execution_permitted": false,
+  "formal_cohort_permitted": false,
+  "all_reviewed_module_sha_match_target_frozen_snapshot": true
+}

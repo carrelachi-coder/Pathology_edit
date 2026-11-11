@@ -1,0 +1,30 @@
+{
+  "kind": "limited-topology-adapter-v2-budget",
+  "approved": true,
+  "manifest_sha256": "7b050e49885a456a2430899a58b27bb1e54b9d82a90fe26b0f8a68781f4b9756",
+  "rng_decision_sha256": "8f4a90deb63ad48669da9f1073f2c7ce69203d07cfa89640b10a3cd4333c8174",
+  "startup_difference_acceptance_sha256": "7f9b57c2622cddb6fb1ec123d326a1f32d9e8161948c59d7f9127c5427d4aa73",
+  "authorization_source": "User explicitly authorized this exact one-shot finite S07/U1,U2 A\u2192B\u2192C diagnostic in current Codex chat. This record is a transcription of that decision, not an independent signature.",
+  "authorization_consumption": "Consumed when one controller process is started, including preflight HOLD; no automatic retry or reuse.",
+  "scope": {
+    "source": "S07",
+    "operations": [
+      "U1",
+      "U2"
+    ],
+    "arms": [
+      "A",
+      "B",
+      "C"
+    ],
+    "max_logical_witness_calls": 6,
+    "seconds_per_source_pair": 1200,
+    "overall_work_seconds": 3600,
+    "automatic_retries": 0
+  },
+  "formal_30_patient_cohort_authorized": false,
+  "HE_generation_authorized": false,
+  "batch_four_target_compile_authorized": false,
+  "topology_optimization_authorized": false,
+  "physician_study_authorized": false
+}

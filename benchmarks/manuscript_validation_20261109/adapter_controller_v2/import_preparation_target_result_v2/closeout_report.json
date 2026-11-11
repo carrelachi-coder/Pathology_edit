@@ -1,0 +1,54 @@
+{
+  "kind": "adapter-v2-import-only-target-closeout-v2",
+  "status": "import_only_smoke_passed_with_disclosed_A_vs_BC_difference",
+  "manifest_sha256": "ac7d7fbec769bb9ebe2089f6e6136aa7484e583bd8caf4530446b390244eb7d7",
+  "authorization": "User approved exactly one v2 import-only audit; consumed by the completed attempt.",
+  "source_files": {
+    "report.json": "439168fb397324337e8895b68a5241e6acc71b92cf2622a217133b6690596975",
+    "A_import_smoke.json": "98c2871b6aaab810574d6ca613bea83c9b0cc7d5e0c99756d4eed33e8713efb6",
+    "B_import_smoke.json": "8e0670643413849fff8a36ae49ab313737d07044bbb88c52adb75526c7948f15",
+    "C_import_smoke.json": "625494cc2be532bab21c583d0a18301dcc0fe2cb232e821b346ee09594f671d9"
+  },
+  "execution": {
+    "completed_import_children": 3,
+    "child_elapsed_seconds": {
+      "A": 14.65,
+      "B": 1.939,
+      "C": 1.878
+    },
+    "BC_import_order_equal": true,
+    "AB_import_order_equal": false,
+    "initial_rng_hash_equal": true,
+    "default_rng_unchanged_by_import": true,
+    "native_threads_each": 1,
+    "CUDA_initialized": false,
+    "forbidden_business_calls": 0,
+    "witness_calls": 0,
+    "S07_calls": 0,
+    "H_E_calls": 0
+  },
+  "A_vs_BC_difference": {
+    "B_C_only_modules": [
+      "diagnostic_storage/__init__.py",
+      "diagnostic_storage/guard_blocks_v2.py",
+      "diagnostic_storage/guard_budget_candidate_v1.py",
+      "diagnostic_storage/observer_adapter_contract_v2.py",
+      "diagnostic_storage/observer_adapter_v2.py",
+      "diagnostic_storage/observer_invocation_bridge_v1.py",
+      "phase3_mask_edit_refine/passive_observer.py"
+    ],
+    "shared_modules_moved_earlier_in_B_C": [
+      "phase3_mask_edit_refine/__init__.py",
+      "phase3_mask_edit_refine/models.py"
+    ],
+    "shared_module_multiset_equal": true,
+    "interpretation": "B and C have identical import chronology. A differs by the listed observer/adapter modules and the two early imports already known from prior observer work. This smoke observes no RNG/hash/thread/CUDA change, but cannot prove absence of all import side effects."
+  },
+  "remaining_gates": [
+    "Independent acceptance of this versioned startup difference for future real S07.",
+    "Fresh fully bound real execution manifest and separate one-shot authorization.",
+    "Real S07 noninterference, runtime and Full Capture storage remain untested."
+  ],
+  "formal_cohort_permitted": false,
+  "qualification_updates_permitted": false
+}

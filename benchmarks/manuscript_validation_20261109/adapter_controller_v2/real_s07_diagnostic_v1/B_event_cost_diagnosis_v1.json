@@ -1,0 +1,53 @@
+{
+  "kind": "adapter-v2-S07-B-recording-cost-evidence-v1",
+  "status": "offline_evidence_and_hypothesis_not_optimization_or_new_execution_approval",
+  "real_B": {
+    "committed_events": 8864998,
+    "time_limit_seconds": 1200,
+    "committed_event_rate_per_second_lower_bound": 7387.28566747446,
+    "decoded_prefix_bytes": 1132445494,
+    "committed_blocks": 270,
+    "guard_event_fraction": 0.9999173152661738,
+    "business_complete": false,
+    "storage_ceiling_hit": false,
+    "source": "real_s07_diagnostic_v1/B_committed_prefix_analysis_v1.json"
+  },
+  "target_synthetic_v4_100k": {
+    "events": 100000,
+    "candidate_transport_seconds": 16.4756300766021,
+    "candidate_profiled_seconds": 14.097865955904126,
+    "profile_hotspots_cumulative_seconds": {
+      "ObserverAdapter.record": 13.856,
+      "Codec.Writer.write_event": 10.093,
+      "Budget.claim_many_inside_write_event": 2.096,
+      "JSON_parse_inside_write_event": 1.176,
+      "array_ref_traversal_inside_write_event": 1.274,
+      "fsync_across_test": 2.946
+    },
+    "note": "Cumulative hotspot times overlap and cannot be added; fixture is synthetic, not S07.",
+    "profile_code": "Earlier Adapter v1 plus CandidateBudget. It shares important Writer and budget code with v2, but is not a direct profile of the timed-out v2 real run."
+  },
+  "target_synthetic_full_2_1M": {
+    "events": 2100000,
+    "B_encode_and_seal_seconds": 335.7154802363366,
+    "B_event_rate_per_second": 6255.296891646594,
+    "note": "Includes 683 arrays and synthetic event mix; workload differs from S07.",
+    "profile_code": "Adapter v2 synthetic target run; still not the S07 event distribution or source execution."
+  },
+  "code_path_observation": [
+    "Adapter encodes a Python event to JSON bytes, then Writer.write_event reparses those bytes and recursively checks array references before buffering.",
+    "Writer reserves candidate block and index capacity for each event. CandidateBudget reduces repeated Path construction but retains per-event reservation work.",
+    "Lossless block compression and storage were functioning in S07; 270 blocks and 8,864,998 committed events were verified, far below 4 GiB."
+  ],
+  "causal_limit": "These archived profiles identify likely cost centers but do not measure their causal contribution in the real S07 process. The real B arm had an unfinished U1 guard loop; exact remaining event count and run time are unknown.",
+  "next_versioned_prototype": "Independent, default-off fast-path experiment may pass the already encoded event object alongside exact JSONL bytes to avoid duplicate parse, with equivalent schema/reference/operation checks and unchanged output bytes; benchmark against the same deterministic event stream, then assess budget reservation and fsync separately. No production Observer change until full synthetic and fault-injection review.",
+  "required_acceptance": [
+    "Same logical sequence, per-event bytes and full-stream SHA for all generated test events; no sampling or field loss.",
+    "Same array occurrence binding, operation boundary checks, 4 GiB storage budget and completion semantics.",
+    "Failure injection preserves business exceptions and yields invalid evidence, never a false completion.",
+    "Streaming validation and strict B/C comparison unchanged.",
+    "No business planner, guard, ownership, RNG or pathology witness call during offline prototype tests.",
+    "A new real S07 run would require a fresh reviewed manifest and separate one-shot authorization."
+  ],
+  "qualification_updates_permitted": false
+}

@@ -1,0 +1,33 @@
+{
+  "kind": "adapter-v2-finite-S07-preflight-result-v1",
+  "status": "preflight_pass_authorization_consumed",
+  "authorization_source": "User approved exactly this one closed-candidate target preflight in the current chat; this is an execution record, not an external reviewer signature.",
+  "request_sha256": "4a3aa78d093b2357f496efc4a3911a2d407fc3a9656e0a4cfa41d640eddf698b",
+  "manifest_sha256": "07152a3752b102c7d6de31b2e1a565645601d681534d7e21152a04e07961cb5a",
+  "preflight_script_sha256": "88d27922bd1688fb2e68f869298a0fc8026c5b6005c33594d1007993decb7d7c",
+  "target_exit_code": 0,
+  "target_report": {
+    "business_imports": 0,
+    "controller_sha256": "f37a759fdddbc897a1f9f47d201e90922450f5ea2c061cbb24118e689fe96f83",
+    "execution_permitted": false,
+    "future_live_checks_required": true,
+    "manifest_sha256": "07152a3752b102c7d6de31b2e1a565645601d681534d7e21152a04e07961cb5a",
+    "pinned_files_checked": 12,
+    "snapshot_files_checked": 4080,
+    "status": "preflight_pass",
+    "witness_calls": 0
+  },
+  "postrun_checks": {
+    "diagnostic_output_absent": true,
+    "execution_approval_file_absent": true
+  },
+  "executions": 1,
+  "automatic_retries": 0,
+  "S07_witness_calls": 0,
+  "HE_calls": 0,
+  "formal_cohort_calls": 0,
+  "limitations": [
+    "This checks a closed candidate at one point in time. The final executable manifest and its authorization require separate review and SHA binding.",
+    "Live identity, reservation, free space, source scope and filesystem checks must run again at actual launch."
+  ]
+}

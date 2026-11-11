@@ -1,0 +1,6 @@
+{"arm": "A", "event": "launch_reserved", "reserved_witness_calls": 2}
+{"arm": "A", "event": "arm_process_receipt", "receipt": {"elapsed_seconds": 126.88421448878944, "exit_code": 0, "pid": 1988698, "timed_out": false}}
+{"arm": "A", "event": "arm_accepted"}
+{"arm": "B", "event": "launch_reserved", "reserved_witness_calls": 4}
+{"arm": "B", "event": "arm_process_receipt", "receipt": {"elapsed_seconds": 1200.0345457103103, "exit_code": null, "pid": 1995464, "timed_out": true}}
+{"arm": "B", "event": "mismatch_hold", "reason": "RuntimeError: arm timeout/nonzero exit"}
