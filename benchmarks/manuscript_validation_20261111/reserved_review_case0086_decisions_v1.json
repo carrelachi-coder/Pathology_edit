@@ -1,0 +1,9 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0086_v1/review_queue.json", "bytes": 31224, "sha256": "83f4676fe5c920b6d108d309ce9d9a964cc2507af87ee0fee9e4f096563f8c6b"},
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {"case_id": "BCSS_joint_supplement_c2179152846f__u2_moderate", "candidate_id": "joint-cand:001-mature-cells-03", "decision": "approved", "reviewer": "codex_current_chat", "reviewed_utc": "2026-11-12T02:52:00Z", "confidence": 0.93, "reason": "This is the sole candidate passing all frozen hard gates; it forms a coherent moderate immune transition and closely preserves the source population distribution.", "tissue_geometry": "The 45,596-pixel joint change forms a connected authorized stroma-to-immune region; its 43,073-pixel tissue component preserves adjacent tumor and non-target structures.", "nucleus_layout": "The 47 class-2 nuclei are complete, non-overlapping and contained. Source-relative area-p95, count, NND and Ripley ratios are 0.947, 1.099, 0.965 and 1.068.", "coupling": "Added immune nuclei remain inside authorized changed tissue; quota, seam, compatibility, distribution and density checks pass with score 0.900.", "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain unchanged.", "limitations": "Mask-only evidence does not establish generated-H&E quality or clinical validity; another target for this patient has already abstained.", "verdict": "Approve candidate 03 as the single mask-condition handoff."}
+  ],
+  "source_he_provided_to_review": false, "h_and_e_selection_used": false, "qualification_updated": false
+}
