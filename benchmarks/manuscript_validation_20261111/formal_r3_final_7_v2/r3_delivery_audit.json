@@ -46,6 +46,19 @@
       "sha256": "be5fe9376efdb5620a57481082f6d5738b6353796fb00fe6e58f6b212ba7c2ac"
     }
   },
+  "doctor_formal_order_pack": {
+    "path": "/Users/wangqinxin/Desktop/desktop/panels/R3_正式七患者_医生强度排序包_20261112",
+    "integrity_report_sha256": "bf694e0a5dcdc80ea7e561561b406f02d1b7d00f19e5fcb95403efa51b675212",
+    "independent_patients": 7,
+    "unique_images": 42,
+    "operations": 2,
+    "groups_per_reader": 14,
+    "images_per_group": 4,
+    "reader_count": 2,
+    "ties_permitted": true,
+    "unable_to_judge_permitted": true,
+    "doctor_scores_collected": false
+  },
   "research_boundary": {
     "primary_tissue_endpoint_did_not_show_cross_operation_monotonicity": true,
     "secondary_cellvit_inflammatory_density_is_supportive_not_a_replacement_endpoint": true,
