@@ -1,0 +1,46 @@
+{
+  "kind": "observer-budget-adapter-v2-target-preparation-closeout",
+  "status": "target_preparation_smoke_passed",
+  "manifest_sha256": "150f4b0505b33bc125c6a44eccae27a9e3459ec170539feb89c045765bccc910",
+  "authorization_consumed": true,
+  "setup_seconds": 0.139372568577528,
+  "total_seconds": 3.3107839357107878,
+  "code_identity": {
+    "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "guard_budget_candidate_v1.py": "d4ac09d03509e9d149b96e184d0abdebab08462730b7e5a494af7432df03cf64",
+    "observer_adapter_contract_v2.py": "76c2ef88254cbffece3cca947546ae67a0c6fbcb17530caef8b2525e41c54188",
+    "observer_adapter_v2.py": "35cf0841325b51e809f803fa9fd3346ebd12ea5d6ae04fcaa03c5c3abc2104f7",
+    "observer_adapter_validation_v2_budget.py": "4e513943a97bd07b022b7103457e936896a10315612d5353a55cf7745d1faac1"
+  },
+  "format": "observer-codec-adapter-v2-budget",
+  "threads_before": 1,
+  "threads_after": 1,
+  "rng_unchanged": true,
+  "torch_imported": false,
+  "S07_calls": 0,
+  "witness_calls": 0,
+  "HE_calls": 0,
+  "event_count": 0,
+  "outer_acceptance_published": false,
+  "target_output_inventory": [
+    "authorization_consumed.json",
+    "hardlink.final",
+    "hardlink.pending",
+    "preparation_result.json",
+    "synthetic_init/adapter_manifest.json",
+    "synthetic_init/adapter_manifest.json.pending",
+    "synthetic_init/codec/arrays.index.pending",
+    "synthetic_init/codec/blocks.index.pending"
+  ],
+  "limits": [
+    "Zero-event import/init smoke only; no real B/C noninterference or complete capture.",
+    "No process proof for a real S07 duration, Full Capture storage, or cohort eligibility.",
+    "Draft PR is not merged; old Controller remains unchanged."
+  ],
+  "source_sha256": {
+    "preparation_result.json": "e1827ab262be18949bf6b3ea5ccac4bf854f41850605ee09907b2664877a1bc3",
+    "authorization_consumed.json": "f27fef87dfd77a2beafb2f697187b62631b1367567c3c47f125b190f85ecdfd9",
+    "adapter_manifest.json": "8b3d1c1a605303f4edb0c130a22967efc65e3e9407a0d14a133f99b0e32b4d1d"
+  },
+  "recorded_utc": "2026-11-09T11:02:54.941193+00:00"
+}

@@ -1,0 +1,23 @@
+{
+  "status": "target_preparation_smoke_passed",
+  "S07_calls": 0,
+  "HE_calls": 0,
+  "witness_calls": 0,
+  "automatic_retries": 0,
+  "outer_acceptance_published": false,
+  "setup_seconds": 0.139372568577528,
+  "threads_before": 1,
+  "threads_after": 1,
+  "code_identity": {
+    "guard_blocks_v2.py": "dd4103b00b7eebf2ac4018a7997a61a01826840a0647cc3c9d19dafd53ecbef4",
+    "guard_budget_candidate_v1.py": "d4ac09d03509e9d149b96e184d0abdebab08462730b7e5a494af7432df03cf64",
+    "observer_adapter_contract_v2.py": "76c2ef88254cbffece3cca947546ae67a0c6fbcb17530caef8b2525e41c54188",
+    "observer_adapter_v2.py": "35cf0841325b51e809f803fa9fd3346ebd12ea5d6ae04fcaa03c5c3abc2104f7",
+    "observer_adapter_validation_v2_budget.py": "4e513943a97bd07b022b7103457e936896a10315612d5353a55cf7745d1faac1"
+  },
+  "format": "observer-codec-adapter-v2-budget",
+  "rng_unchanged": true,
+  "torch_imported": false,
+  "event_count": 0,
+  "elapsed_seconds": 3.3107839357107878
+}
