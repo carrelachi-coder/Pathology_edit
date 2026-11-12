@@ -1,0 +1,33 @@
+{
+  "schema_version": "topology-track-b-s07-stack-profile-v1",
+  "status": "self_authorized_once",
+  "purpose": "Locate the runtime bottleneck observed in the consumed v2 S07 development run without changing planner inputs, decisions, or time budgets after launch.",
+  "code": {
+    "archive_commit": "4f05b001",
+    "git_tree": "d63c868c75cbb17c029e1df8d753f1023ea79d3c",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_profile_candidate_4f05b001",
+    "profile_wrapper_sha256": "813d62c2bbaff46900f07ce8c27373abdc844469d31c0f988b737aca72c13f18",
+    "corrected_bisection_sha256": "a91a5ef45ccb281847db3c9c6616ce2ae8ef5c5850166ac105d0a6bebe8b9ee1"
+  },
+  "input": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_index": 7,
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "development_only": true,
+    "hard_timeout_seconds": 360,
+    "stack_signal": "SIGUSR1",
+    "stack_sample_offsets_seconds": [60, 180, 300],
+    "automatic_retries": 0,
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_stack_profile_v1",
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "he_calls": 0
+  },
+  "noninterference_boundary": "SIGUSR1 invokes Python faulthandler to print the current stacks. It does not call planner functions or modify masks, RNG, candidate ordering, or decisions. Because signal handling can briefly pause execution, this run is timing localization only and cannot qualify S07.",
+  "failure_policy": "Terminate at 360 seconds, preserve samples, zero retry, no business interpretation.",
+  "authorization_basis": "Codex reviewed the closed 1200-second HOLD and approved this smaller development-only diagnostic under the user's standing self-authorization policy."
+}

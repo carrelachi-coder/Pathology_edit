@@ -1,0 +1,82 @@
+{
+  "schema_version": "topology-track-b-s07-development-result-v5",
+  "recorded_at": "2026-11-11",
+  "status": "completed_partial_mechanism_success",
+  "authorization": {
+    "decision": "self_authorized_after_technical_review",
+    "standing_user_instruction": "之后不必再要求外界审查，你认为可以就授权通过",
+    "launch_manifest": "topology_track_b_s07_development_launch_manifest_v5.json",
+    "launch_commit": "da1c5eca518b702c07ef36c0b8629ddfc151bfeb",
+    "automatic_retries": 0
+  },
+  "execution": {
+    "target": "amax2",
+    "output_directory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v5",
+    "capacity_screen_sha256": "fcde745e796d7100d402122c1c5d6347a8cbb674e9c9b633b486a9e47132ce27",
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_content_verified_against_census": true,
+    "source_only": true,
+    "target_mask_created": false
+  },
+  "results": {
+    "both_significant_capacity_pass": true,
+    "both_significant_topology_pass": false,
+    "u1": {
+      "primitive_id": "cohesive-boundary-expansion-v1",
+      "passed_necessary_capacity": true,
+      "passed_topology_witness": true,
+      "failure_reasons": [],
+      "track_b_used": true,
+      "workflow_version": "directional-anchor-subdivision-workflow-v1",
+      "candidate_version": "directional-single-anchor-balanced-geodesic-bisection-v3",
+      "rounds": 1,
+      "recursive_subdivision": false,
+      "transformed_interface_count": 3,
+      "fresh_preflight_rejected_interface_count": 0,
+      "candidate_id": "tissue-plan:039451a3dbd9be5c21bd",
+      "selected_tool_family": "interface_band_sdf",
+      "selected_concrete_executor": "interface_sdf",
+      "realized_tissue_pixels": 78659,
+      "hard_gate_passed": true,
+      "veto_reasons": [],
+      "persisted_target_mask": false,
+      "change_region_sha256": "19d54c527356f2870fc64ad2ab6db03cd496abf48829e98794184f2cb2d3c105",
+      "compiler_certificate_sha256": "039451a3dbd9be5c21bd6e5a87a064b2091c65a71e42f6a490a23f7d86182594",
+      "execution_raster_sha256": "3aa55dcb1b1041c998f56dfc996210c723d1f90fa3c944e26c4ad4386ac531de"
+    },
+    "u2": {
+      "primitive_id": "generic-immune-infiltrate-increase-v1",
+      "passed_necessary_capacity": true,
+      "passed_topology_witness": false,
+      "failure_reasons": [
+        "whole_mask_topology_witness_not_executable"
+      ],
+      "track_b_used": false,
+      "terminal_error_class": "RefineContractError",
+      "terminal_error_summary": "no directed interface satisfies both the tissue and preflight nuclei contracts",
+      "persisted_target_mask": false
+    }
+  },
+  "interpretation": {
+    "supported": [
+      "The balanced geodesic-bisection Track B mechanism produced a hard-gate-passing U1 topology witness on the frozen S07 development source.",
+      "The U2 failure occurs before Track B eligibility because no directed interface jointly satisfies the frozen tissue and preflight nuclei contracts."
+    ],
+    "not_supported": [
+      "S07 is not a fully qualified source because both operations did not pass.",
+      "This development result does not approve any of the four formal targets.",
+      "This result does not change the frozen 17 passed / 19 theoretical-upper-bound patient accounting.",
+      "No formal H&E generation, formal cohort run, or physician study is authorized by this record."
+    ]
+  },
+  "next_work": {
+    "priority": "diagnose_u2_joint_interface_contract",
+    "constraints": [
+      "Preserve the 19%/32% nominal budgets and 14%/27% tissue floors.",
+      "Do not use generated H&E quality to develop or select a mechanism.",
+      "Keep S07 development-only and keep the reserved evaluation split unopened.",
+      "Any mechanism change must be uniform and mask-only before reserved evaluation."
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": "reserved-four-target-partial-approval-record-v1",
+  "created_utc": "2026-11-12T01:28:25Z",
+  "scope": "third reserved patient with all four mask conditions independently approved; no H&E-based selection",
+  "patient": {
+    "patient_order": 20,
+    "patient_id": "TCGA-AO-A1KR",
+    "reference_id": "BCSS_two_primitive_e269b4918e25",
+    "status": "four_targets_approved",
+    "approved_cases": [
+      "BCSS_two_primitive_e269b4918e25__u1_moderate",
+      "BCSS_two_primitive_e269b4918e25__u1_significant",
+      "BCSS_two_primitive_e269b4918e25__u2_moderate",
+      "BCSS_two_primitive_e269b4918e25__u2_significant"
+    ]
+  },
+  "server_artifacts": {
+    "compilation_receipts": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_third_four_target_patient_receipts_v1.json", "bytes": 9381, "sha256": "909c78613ca1f894a4c0a30b5c36cba9c6c94ffaf20110e0a21cae69345d1c9f"},
+    "review_queue": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_third_four_target_patient_review_v1/review_queue.json", "bytes": 38013, "sha256": "cb03e99f6303dc513926cc79edbc4906bfa511f1e79ca3fcec15260ec51bbe78"},
+    "review_decisions": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_third_four_target_patient_decisions_v1.json", "bytes": 9509, "sha256": "b654cfdc050fcc998c97f28bfd38a26619407b665c5ef5a0a9f743ec7c2164f7"},
+    "approval_freeze": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_third_four_target_patient_approval_v1/four_target_approval_freeze.json", "bytes": 50850, "sha256": "82773f889cc8abfc08b75f98995b2b9c6020cdc68ddb6753c161681541d068fb"}
+  },
+  "counts": {"patients_in_queue": 29, "four_targets_approved": 1, "not_approved": 28},
+  "h_and_e_selection_used": false,
+  "formal_generation_started": false,
+  "qualification_updated": true
+}

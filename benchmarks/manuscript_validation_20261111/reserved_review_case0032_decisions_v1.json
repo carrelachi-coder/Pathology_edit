@@ -1,0 +1,43 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0032_v1/review_queue.json",
+    "bytes": 32257,
+    "sha256": "a420eb3e7700db34bb8c0019f69e5538f917273d64e3e5f0872906a08be22a13"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_677bb0854b7d__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:54:06Z",
+      "confidence": 0.9,
+      "reason": "All hard gates pass and the mask review shows coherent moderate tumor-boundary growth. Candidate 01 best preserves source-like total instance count and nearest-neighbor spacing while maintaining an acceptable local clustering profile.",
+      "tissue_geometry": "The 48,365-pixel tumor expansion follows existing external tumor-stroma interfaces in connected planned regions and preserves the neighboring immune and non-target compartments.",
+      "nucleus_layout": "Sixteen class-1 nuclei are complete, non-overlapping and contained. Candidate 01 has source-relative instance-count 1.064, NND 1.006, area-p95 1.128 and Ripley K24 0.819.",
+      "coupling": "Added tumor nuclei occupy the authorized expanded tumor footprint; boundary binding, seam continuity, quota, spatial-distribution, compatibility and local-density checks pass, with sampling score 0.874.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and native structures outside the joint support remain unchanged, without partial-instance, overlap, border or containment violations.",
+      "limitations": "This is mask-only annotation-conditioned evidence within an uncalibrated research envelope, not generated-H&E, histologic truth or clinical validation.",
+      "verdict": "Approve candidate 01 as the single mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_two_primitive_677bb0854b7d__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 01 better preserves source-like instance count and nearest-neighbor spacing with the same approved tissue geometry and quota."
+    },
+    {
+      "case_id": "BCSS_two_primitive_677bb0854b7d__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 01 has closer source instance count and nearest-neighbor spacing and a less enlarged area-p95 while retaining the same approved tissue geometry and quota."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}

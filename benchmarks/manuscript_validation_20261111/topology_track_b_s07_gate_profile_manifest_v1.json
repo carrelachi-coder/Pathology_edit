@@ -1,0 +1,30 @@
+{
+  "schema_version": "topology-track-b-s07-gate-profile-v1",
+  "status": "self_authorized_once",
+  "purpose": "Record completed candidate hard-gate outcomes after streaming generation still exceeded 1200 seconds.",
+  "code": {
+    "archive_commit": "ae03f648",
+    "git_tree": "65c1048e3494ec9586a0355d13dbbbdc00417016",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_gate_profile_ae03f648",
+    "profile_wrapper_sha256": "8a6dac8938bd15d80874223004ea00189a858af04fd2a14eaf275f54734a6582"
+  },
+  "input": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_index": 7,
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "hard_timeout_seconds": 360,
+    "automatic_retries": 0,
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_gate_profile_v1",
+    "telemetry": "One flushed record after each completed existing GateRegistry.run call.",
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "he_calls": 0
+  },
+  "noninterference_boundary": "The wrapper delegates unchanged gate context to the original GateRegistry.run, records only the returned report, and returns that same object. It cannot qualify S07 or establish exact timing.",
+  "failure_policy": "Terminate at 360 seconds, preserve completed gate records, zero retry.",
+  "authorization_basis": "Codex approved this bounded development-only diagnostic after v4 proved that ordered streaming alone did not complete within the unchanged runtime budget."
+}

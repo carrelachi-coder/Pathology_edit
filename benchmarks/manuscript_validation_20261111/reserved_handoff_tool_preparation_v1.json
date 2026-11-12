@@ -1,0 +1,31 @@
+{
+  "schema_version": "reserved-handoff-tool-preparation-v1",
+  "implementation_commit": "28d32fba",
+  "server_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_handoff_tool_28d32fba",
+  "files": {
+    "freeze_reserved_four_target_approvals.py": "bd8014a9962ecd3e390b17858347fbdd0f70885ee4e4adab493f60587f374d9f",
+    "materialize_reserved_four_target_handoffs.py": "35ba345d8bb0adff082fc2afe665c8e6d5466a3955ee681c29981ada801e5f47"
+  },
+  "dependency_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/four_target_compiler_17225219",
+  "server_cli_help_passed": true,
+  "local_chain_tests": {
+    "passed": 20,
+    "failed": 0
+  },
+  "supersedes_for_future_decisions": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_approval_tool_befb8474",
+  "reason_for_supersession": "the earlier freeze captured binary decisions but not the complete independent-review observations or immutable audit directory required to create a validated generation handoff",
+  "requirements_added": [
+    "confidence from 0.7 through 1.0",
+    "review timestamp",
+    "tissue geometry observation",
+    "nucleus layout observation",
+    "tissue-nucleus coupling observation",
+    "preserved-condition observation",
+    "limitations",
+    "verdict",
+    "audit case directory binding"
+  ],
+  "current_approvals_materialized": 0,
+  "h_and_e_generation_started": false,
+  "qualification_updated": false
+}

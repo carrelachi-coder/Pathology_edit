@@ -1,0 +1,22 @@
+{
+  "schema_version": "reserved-receipt-merge-tool-preparation-v1",
+  "repository_commit": "927e5137",
+  "repository_path": "scripts/merge_reserved_four_target_compilation_receipts.py",
+  "server_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_receipt_merge_tool_927e5137/merge_reserved_four_target_compilation_receipts.py",
+  "sha256": "3877a2e8ac8fffaab2d00a18b61fe2cc0cf570c1b8de2a4bfd4ad1edea975309",
+  "server_cli_help_passed": true,
+  "local_targeted_tests": {
+    "passed": 16,
+    "failed": 0,
+    "command": "python -m pytest -q tests/test_merge_reserved_four_target_compilation_receipts.py tests/test_prepare_reserved_four_target_review_queue.py tests/test_freeze_reserved_four_target_approvals.py tests/test_run_reserved_four_target_compilation.py"
+  },
+  "purpose": "Merge the separately frozen pilot and remaining append-only compilation runs without rerunning or manually rewriting receipts.",
+  "invariants": {
+    "frozen_case_and_manifest_hashes_must_match": true,
+    "case_indices_must_be_unique_and_complete": true,
+    "automatic_retries": 0,
+    "mask_approval_performed": false,
+    "h_and_e_generation_performed": false,
+    "qualification_updated": false
+  }
+}

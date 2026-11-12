@@ -1,0 +1,47 @@
+{
+  "schema_version": "reserved-four-target-partial-approval-record-v1",
+  "created_utc": "2026-11-12T00:39:00Z",
+  "scope": "first reserved patient with all four mask conditions independently approved; no H&E-based selection",
+  "patient": {
+    "patient_order": 6,
+    "patient_id": "TCGA-A2-A3XS",
+    "reference_id": "BCSS_two_primitive_0ba6c5e2f899",
+    "status": "four_targets_approved",
+    "approved_cases": [
+      "BCSS_two_primitive_0ba6c5e2f899__u1_moderate",
+      "BCSS_two_primitive_0ba6c5e2f899__u1_significant",
+      "BCSS_two_primitive_0ba6c5e2f899__u2_moderate",
+      "BCSS_two_primitive_0ba6c5e2f899__u2_significant"
+    ]
+  },
+  "server_artifacts": {
+    "compilation_receipts": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_receipts_0012_0015_v1.json",
+      "bytes": 9305,
+      "sha256": "25dad0b9c41192bed92dcdaaa0d3320bf4ba6802fe2b4a9ce17bf4863d01ccc5"
+    },
+    "review_queue": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0012_0015_v1/review_queue.json",
+      "bytes": 37033,
+      "sha256": "387ed743e40a151d1a1b80a2f3d8992841c1a03409a9a841320482f645054bae"
+    },
+    "review_decisions": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0012_0015_v1/decisions.json",
+      "bytes": 8126,
+      "sha256": "ffff7c4875aeb1205f3d54d45e8051073ad6306f51b9b059ae74c71fae1133b9"
+    },
+    "approval_freeze": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_approval_0012_0015_v1/four_target_approval_freeze.json",
+      "bytes": 50957,
+      "sha256": "f480b3577dbe0d2fa93cb489fa857d629f38b0d96f6f1f742f85b83a37143c7b"
+    }
+  },
+  "counts": {
+    "patients_in_queue": 29,
+    "four_targets_approved": 1,
+    "not_approved": 28
+  },
+  "h_and_e_selection_used": false,
+  "formal_generation_started": false,
+  "qualification_updated": true
+}

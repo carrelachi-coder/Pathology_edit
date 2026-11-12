@@ -1,0 +1,37 @@
+{
+  "kind": "topology-track-b-production-wiring-review-acceptance-v1",
+  "date": "2026-11-10",
+  "status": "technical_review_passed_target_preparation_allowed_execution_not_authorized",
+  "decision_source": "user decision in current Codex conversation: 修正好后授权通过",
+  "draft_pr": "https://github.com/carrelachi-coder/Pathology_edit/pull/14",
+  "review_request": "topology_track_b_production_wiring_review_request_v1.json",
+  "review_request_sha256": "7b73f25c41ff4b00b46f232a230d51996212555967ebd313bb0a7b8016b72fe3",
+  "accepted_implementation_commit": "fd599230f9117a8ba2015e234b0698329f088d6e",
+  "accepted_validation_record": "topology_track_b_production_wiring_local_validation_v1.json",
+  "accepted_validation_record_sha256": "a5152c5d0dbc37c080b03e2e664e111c25b281d866a93bd90315cb2fe512f365",
+  "post_request_corrections": [
+    "the Track B transformation authority is preserved when workflow planning recomputes the current portfolio binding",
+    "the tissue Planner permits only the exact reviewed Track B authority extension and rejects missing, malformed or same-scene identities",
+    "the final regression contains 257 passing tests and 346 passing subtests"
+  ],
+  "accepted_scope": [
+    "local production-wiring design and implementation",
+    "structured Track A failure evidence",
+    "one-round deterministic Track B transformation",
+    "fresh nuclei preflight and authority rebinding",
+    "cross-stage preservation of transformation authority",
+    "preparation of a separate target-environment identity and read-only review package"
+  ],
+  "explicitly_not_authorized": [
+    "merge to the production branch",
+    "target-server deployment or execution without a separate final manifest",
+    "S07 or another real development-patient run",
+    "access to or execution on the 68 reserved evaluation patients",
+    "qualification count changes",
+    "four-target compilation",
+    "H&E generation",
+    "physician study"
+  ],
+  "qualification_updates_permitted": false,
+  "execution_authorized": false
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": "topology-all-selected-anchors-development-probe-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_counterexample_not_resolved",
+  "launch_manifest": "topology_all_selected_anchors_development_probe_v1.json",
+  "implementation_commit": "69798d7f",
+  "authorization_commit": "c77511cb",
+  "capacity_screen_sha256": "a1bad16f0a5b4e375cf021b6795eb029cf67cf810b6827d5c9886fff551289da",
+  "automatic_retries": 0,
+  "case": {
+    "patient_id": "TCGA-AN-A0AR",
+    "reference_id": "BCSS_joint_supplement_b546a330a49d",
+    "partition": "development",
+    "source_index": 6
+  },
+  "results": {
+    "both_significant_topology_pass": false,
+    "u1": {
+      "passed": false,
+      "largest_saved_topology_passing_area_pixels": 45238,
+      "hard_floor_pixels": 70779,
+      "transformed_original_anchor_count": 10
+    },
+    "u2": {
+      "passed": false,
+      "prior_largest_topology_passing_area_pixels": 68135,
+      "new_largest_topology_passing_area_pixels": 68933,
+      "hard_floor_pixels": 70779,
+      "transformed_original_anchor_count": 6
+    }
+  },
+  "interpretation": {
+    "supported": [
+      "Bisecting every selected feasible original anchor in one balanced round increased the saved U2 topology-passing area by 798 pixels.",
+      "The result remained 1,846 pixels below the unchanged hard floor, so the source remains ineligible."
+    ],
+    "not_supported": [
+      "The balanced all-anchor representation is not sufficient to justify a full development rerun.",
+      "No formal qualification, target approval, H&E, or reserved-evaluation access is authorized."
+    ]
+  }
+}

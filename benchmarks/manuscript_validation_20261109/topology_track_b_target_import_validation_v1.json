@@ -1,0 +1,39 @@
+{
+  "kind": "topology-track-b-target-import-validation-v1",
+  "date": "2026-11-10",
+  "status": "pass_import_only_no_business_execution",
+  "manifest": "topology_track_b_target_import_manifest_v1.json",
+  "manifest_sha256": "69ed036a7b08be2378b2e83336d7f5717f681552193a1797818251bd242f8c83",
+  "authorization": "topology_track_b_target_import_authorization_v1.json",
+  "target": {
+    "host_alias": "amax2",
+    "isolated_repository_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_wiring_candidate_9a2a78d1/source",
+    "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_wiring_candidate_9a2a78d1/import_smoke_v1",
+    "python_executable": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python"
+  },
+  "server_evidence": {
+    "report_path": "import_smoke_v1/report.json",
+    "report_sha256": "0fced220d9af7a2a9c2b1cb2c4c10587427cfb8ffd59276430db2d6decf5b3be",
+    "child_report_path": "import_smoke_v1/child_import_report.json",
+    "child_report_sha256": "862a68826dac3c2fb126811d7b1871d447f6d70947b92342d7193b071c24204d"
+  },
+  "result": {
+    "outer_status": "pass",
+    "timed_out": false,
+    "child_exit_code": 0,
+    "child_status": "pass",
+    "source_module_entries": 89,
+    "default_rng_and_hash_unchanged": true,
+    "native_threads_after_import": 1,
+    "cuda_initialized_after_import": false,
+    "blocked_calls": 0,
+    "child_error": null,
+    "real_patient_calls": 0,
+    "witness_calls": 0,
+    "four_target_calls": 0,
+    "h_and_e_calls": 0,
+    "automatic_retries": 0
+  },
+  "interpretation": "The accepted Track B wiring imports successfully in the frozen Linux target environment without observed RNG/hash, thread or CUDA drift and without executing a business entry point. This closes target import compatibility only; it is not a topology-success result, patient qualification, four-target approval or H&E authorization.",
+  "next_gate": "Freeze a development-only execution protocol and manifest. The 68 reserved evaluation patients remain unopened until the method is frozen after development evidence."
+}

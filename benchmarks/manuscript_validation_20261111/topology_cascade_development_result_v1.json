@@ -1,0 +1,143 @@
+{
+  "schema_version": "topology-cascade-development-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_no_patient_level_gain",
+  "launch_manifest": "topology_cascade_development_launch_v1.json",
+  "implementation_commit": "0ac9bdda",
+  "authorization_commit": "28360912",
+  "patient_qualification_sha256": "0844f1befad5df2eff5081184a4e7854fa527979117e5515f88106eb6c8e8a72",
+  "patient_qualification_bytes": 416975686,
+  "automatic_retries": 0,
+  "scope": {
+    "partition": "development",
+    "patients": 16,
+    "source_attempts": 50,
+    "reserved_evaluation_opened": false,
+    "formal_qualification_updated": false
+  },
+  "execution_integrity": {
+    "controller_exit_code": 0,
+    "patient_terminal_receipts": 16,
+    "timed_out_source_attempts": 0,
+    "nonzero_source_exit_codes": 0,
+    "indeterminate_patients": 0
+  },
+  "patient_terminal_states": {
+    "first_source_passed": 6,
+    "fixed_sources_exhausted": 10,
+    "indeterminate": 0
+  },
+  "both_operation_pass_patients": [
+    {
+      "patient_id": "TCGA-A7-A26G",
+      "source_rank": 0,
+      "reference_id": "BCSS_joint_supplement_5245a09632b2"
+    },
+    {
+      "patient_id": "TCGA-AN-A0AT",
+      "source_rank": 1,
+      "reference_id": "BCSS_joint_supplement_4c87b60303e6"
+    },
+    {
+      "patient_id": "TCGA-E2-A14X",
+      "source_rank": 3,
+      "reference_id": "BCSS_joint_supplement_b22ef1895cb7"
+    },
+    {
+      "patient_id": "TCGA-E2-A158",
+      "source_rank": 3,
+      "reference_id": "BCSS_joint_supplement_19a0fd2142da"
+    },
+    {
+      "patient_id": "TCGA-E2-A1LI",
+      "source_rank": 3,
+      "reference_id": "BCSS_joint_supplement_01e4c52c0c82"
+    },
+    {
+      "patient_id": "TCGA-E2-A1LL",
+      "source_rank": 0,
+      "reference_id": "BCSS_two_primitive_70d15228c5ba"
+    }
+  ],
+  "source_result_counts": {
+    "u1_fail_u2_fail": 13,
+    "u1_pass_u2_pass": 6,
+    "u1_fail_u2_pass": 24,
+    "u1_pass_u2_fail": 7
+  },
+  "operation_counts": {
+    "u1": {
+      "pass": 13,
+      "fail": 37
+    },
+    "u2": {
+      "pass": 30,
+      "fail": 20
+    }
+  },
+  "comparison_to_balanced_only": {
+    "prior_all_16_development_patients_both_pass": 6,
+    "cascade_all_16_development_patients_both_pass": 6,
+    "patient_pass_delta": 0,
+    "regressed_pass_patients": [],
+    "new_pass_patients": [],
+    "prior_u1_pass_including_s07": 13,
+    "cascade_u1_pass": 13,
+    "u1_pass_delta": 0,
+    "prior_u2_pass_including_s07": 27,
+    "cascade_u2_pass": 30,
+    "u2_pass_delta": 3
+  },
+  "closest_complementary_failures": [
+    {
+      "patient_id": "TCGA-AN-A0AR",
+      "source_rank": 11,
+      "reference_id": "BCSS_joint_supplement_de103f87384a",
+      "passing_operation": "u2",
+      "failing_operation": "u1",
+      "best_observed_topology_safe_pixels": 65934,
+      "hard_floor_pixels": 70779,
+      "deficit_pixels": 4845,
+      "maximal_sector_gain_over_balanced_pixels": 12465
+    },
+    {
+      "patient_id": "TCGA-E2-A14R",
+      "source_rank": 0,
+      "reference_id": "BCSS_two_primitive_8587ebd870b4",
+      "passing_operation": "u1",
+      "failing_operation": "u2",
+      "best_observed_topology_safe_pixels": 64904,
+      "hard_floor_pixels": 70779,
+      "deficit_pixels": 5875,
+      "maximal_sector_gain_over_balanced_pixels": 0
+    },
+    {
+      "patient_id": "TCGA-BH-A0AV",
+      "source_rank": 0,
+      "reference_id": "BCSS_joint_supplement_2793477d13b0",
+      "passing_operation": "u1",
+      "failing_operation": "u2",
+      "best_observed_topology_safe_pixels": 60324,
+      "hard_floor_pixels": 70779,
+      "deficit_pixels": 10455,
+      "maximal_sector_gain_over_balanced_pixels": 13483
+    }
+  ],
+  "decision": {
+    "open_reserved_evaluation": false,
+    "reason": "The deterministic balanced-then-maximal cascade retained all six development passes and added three U2 source-level passes, but it added no patient with both operations. Operation-level gains alone are insufficient to open the reserved partition.",
+    "next_method_question": "Determine whether joint ownership and interface-allocation scheduling can recover topology-safe union area on complementary near-pass sources without changing the frozen area floors, front-coverage limits, topology gates, or operation semantics."
+  },
+  "interpretation": {
+    "supported": [
+      "The cascade is non-regressing at the patient level on the full sixteen-patient development partition.",
+      "The maximal-sector fallback adds U2 operation-level successes beyond the balanced-only representation.",
+      "The remaining patient-level bottleneck is not solved by representation fallback alone."
+    ],
+    "not_supported": [
+      "The result does not justify opening the reserved evaluation partition.",
+      "The result does not update formal patient qualification, approve four-target compilation, or authorize H&E or physician review.",
+      "The observed best safe areas are empirical candidates from the frozen search, not mathematical upper bounds."
+    ]
+  }
+}

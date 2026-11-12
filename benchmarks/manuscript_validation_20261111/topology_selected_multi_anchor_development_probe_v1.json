@@ -1,0 +1,43 @@
+{
+  "schema_version": "topology-selected-multi-anchor-development-probe-v1",
+  "status": "self_authorized_once",
+  "purpose": "Test one previously saved U1 counterexample after adding one-round, mask-only refinement of an already-selected feasible anchor on a multi-anchor interface.",
+  "code": {
+    "commit": "3e47e39e",
+    "git_tree": "63187bb2160574e0312bf6f2b16274f73fbc0775",
+    "topology_track_b_sha256": "210b5cdcd3ca6bcbcea7dd140a39ebd8f8976f0e551d20fbdf65995321d3f10a",
+    "anchor_subdivision_sha256": "33ecbe4a3226631be65663018ea1601302a8bb5d8cbd323e68fada6ce8bf532e",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_selected_anchor_3e47e39e"
+  },
+  "input": {
+    "source_freeze_parent_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "single_source_derivation": "Exact candidate_sources[38] from the immutable development freeze; all other metadata retained and patient/source counts set to one.",
+    "partition": "development",
+    "patient_id": "TCGA-E2-A158",
+    "reference_id": "BCSS_joint_supplement_9af9c69a00f4",
+    "patient_source_rank": 2,
+    "prior_u1_topology_passing_area_pixels": 69300,
+    "hard_floor_pixels": 70779
+  },
+  "candidate_contract": {
+    "trigger": "A saved topology-passing area-underfill receipt on an already-selected interface with at least two anchors.",
+    "choice_rule": "Among selected and freshly nuclei-feasible anchors on that interface, bisect the largest legally bisectable anchor; break ties by stable anchor id.",
+    "rounds": 1,
+    "recursive_subdivision": false,
+    "threshold_changes": 0,
+    "topology_failure_rescue_permitted": false,
+    "fresh_nuclei_preflight_required": true
+  },
+  "execution": {
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "reserved_evaluation_access": false,
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, incomplete receipt, or failure to bind the frozen source is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized one development-only counterexample after 41 focused tests passed and the prior probe isolated selected multi-anchor quantization as the unhandled mechanism."
+}

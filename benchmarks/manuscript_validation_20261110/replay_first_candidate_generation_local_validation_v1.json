@@ -1,0 +1,23 @@
+{
+  "schema_version": "replay-first-candidate-generation-local-validation-v1",
+  "status": "passed",
+  "change_scope": "CandidateFeasibilityCompiler validates candidate 001, the authoritative compiled replay, before materializing candidates 002 onward. The full deterministic sequence is generated unchanged when replay fails.",
+  "semantic_invariants": [
+    "Candidate 001 bytes and gate context are unchanged.",
+    "The same hard gates decide acceptance.",
+    "If candidate 001 passes, the pre-existing implementation also selected it as passing[0].",
+    "If candidate 001 fails, candidates 002 onward are generated with the original inputs, ordering, seeds, and gate logic.",
+    "No topology, area, budget, qualification, or patient threshold changes."
+  ],
+  "tests": {
+    "focused": "235 passed, 346 subtests passed in 177.43 seconds",
+    "combined_track_b": "262 passed, 346 subtests passed in 240.33 seconds"
+  },
+  "comparison": {
+    "previous_combined_track_b_seconds": 310.90,
+    "new_combined_track_b_seconds": 240.33,
+    "result_counts_unchanged": true
+  },
+  "target_validation": "not_yet_run",
+  "formal_execution_authorized": false
+}

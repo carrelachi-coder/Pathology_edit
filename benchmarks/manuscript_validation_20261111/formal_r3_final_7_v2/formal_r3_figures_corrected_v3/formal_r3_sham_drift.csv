@@ -1,0 +1,3 @@
+endpoint,requested_patients,valid_pairs,mean_sham_minus_original,median_sham_minus_original,patient_bootstrap_95_interval
+u1,7,7,-0.011022306576804015,0.01985542012448127,"[-0.07786393326701113, 0.03714601695360905]"
+u2,7,7,-0.006217381438620376,0.0,"[-0.018652144315861128, 0.0]"

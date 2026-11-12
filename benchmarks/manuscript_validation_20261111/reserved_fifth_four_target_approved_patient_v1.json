@@ -1,0 +1,27 @@
+{
+  "schema_version": "reserved-four-target-partial-approval-record-v1",
+  "created_utc": "2026-11-12T02:28:00Z",
+  "scope": "fifth reserved patient with all four mask conditions independently approved; no H&E-based selection",
+  "patient": {
+    "patient_order": 30,
+    "patient_id": "TCGA-BH-A0RX",
+    "reference_id": "BCSS_joint_supplement_3fa86eb18346",
+    "status": "four_targets_approved",
+    "approved_cases": [
+      "BCSS_joint_supplement_3fa86eb18346__u1_moderate",
+      "BCSS_joint_supplement_3fa86eb18346__u1_significant",
+      "BCSS_joint_supplement_3fa86eb18346__u2_moderate",
+      "BCSS_joint_supplement_3fa86eb18346__u2_significant"
+    ]
+  },
+  "server_artifacts": {
+    "compilation_receipts": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/receipts_patient_3fa86eb18346_v1.json", "bytes": 9432, "sha256": "450d9a43eb7ffff76f5527a0c7e027ce4227ee33c41da67288faf316bef7ad02"},
+    "review_queue": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_patient_review_3fa86eb18346_v1/review_queue.json", "bytes": 38093, "sha256": "7c13a041c98b54de01518412fd707141a28ff9010fa7b509940fb4b0db646eea"},
+    "review_decisions": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_fifth_four_target_patient_decisions_v1.json", "bytes": 9854, "sha256": "820313fcd76b435b9366bb10e00b53d711786749df6b1f2ad52d23cffcec3dc1"},
+    "approval_freeze": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_fifth_four_target_patient_approval_v1/four_target_approval_freeze.json", "bytes": 51234, "sha256": "abc7c07e24881c0f5104c9cd8bab3d03af96d418c6f5bfd4a1fcc1b539e84b4e"}
+  },
+  "counts": {"patients_in_queue": 29, "four_targets_approved": 1, "not_approved": 28},
+  "h_and_e_selection_used": false,
+  "formal_generation_started": false,
+  "qualification_updated": true
+}

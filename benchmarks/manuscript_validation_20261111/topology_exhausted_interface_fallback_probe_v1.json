@@ -1,0 +1,41 @@
+{
+  "schema_version": "topology-exhausted-interface-fallback-probe-v1",
+  "status": "self_authorized_once",
+  "purpose": "Verify that an above-floor topology-passing fallback proceeds to normal executor and gate checks when every fresh-preflight feasible interface is already selected.",
+  "code": {
+    "commit": "f067b708",
+    "git_tree": "58b7aa4b8ad5028849c29061e7ff396e6521eef0",
+    "candidate_feasibility_sha256": "cb3567040b5ed5640ac6276e5f27aacd4f5a487e6f0542f815c995b9faa56b24",
+    "topology_track_b_sha256": "9abd31ae6083c46f44eeb712c4a6ce0b29c88144a09bfd504a44406232b95c5f",
+    "anchor_subdivision_sha256": "2ebe3db2ea76daccdff01e8cbcc403733be1209ca02e41de5aac52c5a91436a6",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_exhausted_fallback_f067b708"
+  },
+  "input": {
+    "source_freeze_parent_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "single_source_derivation": "Exact candidate_sources[6] from the immutable development freeze.",
+    "partition": "development",
+    "patient_id": "TCGA-AN-A0AR",
+    "reference_id": "BCSS_joint_supplement_b546a330a49d",
+    "source_index": 6,
+    "prior_hidden_u2_area_pixels": 73591,
+    "hard_floor_pixels": 70779
+  },
+  "candidate_contract": {
+    "skip_expansion_only_if": "The current raw plan selects every interface certified feasible by the fresh nuclei preflight.",
+    "normal_executor_and_gate_checks_required": true,
+    "threshold_changes": 0,
+    "topology_failure_rescue_permitted": false
+  },
+  "execution": {
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "reserved_evaluation_access": false,
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, incomplete receipt, or source identity failure is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized one development counterexample after 42 focused tests passed and the saved receipt proved an above-floor topology-passing candidate was rejected solely by an impossible add-remaining-interfaces request."
+}

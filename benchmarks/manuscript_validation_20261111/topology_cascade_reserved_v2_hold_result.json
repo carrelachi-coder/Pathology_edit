@@ -1,0 +1,42 @@
+{
+  "schema_version": "topology-cascade-reserved-v2-hold-result",
+  "recorded_at": "2026-11-11",
+  "status": "hold_after_first_source_timeout",
+  "launch_manifest": "topology_cascade_reserved_launch_v2.json",
+  "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_v2",
+  "controller_identity_sha256": "aa3cbbe506abdbe493a6e3470fb91c186e9896f5a41062169a198307b2a6dba2",
+  "patient_progress_sha256_at_hold": "b11b4e9816d7b3783fdda89331bc281c88b327b339eb5054724e8469c687d7e8",
+  "terminal_receipts_at_final_stop": {
+    "total": 10,
+    "valid_pass": 6,
+    "valid_exhausted": 3,
+    "indeterminate_execution": 1
+  },
+  "valid_terminal_patients": [
+    "TCGA-A2-A0T0",
+    "TCGA-A2-A0T2",
+    "TCGA-A2-A3XS",
+    "TCGA-A2-A3XT",
+    "TCGA-A2-A3XX",
+    "TCGA-A7-A0DA",
+    "TCGA-A7-A5ZV",
+    "TCGA-A8-A07C",
+    "TCGA-A8-A07O"
+  ],
+  "hold_trigger": {
+    "patient_id": "TCGA-A2-A0SX",
+    "reference_id": "BCSS_joint_supplement_46b5b6407f9b",
+    "patient_source_rank": 0,
+    "elapsed_seconds": 1200.0398189071566,
+    "timed_out": true,
+    "controller_exit_code": 124,
+    "interpretation": "technical unknown; not a biological or topology failure"
+  },
+  "termination": {
+    "controller_stopped": true,
+    "orphaned_source_process_groups_stopped": true,
+    "remaining_matching_processes": 0,
+    "automatic_retries": 0
+  },
+  "disposition": "The v2 authorization is consumed. Valid terminal receipts are retained; the indeterminate patient and all patients without a terminal receipt require an explicitly versioned recovery run."
+}

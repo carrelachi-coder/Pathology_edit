@@ -1,0 +1,59 @@
+{
+  "schema_version": "reserved-final-candidate-and-pilot-followon-v1",
+  "created_utc": "2026-11-11T13:26:00Z",
+  "server": "amax2",
+  "base_directory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1",
+  "active_topology_recovery": {
+    "output": "topology_cascade_reserved_recovery_v5",
+    "controller_pid": 1121310,
+    "active_probe_pid_at_registration": 1121314,
+    "patient_id": "TCGA-AR-A256",
+    "seconds_per_source": 9600,
+    "outer_seconds": 20000,
+    "automatic_retries": 0
+  },
+  "candidate_freeze_followon": {
+    "pid_at_registration": 1308295,
+    "trigger": "topology recovery controller PID 1121310 is no longer alive",
+    "qualification_roots": [
+      "topology_cascade_reserved_v2",
+      "topology_cascade_reserved_recovery_v3",
+      "topology_cascade_reserved_recovery_v4",
+      "topology_cascade_reserved_recovery_v5"
+    ],
+    "output": "reserved_four_target_candidates_final_v2",
+    "output_policy": "append-only; freeze tool refuses an existing output",
+    "expected_result": "actual reserved topology-pass population, 29 or 30 patients; no development patients"
+  },
+  "single_case_pilot_followon": {
+    "pid_at_registration": 1318420,
+    "trigger": [
+      "final_v2 candidate manifest and cases both exist and are non-empty",
+      "the same physical GPU is observed twice at 60 second spacing with utilization at most 10 percent and memory use at most 5000 MiB"
+    ],
+    "candidate_case_index": 0,
+    "logical_device": "cuda:0",
+    "seconds_per_case": 7200,
+    "automatic_retries": 0,
+    "output": "reserved_four_target_compile_pilot_final_v2",
+    "scope": "one condition-compilation pilot only; no mask approval, H&E generation, formal cohort admission, or physician study"
+  },
+  "frozen_compiler": {
+    "commit": "17225219f56dea8b5cf5bc38175d15e7322edaad",
+    "snapshot": "four_target_compiler_17225219",
+    "probnet_checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
+    "instance_library_tree_sha256": "f00d5c4b9afb3cae7ca2e22f41f698d51e36af4f3ad216599d47bb7b058433e4"
+  },
+  "research_constraints_unchanged": {
+    "nominal_joint_fractions": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floors": [
+      0.14,
+      0.27
+    ],
+    "formal_target_patients": 30,
+    "report_actual_if_fewer_qualify": true
+  }
+}

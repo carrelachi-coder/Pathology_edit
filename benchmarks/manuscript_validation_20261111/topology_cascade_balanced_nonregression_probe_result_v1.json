@@ -1,0 +1,36 @@
+{
+  "schema_version": "topology-cascade-balanced-nonregression-probe-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_pass",
+  "launch_manifest": "topology_cascade_balanced_nonregression_probe_v1.json",
+  "implementation_commit": "0ac9bdda",
+  "authorization_commit": "ad4c5bf1",
+  "capacity_screen_sha256": "073320aee25f4775b3c8c7ee09c548321599fcc00ead9ea17f06648f8c622bd3",
+  "run_log_sha256": "3be1b19d7f2204ecdab16e59787bf0343f5ac7248c32442cbeac4a90b74caeeb",
+  "automatic_retries": 0,
+  "case": {
+    "patient_id": "TCGA-E2-A158",
+    "reference_id": "BCSS_joint_supplement_19a0fd2142da",
+    "partition": "development",
+    "source_index": 39
+  },
+  "results": {
+    "both_significant_topology_pass": true,
+    "u1_realized_tissue_pixels": 77599,
+    "u1_hard_gate_passed": true,
+    "u2_realized_tissue_pixels": 82213,
+    "u2_hard_gate_passed": true,
+    "u2_track_b_modes": ["balanced_single"],
+    "maximal_fallback_invocations": 0
+  },
+  "interpretation": {
+    "supported": [
+      "The cascade retained the balanced strategy's previously added dual-operation development patient.",
+      "The maximal fallback was not entered after balanced Track B succeeded."
+    ],
+    "not_supported": [
+      "This single development case does not establish patient-level yield for the full development partition.",
+      "No formal qualification, reserved evaluation, four-target compilation, H&E generation, or doctor review is authorized."
+    ]
+  }
+}

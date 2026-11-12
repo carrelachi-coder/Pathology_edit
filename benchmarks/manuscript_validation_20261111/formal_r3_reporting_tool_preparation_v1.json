@@ -1,0 +1,26 @@
+{
+  "schema_version": "formal-r3-reporting-tool-preparation-v1",
+  "implementation_commit": "c967e157",
+  "server_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_reporting_tool_c967e157",
+  "files": {
+    "analyze_manuscript_formal_r3.py": "1c3b7a88f0512e7b28b343bba9c7c110c41631bf1ed4ad07221fedc29f91e919",
+    "plot_manuscript_formal_r3.py": "f2a70d011891f3e8cebdbc87e13bcb2a3a9a4a39caedc8a1d9332674cee1148f"
+  },
+  "server_cli_help_passed": true,
+  "local_tests": {
+    "passed": 6,
+    "failed": 0,
+    "warning": "one upstream fontTools deprecation warning"
+  },
+  "separation_from_generation_runtime": "read-only reporting code is versioned separately and does not modify the frozen formal generation and measurement checkout",
+  "outputs_when_data_exist": [
+    "formal paired analysis JSON",
+    "primary effects CSV",
+    "order outcome CSV",
+    "sham drift CSV",
+    "PNG figure",
+    "PDF figure"
+  ],
+  "formal_results_created": false,
+  "qualification_updated": false
+}

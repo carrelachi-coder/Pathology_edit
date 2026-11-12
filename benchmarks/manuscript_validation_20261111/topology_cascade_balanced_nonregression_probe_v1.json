@@ -1,0 +1,39 @@
+{
+  "schema_version": "topology-cascade-balanced-nonregression-probe-v1",
+  "status": "self_authorized_once",
+  "purpose": "Run only the previously unstarted balanced-success counterexample and verify that the cascade never invokes maximal fallback after balanced success.",
+  "code": {
+    "commit": "0ac9bdda",
+    "git_tree": "872d19be5ec1e70630008ce0727a5217485c5c4b",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_0ac9bdda",
+    "candidate_feasibility_sha256": "cb3567040b5ed5640ac6276e5f27aacd4f5a487e6f0542f815c995b9faa56b24",
+    "topology_track_b_sha256": "298e58dc1d34ccffca692a55cdb51a186e8a63cfc8423f50e5b1dee4cec001a5",
+    "anchor_subdivision_sha256": "dab3ded60a07763828274a42cefa45e5987d273957847280dbd96389d27e5fa4"
+  },
+  "input": {
+    "source_freeze_parent_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "partition": "development",
+    "patient_id": "TCGA-E2-A158",
+    "reference_id": "BCSS_joint_supplement_19a0fd2142da",
+    "source_index": 39,
+    "patient_source_rank": 3
+  },
+  "execution": {
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "stdout_policy": "redirect complete stdout and stderr to an append-only run log; inspect only the bounded result JSON after process exit",
+    "reserved_evaluation_access": false,
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "acceptance": {
+    "both_operations_topology_pass": true,
+    "maximal_fallback_invocations": 0,
+    "threshold_changes": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, incomplete receipt, regression, or source identity failure is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized the one development case that never started under the consumed two-case authorization. The already completed first case will not be rerun."
+}

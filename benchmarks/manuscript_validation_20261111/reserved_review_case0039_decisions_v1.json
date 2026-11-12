@@ -1,0 +1,20 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0039_v1/review_queue.json", "bytes": 32270, "sha256": "bcf14b22b63c8dc2f0dea14c7eb5f3a7a77882943f507b85f10ea0da175fb858"},
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {"case_id": "BCSS_joint_supplement_d68823e6eda1__u2_significant", "candidate_id": "joint-cand:001-mature-cells-01", "decision": "rejected", "reviewer": "codex_current_chat", "reason": "Hard gates pass, but candidate 03 has lower excess clustering, a slightly closer source instance count and a higher sampling score under the same tissue geometry and quota."},
+    {"case_id": "BCSS_joint_supplement_d68823e6eda1__u2_significant", "candidate_id": "joint-cand:001-mature-cells-02", "decision": "rejected", "reviewer": "codex_current_chat", "reason": "Hard gates pass, but candidate 03 has more source-like spacing, clustering and total instance count under the same tissue geometry and quota."},
+    {
+      "case_id": "BCSS_joint_supplement_d68823e6eda1__u2_significant", "candidate_id": "joint-cand:001-mature-cells-03", "decision": "approved", "reviewer": "codex_current_chat", "reviewed_utc": "2026-11-12T01:23:11Z", "confidence": 0.86,
+      "reason": "All hard gates pass and mask-only review shows coherent significant immune enrichment. Candidate 03 has the best combined preservation of source-relative instance count, spacing and clustering among the alternatives.",
+      "tissue_geometry": "The 78,151-pixel tissue change follows authorized stroma-to-immune interfaces across coherent regions while preserving intervening tumor and non-target structures.",
+      "nucleus_layout": "One hundred seventy-nine class-2 nuclei are complete, non-overlapping and contained. Source-relative count, NND and Ripley K24 ratios are 1.667, 0.792 and 1.763.",
+      "coupling": "Added immune nuclei occupy authorized changed tissue and transitions; quota, seam, compatibility, distribution and density gates pass with sampling score 0.901.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain unchanged without partial-instance, overlap, border or containment violations.",
+      "limitations": "The significant target is substantially denser and more clustered than source but within frozen limits. This patient is not four-target eligible because U1 Significant abstained; mask-only evidence is not H&E or clinical validation.",
+      "verdict": "Approve candidate 03 as the single target-level mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false, "h_and_e_selection_used": false, "qualification_updated": false
+}

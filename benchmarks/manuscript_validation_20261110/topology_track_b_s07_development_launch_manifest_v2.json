@@ -1,0 +1,72 @@
+{
+  "schema_version": "topology-track-b-s07-development-launch-v2",
+  "status": "frozen_for_one_execution",
+  "supersedes_without_reusing": "topology_track_b_s07_development_launch_manifest_v1.json",
+  "purpose": "Verify the corrected deterministic endpoint bisection through the real G2 qualification entry on development-only S07.",
+  "scientific_scope": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "development_only": true,
+    "reserved_evaluation_opened": false,
+    "qualification_update_permitted": false,
+    "four_target_approval_permitted": false,
+    "he_generation_permitted": false,
+    "formal_cohort_permitted": false,
+    "physician_study_permitted": false
+  },
+  "runtime": {
+    "host": "amax2",
+    "python": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "environment": {
+      "PYTHONHASHSEED": "271828",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "code_identity": {
+    "corrective_commit": "81525e35",
+    "deployed_archive_commit": "959500e6",
+    "deployed_git_tree": "0b1deabc31f8576e31ed4c90b961120e067cbbb0",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_bisection_candidate_959500e6",
+    "files_sha256": {
+      "phase3_mask_edit_refine/research_anchor_subdivision_v1.py": "a91a5ef45ccb281847db3c9c6616ce2ae8ef5c5850166ac105d0a6bebe8b9ee1",
+      "phase3_joint_edit_refine/g2_execution_qualification.py": "fff4388bec9eff95eab5d4fbd0fe8e0b3d4212e8b9b6e48ddec39c9a4a0c299e",
+      "phase3_joint_edit_refine/topology_track_b.py": "ecfd90b528b9ad350824b702b195fc6356451220399335dfe8ce7cd465ca3938",
+      "scripts/probe_manuscript_joint_capacity.py": "ef824365ce0b541be9ec4159798c7f1d33689fe3d8c5480e218a06ce3d5aebca"
+    }
+  },
+  "validation_evidence": {
+    "local_regression": "262 passed, 346 subtests passed",
+    "local_regression_seconds": 310.90,
+    "target_synthetic_partition": {
+      "candidate_version": "directional-single-anchor-geodesic-bisection-v2",
+      "child_pixels": [40, 20],
+      "child_geodesic_spans": [29, 19]
+    },
+    "first_consumed_run_result": "topology_track_b_s07_development_result_v1.json"
+  },
+  "frozen_inputs": {
+    "source_freeze_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+    "source_index": 7,
+    "source_count": 1,
+    "source_files_sha256": {
+      "rgb": "c64dcc8dd0ecb73e1d823bc4d699033d52ba362bfb60f3d58685866aaac876a8",
+      "tissue": "4465140a7f1c00581dc596782df91018c6f4715381fb96a5e346f20528b010b8",
+      "nuclei": "9080a157d64fa476a27ff4708821ae0939426690bc463b1901eb68ab667aebb0"
+    }
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v2",
+    "logical_source_calls": 1,
+    "logical_operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0
+  },
+  "stop_policy": "Any identity mismatch, pre-existing output, timeout, signal, or execution exception is HOLD. No retry.",
+  "authorization_policy": "Codex self-authorization after evidence review under the user's standing instruction of 2026-11-10."
+}

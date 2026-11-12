@@ -1,0 +1,43 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0022_v1/review_queue.json",
+    "bytes": 32264,
+    "sha256": "6813667199e56989711222c762475e7ba74aa5cb0deffaba3690bfe61e9e93f6"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_joint_supplement_c59bd5fc1d5a__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 02 is materially less clustered and better preserves source-like NND and Ripley organization with the same tissue geometry and quota."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_c59bd5fc1d5a__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:56:00Z",
+      "confidence": 0.88,
+      "reason": "All hard gates pass and the mask review shows localized coherent moderate immune changes. Candidate 02 best preserves source-like spatial spacing and clustering among the alternatives while retaining a strong local population score.",
+      "tissue_geometry": "The edited immune compartments follow authorized stroma-immune interfaces, remain localized and preserve neighboring tumor and non-target structures.",
+      "nucleus_layout": "Sixty-two class-2 nuclei are complete, non-overlapping and contained. Candidate 02 has the closest source-like NND and Ripley pattern of the three passing candidates.",
+      "coupling": "Added nuclei occupy the authorized changed immune tissue and interface halo; quota, seam, compatibility and local distribution checks pass.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain preserved with no partial-instance, overlap or containment violation.",
+      "limitations": "This is mask-only annotation-conditioned evidence in an uncalibrated research envelope, not generated-H&E or clinical validation.",
+      "verdict": "Approve candidate 02 as the single mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_c59bd5fc1d5a__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 02 more closely preserves source-like NND and Ripley clustering while retaining identical tissue geometry and quota."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}

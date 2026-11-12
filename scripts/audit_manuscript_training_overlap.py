@@ -23,9 +23,33 @@ def index_strings(value):
     visit(value);return names,patients
 
 
+def candidate_sources(freeze):
+    """Normalize legacy source freezes and the reserved four-target freeze.
+
+    The formal R3 candidate manifest deliberately uses ``selected_candidates``
+    and ``verified_source_inputs``.  Older technical/source freezes use
+    ``candidate_sources`` (or technical/formal source lists) and ``inputs``.
+    Keeping the normalization here lets the overlap audit consume the exact
+    frozen formal manifest without manufacturing an untracked adapter file.
+    """
+    if isinstance(freeze.get('selected_candidates'), list):
+        rows = freeze['selected_candidates']
+    elif isinstance(freeze.get('candidate_sources'), list):
+        rows = freeze['candidate_sources']
+    else:
+        rows = [freeze['technical_source'], *freeze['formal_sources']]
+    normalized = []
+    for row in rows:
+        inputs = row.get('verified_source_inputs') or row.get('inputs')
+        if not isinstance(inputs, dict) or 'reference_image' not in inputs:
+            raise ValueError('source freeze lacks a frozen reference image')
+        normalized.append({**row, 'inputs': inputs})
+    return normalized
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source-freeze',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
-    freeze=json.loads(args.source_freeze.read_text());sources=freeze.get('candidate_sources') or [freeze['technical_source'],*freeze['formal_sources']]
+    freeze=json.loads(args.source_freeze.read_text());sources=candidate_sources(freeze)
     base=Path('/home/lyw/wqx-DL/flow-edit/FlowEdit-main')
     specs={
         'cross_train':(base/'phase5_runs/cross_meta/metadata_cross_train.json',None),

@@ -1,0 +1,20 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0041_v1/review_queue.json", "bytes": 32263, "sha256": "cb2a8f698c7498ca19c244a29d349ae90f6f5c7d98ddde4ccbab55e27c577e7a"},
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {"case_id": "BCSS_two_primitive_e269b4918e25__u1_significant", "candidate_id": "joint-cand:001-mature-cells-01", "decision": "rejected", "reviewer": "codex_current_chat", "reason": "Hard gates pass, but candidate 03 is much closer to source Ripley clustering and nearest-neighbor spacing under the same tissue geometry and quota."},
+    {"case_id": "BCSS_two_primitive_e269b4918e25__u1_significant", "candidate_id": "joint-cand:001-mature-cells-02", "decision": "rejected", "reviewer": "codex_current_chat", "reason": "Hard gates pass, but candidate 03 is substantially closer to source clustering and spacing with acceptable size and count preservation."},
+    {
+      "case_id": "BCSS_two_primitive_e269b4918e25__u1_significant", "candidate_id": "joint-cand:001-mature-cells-03", "decision": "approved", "reviewer": "codex_current_chat", "reviewed_utc": "2026-11-12T01:23:11Z", "confidence": 0.92,
+      "reason": "All hard gates pass and mask review shows coherent significant tumor-boundary growth. Candidate 03 best preserves source-like nearest-neighbor spacing and Ripley clustering with near-matched instance size.",
+      "tissue_geometry": "The 78,078-pixel expansion follows the authorized external tumor-stroma interfaces and preserves adjacent immune and non-target structures.",
+      "nucleus_layout": "Twenty-eight class-1 nuclei are complete, non-overlapping and contained. Source-relative area-p95, NND and Ripley ratios are 0.988, 1.005 and 1.011.",
+      "coupling": "Added tumor nuclei occupy the authorized expanded footprint; boundary, seam, quota, compatibility, distribution and density gates pass with sampling score 0.895.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and native structures outside joint support remain unchanged without partial-instance, overlap or containment violations.",
+      "limitations": "Total instance count is 10.5% above source but remains within the frozen envelope. This mask-only evidence is not generated-H&E or clinical validation.",
+      "verdict": "Approve candidate 03 as the single mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false, "h_and_e_selection_used": false, "qualification_updated": false
+}

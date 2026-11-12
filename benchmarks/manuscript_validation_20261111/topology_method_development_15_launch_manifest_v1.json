@@ -1,0 +1,39 @@
+{
+  "schema_version": "topology-method-development-15-launch-v1",
+  "status": "self_authorized_once",
+  "purpose": "Measure generality of the frozen dual-operation Track B candidate on the remaining fifteen development patients before opening reserved evaluation.",
+  "code": {
+    "commit": "0dd596e0",
+    "git_tree": "45fe4e1c6ab56f12214b5c93b13ce7f2db0aa31d",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_0dd596e0",
+    "patient_controller_sha256": "2ab85dc39add55484098df7a77731ba96d75f4b5efe33556d459328d04a8b0d0",
+    "probe_sha256": "ef824365ce0b541be9ec4159798c7f1d33689fe3d8c5480e218a06ce3d5aebca"
+  },
+  "input": {
+    "source_freeze": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_development_source_freeze_v1.json",
+    "source_freeze_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "partition": "development",
+    "partition_patients": 16,
+    "partition_sources": 109,
+    "excluded_development_patient": "TCGA-E2-A1LL",
+    "reason_for_exclusion": "S07 was the mechanism-development patient and already passed the frozen candidate; rerunning its other 46 sources would not measure generality.",
+    "requested_patients": 15,
+    "available_sources": 62,
+    "case_templates": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_development_15_v1",
+    "workers": 4,
+    "seconds_per_source": 1200,
+    "overall_watchdog_seconds": 21600,
+    "automatic_retries": 0,
+    "selection_rule": "For each patient, use the first dual-operation topology pass in frozen source order; stop on the first indeterminate source instead of skipping it.",
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any source timeout, nonzero exit, missing receipt, or identity mismatch makes that patient indeterminate and stops later sources for that patient.",
+  "authorization_basis": "Codex self-authorized development-only source-mask evaluation after dual-operation S07 success, broad regression with bounded failures, immutable partition reconstruction, and fail-closed controller tests."
+}

@@ -19,10 +19,9 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from phase3_mask_edit_refine.passive_observer import observe
-
 from phase3_mask_edit_refine.evidence import load_id_mask
 from phase3_mask_edit_refine.gates import GateRegistry
+from phase3_mask_edit_refine.passive_observer import observe
 from phase3_mask_edit_refine.skills import (
     SkillRepository as MaskSkillRepository,
 )
@@ -43,6 +42,10 @@ from .scene import build_joint_scene_analysis
 from .semantic_parser import PreboundSemanticParser, bind_semantic_intent
 from .skills.execution_aliases import tissue_tool_primitive_id
 from .skills.repository import JointSkillRepository
+from .topology_track_b import (
+    TrackBPortfolioCompilationError,
+    compile_tissue_portfolio_with_track_b,
+)
 from .workflow import (
     INFILTRATION_BUDGET_PRIMITIVES,
     PANDA_CELL_EFFECT_EXTENT_OVERRIDES,
@@ -51,7 +54,6 @@ from .workflow import (
     _as_tissue_case,
     _derive_infiltration_budget,
     _derive_local_population_budget,
-    _tissue_portfolio_authority_binding,
 )
 
 EXECUTION_QUALIFICATION_SCHEMA = "g2-v2-read-only-execution-qualification-v1"
@@ -387,6 +389,7 @@ def _qualify_tissue_case(
     if not preflight.meaningful_tissue_capacity_passed:
         failures.append("meaningful_tissue_area_not_executable")
     witness = None
+    track_b_audit = None
     if not failures:
         tissue_case = _as_tissue_case(
             case,
@@ -394,26 +397,19 @@ def _qualify_tissue_case(
             shape=source_tissue.shape,
         )
         try:
-            witness = CandidateFeasibilityCompiler(
-                gates=GateRegistry()
-            ).compile_tissue_witness(
-                tissue_case=tissue_case,
-                source_tissue=source_tissue,
-                schema=schema,
-                scene=scene,
-                tissue_bundle=tissue_bundle,
-                joint_bundle=bundle,
-                nuclei_preflight=preflight,
-                authority_binding=_tissue_portfolio_authority_binding(
+            witness, preflight, track_b_audit = (
+                _compile_qualification_tissue_witness(
                     case=case,
                     tissue_case=tissue_case,
                     source_tissue=source_tissue,
-                    bundle=bundle,
+                    schema=schema,
+                    scene=scene,
                     tissue_bundle=tissue_bundle,
+                    bundle=bundle,
                     allocation=allocation,
-                    nuclei_preflight=preflight,
-                ),
-            ).to_metadata()
+                    preflight=preflight,
+                )
+            )
         except Exception as exc:  # noqa: BLE001 - qualification is fail closed
             observe("qualification.exception", exception=exc)
             failures.append("whole_mask_topology_witness_not_executable")
@@ -422,6 +418,8 @@ def _qualify_tissue_case(
                 "errors": [f"{type(exc).__name__}: {exc}"],
                 "persisted_target_mask": False,
             }
+            if isinstance(exc, TrackBPortfolioCompilationError):
+                track_b_audit = exc.audit
     observe("qualification.complete", failures=failures, witness=witness)
     return (
         {
@@ -437,12 +435,47 @@ def _qualify_tissue_case(
                 item.to_metadata() for item in preflight.interfaces
             ],
             "whole_mask_topology_witness": witness,
+            "topology_track_b": track_b_audit,
             "tissue_executor_binding": {
                 "joint_primitive_id": case.primitive_id,
                 "tool_primitive_id": tool_primitive_id,
             },
         },
         failures,
+    )
+
+
+def _compile_qualification_tissue_witness(
+    *,
+    case,
+    tissue_case,
+    source_tissue,
+    schema,
+    scene,
+    tissue_bundle,
+    bundle,
+    allocation,
+    preflight,
+):
+    """Use the reviewed workflow-level Track A→B compiler in qualification."""
+
+    result = compile_tissue_portfolio_with_track_b(
+        compiler=CandidateFeasibilityCompiler(gates=GateRegistry()),
+        joint_case=case,
+        tissue_case=tissue_case,
+        source_tissue=source_tissue,
+        schema=schema,
+        scene=scene,
+        tissue_bundle=tissue_bundle,
+        joint_bundle=bundle,
+        allocation=allocation,
+        nuclei_preflight=preflight,
+        maximum_candidates=1,
+    )
+    return (
+        result.portfolio.survivors[0].to_metadata(),
+        result.nuclei_preflight,
+        result.audit,
     )
 
 

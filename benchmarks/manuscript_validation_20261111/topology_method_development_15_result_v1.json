@@ -1,0 +1,56 @@
+{
+  "schema_version": "topology-method-development-15-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_development_only",
+  "launch_manifest": "topology_method_development_15_launch_manifest_v1.json",
+  "controller_commit": "0dd596e0",
+  "authorization_commit": "1c74eb61",
+  "patient_qualification_sha256": "5f2d1003ba45382dcbcd53566b70a6d1c5d88457ecf7a74b6909c6483cc704b1",
+  "automatic_retries": 0,
+  "scope": {
+    "patients": 15,
+    "sources_available_in_fixed_order": 62,
+    "source_attempts": 51,
+    "workers": 4,
+    "s07_excluded_from_this_run": true,
+    "reserved_evaluation_opened": false
+  },
+  "patient_terminal_states": {
+    "first_source_passed": 4,
+    "fixed_sources_exhausted": 11,
+    "indeterminate": 0
+  },
+  "both_operation_pass_patients": [
+    {"patient_id": "TCGA-A7-A26G", "source_rank": 0},
+    {"patient_id": "TCGA-AN-A0AT", "source_rank": 2},
+    {"patient_id": "TCGA-E2-A14X", "source_rank": 3},
+    {"patient_id": "TCGA-E2-A1LI", "source_rank": 3}
+  ],
+  "source_result_counts": {
+    "u1_fail_u2_pass": 22,
+    "u1_fail_u2_fail": 18,
+    "u1_pass_u2_fail": 7,
+    "u1_pass_u2_pass": 4
+  },
+  "operation_counts": {
+    "u1": {"pass": 11, "fail": 40},
+    "u2": {"pass": 26, "fail": 25}
+  },
+  "development_accounting": {
+    "s07_both_pass": 1,
+    "all_16_development_patients_both_pass": 5,
+    "all_16_development_patients_total": 16
+  },
+  "interpretation": {
+    "supported": [
+      "The fail-closed patient controller completed every non-S07 development patient without an indeterminate terminal state.",
+      "Five of sixteen development patients, including the separately run S07 case, have at least one fixed-order source passing both Significant topology witnesses under this candidate method.",
+      "All saved source failures were topology-safe-area underfill failures, which supports development of a uniform representation mechanism rather than threshold relaxation."
+    ],
+    "not_supported": [
+      "This development result is not an independent evaluation and does not update the frozen 17/19 formal accounting.",
+      "It does not approve Moderate targets, final joint masks, H&E generation, or physician-study material.",
+      "The 68-patient reserved evaluation partition remains unopened."
+    ]
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0001_0005_v1/review_queue.json",
+    "bytes": 37571,
+    "sha256": "9bd12ec4ff7098abe6ce2d701ee06c4f276d170f569b854b37f0818fec07d619"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_joint_supplement_d8fa8cc70d1c__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:07:07Z",
+      "confidence": 0.9,
+      "reason": "All hard gates pass. Candidate 01 retains source-like nuclear spacing most closely and is less clustered than the alternatives without sacrificing quota or seam coverage.",
+      "tissue_geometry": "The edited immune regions follow the approved stroma-to-immune interfaces, remain localized, and preserve surrounding compartment geometry.",
+      "nucleus_layout": "Sixty class-2 nuclei are complete, non-overlapping and contained. Candidate 01 has mean NND 22.08 px and normalized Ripley K24 0.935, closest to source-like spacing among the three candidates.",
+      "coupling": "Tissue and nuclear changes coincide within authorized joint support; seam continuity and containment gates pass.",
+      "preserved_conditions": "Protected and support-exterior nuclei are pixel-exact; no partial instance, prohibited-region, overlap or containment violation is reported.",
+      "limitations": "Mask-only research review; it does not establish histologic truth, generated-H&E quality or clinical validity.",
+      "verdict": "Approve candidate 01 as the single mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_d8fa8cc70d1c__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but only one candidate may be approved; candidate 02 is more locally clustered and has shorter mean nearest-neighbor spacing than candidate 01."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_d8fa8cc70d1c__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 01 more closely preserves source-like nuclear spacing while retaining the same tissue geometry."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_d8fa8cc70d1c__u2_significant",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:07:07Z",
+      "confidence": 0.86,
+      "reason": "The only fully passing candidate produces a coherent significant stroma-to-immune transition and completes the frozen cell quota while retaining the required topology and seam conditions.",
+      "tissue_geometry": "The larger immune compartments follow the authorized interfaces and remain within the approved maximum-safe fallback footprint; the tissue floor remains above the frozen significant lower bound.",
+      "nucleus_layout": "Ninety-two class-2 nuclei are placed as complete non-overlapping instances in compatible tissue; the spatial distribution, local density and shape gates all pass.",
+      "coupling": "Nuclear additions are coupled to the edited immune footprint and authorized interface halo; anchor coverage is 1.0 and the turnover seam-continuity gate passes.",
+      "preserved_conditions": "Protected nuclei and prohibited regions are preserved, with no partial-instance, overlap or containment failure.",
+      "limitations": "The joint area uses the predeclared maximum-safe fallback (79,226 pixels) rather than the nominal center; this is mask-only evidence and not generated-H&E or clinical validation.",
+      "verdict": "Approve the sole passing candidate as the mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_83de48ddbd46__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 03 has the strongest combined local population score and preserves the source instance-count and shape distribution more closely."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_83de48ddbd46__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 03 has a higher local population score and a closer source-like instance-count ratio with the same approved tissue geometry."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_83de48ddbd46__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:07:07Z",
+      "confidence": 0.88,
+      "reason": "All hard gates pass and the mask review shows localized coherent tumor-boundary growth. Candidate 03 has the best combined local population score and the closest source-like instance count among the alternatives.",
+      "tissue_geometry": "Tumor expansion follows existing external tumor-stroma boundaries and preserves the surrounding compartment structure; the tissue footprint is identical across the passing candidates.",
+      "nucleus_layout": "Thirty-eight class-1 nuclei are complete, non-overlapping and legally contained. The target/source instance-count ratio is 1.010 and the NND ratio is 1.019.",
+      "coupling": "New nuclei occupy the authorized expanded tumor compartment; external-boundary and seam-continuity gates pass with full anchor coverage.",
+      "preserved_conditions": "Native auxiliary structures, protected nuclei and prohibited regions remain outside generation support and are preserved.",
+      "limitations": "This is an annotation-conditioned mask review in an uncalibrated research envelope, not proof of histologic or clinical realism.",
+      "verdict": "Approve candidate 03 as the single mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_83de48ddbd46__u1_significant",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 03 preserves the source nucleus shape distribution materially better and remains coherent at the expanded tumor boundary."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_83de48ddbd46__u1_significant",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:07:07Z",
+      "confidence": 0.86,
+      "reason": "All hard gates pass. Candidate 03 gives coherent significant tumor-boundary expansion and preserves the source instance-area distribution substantially better than candidate 01.",
+      "tissue_geometry": "The larger tumor footprint grows along the authorized external tumor-stroma boundary, remains localized to the planned support, and exceeds the frozen significant tissue floor.",
+      "nucleus_layout": "Sixty-nine class-1 nuclei are complete, non-overlapping and contained. Candidate 03 has a source-relative p95 instance-area ratio of 1.001, compared with 0.888 for candidate 01.",
+      "coupling": "The added nuclear population follows the significant expanded tumor compartment; anchor coverage, seam continuity and external-boundary binding all pass.",
+      "preserved_conditions": "Protected nuclei, native auxiliary structures and prohibited regions are preserved outside joint support.",
+      "limitations": "The population envelope is research-only and uncalibrated; this mask decision does not assess generated H&E or clinical validity.",
+      "verdict": "Approve candidate 03 as the single mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}

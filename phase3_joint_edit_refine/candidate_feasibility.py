@@ -11,8 +11,6 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
-from phase3_mask_edit_refine.passive_observer import observe
-
 from phase3_mask_edit.core.labels import MaskProfileSchema
 from phase3_mask_edit_refine.agents import validate_edit_plan
 from phase3_mask_edit_refine.candidates import (
@@ -24,6 +22,7 @@ from phase3_mask_edit_refine.execution import (
 )
 from phase3_mask_edit_refine.gates import GateContext, GateRegistry
 from phase3_mask_edit_refine.models import CaseContext, EditPlan
+from phase3_mask_edit_refine.passive_observer import observe
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
 
 from .feasibility import (
@@ -42,7 +41,7 @@ from .tissue_planner import MultiInterfaceResearchTissuePlanner
 from .tissue_tools import compile_tissue_tool_program
 
 CANDIDATE_FEASIBILITY_COMPILER_VERSION = (
-    "joint-candidate-feasibility-compiler-v3"
+    "joint-candidate-feasibility-compiler-v4-track-b-feedback"
 )
 _COMPILER_CAPABILITY_ISSUER = object()
 _ISSUED_TISSUE_PORTFOLIOS: dict[int, tuple[tuple[int, str], ...]] = {}
@@ -58,6 +57,40 @@ _PANDA_GROWTH_ARCHITECTURE_PRIMITIVES = frozenset(
         "cohesive-boundary-expansion-v1",
     }
 )
+
+
+class TissueWitnessCompilationError(JointContractError):
+    """One bounded witness search failed with immutable structured feedback."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        errors: tuple[str, ...],
+        terminal_feedback: Mapping[str, Any],
+        feedback_history: tuple[Mapping[str, Any], ...],
+    ) -> None:
+        super().__init__(message)
+        self.errors = tuple(errors)
+        self.terminal_feedback = dict(terminal_feedback)
+        self.feedback_history = tuple(dict(item) for item in feedback_history)
+
+
+class TissuePortfolioCompilationError(JointContractError):
+    """An ordinary portfolio failed and exposes only audited retry evidence."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        vetoes: tuple["TissueCandidateVeto", ...],
+        structured_failures: tuple[Mapping[str, Any], ...],
+    ) -> None:
+        super().__init__(message)
+        self.vetoes = tuple(vetoes)
+        self.structured_failures = tuple(
+            dict(item) for item in structured_failures
+        )
 
 
 def _tissue_portfolio_allows_anchor_diversification(
@@ -281,6 +314,30 @@ def _tissue_area_underfill_feedback(
     return feedback
 
 
+def _preplan_tissue_area_underfill_feedback(
+    *,
+    error: TopologySafeAreaUnderfillError,
+    retry_index: int,
+    error_message: str,
+    preferred_anchor_ids: tuple[str, ...],
+) -> dict[str, Any]:
+    """Preserve planner-owned topology evidence when no plan was returned."""
+
+    feedback = dict(error.feedback)
+    feedback.update(
+        {
+            "retry_index": retry_index,
+            "stage": "tissue_area_underfill",
+            "errors": [error_message],
+            "failed_interface_ids": list(
+                feedback.get("failed_interface_ids", ())
+            ),
+            "preferred_anchor_ids": list(preferred_anchor_ids),
+        }
+    )
+    return feedback
+
+
 def _selected_interface_set_underfill_error(
     *,
     compiled_plan: EditPlan,
@@ -352,6 +409,19 @@ def _selected_interface_set_underfill_error(
             "required_action": "expand_interface_set_and_redistribute",
         },
     )
+
+
+def _plan_covers_all_feasible_interfaces(
+    raw_plan: EditPlan,
+    nuclei_preflight: JointNucleiPreflight,
+) -> bool:
+    """Return whether no fresh-preflight interface remains to be added."""
+
+    feasible = {str(value) for value in nuclei_preflight.feasible_interface_ids}
+    selected = {
+        str(item.interface_id) for item in raw_plan.candidate_interfaces
+    }
+    return bool(feasible) and feasible.issubset(selected)
 
 
 def _is_subcomponent_raster_tail(compiled_plan: EditPlan) -> bool:
@@ -698,6 +768,7 @@ class CandidateFeasibilityCompiler:
         seen_changes: set[str] = set()
         failures: list[str] = []
         vetoes: list[TissueCandidateVeto] = []
+        structured_failures: list[dict[str, Any]] = []
         # Compile the ordinary global solve, then independently prefer every
         # feasible interface/anchor pair.  An interface can expose several
         # legal spatial sectors; treating it as one candidate would collapse
@@ -882,6 +953,22 @@ class CandidateFeasibilityCompiler:
             except Exception as exc:  # noqa: BLE001 - every veto is audited
                 error = f"{type(exc).__name__}: {exc}"
                 failures.append(error)
+                if isinstance(exc, TissueWitnessCompilationError):
+                    structured_failures.append(
+                        {
+                            "preferred_interface_ids": [
+                                value
+                                for value in feasible
+                                if value not in deprioritized
+                            ],
+                            "preferred_anchor_ids": list(preferred_anchor_ids),
+                            "terminal_feedback": dict(exc.terminal_feedback),
+                            "feedback_history": [
+                                dict(item) for item in exc.feedback_history
+                            ],
+                            "errors": list(exc.errors),
+                        }
+                    )
                 payload = {
                     "preferred_interface_ids": [
                         value
@@ -933,9 +1020,11 @@ class CandidateFeasibilityCompiler:
             if len(witnesses) >= max(1, maximum_candidates):
                 break
         if not witnesses:
-            raise JointContractError(
+            raise TissuePortfolioCompilationError(
                 "whole-mask topology portfolio has no executable survivor: "
-                + "; ".join(failures)
+                + "; ".join(failures),
+                vetoes=tuple(vetoes),
+                structured_failures=tuple(structured_failures),
             )
         portfolio = TissueCandidatePortfolio(
             survivors=tuple(witnesses),
@@ -984,6 +1073,7 @@ class CandidateFeasibilityCompiler:
             "preferred_anchor_ids": list(preferred_anchor_ids),
         }
         errors: list[str] = []
+        feedback_history: list[dict[str, Any]] = []
         attempt_limit = (
             1
             if tissue_case.primitive_id
@@ -1033,6 +1123,9 @@ class CandidateFeasibilityCompiler:
                     )
                     and tissue_case.primitive_id
                     != "infiltrative-nest-cord-extension-v1"
+                    and not _plan_covers_all_feasible_interfaces(
+                        raw_plan, nuclei_preflight
+                    )
                 ):
                     # A maximum over one selected interface set is not yet a
                     # global maximum over the frozen preflight portfolio.
@@ -1077,19 +1170,9 @@ class CandidateFeasibilityCompiler:
                         compiled,
                         executor=executor,
                     )
-                    candidates = generate_joint_tissue_candidates(
-                        source_tissue,
-                        schema=schema,
-                        tissue_scene=tissue_scene,
-                        joint_scene=scene,
-                        plan=family_plan,
-                        bundle=tissue_bundle,
-                        seed=tissue_case.seed,
-                    compiled_replay_parts=parts,
-                    compiled_replay_audit=replay,
-                )
                     passing = []
-                    for candidate in candidates:
+
+                    def accept_candidate(candidate):
                         report = self.gates.run(
                             GateContext(
                                 case=tissue_case,
@@ -1103,6 +1186,7 @@ class CandidateFeasibilityCompiler:
                         )
                         if report.passed:
                             passing.append((candidate, report))
+                            return True
                         else:
                             failed_executor_check_ids.update(
                                 item.check_id
@@ -1114,6 +1198,25 @@ class CandidateFeasibilityCompiler:
                                     failed_executor_details.setdefault(
                                         item.check_id, item.detail
                                     )
+                        return False
+
+                    # Generate in the historical deterministic order, but run
+                    # the hard gates as soon as each candidate exists.  Since
+                    # the compiler always selected passing[0], stopping after
+                    # the first accepted candidate preserves the exact choice;
+                    # if none passes, the full original sequence is exhausted.
+                    generate_joint_tissue_candidates(
+                        source_tissue,
+                        schema=schema,
+                        tissue_scene=tissue_scene,
+                        joint_scene=scene,
+                        plan=family_plan,
+                        bundle=tissue_bundle,
+                        seed=tissue_case.seed,
+                        compiled_replay_parts=parts,
+                        compiled_replay_audit=replay,
+                        candidate_acceptor=accept_candidate,
+                    )
                     if not passing:
                         continue
                     candidate, report = passing[0]
@@ -1264,13 +1367,12 @@ class CandidateFeasibilityCompiler:
                 observe("compiler.exception", exception=exc, rendered_error=error, raw_plan=raw_plan, attempt=attempt)
                 errors.append(error)
                 if raw_plan is None:
-                    feedback = {
-                        "retry_index": attempt,
-                        "stage": "tissue_area_underfill",
-                        "errors": [error],
-                        "failed_interface_ids": [],
-                        "preferred_anchor_ids": list(preferred_anchor_ids),
-                    }
+                    feedback = _preplan_tissue_area_underfill_feedback(
+                        error=exc,
+                        retry_index=attempt,
+                        error_message=error,
+                        preferred_anchor_ids=preferred_anchor_ids,
+                    )
                 else:
                     feedback = _tissue_area_underfill_feedback(
                         error=exc,
@@ -1280,6 +1382,7 @@ class CandidateFeasibilityCompiler:
                         error_message=error,
                         preferred_anchor_ids=preferred_anchor_ids,
                     )
+                feedback_history.append(dict(feedback))
             except Exception as exc:  # noqa: BLE001 - fail closed and audit any compiler failure
                 error = f"{type(exc).__name__}: {exc}"
                 observe("compiler.exception", exception=exc, rendered_error=error, raw_plan=raw_plan, attempt=attempt)
@@ -1300,10 +1403,13 @@ class CandidateFeasibilityCompiler:
                     "attempted_interface_ids": attempted_interface_ids,
                     "preferred_anchor_ids": list(preferred_anchor_ids),
                 }
-        raise JointContractError(
+        raise TissueWitnessCompilationError(
             "whole-mask topology witness is not executable after bounded "
             "replan: "
-            + "; ".join(errors)
+            + "; ".join(errors),
+            errors=tuple(errors),
+            terminal_feedback=feedback,
+            feedback_history=tuple(feedback_history),
         )
 
 

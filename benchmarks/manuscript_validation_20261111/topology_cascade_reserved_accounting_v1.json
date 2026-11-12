@@ -1,0 +1,59 @@
+{
+  "schema_version": "topology-cascade-reserved-accounting-v1",
+  "created_utc": "2026-11-11T12:42:39Z",
+  "partition": "reserved_evaluation",
+  "source_freeze_sha256": "d9c4e4f8cd4eb9c98c4635574c810de40aec26253a8cac6c4c8209d9b9cfa31c",
+  "method_commit": "0ac9bdda",
+  "method_git_tree": "872d19be20b503f75a248ed9d2c36c033952cb14",
+  "patient_accounting": {
+    "frozen_patients": 68,
+    "unique_patients_with_receipts": 68,
+    "first_source_passed": 29,
+    "exhausted_without_pass": 38,
+    "indeterminate_execution": 1,
+    "known_terminal_patients": 67,
+    "maximum_if_unknown_passes": 30,
+    "formal_target": 30,
+    "formal_target_currently_proven": false
+  },
+  "source_attempts_in_latest_patient_receipts": 189,
+  "receipt_history_count": 70,
+  "patients_with_runtime_recovery_history": {
+    "TCGA-A2-A0SX": 2,
+    "TCGA-AR-A256": 2
+  },
+  "runs": [
+    {
+      "name": "topology_cascade_reserved_v2",
+      "receipts": 10,
+      "statuses": {"first_source_passed": 6, "exhausted_without_pass": 3, "indeterminate_execution": 1},
+      "receipt_set_sha256": "8f9b1b4e79a14032bef25e3670919c6f1e3857695b1020b48039dc121c281608",
+      "receipt_bytes": 59589228
+    },
+    {
+      "name": "topology_cascade_reserved_recovery_v3",
+      "receipts": 18,
+      "statuses": {"first_source_passed": 6, "exhausted_without_pass": 11, "indeterminate_execution": 1},
+      "receipt_set_sha256": "764e0f3ffc62008bbe6cbc8cb0616652d12a32873a4b6700591a3476083ce764",
+      "receipt_bytes": 369132010
+    },
+    {
+      "name": "topology_cascade_reserved_recovery_v4",
+      "receipts": 42,
+      "statuses": {"first_source_passed": 17, "exhausted_without_pass": 24, "indeterminate_execution": 1},
+      "receipt_set_sha256": "12cc3963d46482681b1d7667b6ffa980d5674035f343a2acb8ac02b5f8fc8202",
+      "receipt_bytes": 1112596388
+    }
+  ],
+  "sole_unknown": {
+    "patient_id": "TCGA-AR-A256",
+    "first_source_reference_id": "BCSS_joint_supplement_233ba410a4e6",
+    "prior_timeouts_seconds": [2400, 4800],
+    "business_results_saved": 0,
+    "final_runtime_recovery": "running under topology_cascade_reserved_recovery_launch_v5.json"
+  },
+  "evidence_boundary": "Patient receipts are complete and immutable. The three controllers did not publish aggregate patient_qualification.json files; this report reconstructs patient accounting from all receipt files without rerunning topology.",
+  "development_patients_counted_as_formal": false,
+  "four_target_approved_patients": 0,
+  "h_and_e_calls": 0
+}

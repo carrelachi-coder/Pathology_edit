@@ -1,0 +1,35 @@
+{
+  "schema_version": "topology-exhausted-interface-fallback-probe-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_u2_pass_u1_underfill",
+  "launch_manifest": "topology_exhausted_interface_fallback_probe_v1.json",
+  "implementation_commit": "f067b708",
+  "authorization_commit": "53e8cb33",
+  "capacity_screen_sha256": "c9edb9e1ac8d3386390e25d9c6d05c0806e7a85a7a48f31bb497d5d1a7f85223",
+  "automatic_retries": 0,
+  "case": {
+    "patient_id": "TCGA-AN-A0AR",
+    "reference_id": "BCSS_joint_supplement_b546a330a49d",
+    "partition": "development",
+    "source_index": 6
+  },
+  "results": {
+    "both_significant_topology_pass": false,
+    "u1_topology_pass": false,
+    "u1_largest_saved_topology_passing_area_pixels": 49194,
+    "u2_topology_pass": true,
+    "u2_realized_tissue_pixels": 73591,
+    "u2_hard_gate_passed": true,
+    "hard_floor_pixels": 70779
+  },
+  "interpretation": {
+    "supported": [
+      "The previously hidden 73,591-pixel U2 candidate proceeded through the unchanged executor and hard gates and became an accepted topology witness.",
+      "Skipping the forced add-interface replan is valid when the selected plan already contains every interface certified feasible by the fresh preflight."
+    ],
+    "not_supported": [
+      "The patient remains ineligible because U1 still failed the unchanged 70,779-pixel hard floor.",
+      "This development result does not update the frozen formal qualification count or authorize reserved evaluation, four-target compilation, H&E generation, or doctor review."
+    ]
+  }
+}

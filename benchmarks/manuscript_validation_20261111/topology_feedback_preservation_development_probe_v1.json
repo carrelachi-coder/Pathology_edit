@@ -1,0 +1,31 @@
+{
+  "schema_version": "topology-feedback-preservation-development-probe-v1",
+  "status": "self_authorized_once",
+  "purpose": "Verify that a topology-passing planner-owned underfill retains its receipt and enters the already reviewed Track B path.",
+  "code": {
+    "commit": "801499d9",
+    "git_tree": "2a665abea3977cbcc945c424ad997212bda7de83",
+    "candidate_feasibility_sha256": "d14ad645dfb5f9e1ce23405b461592338ccf20d0209e710db07576500e72dba2",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_feedback_801499d9"
+  },
+  "input": {
+    "partition": "development",
+    "patient_id": "TCGA-E2-A158",
+    "reference_id": "BCSS_joint_supplement_9af9c69a00f4",
+    "source_index": 38,
+    "source_freeze_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "prior_u1_max_realized_pixels": 69300,
+    "hard_floor_pixels": 70779
+  },
+  "execution": {
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "reserved_evaluation_access": false,
+    "qualification_update_permitted": false,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, or incomplete receipt is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized one development-only counterexample after the saved receipt proved a topology-passing underfill was dropped solely when raw_plan was absent."
+}

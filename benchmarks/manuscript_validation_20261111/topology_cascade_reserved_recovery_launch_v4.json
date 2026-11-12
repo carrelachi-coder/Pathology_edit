@@ -1,0 +1,45 @@
+{
+  "schema_version": "topology-cascade-reserved-recovery-launch-v4",
+  "recorded_at": "2026-11-11",
+  "status": "self_authorized_once_after_v3_timeout_hold",
+  "prior_hold": "topology_cascade_reserved_recovery_v3_hold_result.json",
+  "method_freeze": "topology_cascade_method_freeze_v1.json",
+  "code": {
+    "commit": "0ac9bdda",
+    "git_tree": "872d19be5ec1e70630008ce0727a5217485c5c4b",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_0ac9bdda",
+    "probe_sha256": "ef824365ce0b541be9ec4159798c7f1d33689fe3d8c5480e218a06ce3d5aebca",
+    "controller_sha256": "2ab85dc39add55484098df7a77731ba96d75f4b5efe33556d459328d04a8b0d0"
+  },
+  "input": {
+    "source_freeze": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_reserved_source_freeze_v1.json",
+    "source_freeze_sha256": "d9c4e4f8cd4eb9c98c4635574c810de40aec26253a8cac6c4c8209d9b9cfa31c",
+    "partition": "reserved_evaluation",
+    "total_frozen_patients": 68,
+    "excluded_valid_terminal_patients": 26,
+    "requested_recovery_patients": 42,
+    "indeterminate_patient_reincluded": "TCGA-AR-A256"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_recovery_v4",
+    "run_log": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_recovery_v4.run.log",
+    "workers": 2,
+    "seconds_per_source": 4800,
+    "overall_watchdog_seconds": 259200,
+    "automatic_retries": 0,
+    "source_order_unchanged": true,
+    "threshold_changes": 0,
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "budget_revision_basis": "A source timed out at 2,400.081 seconds under four-worker contention. The recovery halves concurrency and doubles only the per-source engineering envelope. Code, source order, scientific thresholds, and pass/fail contracts remain frozen.",
+  "acceptance": {
+    "recovery_patients_terminal": 42,
+    "recovery_indeterminate_patients": 0,
+    "combined_reserved_patients_terminal": 68,
+    "duplicate_completed_source_results_strictly_equal": true,
+    "formal_accounting_review_required_after_merge": true
+  },
+  "failure_policy": "Any timeout, nonzero exit, missing receipt, identity mismatch, or result mismatch is HOLD with no automatic retry."
+}

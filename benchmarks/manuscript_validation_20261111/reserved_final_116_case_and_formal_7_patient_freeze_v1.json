@@ -1,0 +1,58 @@
+{
+  "schema_version": "reserved-final-116-case-and-formal-7-patient-freeze-v1",
+  "created_date": "2026-11-12",
+  "scope": "Final accounting after all reserved mask-condition compilation and independent mask-only review, followed by formal seven-patient cohort materialization.",
+  "candidate_accounting": {
+    "candidate_decisions": 147,
+    "candidate_decisions_with_terminal_status": 147,
+    "reserved_cases": 116,
+    "pilot_abstained_cases": 1,
+    "review_required_cases": 71,
+    "compiled_abstained_cases": 44,
+    "total_abstained_cases": 45,
+    "patients_in_final_queue": 29,
+    "patients_ready_for_independent_mask_review": 7,
+    "patients_not_ready": 22
+  },
+  "formal_cohort": {
+    "four_target_approved_patients": 7,
+    "materialized_handoffs": 28,
+    "generated_images_planned": 35,
+    "generated_states_per_patient": [
+      "sham",
+      "u1_moderate",
+      "u1_significant",
+      "u2_moderate",
+      "u2_significant"
+    ],
+    "unique_images_including_source": 42,
+    "formal_launch_permitted": true,
+    "acceptance_status": "pending_real_generation_and_measurement",
+    "patients": [
+      {"patient_id": "TCGA-A2-A3XS", "source_id": "BCSS_two_primitive_0ba6c5e2f899"},
+      {"patient_id": "TCGA-A7-A5ZV", "source_id": "BCSS_joint_supplement_c59bd5fc1d5a"},
+      {"patient_id": "TCGA-AO-A1KR", "source_id": "BCSS_two_primitive_e269b4918e25"},
+      {"patient_id": "TCGA-BH-A0E0", "source_id": "BCSS_joint_supplement_e79608f45a79"},
+      {"patient_id": "TCGA-BH-A0RX", "source_id": "BCSS_joint_supplement_3fa86eb18346"},
+      {"patient_id": "TCGA-D8-A142", "source_id": "BCSS_joint_supplement_b15ca5b3ea67"},
+      {"patient_id": "TCGA-D8-A1XQ", "source_id": "BCSS_two_primitive_a9ca49dc1ad3"}
+    ]
+  },
+  "server_artifacts": [
+    {"path": "reserved_four_target_all_116_receipts_final_v2.json", "bytes": 11126824, "sha256": "ee1851c324bd6966a49472dad502347cc083a9ac26b2c55f3dbe84b725d83232"},
+    {"path": "reserved_four_target_final_review_all_116_v1/review_queue.json", "bytes": 156754, "sha256": "fafedbeb9539a8706cd9c252c178677f30e91ef3c874c14a6ca6af366f975461"},
+    {"path": "reserved_four_target_final_all_decisions_v1.json", "bytes": 153648, "sha256": "66648342cbd6b9476251c319e7e432c9bf8a50e30b64d08b15f5b4393734f1dd"},
+    {"path": "reserved_four_target_final_approval_all_116_v1/four_target_approval_freeze.json", "bytes": 220737, "sha256": "18c2025e2bfb0713b49812eb4538a4f3102240ae62e865aa3f95b6a81a289719"},
+    {"path": "reserved_four_target_final_handoffs_all_116_v1/handoff_materialization_manifest.json", "bytes": 28983, "sha256": "2d9c74bb35b216745314ca54d81e3a84a3d30fda181affb5516441a27fcddd63"},
+    {"path": "formal_r3_cohort_freeze_final_7_v1/formal_r3_protocol.json", "bytes": 47301, "sha256": "35ca2f7d8b2450b7f820d09f5c310f163f494f92824f4c249daa82aa3acb42e3"},
+    {"path": "formal_r3_cohort_freeze_final_7_v1/generation_manifest.jsonl", "bytes": 60094, "sha256": "1d1e4296929e2acffb6053583d5a69f6e627ef8bcfe4da21457c55506b191353"}
+  ],
+  "implementation_commit": "33c67ef5830d73ba79da3791abed0952c27bb4f1",
+  "research_boundaries": {
+    "formal_generation_completed": false,
+    "formal_measurement_completed": false,
+    "formal_statistics_completed": false,
+    "doctor_study_started": false,
+    "interpretation": "Seven patients are the complete four-target-approved cohort obtained under the frozen rules. They are not represented as thirty patients, and mask-only approval is not evidence of generated-H&E success."
+  }
+}

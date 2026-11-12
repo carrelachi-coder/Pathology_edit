@@ -1,0 +1,85 @@
+{
+  "schema_version": "topology-track-b-s07-development-launch-v1",
+  "status": "frozen_for_one_execution",
+  "purpose": "Run the real G2 qualification entry once on development-only S07 to determine whether the accepted Track B wiring changes the preserved topology-underfill outcome.",
+  "scientific_scope": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "development_only": true,
+    "reserved_evaluation_opened": false,
+    "qualification_update_permitted": false,
+    "four_target_approval_permitted": false,
+    "he_generation_permitted": false,
+    "formal_cohort_permitted": false,
+    "physician_study_permitted": false
+  },
+  "runtime": {
+    "host": "amax2",
+    "python": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "python_version_observed": "3.11.15",
+    "environment": {
+      "PYTHONHASHSEED": "271828",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "code_identity": {
+    "reviewed_commit": "3cb9a67c",
+    "candidate_branch_head_at_freeze": "5dbb0822",
+    "candidate_git_tree": "71963d8294568014c1592afc3b00d5e7eebf2a92",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_wiring_candidate_3cb9a67c/source",
+    "files_sha256": {
+      "phase3_joint_edit_refine/g2_execution_qualification.py": "fff4388bec9eff95eab5d4fbd0fe8e0b3d4212e8b9b6e48ddec39c9a4a0c299e",
+      "phase3_joint_edit_refine/topology_track_b.py": "ecfd90b528b9ad350824b702b195fc6356451220399335dfe8ce7cd465ca3938",
+      "phase3_joint_edit_refine/candidate_feasibility.py": "2657ec9520d31d6ea42750546221ebe011e89fc3900dbb9d3e28ce7e7e7464d1",
+      "phase3_joint_edit_refine/tissue_planner.py": "bb792feb524c84644663d1cffd1f7ce06810d78c4bb6a4640f91e54799c05036",
+      "phase3_mask_edit_refine/workflow.py": "1d59a14113ec4d81e8ae334f1235b99154c85abe4bc53ad0a1efe056ea32bd7b",
+      "scripts/probe_manuscript_joint_capacity.py": "ef824365ce0b541be9ec4159798c7f1d33689fe3d8c5480e218a06ce3d5aebca"
+    }
+  },
+  "frozen_inputs": {
+    "source_freeze": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+      "sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1"
+    },
+    "case_templates": {
+      "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+      "sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+    },
+    "source_files_sha256": {
+      "rgb": "c64dcc8dd0ecb73e1d823bc4d699033d52ba362bfb60f3d58685866aaac876a8",
+      "tissue": "4465140a7f1c00581dc596782df91018c6f4715381fb96a5e346f20528b010b8",
+      "nuclei": "9080a157d64fa476a27ff4708821ae0939426690bc463b1901eb68ab667aebb0"
+    },
+    "source_index": 7,
+    "source_count": 1,
+    "operations": ["U1_cohesive_boundary_expansion", "U2_generic_immune_infiltrate_increase"]
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v1",
+    "output_absent_at_freeze": true,
+    "logical_source_calls": 1,
+    "logical_operation_witness_calls_max": 2,
+    "automatic_retries": 0,
+    "timeout_seconds": 1200,
+    "command": [
+      "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+      "scripts/probe_manuscript_joint_capacity.py",
+      "--source-freeze",
+      "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+      "--cases",
+      "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+      "--start-index",
+      "7",
+      "--limit",
+      "1",
+      "--topology-witness",
+      "--output",
+      "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v1"
+    ]
+  },
+  "stop_policy": "Any identity mismatch, pre-existing output, timeout, signal, or execution exception is HOLD. No retry and no interpretation as qualification success.",
+  "authorization_policy": "Per the user directive of 2026-11-10, Codex may approve bounded development diagnostics after its own evidence review; external review is not required."
+}

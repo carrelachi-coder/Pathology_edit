@@ -1,0 +1,43 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0031_v1/review_queue.json",
+    "bytes": 32264,
+    "sha256": "9773f0f1c7850bc75e646609a13bb56e7ab5bb09d808ebdc06804fd46a4eb9e4"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_ada2881cede4__u2_significant",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:56:36Z",
+      "confidence": 0.88,
+      "reason": "All hard gates pass and the mask review shows a coherent significant immune-compartment turnover. Candidate 01 has the closest source-relative nearest-neighbor spacing and least elevated Ripley clustering among the passing alternatives.",
+      "tissue_geometry": "The 77,956-pixel tissue change follows the authorized stroma-to-immune interfaces, forms a coherent significant compartment expansion and preserves adjacent tumor and non-target geometry.",
+      "nucleus_layout": "Ninety-three class-2 nuclei are complete, non-overlapping and contained. Candidate 01 has source-relative NND 0.875 and Ripley K24 1.664, both preferable to the more crowded alternatives under the same quota.",
+      "coupling": "Added immune nuclei occupy the authorized changed tissue and transition halo; quota, seam, compatibility, spatial-distribution and local-density checks pass, with sampling score 0.912.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain preserved with no partial source-instance, overlap, border or containment violation.",
+      "limitations": "This mask-only evidence does not establish generated-H&E quality, histologic truth or clinical validity; this patient remains ineligible as a four-target patient because U1 Significant abstained.",
+      "verdict": "Approve candidate 01 as the single mask-condition handoff for this target only."
+    },
+    {
+      "case_id": "BCSS_two_primitive_ada2881cede4__u2_significant",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 01 has closer source-relative nearest-neighbor spacing, lower excess clustering and a higher sampling score with the same tissue geometry and quota."
+    },
+    {
+      "case_id": "BCSS_two_primitive_ada2881cede4__u2_significant",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 01 better preserves source-like spacing, clustering and total instance count while retaining the same tissue geometry and quota."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}

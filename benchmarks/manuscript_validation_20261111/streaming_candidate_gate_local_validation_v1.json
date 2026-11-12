@@ -1,0 +1,15 @@
+{
+  "schema_version": "streaming-candidate-gate-local-validation-v1",
+  "status": "focused_tests_passed",
+  "implementation": "Generic and specialized candidate generators accept an optional gate callback. Candidates remain deterministic and ordered; generation stops only when the callback accepts the current candidate. CandidateFeasibilityCompiler uses the existing hard gates as that callback.",
+  "semantic_invariants": [
+    "Candidate bytes, IDs, seeds, and order are unchanged.",
+    "The existing GateRegistry remains the sole acceptance authority.",
+    "The historically selected result was passing[0]; the streaming implementation stops at that same first passing candidate.",
+    "If no candidate passes, the generator exhausts the same original sequence and reports the same accumulated failed checks.",
+    "No research threshold, topology rule, area budget, or patient rule changes."
+  ],
+  "explicit_sequence_test": "The first three streamed candidates are byte-identical to the first three full candidates; an always-false callback produces the full byte-identical sequence.",
+  "focused_result": "236 passed, 346 subtests passed in 182.22 seconds",
+  "combined_regression": "263 passed, 346 subtests passed in 237.37 seconds"
+}

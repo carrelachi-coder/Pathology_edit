@@ -1,0 +1,24 @@
+{
+  "schema_version": "topology-track-b-s07-development-authorization-v1",
+  "decision": "authorized_once",
+  "authorized_by": "Codex acting under the user's standing self-authorization instruction",
+  "authorized_at": "2026-11-10T00:00:00+08:00",
+  "launch_manifest_path": "benchmarks/manuscript_validation_20261110/topology_track_b_s07_development_launch_manifest_v1.json",
+  "launch_manifest_sha256": "c1dd70380d619a410fd8515ed0d4c1e4136d5697ed8f19dd6cfb0d9e8d3a0920",
+  "scope": "Exactly one development-only S07 source run through the real G2 qualification entry, covering at most U1 and U2 topology witnesses.",
+  "basis": [
+    "Track B production wiring was accepted after focused code review.",
+    "The real G2 qualification entry was corrected to route through the workflow-level Track B wrapper.",
+    "The focused and combined local regression suites passed.",
+    "The corrected target snapshot passed Linux import-only identity and state validation.",
+    "Frozen S07 source bytes, case templates, source ledger, code files, environment, output path, timeout, and zero-retry policy were rechecked before authorization."
+  ],
+  "explicit_exclusions": [
+    "No reserved-evaluation patient is opened.",
+    "No automatic qualification-count update is permitted.",
+    "No four-target approval is granted.",
+    "No H&E generation, formal cohort run, or physician study is authorized.",
+    "A successful development result is evidence about the mechanism only and is not an independent validation result."
+  ],
+  "failure_policy": "HOLD with no retry. Preserve all partial output and do not relabel it as success."
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": "topology-track-b-s07-grow-profile-result-v1",
+  "status": "completed_as_bounded_profile_not_qualification",
+  "authorization_consumed": true,
+  "profile_exit_code": 124,
+  "hard_timeout_seconds": 360,
+  "automatic_retries": 0,
+  "stderr_sha256": "afb005ae7c402fbf2961dd9536dc7254a869f96843b8829ca2b69141a9337ac9",
+  "stderr_bytes": 242461,
+  "grow_calls_started": 1197,
+  "grow_calls_completed": 1196,
+  "unfinished_call_ids": [1197],
+  "completed_grow_elapsed_seconds": {
+    "sum": 214.82755309343338,
+    "mean": 0.17962169991089746,
+    "median": 0.09904142376035452,
+    "maximum": 1.119768775999546
+  },
+  "dominant_repeated_six_interface_request_group": [
+    {"allowed_pixels": 39043, "target_pixels": 38822, "occurrences": 124},
+    {"allowed_pixels": 16846, "target_pixels": 16509, "occurrences": 123},
+    {"allowed_pixels": 11448, "target_pixels": 10593, "occurrences": 123},
+    {"allowed_pixels": 7075, "target_pixels": 6927, "occurrences": 123},
+    {"allowed_pixels": 2277, "target_pixels": 1508, "occurrences": 123},
+    {"allowed_pixels": 4535, "target_pixels": 4422, "occurrences": 123}
+  ],
+  "conclusion": "The timeout is caused by eager materialization of large deterministic candidate-variation portfolios before hard-gate selection. Individual topology growth calls are bounded and complete quickly; the same six-interface allocation is regenerated more than 120 times.",
+  "approved_optimization_direction": "Gate the authoritative compiled replay candidate first. Only if it fails, materialize the unchanged remaining candidate sequence. Preserve candidate order, gates, fallback behavior, masks, RNG per candidate, and final selection.",
+  "research_state_change": false
+}

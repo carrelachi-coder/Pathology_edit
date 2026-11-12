@@ -19,6 +19,10 @@ from phase3_mask_edit_refine.models import (
 )
 from phase3_mask_edit_refine.scene import SceneAnalysis, profile_signature_metrics
 from phase3_mask_edit_refine.skills import ActiveKnowledgeBundle
+from phase3_mask_edit_refine.topology_semantics import (
+    hole_count_4 as _hole_count,
+    hole_intersection_count_4 as _hole_intersection_count,
+)
 
 GateFunction = Callable[["GateContext"], GateCheck]
 
@@ -1285,17 +1289,6 @@ def _minimum_component_spacing_px(
     return minimum
 
 
-def _hole_intersection_count(mask: np.ndarray, region: np.ndarray) -> int:
-    holes = ndimage.binary_fill_holes(mask) & ~mask
-    labels, count = ndimage.label(
-        holes, structure=np.ones((3, 3), dtype=bool)
-    )
-    return sum(
-        bool(np.any(region & (labels == index)))
-        for index in range(1, count + 1)
-    )
-
-
 def _check_source_component_retention(context: GateContext) -> GateCheck:
     change = np.asarray(context.candidate.change_region, dtype=bool)
     component_ids = _trace_ids(
@@ -1944,8 +1937,3 @@ def _result(
 
 def _component_count(mask: np.ndarray) -> int:
     return int(ndimage.label(mask, structure=np.ones((3, 3), dtype=bool))[1])
-
-
-def _hole_count(mask: np.ndarray) -> int:
-    holes = ndimage.binary_fill_holes(mask) & ~mask
-    return _component_count(holes)

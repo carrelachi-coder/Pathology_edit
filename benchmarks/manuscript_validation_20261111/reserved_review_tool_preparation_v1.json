@@ -1,0 +1,24 @@
+{
+  "schema_version": "reserved-four-target-review-tool-preparation-v1",
+  "created_utc": "2026-11-11T16:22:24Z",
+  "source_commit": "96553125",
+  "tool": {
+    "repository_path": "scripts/prepare_reserved_four_target_review_queue.py",
+    "sha256": "c625c2a13088204446ced9259663c81987b1664180be2b111cdae448c9567ec4"
+  },
+  "server": {
+    "host": "amax2",
+    "isolated_directory": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_review_tool_96553125",
+    "deployed_sha256": "c625c2a13088204446ced9259663c81987b1664180be2b111cdae448c9567ec4",
+    "python": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "dependency_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/four_target_compiler_17225219",
+    "direct_cli_help_status": "passed"
+  },
+  "verification": {
+    "focused_tests": "12 passed",
+    "compiler_snapshot_modified": false,
+    "review_queue_created": false,
+    "mask_approval_performed": false
+  },
+  "scope": "Preparation only. The tool binds compilation receipts and audit artifacts into a mask-only review queue after compilation; it cannot approve masks or update patient qualification."
+}

@@ -1,0 +1,46 @@
+{
+  "schema_version": "reserved-four-target-pilot-idle-gpu-gate-amendment-v3",
+  "created_utc": "2026-11-11T16:13:13Z",
+  "reason": "The v2 gate required 51,920 MiB free although the frozen ProbNet checkpoint is only 115,019,174 bytes and the pilot compiles one 512x512 condition at a time. Retaining at least 31,920 MiB free is conservative while making an idle shared GPU usable.",
+  "evidence": {
+    "probnet_checkpoint_bytes": 115019174,
+    "probnet_checkpoint_sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211",
+    "input_shape": [512, 512],
+    "simultaneous_candidate_cases": 1,
+    "duplicate_model_consumers": [
+      "MatureProbNetCellExecutor",
+      "FrozenProbNetSpatialRanker"
+    ],
+    "minimum_free_memory_mib": 31920
+  },
+  "superseded_watcher": {
+    "pid": 1821727,
+    "stopped_before_pilot_output_existed": true,
+    "used_memory_max_mib": 30000,
+    "utilization_max_percent": 10,
+    "consecutive_observations": 2,
+    "observation_spacing_seconds": 60
+  },
+  "replacement_watcher": {
+    "pid_at_registration": 2020112,
+    "used_memory_max_mib": 50000,
+    "minimum_free_memory_mib_on_81920_mib_gpu": 31920,
+    "utilization_max_percent": 10,
+    "consecutive_observations": 2,
+    "observation_spacing_seconds": 60,
+    "output": "reserved_four_target_compile_pilot_final_v2",
+    "candidate_case_index": 0,
+    "seconds_per_case": 7200,
+    "automatic_retries": 0
+  },
+  "startup_correction": {
+    "failed_watcher_pid": 2012346,
+    "failure": "nested shell quoting expanded awk field variables under set -u",
+    "pilot_output_created": false,
+    "compiler_calls": 0,
+    "replacement_uses_base64_transported_literal_script": true
+  },
+  "unchanged_scope": "one condition-compilation pilot only; no mask approval, H&E generation, formal cohort admission, or physician study",
+  "scientific_thresholds_changed": false,
+  "qualification_updated": false
+}

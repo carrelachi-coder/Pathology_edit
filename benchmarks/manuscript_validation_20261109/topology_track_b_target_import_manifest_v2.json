@@ -1,0 +1,48 @@
+{
+  "kind": "topology-track-b-target-import-manifest-v1",
+  "date": "2026-11-10",
+  "status": "self_authorized_one_time_import_only_target_preparation_v2",
+  "repository_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_wiring_candidate_3cb9a67c/source",
+  "output_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_wiring_candidate_3cb9a67c/import_smoke_v2",
+  "python_executable": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+  "accepted_method_commit": "3cb9a67c2ff40acf7ae2b7c69c44576517fcf58d",
+  "locked_files": {
+    "phase3_joint_edit_refine/candidate_feasibility.py": "2657ec9520d31d6ea42750546221ebe011e89fc3900dbb9d3e28ce7e7e7464d1",
+    "phase3_joint_edit_refine/g2_execution_qualification.py": "fff4388bec9eff95eab5d4fbd0fe8e0b3d4212e8b9b6e48ddec39c9a4a0c299e",
+    "phase3_joint_edit_refine/tissue_planner.py": "bb792feb524c84644663d1cffd1f7ce06810d78c4bb6a4640f91e54799c05036",
+    "phase3_joint_edit_refine/topology_track_b.py": "ecfd90b528b9ad350824b702b195fc6356451220399335dfe8ce7cd465ca3938",
+    "phase3_joint_edit_refine/workflow.py": "de73536f4e363d00e8d734b0e91e9e0cb0eccfd9d4c623e92a68d49e1c39a073",
+    "phase3_mask_edit_refine/execution.py": "83c0ffabcfa114a9cfd82f1ef24a8bf542b0916e9fae2ccb0c2825edd42aca32",
+    "phase3_mask_edit_refine/gates.py": "36a7248f6449ec0183269a56cfad500dec34414d608b55a1a8d3dc12a435550f",
+    "phase3_mask_edit_refine/research_anchor_subdivision_v1.py": "a3dd0a5349cd1f5bde39c9b6b979ad8ab419eb898f4781065c7eea6b9150b2bc",
+    "phase3_mask_edit_refine/topology_semantics.py": "5434fa7ba7b53ee6cb5a16764fa6d298b99cd50b6174c37e78ceae4d23252eb3",
+    "scripts/limited_topology_startup.py": "468276457111d91d0192fca4afae9b348f174fe080289e804687b23efa4bafac",
+    "scripts/smoke_topology_track_b_wiring_imports_v1.py": "e62bfa6c80a5c043402fc2049d143b4f46b410c4ca7a5ddbb8bd86d9171ef03d"
+  },
+  "modules": [
+    "phase3_joint_edit_refine.topology_track_b",
+    "phase3_joint_edit_refine.tissue_planner",
+    "phase3_joint_edit_refine.workflow",
+    "phase3_joint_edit_refine.g2_execution_qualification"
+  ],
+  "required_environment": {
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONHASHSEED": "271828"
+  },
+  "require_linux_single_thread_parent": true,
+  "import_timeout_seconds": 90,
+  "outer_watchdog_seconds": 180,
+  "attempts": 1,
+  "automatic_retries": 0,
+  "failure_action": "HOLD",
+  "execution_authorized": false,
+  "real_patient_calls": 0,
+  "witness_calls": 0,
+  "four_target_calls": 0,
+  "h_and_e_calls": 0,
+  "reserved_evaluation_access": false,
+  "qualification_updates_permitted": false
+}

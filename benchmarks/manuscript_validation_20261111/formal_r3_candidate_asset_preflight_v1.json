@@ -1,0 +1,21 @@
+{
+  "schema_version": "formal-r3-candidate-asset-preflight-record-v1",
+  "created_local_date": "2026-11-12",
+  "implementation_commit": "d0a65160",
+  "output": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_candidate_asset_preflight_d0a65160/formal_r3_candidate_asset_preflight.json",
+    "bytes": 28028,
+    "sha256": "4b8ff0006118440fc9f20c11a9206bc37f3998f24492ca5e9b0c5cc2c83b46dc"
+  },
+  "status": "complete",
+  "candidate_patients": 29,
+  "candidate_cases": 116,
+  "verified_assets": 87,
+  "asset_types": [
+    "reference_image",
+    "reference_tissue_mask",
+    "reference_nuclei_mask"
+  ],
+  "formal_generation_launched": false,
+  "qualification_updated": false
+}

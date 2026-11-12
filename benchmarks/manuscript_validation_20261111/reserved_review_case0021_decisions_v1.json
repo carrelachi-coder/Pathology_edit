@@ -1,0 +1,29 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0021_v1/review_queue.json",
+    "bytes": 31253,
+    "sha256": "50aa48118ea82218eda5ac7f224dfb55917af96693fa668598b020654e6197a7"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_joint_supplement_c59bd5fc1d5a__u1_significant",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T01:00:00Z",
+      "confidence": 0.87,
+      "reason": "The sole passing candidate forms coherent significant tumor-boundary growth and satisfies all frozen tissue, cell and joint gates.",
+      "tissue_geometry": "The enlarged tumor regions remain attached to existing external tumor-stroma boundaries, preserve intervening non-target structures and avoid isolated off-interface growth.",
+      "nucleus_layout": "Fifty-nine class-1 nuclei are complete, non-overlapping and contained. The accepted shape, spacing, clustering and local population envelopes pass.",
+      "coupling": "Added nuclei occupy the authorized significant tumor expansion; external-boundary binding, seam continuity, quota and compatibility checks pass.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and native structures outside support remain preserved without partial-instance, overlap or containment violations.",
+      "limitations": "This is mask-only annotation-conditioned evidence in an uncalibrated research envelope, not generated-H&E or clinical validation.",
+      "verdict": "Approve the sole passing candidate as the mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}

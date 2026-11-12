@@ -1,0 +1,66 @@
+{
+  "schema_version": "four-target-compiler-preparation-v1",
+  "created_utc": "2026-11-11T09:04:02Z",
+  "code_commit": "b8b9abb0e305ae370885cb8beae433ed05ec2380",
+  "archive_sha256": "e18d9c53ca4020b78c573f31366011a6d52a80a90de662b274e490599a14bdfe",
+  "archive_bytes": 28805120,
+  "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/four_target_compiler_b8b9abb0",
+  "server_import_compile_check": {
+    "status": "passed",
+    "python_environment": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+    "torch_version": "2.4.1",
+    "cuda_initialized_after_imports": false,
+    "modules": [
+      "phase3_joint_edit_refine.models",
+      "phase3_joint_edit_refine.workflow",
+      "phase3_joint_edit_refine.mature_probnet_adapter",
+      "inpaint_cells.generate"
+    ]
+  },
+  "scientific_code_equivalence": {
+    "comparison_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_0ac9bdda",
+    "phase3_mask_edit_refine": {
+      "files": 85,
+      "tree_content_sha256": "fb02364dfd18a188a86963fb1cf1d3b8aef27c8a760d985643b2a5f795b9002b",
+      "identical": true
+    },
+    "phase3_joint_edit_refine": {
+      "files": 523,
+      "tree_content_sha256": "00bc8fd65ce059a636d6eed672b631d692bb11d47eab016a17de87f4f615c029",
+      "identical": true
+    },
+    "scripts/compile_manuscript_joint_technical.py": {
+      "files": 1,
+      "content_identity_sha256": "f0e487b81adeba949583a058d2f86957187f5a5be07931365d712300d197e3ee",
+      "identical": true
+    }
+  },
+  "frozen_model_assets": {
+    "probnet_checkpoint": {
+      "path": "/data1/zhao/wqx/probnet_density/frozen/epoch29_C3_shape_group_total_count/best_epoch29_c29607f1b609accb.pt",
+      "bytes": 115019174,
+      "sha256": "c29607f1b609accbb6ee0fceccb9ead02cd266cce67cec1d8df7c0b7da571211"
+    },
+    "instance_library": {
+      "path": "/home/lyw/wqx-DL/flow-edit/FlowEdit-main/nuclei_library/BCSS",
+      "tree_sha256": "f00d5c4b9afb3cae7ca2e22f41f698d51e36af4f3ad216599d47bb7b058433e4"
+    }
+  },
+  "new_accounting_and_control_files": [
+    "scripts/freeze_reserved_four_target_candidates.py",
+    "scripts/run_reserved_four_target_compilation.py"
+  ],
+  "verification": {
+    "focused_tests_passed": 9,
+    "real_server_candidate_freeze_patients_at_check_time": 23,
+    "real_server_candidate_cases_at_check_time": 92,
+    "verified_source_assets_at_check_time": 69,
+    "development_partition_admitted": false
+  },
+  "execution_counts": {
+    "gpu_compilation_calls": 0,
+    "h_and_e_calls": 0,
+    "formal_generation_calls": 0
+  },
+  "status": "isolated compiler snapshot prepared; reserved qualification still running; no candidate compilation launched"
+}

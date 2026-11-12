@@ -1,0 +1,49 @@
+{
+  "kind": "topology-hole-semantics-v2-local-validation",
+  "status": "local_candidate_implementation_passed_no_real_case_execution",
+  "date": "2026-11-10",
+  "accepted_scope_record": "benchmarks/manuscript_validation_20261109/topology_dual_track_and_patient_split_acceptance_v1.json",
+  "accepted_scope_record_sha256": "db49a925dc32031c6ff0ed930f10fcf50d21ee0b3970de3781f6b86ea3fc4ef6",
+  "implementation": {
+    "whole_mask_hole_semantics_version": "digital-topology-8fg-4bg-v2",
+    "execution_solver_version_before": "mask-edit-refine-topology-solver-v18",
+    "execution_solver_version_after": "mask-edit-refine-topology-solver-v19",
+    "shared_helper": "phase3_mask_edit_refine/topology_semantics.py",
+    "behavior": "Fill and label enclosed background with explicit 4-connectivity; use one shared helper in compiler execution and final gates. Tissue foreground component counting remains 8-connected."
+  },
+  "code_sha256": {
+    "phase3_mask_edit_refine/topology_semantics.py": "5434fa7ba7b53ee6cb5a16764fa6d298b99cd50b6174c37e78ceae4d23252eb3",
+    "phase3_mask_edit_refine/execution.py": "83c0ffabcfa114a9cfd82f1ef24a8bf542b0916e9fae2ccb0c2825edd42aca32",
+    "phase3_mask_edit_refine/gates.py": "36a7248f6449ec0183269a56cfad500dec34414d608b55a1a8d3dc12a435550f",
+    "tests/test_topology_hole_semantics_v2.py": "97a56718dc6912d0cf86e9428971c41ae83a9b568e47a29e6a16478c97e998b9"
+  },
+  "tests": [
+    {
+      "command": "python -m pytest -q tests/test_topology_hole_semantics_v2.py tests/test_joint_edit_refine.py",
+      "result": "228 passed, 346 subtests passed",
+      "seconds": 245.36
+    },
+    {
+      "command": "python -m pytest -q tests/test_mask_edit_refine.py tests/test_native_topology_diagnosis.py",
+      "result": "72 passed, 85 subtests passed",
+      "seconds": 3.52
+    }
+  ],
+  "covered": [
+    "The current local-guard accepted counterexample preserves three 4-connected source holes before and after deletion.",
+    "Diagonally touching enclosed regions remain separate holes under the candidate semantics.",
+    "Execution and final gates import the exact same count and intersection helpers.",
+    "The execution version identity changes to v19.",
+    "Existing joint-refine, mask-refine and saved native diagnosis tests remain green."
+  ],
+  "not_proven": [
+    "No S07 or other real-patient witness was run.",
+    "The remaining 51-pixel reachable-area deficit is unchanged by design.",
+    "No patient qualification, four-target approval or formal-cohort count changes.",
+    "No target-server environment or runtime identity has been frozen for this candidate."
+  ],
+  "target_execution_authorized": false,
+  "reserved_evaluation_opened": false,
+  "qualification_updates_permitted": false,
+  "formal_H_and_E_authorized": false
+}

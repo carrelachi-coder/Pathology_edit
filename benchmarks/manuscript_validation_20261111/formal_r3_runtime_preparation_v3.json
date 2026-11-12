@@ -1,0 +1,16 @@
+{
+  "schema_version": "formal-r3-runtime-preparation-v3",
+  "created_local_date": "2026-11-12",
+  "runtime": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_runtime_33c67ef5",
+  "implementation_commit": "33c67ef5830d73ba79da3791abed0952c27bb4f1",
+  "git_worktree_clean": true,
+  "cli_import_checks": {
+    "freeze_manuscript_formal_r3": true,
+    "measure_manuscript_formal_r3": true,
+    "analyze_manuscript_formal_r3": true
+  },
+  "supersedes_runtime": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_runtime_396ab07f",
+  "reason": "Adds reserved candidate overlap-audit compatibility, combined technical/development exclusion freezing, and strict source/candidate evidence binding.",
+  "formal_generation_launched": false,
+  "qualification_updated": false
+}

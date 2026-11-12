@@ -1,0 +1,41 @@
+{
+  "schema_version": "topology-track-b-s07-development-launch-v5",
+  "status": "self_authorized_once",
+  "purpose": "Validate balanced mask-only Track B subdivision and deterministic streaming gates through the real G2 qualification entry on development-only S07.",
+  "code": {
+    "archive_commit": "f380645f",
+    "git_tree": "e592c5a7d5a6843272870fc0b73f753128c838a5",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_balanced_f380645f",
+    "balanced_bisection_sha256": "585b0688facbcb269bd74993e9972286ef38a0286713fa1bd36f247db8fbcd52",
+    "streaming_candidate_feasibility_sha256": "3453d8f49bbb6e725dd312d30dc1bab41b8579990bea916bfb40d1b8c75d57a7",
+    "streaming_candidate_generator_sha256": "31931c0c6a395c8fa961ad885187b421a7ccac7b0019df81a53c4643f8ab6d6d"
+  },
+  "validation": {
+    "combined_local": "263 passed, 346 subtests passed in 307.29 seconds",
+    "target_source_geometry": {"child_pixels": [42, 43], "child_spans": [36, 28], "minimum_pixels": 29, "minimum_span": 28},
+    "target_default_rng_unchanged": true,
+    "gate_metrics_basis": "Previous compiled replay failed only because the selected 48-pixel child had 22/48 coverage; all other fidelity fields and five other interfaces passed. The mask-only balanced child is 43 pixels, so the same 22-pixel contact is above the unchanged 0.5 threshold, subject to real execution verification."
+  },
+  "input": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_index": 7,
+    "source_freeze_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v5",
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, or incomplete receipt is HOLD with no retry.",
+  "authorization_basis": "Codex approved after full regression, exact target-mask geometry validation, structured gate diagnosis, and unchanged scientific thresholds."
+}

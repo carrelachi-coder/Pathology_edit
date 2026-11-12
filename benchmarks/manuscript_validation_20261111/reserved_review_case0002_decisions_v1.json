@@ -1,0 +1,43 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_after_2_v1/review_queue.json",
+    "bytes": 32272,
+    "sha256": "8fdc0ab0c873ce7629902846651ea4f3c2207f3fd3b9b22ede1b32fab51d6798"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_joint_supplement_d8fa8cc70d1c__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-11T23:56:39Z",
+      "confidence": 0.9,
+      "reason": "All hard gates pass. Among the three candidates sharing the same approved tissue transition, candidate 01 retains the source-like nuclear spacing most closely and has the least clustered accepted layout without sacrificing quota or seam coverage.",
+      "tissue_geometry": "The two edited immune regions follow the approved stroma-to-immune interfaces, remain localized, and preserve the surrounding compartment geometry; the tissue change is identical across the three passing candidates.",
+      "nucleus_layout": "Sixty class-2 nuclei are placed as complete non-overlapping instances within compatible target tissue. Candidate 01 has mean NND 22.08 px and normalized Ripley K24 0.935, closer to the source spacing and less clustered than the alternatives.",
+      "coupling": "Tissue and nuclear changes coincide within the authorized joint support. Anchor coverage is 1.0, the seam continuity gate passes, and no added nucleus lies outside the legal tissue or support halo.",
+      "preserved_conditions": "Protected and support-exterior nuclei are pixel-exact; no partial source instance, prohibited region change, illegal class, overlap, or containment violation is reported.",
+      "limitations": "This is a mask-only research review of a BCSS annotation-conditioned edit. It does not establish histologic truth, clinical progression, generated-H&E quality, or independent clinical validity.",
+      "verdict": "Approve candidate 01 as the single mask-condition handoff for this case."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_d8fa8cc70d1c__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but only one candidate may be approved; candidate 02 is more locally clustered and has shorter mean nearest-neighbor spacing than candidate 01."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_d8fa8cc70d1c__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but only one candidate may be approved; candidate 01 more closely preserves source-like nuclear spacing and has lower clustering while retaining the same tissue geometry."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}

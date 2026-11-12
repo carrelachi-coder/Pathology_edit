@@ -1,0 +1,58 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0026_0027_v1/review_queue.json",
+    "bytes": 33524,
+    "sha256": "5c68c0dcd7b9e9204b3c212919b9f3005741663c4b63657cc446b1591074d3ad"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_33cbe81047b8__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 03 better preserves source-like instance size, nearest-neighbor spacing and Ripley clustering with nearly the same local population score."
+    },
+    {
+      "case_id": "BCSS_two_primitive_33cbe81047b8__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 03 has better source-relative instance size, NND and Ripley organization with the same tissue geometry and quota."
+    },
+    {
+      "case_id": "BCSS_two_primitive_33cbe81047b8__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T01:14:00Z",
+      "confidence": 0.89,
+      "reason": "All hard gates pass and the mask review shows coherent localized moderate immune changes. Candidate 03 best preserves source-relative size, spacing and clustering among the alternatives.",
+      "tissue_geometry": "The immune changes follow authorized stroma-immune interfaces, remain localized across the planned compartments and preserve adjacent tumor and non-target structures.",
+      "nucleus_layout": "Sixty class-2 nuclei are complete, non-overlapping and contained. Candidate 03 has the closest combined p95 instance-area, NND and Ripley K24 ratios to source.",
+      "coupling": "Added immune nuclei occupy authorized changed tissue and interface halos; seam, quota, compatibility and spatial checks pass.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain preserved without partial-instance, overlap or containment violations.",
+      "limitations": "This mask-only annotation-conditioned review does not establish generated-H&E quality, histologic truth or clinical validity.",
+      "verdict": "Approve candidate 03 as the single mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_two_primitive_33cbe81047b8__u2_significant",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T01:14:00Z",
+      "confidence": 0.87,
+      "reason": "The sole passing candidate forms coherent significant immune expansion and satisfies every frozen tissue, cell and joint gate.",
+      "tissue_geometry": "The significant immune footprint follows the authorized interfaces, preserves neighboring tumor compartments and remains within the planned support.",
+      "nucleus_layout": "Ninety-eight class-2 nuclei are complete, non-overlapping and legally contained; all shape, density and spatial distribution gates pass.",
+      "coupling": "Nuclear additions occupy the authorized significant immune tissue and interface halo; seam, quota and compatibility checks pass.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior source instances remain preserved without overlap or containment violations.",
+      "limitations": "This is mask-only research evidence in an uncalibrated envelope and does not assess generated H&E or clinical validity.",
+      "verdict": "Approve the sole passing candidate as the mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}

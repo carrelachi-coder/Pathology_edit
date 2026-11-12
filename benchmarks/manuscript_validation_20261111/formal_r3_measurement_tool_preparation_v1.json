@@ -1,0 +1,26 @@
+{
+  "schema_version": "formal-r3-measurement-tool-preparation-v1",
+  "implementation_commit": "c80f7f51",
+  "server_root": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_measurement_tool_c80f7f51",
+  "files": {
+    "scripts/measure_manuscript_joint_technical.py": "fc90a4e12729a0b341097c633e683304e1d94a00c397919e8fd53a5664157bc8",
+    "scripts/measure_manuscript_formal_r3.py": "b47d89891786d6b53c7e7d48747ae37b28820a0125c391b51a3353d473454714"
+  },
+  "dependency_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/four_target_compiler_17225219",
+  "python": "/home/lyw/anaconda3/envs/pathology-phase5-inpaint/bin/python",
+  "server_cli_help_passed": true,
+  "deployment_correction": {
+    "initial_issue": "an empty scripts/__init__.py in the isolated overlay hid dependency-snapshot scripts modules",
+    "business_or_measurement_call_started": false,
+    "correction": "removed the newly created empty marker and used the intended namespace-package overlay",
+    "post_correction_import_passed": true
+  },
+  "local_tests": {
+    "passed": 24,
+    "failed": 0,
+    "scope": "formal/technical scope contracts, measurement readouts and formal paired analysis"
+  },
+  "local_environment_limit": "12 existing generation integration tests could not import cv2 in the local environment; the failure preceded their assertions and was not counted as a passing validation",
+  "formal_generation_or_measurement_started": false,
+  "qualification_updated": false
+}

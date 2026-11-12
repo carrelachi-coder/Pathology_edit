@@ -1,0 +1,39 @@
+{
+  "schema_version": "reserved-four-target-candidate-batch-record-v1",
+  "created_utc": "2026-11-11T09:14:00.534839+00:00",
+  "scope": "stable reserved topology-pass candidates available at the batch-1 cutoff; candidate compilation input only, not formal cohort admission",
+  "producer_commit": "b8b9abb0e305ae370885cb8beae433ed05ec2380",
+  "producer_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/four_target_compiler_b8b9abb0",
+  "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_candidates_batch1_v1",
+  "source_freeze_sha256": "d9c4e4f8cd4eb9c98c4635574c810de40aec26253a8cac6c4c8209d9b9cfa31c",
+  "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48",
+  "candidate_freeze_manifest": {
+    "bytes": 75989,
+    "sha256": "a1501bee9d70f2c0dcf558824422bb9c1f6c19e1e04b04b752a8c7add21c3bf2"
+  },
+  "four_target_candidate_cases": {
+    "bytes": 249869,
+    "sha256": "d6fed181ee3f5df23bde4e92b517d5a443b8d334da8d9b7649fd50cdf782f79b"
+  },
+  "counts": {
+    "independent_reserved_patients": 23,
+    "targets_per_patient": 4,
+    "candidate_cases": 92,
+    "source_assets_content_verified": 69,
+    "development_patients": 0,
+    "four_target_approved_patients": 0
+  },
+  "server_contract_validation": {
+    "joint_case_contexts_parsed": 92,
+    "local_input_paths_validated": 92,
+    "status": "passed"
+  },
+  "patient_order_span": {
+    "first": "TCGA-A2-A0D0",
+    "last": "TCGA-E2-A1LS"
+  },
+  "append_policy": "later reserved passes are frozen in a new immutable batch; this batch is never overwritten",
+  "formal_qualification_updated": false,
+  "gpu_compilation_calls": 0,
+  "h_and_e_calls": 0
+}

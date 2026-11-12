@@ -1,0 +1,41 @@
+{
+  "schema_version": "topology-cascade-development-launch-v1",
+  "status": "self_authorized_once",
+  "purpose": "Measure patient-level development yield of the deterministic balanced-then-maximal cascade after both control-flow counterexamples passed.",
+  "code": {
+    "commit": "0ac9bdda",
+    "git_tree": "872d19be5ec1e70630008ce0727a5217485c5c4b",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_0ac9bdda",
+    "candidate_feasibility_sha256": "cb3567040b5ed5640ac6276e5f27aacd4f5a487e6f0542f815c995b9faa56b24",
+    "topology_track_b_sha256": "298e58dc1d34ccffca692a55cdb51a186e8a63cfc8423f50e5b1dee4cec001a5",
+    "anchor_subdivision_sha256": "dab3ded60a07763828274a42cefa45e5987d273957847280dbd96389d27e5fa4"
+  },
+  "input": {
+    "source_freeze": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_method_development_source_freeze_v1.json",
+    "source_freeze_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "partition": "development",
+    "patients": 16,
+    "available_sources": 109,
+    "reserved_evaluation_access": false
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_development_v1",
+    "workers": 4,
+    "seconds_per_source": 1200,
+    "overall_watchdog_seconds": 28800,
+    "automatic_retries": 0,
+    "selection_rule": "For each patient, use the first dual-operation topology pass in frozen source order; stop on the first indeterminate source instead of skipping it.",
+    "stdout_policy": "per-source logs only; controller stdout redirected to a bounded run log",
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "acceptance": {
+    "all_previous_balanced_pass_patients_retained": true,
+    "indeterminate_patients": 0,
+    "threshold_changes": 0,
+    "patient_yield_report_required": true
+  },
+  "failure_policy": "Any timeout, nonzero exit, missing receipt, identity mismatch, or regression is HOLD with no automatic retry.",
+  "authorization_basis": "Codex self-authorized the complete development partition after the maximal fallback produced an accepted 73,591-pixel U2 witness and a separate prior balanced dual-operation patient passed without any maximal invocation."
+}

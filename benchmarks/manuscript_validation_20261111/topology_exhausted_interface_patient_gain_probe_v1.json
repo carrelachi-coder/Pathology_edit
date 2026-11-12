@@ -1,0 +1,36 @@
+{
+  "schema_version": "topology-exhausted-interface-patient-gain-probe-v1",
+  "status": "self_authorized_once",
+  "purpose": "Test whether the exhausted-interface fallback can add a complete dual-operation development patient when U1 already passes and U2 alone previously underfilled.",
+  "code": {
+    "implementation_commit": "f067b708",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_exhausted_fallback_f067b708",
+    "candidate_feasibility_sha256": "cb3567040b5ed5640ac6276e5f27aacd4f5a487e6f0542f815c995b9faa56b24",
+    "topology_track_b_sha256": "9abd31ae6083c46f44eeb712c4a6ce0b29c88144a09bfd504a44406232b95c5f",
+    "anchor_subdivision_sha256": "2ebe3db2ea76daccdff01e8cbcc403733be1209ca02e41de5aac52c5a91436a6"
+  },
+  "input": {
+    "source_freeze_parent_sha256": "70a216e8a2e96c2750c52c5f50ec74fc1851e4883cf5bfd8f094fbf9fc5518ec",
+    "single_source_derivation": "Exact candidate_sources[31] from the immutable development freeze.",
+    "partition": "development",
+    "patient_id": "TCGA-E2-A14R",
+    "reference_id": "BCSS_two_primitive_8587ebd870b4",
+    "source_index": 31,
+    "patient_source_rank": 0,
+    "prior_u1_pass_area_pixels": 78309,
+    "prior_u2_largest_saved_topology_passing_area_pixels": 64904,
+    "hard_floor_pixels": 70779
+  },
+  "execution": {
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "reserved_evaluation_access": false,
+    "qualification_update_permitted": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "failure_policy": "Any mismatch, timeout, exception, incomplete receipt, or source identity failure is HOLD with no retry.",
+  "authorization_basis": "Codex self-authorized one additional development counterexample after the preceding probe proved the corrected exhausted-interface path accepts a 73,591-pixel U2 witness through the unchanged executor and gates."
+}

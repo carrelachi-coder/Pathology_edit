@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "status": "formal_computational_results_complete_doctor_materials_complete_scores_pending",
+  "cohort": {
+    "independent_patients": 7,
+    "generated_states": 35,
+    "measured_images_including_originals": 42,
+    "generation_failures": 0,
+    "measurement_failures": 0
+  },
+  "formal_analysis": {
+    "path": "formal_r3_analysis.json",
+    "sha256": "d341ab27dd82beab6142c28d945addf967142c05c7d7801973d6fd619f625129"
+  },
+  "corrected_figure": {
+    "directory": "formal_r3_figures_corrected_v3",
+    "png_sha256": "7317bd0c0d8d5a8b1d3ee65eb40ed63d7f4a96f2bed984d72ebc4a211fdbd95b",
+    "pdf_sha256": "7d1d1e25352093a6ef2cf58924d5fa665d932fb6184c41a609221ab2edfaae2e",
+    "order_label_policy": "strict_order_over_valid_triplets"
+  },
+  "presentation": {
+    "path": "/Users/wangqinxin/Desktop/desktop/panels/1_修复_R3医生方案.pptx",
+    "sha256": "c353e9b7eba31c4f6e67b478fe550b246ffdc5d490e0528636430c435c684d72",
+    "r3_text_uses_formal_results_not_figure_description": true
+  },
+  "article_structure_document": {
+    "path": "/Users/wangqinxin/Desktop/desktop/panels/本研究旨在构建一个以真实病例为起点的 pathology world simulator.docx",
+    "sha256": "a990c42a50deb320a46e4de6453935b5a63e242a309d0b1316de38ffcbff39a6",
+    "obsolete_300_source_and_embedding_order_claims_removed": true
+  },
+  "doctor_realism_pack": {
+    "path": "/Users/wangqinxin/Desktop/desktop/panels/R3_全模型医生评分包_20261112_v2_完整图像",
+    "integrity_report_sha256": "56704f608c609aefc649090a8c9b4f58978f940f6a5012aa8116e647a91691ea",
+    "unique_images": 480,
+    "generated_images": 420,
+    "real_images": 60,
+    "models_plus_real": 8,
+    "images_per_model_or_real": 60,
+    "reader_count": 2,
+    "images_per_reader": 480,
+    "all_images_decode_512_square": true,
+    "doctor_scores_collected": false,
+    "global_recon_checkpoint": {
+      "epoch": 26,
+      "global_step": 214895,
+      "sha256": "be5fe9376efdb5620a57481082f6d5738b6353796fb00fe6e58f6b212ba7c2ac"
+    }
+  },
+  "doctor_formal_order_pack": {
+    "path": "/Users/wangqinxin/Desktop/desktop/panels/R3_正式七患者_医生强度排序包_20261112",
+    "integrity_report_sha256": "bf694e0a5dcdc80ea7e561561b406f02d1b7d00f19e5fcb95403efa51b675212",
+    "independent_patients": 7,
+    "unique_images": 42,
+    "operations": 2,
+    "groups_per_reader": 14,
+    "images_per_group": 4,
+    "reader_count": 2,
+    "ties_permitted": true,
+    "unable_to_judge_permitted": true,
+    "doctor_scores_collected": false
+  },
+  "physician_analysis_pipeline": {
+    "status": "frozen_before_scores_and_smoke_tested_on_blank_delivery_templates",
+    "protocol": "physician_analysis_protocol_v1.json",
+    "script": "scripts/analyze_r3_physician_scores.py",
+    "accepts_csv_and_xlsx": true,
+    "requires_complete_unique_reader_inventory": true,
+    "missing_is_not_zero": true,
+    "qualification_updates_permitted": false
+  },
+  "research_boundary": {
+    "primary_tissue_endpoint_did_not_show_cross_operation_monotonicity": true,
+    "secondary_cellvit_inflammatory_density_is_supportive_not_a_replacement_endpoint": true,
+    "doctor_scores_must_not_be_invented": true,
+    "formal_30_patient_claim": false
+  }
+}

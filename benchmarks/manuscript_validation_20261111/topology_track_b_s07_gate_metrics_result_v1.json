@@ -1,0 +1,28 @@
+{
+  "schema_version": "topology-track-b-s07-gate-metrics-result-v1",
+  "status": "completed_as_bounded_profile_not_qualification",
+  "authorization_consumed": true,
+  "profile_exit_code": 124,
+  "first_gate_elapsed_seconds": 108.90814125351608,
+  "candidate": {"id": "cand:001", "tool": "interface_sdf", "changed_pixels": 78781},
+  "failed_check": "execution_contract_fidelity",
+  "global_metrics": {"compiled_topology_replay": true, "replay_identity_valid": true, "unowned_change_pixels": 0},
+  "interface_summary": {
+    "passed_interfaces": 5,
+    "failed_interfaces": 1,
+    "failed_interface_id": "if:stroma:p01:0001->tumor:p01:0007:seg:0001",
+    "failed_anchor_id": "if:stroma:p01:0001->tumor:p01:0007:seg:0001:anchor:0001:sub:0002",
+    "expected_pixels": 1508,
+    "realized_pixels": 1508,
+    "allocation_error_pixels": 0,
+    "anchor_coverage_fraction": 0.4583333333333333,
+    "frozen_minimum_anchor_coverage_fraction": 0.5,
+    "off_anchor_contact_fraction": 0.0,
+    "outside_anchor_influence_pixels": 0,
+    "depth_profile_violation_fraction": 0.0,
+    "component_count": 1,
+    "allowed_component_count": 21
+  },
+  "conclusion": "The compiled replay is valid in identity, ownership, allocation, depth, and topology-related component fields. Its only fidelity defect is insufficient contact coverage of one imbalanced newly subdivided anchor.",
+  "research_state_change": false
+}

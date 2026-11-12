@@ -1,0 +1,39 @@
+{
+  "schema_version": "topology-cascade-reserved-runtime-recovery-v5",
+  "created_utc": "2026-11-11T12:40:04Z",
+  "purpose": "Resolve the sole remaining reserved patient with an execution-unknown first source before closing reserved topology accounting.",
+  "method": {
+    "code_commit": "0ac9bdda",
+    "git_tree": "872d19be20b503f75a248ed9d2c36c033952cb14",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_0ac9bdda",
+    "source_freeze_sha256": "d9c4e4f8cd4eb9c98c4635574c810de40aec26253a8cac6c4c8209d9b9cfa31c",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "scope": {
+    "partition": "reserved_evaluation",
+    "patient_id": "TCGA-AR-A256",
+    "available_sources": 2,
+    "first_source_reference_id": "BCSS_joint_supplement_233ba410a4e6",
+    "first_source_index": 187,
+    "prior_timeouts_seconds": [2400, 4800],
+    "prior_business_results": 0,
+    "workers": 1,
+    "seconds_per_source": 9600,
+    "automatic_retries": 0,
+    "outer_watchdog_seconds": 20000
+  },
+  "selection_rule": "retain frozen patient-local source order; continue to source rank 1 only if source rank 0 completes with a known nonpass; stop on any unknown state",
+  "unchanged_constraints": {
+    "nominal_joint_fractions": [0.19, 0.32],
+    "tissue_hard_floors": [0.14, 0.27],
+    "topology_contracts": "unchanged",
+    "candidate_order": "unchanged",
+    "generated_rgb_selection": false
+  },
+  "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_recovery_v5",
+  "terminal_policy": "This is the final runtime-only recovery for the patient. A further timeout remains unknown and receives no additional retry under this plan.",
+  "four_target_calls": 0,
+  "h_and_e_calls": 0,
+  "formal_qualification_updated_before_result": false,
+  "authorization_basis": "Codex self-authorized this bounded final runtime-only recovery under the user's instruction that further external review is unnecessary when Codex judges the step scientifically and technically acceptable."
+}

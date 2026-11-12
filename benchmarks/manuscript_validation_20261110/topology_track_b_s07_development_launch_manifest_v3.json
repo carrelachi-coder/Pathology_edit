@@ -1,0 +1,42 @@
+{
+  "schema_version": "topology-track-b-s07-development-launch-v3",
+  "status": "self_authorized_once",
+  "purpose": "Verify corrected bisection plus replay-first candidate generation through the real G2 qualification entry on development-only S07.",
+  "code": {
+    "archive_commit": "5cfe97eb",
+    "git_tree": "acdb4947ab56f01605d394386d0f6084026d5d3f",
+    "server_snapshot": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_replay_first_candidate_5cfe97eb",
+    "candidate_feasibility_sha256": "e46704787531bd93f51e0d48f6c42a08659e7cce7ddd62f923a36332093f5ad4",
+    "bisection_sha256": "a91a5ef45ccb281847db3c9c6616ce2ae8ef5c5850166ac105d0a6bebe8b9ee1"
+  },
+  "validation": {
+    "combined_local": "262 passed, 346 subtests passed in 240.33 seconds",
+    "target_import": "passed",
+    "target_default_rng_unchanged": true,
+    "performance_basis": "Closed profile measured 1197 grow starts in 360 seconds, dominated by eager regeneration of the same six-interface candidate group."
+  },
+  "input": {
+    "reference_id": "BCSS_native_recovery_205cb2398525fe94",
+    "patient_id": "TCGA-E2-A1LL",
+    "source_index": 7,
+    "source_freeze_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/qualification_v1/capacity_passing_sources.json",
+    "source_freeze_sha256": "5837eca5a8305aecf77ffe0bf87a091d33a21c87b83c284688ff8a2be66bd0d1",
+    "case_templates_path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/technical_joint_cases_v5.json",
+    "case_templates_sha256": "04485e4f934a6a90326f16a095eb3eda26cc4f17e7777864b3a58d4658667f48"
+  },
+  "execution": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_track_b_s07_development_v3",
+    "source_calls": 1,
+    "operation_witness_calls_max": 2,
+    "timeout_seconds": 1200,
+    "automatic_retries": 0,
+    "development_only": true,
+    "qualification_update_permitted": false,
+    "reserved_evaluation_access": false,
+    "four_target_calls": 0,
+    "he_calls": 0
+  },
+  "selection_invariant": "Candidate 001 is unchanged and checked first. If it fails, candidates 002 onward are generated in their original order and checked by the original gates.",
+  "failure_policy": "Any mismatch, timeout, exception, or incomplete receipt is HOLD with no retry.",
+  "authorization_basis": "Codex approved after local regression, target import identity validation, and bounded target profiling under the user's standing self-authorization instruction."
+}

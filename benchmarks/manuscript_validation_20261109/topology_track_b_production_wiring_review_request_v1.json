@@ -1,0 +1,54 @@
+{
+  "kind": "topology-track-b-production-wiring-review-request-v1",
+  "date": "2026-11-10",
+  "status": "independent_review_requested_not_deployed_not_execution_authorized",
+  "draft_pr": "https://github.com/carrelachi-coder/Pathology_edit/pull/14",
+  "base_branch": "codex/manuscript-validation-20261102",
+  "head_branch": "codex/topology-hole-semantics-v2",
+  "reviewed_head_commit": "0ed780cbfacd45a0d7a57c5528a7e725013f9e7a",
+  "review_scope": {
+    "production_wiring_files": [
+      "phase3_joint_edit_refine/candidate_feasibility.py",
+      "phase3_joint_edit_refine/topology_track_b.py",
+      "phase3_joint_edit_refine/workflow.py",
+      "phase3_mask_edit_refine/research_anchor_subdivision_v1.py",
+      "tests/test_topology_track_b.py"
+    ],
+    "validation_record": "benchmarks/manuscript_validation_20261109/topology_track_b_production_wiring_local_validation_v1.json",
+    "proposal": "benchmarks/manuscript_validation_20261109/topology_track_b_production_wiring_proposal_v1.json"
+  },
+  "required_review_questions": [
+    "Does ordinary Track A always run before Track B and does ordinary success avoid all subdivision?",
+    "Can any topology-failing trial trigger Track B, directly or through stale feedback?",
+    "Are all topology-passing underfill receipts retained across the bounded attempt history without converting later failures into eligibility?",
+    "Is eligibility limited to remaining feasible single-anchor interfaces whose parent anchor was cell-feasible and whose unchanged selection limit is exactly zero?",
+    "Are all eligible interfaces transformed in deterministic sorted order in one non-recursive round?",
+    "Does each subanchor satisfy the reviewed reference-equivalent-diameter contact and exact 8-neighbour geodesic-span requirements?",
+    "Are transformed SceneInterface and SceneAnchorSegment identities fresh and are parent masks retired rather than reused?",
+    "Does the workflow rerun the real joint nuclei preflight and refuse to reuse parent-anchor cell feasibility?",
+    "Does the fresh portfolio authority bind the complete transformed preflight plus explicit original/transformed scene identities and transformation record?",
+    "Can an original witness, preflight or authority binding be mixed with the transformed portfolio?",
+    "If fresh preflight or fresh compilation fails, are the original and Track B failures retained without qualification changes?",
+    "Can repeated workflow planning passes recursively subdivide Track B-created anchors or silently add transformation rounds?",
+    "Do Track A-only historical paths preserve their behavior and identity except for the intentional compiler version update?",
+    "Are the five P1 failures correctly classified as a pre-existing checked-in selection-fixture mismatch rather than evidence of this change passing or failing?"
+  ],
+  "local_evidence": {
+    "focused": "21 passed",
+    "post_review_corrections": "29 passed",
+    "workflow_regression": "253 passed, 346 subtests passed",
+    "broader_regression": "254 passed, 354 subtests passed, 5 P1 fixture failures before the changed path"
+  },
+  "explicit_non_authorizations": [
+    "merge to production branch",
+    "target-server deployment",
+    "S07 or any real development-patient execution",
+    "reserved-evaluation patient access or execution",
+    "qualification count changes",
+    "four-target compilation",
+    "H&E generation",
+    "physician study"
+  ],
+  "qualification_updates_permitted": false,
+  "execution_authorized": false
+}

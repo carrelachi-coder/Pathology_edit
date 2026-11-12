@@ -1,0 +1,65 @@
+{
+  "schema_version": "reserved-final-candidate-freeze-v2",
+  "created_utc": "2026-11-11T15:22:00Z",
+  "reserved_evaluation_result": {
+    "topology_pass_patients": 29,
+    "four_target_candidate_cases": 116,
+    "formal_target_patients": 30,
+    "actual_count_policy": "report 29 if no later independently approved source evidence exists; do not use development patients, lower thresholds, or select by H&E appearance"
+  },
+  "final_runtime_recovery": {
+    "patient_id": "TCGA-AR-A256",
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/topology_cascade_reserved_recovery_v5",
+    "status": "indeterminate_execution",
+    "attempted_sources": 1,
+    "available_sources": 2,
+    "attempted_reference_id": "BCSS_joint_supplement_233ba410a4e6",
+    "seconds_per_source": 9600,
+    "elapsed_seconds": 9600.021953899413,
+    "controller_exit_code": 124,
+    "timed_out": true,
+    "automatic_retries": 0,
+    "further_retry_permitted": false,
+    "patient_receipt": {
+      "bytes": 436,
+      "sha256": "df447036b85d77e4f1634e2c9a513dd01a4d47af45f2924c3f0a3d500423ad58"
+    },
+    "controller_identity": {
+      "bytes": 2909,
+      "sha256": "d36d30061154be17a16c272dc47f9400b3bd055d582a9f0ca2cbbbe6e5da4660"
+    }
+  },
+  "candidate_freeze": {
+    "output": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_candidates_final_v2",
+    "candidate_manifest": {
+      "bytes": 96636,
+      "sha256": "6b2855b0d69c6f98c101b91bb508fff3ec068ed196403b4a6ab890449c7ba610"
+    },
+    "candidate_cases": {
+      "bytes": 315065,
+      "sha256": "3f8676931fd63bcdba9f4d7e31a0ba2226ef60004b8dea52e0b9f393caf03f48"
+    },
+    "source_assets_verified_by_freeze_tool": 87,
+    "targets_per_patient": 4,
+    "targets": [
+      "u1_moderate",
+      "u1_significant",
+      "u2_moderate",
+      "u2_significant"
+    ]
+  },
+  "research_constraints_unchanged": {
+    "nominal_joint_fractions": [
+      0.19,
+      0.32
+    ],
+    "tissue_hard_floors": [
+      0.14,
+      0.27
+    ],
+    "development_partition_excluded": true,
+    "formal_H_and_E_started": false,
+    "physician_study_started": false
+  },
+  "next_gate": "single real four-target compilation pilot on a stably idle GPU, followed by mask-only review; topology pass alone is not formal cohort admission"
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "topology-feedback-preservation-development-probe-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_counterexample_preserved",
+  "launch_manifest": "topology_feedback_preservation_development_probe_v1.json",
+  "implementation_commit": "801499d9",
+  "authorization_commit": "f4291576",
+  "automatic_retries": 0,
+  "case": {
+    "patient_id": "TCGA-E2-A158",
+    "reference_id": "BCSS_joint_supplement_9af9c69a00f4",
+    "development_source_index": 38
+  },
+  "results": {
+    "u1_pass": false,
+    "u2_pass": false,
+    "u2_entered_track_b_after_feedback_preservation": true,
+    "u1_entered_track_b": false,
+    "u1_feasible_interface_count": 1,
+    "u1_cell_feasible_anchor_count": 7,
+    "u1_prior_largest_topology_passing_area_pixels": 69300,
+    "u1_hard_floor_pixels": 70779
+  },
+  "interpretation": {
+    "supported": [
+      "Pre-plan underfill feedback preservation makes the authoritative topology-passing receipt visible to Track B; U2 entered the audited path.",
+      "U1 remains a valid counterexample because its only feasible interface was already selected and contains seven anchors, whereas the existing Track B path only transforms remaining single-anchor interfaces."
+    ],
+    "not_supported": [
+      "The probe does not qualify the source or patient.",
+      "The probe does not authorize refinement of selected multi-anchor interfaces; that mechanism requires separate implementation and validation."
+    ]
+  }
+}

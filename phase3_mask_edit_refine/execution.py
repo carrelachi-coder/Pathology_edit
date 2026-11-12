@@ -28,8 +28,12 @@ from phase3_mask_edit_refine.topology import (
     source_deletion_limit,
     topology_safe_priority_grow,
 )
+from phase3_mask_edit_refine.topology_semantics import (
+    hole_count_4 as _hole_count,
+    hole_intersection_count_4 as _hole_intersection_count,
+)
 
-EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v18"
+EXECUTION_SOLVER_VERSION = "mask-edit-refine-topology-solver-v19"
 
 
 # The narrowest traversing stromal interval must be a tissue compartment, not
@@ -2056,21 +2060,6 @@ def _minimum_component_spacing_px(
                 float(np.min(distance[labeled == right], initial=np.inf)),
             )
     return minimum
-
-
-def _hole_count(mask: np.ndarray) -> int:
-    holes = ndimage.binary_fill_holes(mask) & ~mask
-    return int(ndimage.label(holes, structure=np.ones((3, 3), dtype=bool))[1])
-
-
-def _hole_intersection_count(mask: np.ndarray, region: np.ndarray) -> int:
-    """Count enclosed complement components that contain ``region`` pixels."""
-
-    holes = ndimage.binary_fill_holes(mask) & ~mask
-    labels, count = ndimage.label(holes, structure=np.ones((3, 3), dtype=bool))
-    return sum(
-        bool(np.any(region & (labels == index))) for index in range(1, count + 1)
-    )
 
 
 def _simulate_topology_safe_execution(

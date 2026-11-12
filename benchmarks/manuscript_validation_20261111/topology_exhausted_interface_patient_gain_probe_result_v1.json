@@ -1,0 +1,35 @@
+{
+  "schema_version": "topology-exhausted-interface-patient-gain-probe-result-v1",
+  "recorded_at": "2026-11-11",
+  "status": "completed_no_patient_gain",
+  "launch_manifest": "topology_exhausted_interface_patient_gain_probe_v1.json",
+  "implementation_commit": "f067b708",
+  "authorization_commit": "7def2c7c",
+  "capacity_screen_sha256": "993b48ecd6aed3d4240659155e2fd12a7b471ec12229e45da680e48655e6dae5",
+  "automatic_retries": 0,
+  "case": {
+    "patient_id": "TCGA-E2-A14R",
+    "reference_id": "BCSS_two_primitive_8587ebd870b4",
+    "partition": "development",
+    "source_index": 31
+  },
+  "results": {
+    "both_significant_topology_pass": false,
+    "u1_topology_pass": true,
+    "u1_realized_tissue_pixels": 78309,
+    "u2_topology_pass": false,
+    "u2_largest_saved_topology_passing_area_pixels": 63043,
+    "prior_u2_largest_saved_topology_passing_area_pixels": 64904,
+    "hard_floor_pixels": 70779
+  },
+  "interpretation": {
+    "supported": [
+      "The corrected exhausted-interface path did not turn this U1-pass/U2-fail source into a dual-operation pass.",
+      "The maximal-sector variant reduced this source's largest saved U2 topology-passing area from 64,904 to 63,043 pixels."
+    ],
+    "not_supported": [
+      "The result does not justify a full development rerun of the maximal-sector variant.",
+      "No formal qualification, reserved evaluation, four-target compilation, H&E generation, or doctor review is authorized."
+    ]
+  }
+}
