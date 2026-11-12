@@ -1,0 +1,43 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0020_v1/review_queue.json",
+    "bytes": 32263,
+    "sha256": "5cabdcc7e598ac9b8261faafc22ce78017c817b9e2e3d08d4d1ba9d8952b73a8"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_joint_supplement_c59bd5fc1d5a__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:47:00Z",
+      "confidence": 0.88,
+      "reason": "All hard gates pass and the mask review shows coherent moderate tumor-boundary growth. Candidate 01 provides the best balance of local population score and source-like clustering among the alternatives.",
+      "tissue_geometry": "The edited tumor regions extend from existing external tumor-stroma boundaries, remain localized and preserve the intervening non-target structures.",
+      "nucleus_layout": "Thirty-seven class-1 nuclei are complete, non-overlapping and contained. Candidate 01 has source-relative NND 0.955 and Ripley K24 1.032, with a passing local population score.",
+      "coupling": "Added nuclei occupy the authorized expanded tumor footprint; boundary binding, seam continuity, quota and compatibility gates pass.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and native structures outside joint support remain preserved without partial-instance, overlap or containment failure.",
+      "limitations": "This is mask-only annotation-conditioned evidence in an uncalibrated research envelope, not generated-H&E or clinical validation.",
+      "verdict": "Approve candidate 01 as the single mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_c59bd5fc1d5a__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 01 has a higher local population score and a spatial pattern closer to source clustering with the same approved tissue geometry."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_c59bd5fc1d5a__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 01 has nearly identical local score while preserving source Ripley clustering more closely and retaining the same tissue footprint."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
