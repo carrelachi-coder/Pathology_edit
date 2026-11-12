@@ -1,0 +1,29 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0036_v1/review_queue.json",
+    "bytes": 31247,
+    "sha256": "09ffdc941115324367354d6dcd101cac165613f64c6856fdf8e3a30a151f4c3e"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_joint_supplement_d68823e6eda1__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T01:06:28Z",
+      "confidence": 0.88,
+      "reason": "Candidate 02 is the only candidate passing all hard gates, and mask-only review shows coherent moderate tumor-boundary expansion with nearly source-matched instance count, spacing and local clustering.",
+      "tissue_geometry": "The 36,725-pixel tumor expansion follows multiple authorized external tumor-stroma interfaces and preserves the intervening stroma, immune and non-target structures.",
+      "nucleus_layout": "Thirty-nine class-1 nuclei are complete, non-overlapping and contained. Source-relative instance-count, NND and Ripley K24 ratios are 0.995, 0.991 and 1.057, respectively.",
+      "coupling": "Added tumor nuclei occupy the authorized expanded tumor footprints; boundary binding, seam continuity, quota, compatibility, spatial-distribution and local-density checks pass, with sampling score 0.896.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and native structures outside joint support remain unchanged, without partial-instance, overlap, border or containment violations.",
+      "limitations": "The tissue area is only slightly above the frozen moderate floor and the joint-area gate relies on its predeclared accepted interval. This patient is not four-target eligible because U1 Significant abstained. Mask-only evidence does not establish generated-H&E quality or clinical validity.",
+      "verdict": "Approve candidate 02 as the single mask-condition handoff for this target only."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
