@@ -1,0 +1,29 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0033_v1/review_queue.json",
+    "bytes": 31247,
+    "sha256": "c0da3d33fb020d1d02da8dbfa2dfcb2e138c81b8da81225f8528101c9ae7fcdc"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_677bb0854b7d__u1_significant",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:58:21Z",
+      "confidence": 0.87,
+      "reason": "Candidate 03 is the only candidate passing all hard gates, and mask-only review shows coherent significant tumor-boundary expansion with complete quota and preserved surrounding structures.",
+      "tissue_geometry": "The 71,091-pixel tumor expansion follows the existing external tumor-stroma interfaces in connected planned regions and preserves neighboring immune and non-target compartments.",
+      "nucleus_layout": "Twenty-three class-1 nuclei are complete, non-overlapping and contained. Source-relative area-p95, instance-count, NND and Ripley K24 ratios are 1.054, 1.218, 0.929 and 0.721, respectively, within the frozen envelope.",
+      "coupling": "Added tumor nuclei occupy the authorized expanded tumor footprint; boundary binding, seam continuity, quota, compatibility, spatial-distribution and local-density gates pass, with sampling score 0.891.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and native structures outside joint support remain unchanged, without partial-instance, overlap, border or containment violations.",
+      "limitations": "The target is more numerous and more regularly spaced than the source distribution, although within frozen hard limits. This mask-only evidence does not establish generated-H&E quality, histologic truth or clinical validity.",
+      "verdict": "Approve candidate 03 as the single mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
