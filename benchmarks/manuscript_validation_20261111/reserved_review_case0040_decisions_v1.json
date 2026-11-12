@@ -1,0 +1,20 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0040_v1/review_queue.json", "bytes": 32257, "sha256": "fe3b4b4eff6d4fa46a6ad80989e7d525d391d24cfb436625671b0ef0acef682f"},
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {"case_id": "BCSS_two_primitive_e269b4918e25__u1_moderate", "candidate_id": "joint-cand:001-mature-cells-01", "decision": "rejected", "reviewer": "codex_current_chat", "reason": "Hard gates pass, but candidate 02 more closely preserves source size, count, spacing and clustering and has the highest sampling score."},
+    {
+      "case_id": "BCSS_two_primitive_e269b4918e25__u1_moderate", "candidate_id": "joint-cand:001-mature-cells-02", "decision": "approved", "reviewer": "codex_current_chat", "reviewed_utc": "2026-11-12T01:23:11Z", "confidence": 0.93,
+      "reason": "All hard gates pass and mask review shows coherent moderate tumor-boundary growth. Candidate 02 is nearly source-matched for instance size, count, nearest-neighbor spacing and Ripley clustering.",
+      "tissue_geometry": "The 44,573-pixel expansion follows authorized external tumor-stroma interfaces and preserves adjacent immune and non-target structures.",
+      "nucleus_layout": "Sixteen class-1 nuclei are complete, non-overlapping and contained. Source-relative area-p95, count, NND and Ripley ratios are 0.993, 1.035, 0.998 and 0.988.",
+      "coupling": "Added tumor nuclei occupy the authorized expansion; boundary, seam, quota, compatibility, distribution and density gates pass with sampling score 0.899.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and structures outside joint support remain unchanged without partial-instance, overlap or containment violations.",
+      "limitations": "This is mask-only annotation-conditioned evidence, not generated-H&E, histologic truth or clinical validation.",
+      "verdict": "Approve candidate 02 as the single mask-condition handoff."
+    },
+    {"case_id": "BCSS_two_primitive_e269b4918e25__u1_moderate", "candidate_id": "joint-cand:001-mature-cells-03", "decision": "rejected", "reviewer": "codex_current_chat", "reason": "Hard gates pass, but candidate 02 has a substantially more source-like Ripley profile and higher sampling score with similarly preserved count and spacing."}
+  ],
+  "source_he_provided_to_review": false, "h_and_e_selection_used": false, "qualification_updated": false
+}
