@@ -1,0 +1,36 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0028_v1/review_queue.json",
+    "bytes": 31749,
+    "sha256": "d11cee59593957c948fc961759c93c7ad8f77ed7f9968fc369ed55a82c64df90"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_ada2881cede4__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 03 preserves source-like instance size and nearest-neighbor spacing slightly more closely while retaining essentially the same clustering, tissue geometry and quota."
+    },
+    {
+      "case_id": "BCSS_two_primitive_ada2881cede4__u1_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T01:19:00Z",
+      "confidence": 0.9,
+      "reason": "All hard gates pass and the mask review shows coherent moderate tumor-boundary growth. Candidate 03 most closely preserves source instance size and nearest-neighbor spacing with essentially source-matched Ripley clustering.",
+      "tissue_geometry": "Tumor expansion follows existing external tumor-stroma interfaces across the planned connected regions and preserves neighboring immune and non-target structures.",
+      "nucleus_layout": "Thirty class-1 nuclei are complete, non-overlapping and contained. Candidate 03 has source-relative NND 0.992 and Ripley K24 1.011.",
+      "coupling": "Added nuclei occupy the authorized expanded tumor footprint; boundary binding, seam continuity, quota and compatibility gates pass.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and native structures outside joint support remain preserved without partial-instance, overlap or containment violations.",
+      "limitations": "This is mask-only annotation-conditioned evidence in an uncalibrated research envelope, not generated-H&E or clinical validation.",
+      "verdict": "Approve candidate 03 as the single mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
