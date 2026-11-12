@@ -1,0 +1,9 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {"path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0077_v1/review_queue.json", "bytes": 31230, "sha256": "8d3e094a3427b18c0b0b4f80d5faceb17de216534aeba28f79d9c0dbe30b1698"},
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {"case_id": "BCSS_joint_supplement_b15ca5b3ea67__u1_significant", "candidate_id": "joint-cand:001-mature-cells-02", "decision": "approved", "reviewer": "codex_current_chat", "reviewed_utc": "2026-11-12T03:16:00Z", "confidence": 0.90, "reason": "This is the sole candidate passing all frozen hard gates; it provides coherent significant tumor-boundary expansion with stable population spacing and complete quota.", "tissue_geometry": "The 76,907-pixel joint change follows authorized tumor-stroma interfaces; its 73,027-pixel tissue component remains anchored to native tumor and preserves non-target structures.", "nucleus_layout": "The 25 placed nuclei are complete, non-overlapping and contained. Source-relative area-p95, count, NND and Ripley ratios are 1.173, 1.085, 1.010 and 0.829.", "coupling": "Added nuclei occupy authorized expanded tumor; quota, seam, compatibility, distribution and density checks pass with score 0.908.", "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain unchanged.", "limitations": "Nuclei are mildly larger and clustering is reduced relative to source, within the frozen gate. Mask-only evidence does not establish generated-H&E quality or clinical validity.", "verdict": "Approve candidate 02 as the single mask-condition handoff."}
+  ],
+  "source_he_provided_to_review": false, "h_and_e_selection_used": false, "qualification_updated": false
+}
