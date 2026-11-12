@@ -1,0 +1,29 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0013_v1/review_queue.json",
+    "bytes": 31247,
+    "sha256": "b21b21dba871bc818d54d8e6411ce2bec0b89c4ecc8e3ffb89448c83071d78ff"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_0ba6c5e2f899__u1_significant",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:20:00Z",
+      "confidence": 0.88,
+      "reason": "The sole passing candidate forms coherent significant tumor-boundary growth and satisfies every frozen tissue, cell and joint gate.",
+      "tissue_geometry": "The new tumor regions extend from existing tumor-stroma interfaces, remain connected to source tumor compartments and preserve surrounding annotated structures.",
+      "nucleus_layout": "Sixty-one class-1 nuclei are added as complete non-overlapping instances. Mean NND changes only from 21.51 to 21.06 px and the accepted spatial and shape envelopes pass.",
+      "coupling": "The nuclear additions occupy the authorized expanded tumor footprint; external-boundary binding, seam continuity and full anchor coverage all pass.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and native auxiliary structures outside joint support are preserved without partial-instance, overlap or containment violations.",
+      "limitations": "This is mask-only, annotation-conditioned research evidence and does not establish generated-H&E realism, histologic truth or clinical validity.",
+      "verdict": "Approve the sole passing candidate as the mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
