@@ -1,0 +1,29 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0014_v1/review_queue.json",
+    "bytes": 31241,
+    "sha256": "7f2413c7b7eed5fa66984d757dcaba9ee5fcf574b8c41e0c330013f536a80a39"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_0ba6c5e2f899__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:31:00Z",
+      "confidence": 0.87,
+      "reason": "The sole passing candidate creates a coherent moderate immune compartment and satisfies every frozen tissue, cell and joint gate.",
+      "tissue_geometry": "The immune expansion remains connected to the authorized stroma-immune interface, follows existing local structure and avoids neighboring tumor compartments.",
+      "nucleus_layout": "Eighty class-2 nuclei are placed as complete non-overlapping instances in compatible tissue. Mean NND is 19.45 px and the accepted spatial, density and shape envelopes pass.",
+      "coupling": "Nuclear additions are confined to the changed immune tissue and authorized halo; seam continuity, quota and compatibility checks pass.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior source instances remain preserved with no partial-instance, overlap or containment violation.",
+      "limitations": "This is mask-only annotation-conditioned evidence in an uncalibrated research envelope, not generated-H&E or clinical validation.",
+      "verdict": "Approve the sole passing candidate as the mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
