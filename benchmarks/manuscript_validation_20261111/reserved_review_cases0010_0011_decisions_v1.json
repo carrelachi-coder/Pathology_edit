@@ -1,0 +1,58 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0010_0011_v1/review_queue.json",
+    "bytes": 33524,
+    "sha256": "5487385ab2c5d92465b033165adf5674ce3776935d60ff32b857380471b4038e"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_815448596223__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:15:00Z",
+      "confidence": 0.88,
+      "reason": "The sole passing candidate forms a localized coherent moderate immune-compartment expansion and satisfies all frozen tissue, cell and joint gates.",
+      "tissue_geometry": "The stroma-to-immune change follows the authorized interface, remains localized around the existing immune compartment and preserves neighboring tumor and auxiliary structures.",
+      "nucleus_layout": "Fifty-four class-2 nuclei are complete, non-overlapping and legally contained. The accepted layout has mean NND 22.80 px and normalized Ripley K24 0.902.",
+      "coupling": "The added immune nuclei occupy the authorized changed tissue and interface halo; the seam and local population checks pass.",
+      "preserved_conditions": "Protected and support-exterior nuclei remain pixel-exact, and no prohibited-region, partial-instance, overlap or containment violation is reported.",
+      "limitations": "This is mask-only evidence in an uncalibrated research envelope and does not establish generated-H&E quality, histologic truth or clinical validity.",
+      "verdict": "Approve the sole passing candidate as the mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_two_primitive_815448596223__u2_significant",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but only one candidate may be approved; candidate 01 is more clustered and has shorter nearest-neighbor spacing than candidate 03."
+    },
+    {
+      "case_id": "BCSS_two_primitive_815448596223__u2_significant",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 03 has a more source-like Ripley K24 value and less clustered spatial arrangement while preserving the same tissue footprint and quota."
+    },
+    {
+      "case_id": "BCSS_two_primitive_815448596223__u2_significant",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:15:00Z",
+      "confidence": 0.88,
+      "reason": "All hard gates pass and the visual mask review shows coherent significant immune expansion. Candidate 03 is the least clustered alternative and most closely preserves the source Ripley K24 pattern.",
+      "tissue_geometry": "The significant stroma-to-immune footprint follows the authorized interfaces, remains connected to existing immune regions and preserves surrounding compartment identities.",
+      "nucleus_layout": "Ninety-four class-2 nuclei are complete, non-overlapping and contained. Candidate 03 has mean NND 20.43 px and normalized Ripley K24 0.991, closest to the source spatial pattern among the alternatives.",
+      "coupling": "The nuclear population follows the significant tissue footprint and authorized interface halo; seam continuity, local population and compatibility gates pass.",
+      "preserved_conditions": "Protected nuclei, source instances outside support and prohibited regions remain preserved; no overlap or containment violation is reported.",
+      "limitations": "This is an annotation-conditioned mask review, not generated-H&E assessment or independent clinical validation.",
+      "verdict": "Approve candidate 03 as the single mask-condition handoff."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
