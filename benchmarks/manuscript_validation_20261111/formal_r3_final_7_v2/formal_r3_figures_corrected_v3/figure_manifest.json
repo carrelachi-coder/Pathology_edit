@@ -1,0 +1,36 @@
+{
+  "schema_version": "formal-r3-figure-v1",
+  "analysis": {
+    "path": "/Users/wangqinxin/.codex/worktrees/topology-hole-semantics-v2/Pathology_edit/benchmarks/manuscript_validation_20261111/formal_r3_final_7_v2/formal_r3_analysis.json",
+    "bytes": 5667,
+    "sha256": "d341ab27dd82beab6142c28d945addf967142c05c7d7801973d6fd619f625129"
+  },
+  "outputs": {
+    "primary_csv": {
+      "path": "/Users/wangqinxin/.codex/worktrees/topology-hole-semantics-v2/Pathology_edit/benchmarks/manuscript_validation_20261111/formal_r3_final_7_v2/formal_r3_figures_corrected_v3/formal_r3_primary_effects.csv",
+      "bytes": 585,
+      "sha256": "bcfa611a4189c6b0e80a19c191a0fc1b53e490ce42f720c70093d2201303f778"
+    },
+    "order_csv": {
+      "path": "/Users/wangqinxin/.codex/worktrees/topology-hole-semantics-v2/Pathology_edit/benchmarks/manuscript_validation_20261111/formal_r3_final_7_v2/formal_r3_figures_corrected_v3/formal_r3_order_outcomes.csv",
+      "bytes": 347,
+      "sha256": "ca363ce4090a9fa871198678842067c6976813e693a9efe30ad71bed2122370c"
+    },
+    "sham_drift_csv": {
+      "path": "/Users/wangqinxin/.codex/worktrees/topology-hole-semantics-v2/Pathology_edit/benchmarks/manuscript_validation_20261111/formal_r3_final_7_v2/formal_r3_figures_corrected_v3/formal_r3_sham_drift.csv",
+      "bytes": 284,
+      "sha256": "e034122c51c62907ea75f5f760a4acdd0850c056ae5fb4430a486c7c8623eae1"
+    },
+    "png": {
+      "path": "/Users/wangqinxin/.codex/worktrees/topology-hole-semantics-v2/Pathology_edit/benchmarks/manuscript_validation_20261111/formal_r3_final_7_v2/formal_r3_figures_corrected_v3/formal_r3_results.png",
+      "bytes": 152324,
+      "sha256": "7317bd0c0d8d5a8b1d3ee65eb40ed63d7f4a96f2bed984d72ebc4a211fdbd95b"
+    },
+    "pdf": {
+      "path": "/Users/wangqinxin/.codex/worktrees/topology-hole-semantics-v2/Pathology_edit/benchmarks/manuscript_validation_20261111/formal_r3_final_7_v2/formal_r3_figures_corrected_v3/formal_r3_results.pdf",
+      "bytes": 18806,
+      "sha256": "7d1d1e25352093a6ef2cf58924d5fa665d932fb6184c41a609221ab2edfaae2e"
+    }
+  },
+  "values_recomputed_or_selected": false
+}

@@ -1,0 +1,189 @@
+{
+  "schema_version": "formal-r3-paired-analysis-v1",
+  "created_utc": "2026-11-12T05:33:23.131847+00:00",
+  "independent_unit": "patient_id",
+  "seed": 20261102,
+  "bootstrap_draws": 5000,
+  "permutation_draws": 20000,
+  "requested_patients": 7,
+  "patient_ids": [
+    "TCGA-A2-A3XS",
+    "TCGA-A7-A5ZV",
+    "TCGA-AO-A1KR",
+    "TCGA-BH-A0E0",
+    "TCGA-BH-A0RX",
+    "TCGA-D8-A142",
+    "TCGA-D8-A1XQ"
+  ],
+  "primary_holm_family": [
+    {
+      "endpoint": "u1",
+      "edit_state": "u1_moderate",
+      "requested_patients": 7,
+      "valid_pairs": 7,
+      "excluded_pairs_by_status": {},
+      "mean_edit_minus_sham": -0.06820253373322997,
+      "median_edit_minus_sham": -0.039279937744140625,
+      "patient_bootstrap_95_interval": [
+        -0.1790069552943349,
+        0.01657529829802002
+      ],
+      "raw_p_value": 0.2673366331683416,
+      "positive_delta": 1,
+      "zero_delta": 0,
+      "negative_delta": 6,
+      "holm_adjusted_p_value": 0.5346732663366832,
+      "holm_reject_alpha_0_05": false
+    },
+    {
+      "endpoint": "u1",
+      "edit_state": "u1_significant",
+      "requested_patients": 7,
+      "valid_pairs": 7,
+      "excluded_pairs_by_status": {},
+      "mean_edit_minus_sham": -0.05084754251910866,
+      "median_edit_minus_sham": -0.04351043701171875,
+      "patient_bootstrap_95_interval": [
+        -0.1518282209123884,
+        0.04960414341517857
+      ],
+      "raw_p_value": 0.3941802909854507,
+      "positive_delta": 1,
+      "zero_delta": 0,
+      "negative_delta": 6,
+      "holm_adjusted_p_value": 0.5346732663366832,
+      "holm_reject_alpha_0_05": false
+    },
+    {
+      "endpoint": "u2",
+      "edit_state": "u2_moderate",
+      "requested_patients": 7,
+      "valid_pairs": 7,
+      "excluded_pairs_by_status": {},
+      "mean_edit_minus_sham": 0.02276356587034375,
+      "median_edit_minus_sham": 0.00012700656568724356,
+      "patient_bootstrap_95_interval": [
+        0.0012104680399529423,
+        0.0633492741996254
+      ],
+      "raw_p_value": 0.12979351032448377,
+      "positive_delta": 4,
+      "zero_delta": 3,
+      "negative_delta": 0,
+      "holm_adjusted_p_value": 0.5017749112544373,
+      "holm_reject_alpha_0_05": false
+    },
+    {
+      "endpoint": "u2",
+      "edit_state": "u2_significant",
+      "requested_patients": 7,
+      "valid_pairs": 7,
+      "excluded_pairs_by_status": {},
+      "mean_edit_minus_sham": 0.04565130779070149,
+      "median_edit_minus_sham": 0.0034070891751751863,
+      "patient_bootstrap_95_interval": [
+        0.005770342166544254,
+        0.11279124749701287
+      ],
+      "raw_p_value": 0.12544372781360932,
+      "positive_delta": 4,
+      "zero_delta": 3,
+      "negative_delta": 0,
+      "holm_adjusted_p_value": 0.5017749112544373,
+      "holm_reject_alpha_0_05": false
+    }
+  ],
+  "order_outcomes": [
+    {
+      "endpoint": "u1",
+      "requested_patients": 7,
+      "valid_triplets": 7,
+      "strict_order": 1,
+      "adjacent_tie": 0,
+      "reversal": 6,
+      "incomplete": 0,
+      "strict_order_rate_among_valid": 0.14285714285714285,
+      "strict_order_all_requested_lower_bound": 0.14285714285714285,
+      "strict_order_all_requested_upper_bound": 0.14285714285714285
+    },
+    {
+      "endpoint": "u2",
+      "requested_patients": 7,
+      "valid_triplets": 7,
+      "strict_order": 4,
+      "adjacent_tie": 3,
+      "reversal": 0,
+      "incomplete": 0,
+      "strict_order_rate_among_valid": 0.5714285714285714,
+      "strict_order_all_requested_lower_bound": 0.5714285714285714,
+      "strict_order_all_requested_upper_bound": 0.5714285714285714
+    }
+  ],
+  "sham_drift": [
+    {
+      "endpoint": "u1",
+      "requested_patients": 7,
+      "valid_pairs": 7,
+      "mean_sham_minus_original": -0.011022306576804015,
+      "median_sham_minus_original": 0.01985542012448127,
+      "patient_bootstrap_95_interval": [
+        -0.07786393326701113,
+        0.03714601695360905
+      ]
+    },
+    {
+      "endpoint": "u2",
+      "requested_patients": 7,
+      "valid_pairs": 7,
+      "mean_sham_minus_original": -0.006217381438620376,
+      "median_sham_minus_original": 0.0,
+      "patient_bootstrap_95_interval": [
+        -0.018652144315861128,
+        0.0
+      ]
+    }
+  ],
+  "secondary_inflammatory_density": [
+    {
+      "endpoint": "secondary_inflammatory_density",
+      "edit_state": "u2_moderate",
+      "requested_patients": 7,
+      "valid_pairs": 7,
+      "excluded_pairs_by_status": {},
+      "mean_edit_minus_sham": 3671.423777200536,
+      "median_edit_minus_sham": 4667.784990153892,
+      "patient_bootstrap_95_interval": [
+        2095.6555120638645,
+        5016.59199339908
+      ],
+      "raw_p_value": 0.030598470076496177,
+      "positive_delta": 6,
+      "zero_delta": 0,
+      "negative_delta": 1
+    },
+    {
+      "endpoint": "secondary_inflammatory_density",
+      "edit_state": "u2_significant",
+      "requested_patients": 7,
+      "valid_pairs": 7,
+      "excluded_pairs_by_status": {},
+      "mean_edit_minus_sham": 6027.666585677012,
+      "median_edit_minus_sham": 7560.444176095346,
+      "patient_bootstrap_95_interval": [
+        3811.8250096504153,
+        8138.309701483199
+      ],
+      "raw_p_value": 0.01719914004299785,
+      "positive_delta": 7,
+      "zero_delta": 0,
+      "negative_delta": 0
+    }
+  ],
+  "qualification_updated": false,
+  "physician_claim_created": false,
+  "measurement_report": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/formal_r3_measurement_final_7_v2/joint_technical_report.json",
+    "bytes": 208579,
+    "sha256": "32a974382bf45f8464a7441c6b30b78f66539eef14a619a2e0d53344c94b4429"
+  }
+}

@@ -36,6 +36,11 @@ def write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
         writer.writerows(rows)
 
 
+def order_count_label(row: dict) -> str:
+    """Label the strict-order numerator against the valid-triplet denominator."""
+    return f"{row['strict_order']}/{row['valid_triplets']}"
+
+
 def plot(analysis: dict, output: Path) -> dict:
     if analysis.get("schema_version") != "formal-r3-paired-analysis-v1":
         raise ValueError("unsupported formal R3 analysis schema")
@@ -104,7 +109,7 @@ def plot(analysis: dict, output: Path) -> dict:
         axes[1].text(
             index,
             min(1.04, valid_rates[index] + 0.04),
-            f"{row['valid_triplets']}/{row['requested_patients']}",
+            order_count_label(row),
             ha="center",
             fontsize=8,
         )
