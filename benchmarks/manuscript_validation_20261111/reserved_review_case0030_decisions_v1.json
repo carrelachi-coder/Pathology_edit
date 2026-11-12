@@ -1,0 +1,29 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0030_v1/review_queue.json",
+    "bytes": 31241,
+    "sha256": "4501b7ed9ad31071dbb49b08b8c70e8f6f89e74afb01e0b12f9aa5fc54ada965"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_ada2881cede4__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:51:55Z",
+      "confidence": 0.86,
+      "reason": "All hard gates pass, and mask-only review shows a coherent, localized moderate immune-compartment turnover with complete quota and preserved surrounding structures.",
+      "tissue_geometry": "The 43,139-pixel tissue change is localized to the authorized stroma-to-immune interface and remains above the frozen 36,701-pixel tissue floor; adjacent tumor and non-target compartments retain their geometry.",
+      "nucleus_layout": "Fifty-two class-2 nuclei are placed as complete, non-overlapping instances. Source-relative area-p95 and nearest-neighbor ratios are 0.927 and 0.933; the higher Ripley ratio of 1.597 remains within the frozen research envelope and is visually consistent with localized immune enrichment.",
+      "coupling": "Added immune nuclei occupy the authorized changed tissue and interface transition; cell quota, containment, seam, compatibility, spatial-distribution and local-density checks all pass, with sampling score 0.895.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain unchanged, with no partial source-instance, overlap, border or containment violation.",
+      "limitations": "The joint area uses the predeclared safe fallback and is below the nominal desired interval. This mask-only annotation-conditioned review does not establish generated-H&E quality, histologic truth or clinical validity; this patient is not four-target eligible because its U1 Significant compilation abstained.",
+      "verdict": "Approve candidate 01 as the single mask-condition handoff for this target only."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
