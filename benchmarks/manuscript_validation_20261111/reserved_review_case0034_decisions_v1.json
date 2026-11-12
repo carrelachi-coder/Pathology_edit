@@ -1,0 +1,43 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0034_v1/review_queue.json",
+    "bytes": 32257,
+    "sha256": "3201587c38a716724e75243aeb1daccb4fcc861c1067ec386099850a3cf8006b"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_two_primitive_677bb0854b7d__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 02 has more source-like nearest-neighbor spacing, lower excess instance count and the highest mature sampling score with the same tissue geometry and quota."
+    },
+    {
+      "case_id": "BCSS_two_primitive_677bb0854b7d__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T00:56:36Z",
+      "confidence": 0.87,
+      "reason": "All hard gates pass and the mask review shows a coherent localized moderate immune transition. Candidate 02 provides the best combined preservation of source-like spacing and instance count with the highest mature sampling score.",
+      "tissue_geometry": "The 48,234-pixel tissue change is localized to a connected authorized stroma-to-immune region and preserves adjacent tumor and non-target structures.",
+      "nucleus_layout": "Forty class-2 nuclei are complete, non-overlapping and contained. Candidate 02 has source-relative NND 0.862, instance-count 1.487 and Ripley K24 0.697.",
+      "coupling": "Added immune nuclei occupy the authorized changed tissue and interface transition; quota, seam, compatibility, spatial-distribution and local-density checks pass, with sampling score 0.898.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain unchanged, without partial-instance, overlap, border or containment violations.",
+      "limitations": "The target nuclei are smaller than the source class distribution (area-p95 ratio 0.625) but remain within the frozen hard envelope. This mask-only evidence does not establish generated-H&E quality, histologic truth or clinical validity.",
+      "verdict": "Approve candidate 02 as the single mask-condition handoff."
+    },
+    {
+      "case_id": "BCSS_two_primitive_677bb0854b7d__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-03",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass and metrics are close, but candidate 02 has a higher mature sampling score and slightly preferable combined spacing and clustering under the same tissue geometry and quota."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
