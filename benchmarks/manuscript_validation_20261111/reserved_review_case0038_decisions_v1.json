@@ -1,0 +1,36 @@
+{
+  "schema_version": "reserved-four-target-mask-review-decisions-v1",
+  "review_queue": {
+    "path": "/data1/zhao/wqx/benchmarks/runs/manuscript_final_joint_assets_20261102_v1/native_crop_recovery_20261103_v1/reserved_four_target_partial_review_0038_v1/review_queue.json",
+    "bytes": 31755,
+    "sha256": "4284d9d7cc181e7d052f0abcc74df6af3086e1f1d94845f1e4b63b393f004e90"
+  },
+  "scope": "mask-only independent review; no generated H&E was available or used",
+  "decisions": [
+    {
+      "case_id": "BCSS_joint_supplement_d68823e6eda1__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-01",
+      "decision": "approved",
+      "reviewer": "codex_current_chat",
+      "reviewed_utc": "2026-11-12T01:08:41Z",
+      "confidence": 0.86,
+      "reason": "All hard gates pass and mask-only review shows coherent moderate immune enrichment across the authorized stroma interfaces. Candidate 01 has more source-like spacing, clustering and total instance count than the other passing candidate.",
+      "tissue_geometry": "The 43,644-pixel tissue change is distributed across authorized stroma-to-immune interface regions while preserving intervening tumor and non-target structures.",
+      "nucleus_layout": "One hundred class-2 nuclei are complete, non-overlapping and contained. Candidate 01 has source-relative instance-count 1.329, NND 0.864 and Ripley K24 1.745, preferable to candidate 02 under the same quota.",
+      "coupling": "Added immune nuclei occupy the authorized changed tissue and interface transitions; quota, seam, compatibility, spatial-distribution and local-density checks pass, with sampling score 0.892.",
+      "preserved_conditions": "Protected nuclei, prohibited regions and support-exterior instances remain unchanged, without partial-instance, overlap, border or containment violations.",
+      "limitations": "The target population is denser and more clustered than the source, although within the frozen hard research envelope. This patient is not four-target eligible because U1 Significant abstained. Mask-only evidence does not establish generated-H&E quality or clinical validity.",
+      "verdict": "Approve candidate 01 as the single mask-condition handoff for this target only."
+    },
+    {
+      "case_id": "BCSS_joint_supplement_d68823e6eda1__u2_moderate",
+      "candidate_id": "joint-cand:001-mature-cells-02",
+      "decision": "rejected",
+      "reviewer": "codex_current_chat",
+      "reason": "Hard gates pass, but candidate 01 better preserves source-like nearest-neighbor spacing, clustering and total instance count and has a higher mature sampling score with the same tissue geometry and quota."
+    }
+  ],
+  "source_he_provided_to_review": false,
+  "h_and_e_selection_used": false,
+  "qualification_updated": false
+}
